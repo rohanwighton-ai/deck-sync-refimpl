@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+ralph.log
+.ralph_stuck_tracker
+REPORT.md
