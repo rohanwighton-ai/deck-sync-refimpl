@@ -121,7 +121,7 @@ hypothetical one.
 
 ## Priority 3: Verification module (specs/verification.md)
 
-- [ ] Implement `src/verification.py`'s core `inject_primitive` operation: hash the
+- [x] Implement `src/verification.py`'s core `inject_primitive` operation: hash the
       shape's current value and the linked source value; no-op if equal; if
       different, write the source value then re-hash to confirm the write actually
       took (why: nothing in src/ implements this yet — confirmed via `find`/`grep`).
@@ -129,6 +129,27 @@ hypothetical one.
       discovery.py (which is read-only) — will likely need `zipfile` write-back of
       modified slide XML, following the same stdlib-only constraint AGENTS.md
       documents for discovery.py.
+      `inject_primitive(path, part_name, shape: Candidate, source_value)` locates the
+      shape by re-walking to `shape.z_order` (same numbering discover() already
+      assigns), reads its concatenated `<a:t>` text, sha256-hashes it against
+      `source_value`'s hash; no-op (zero bytes written) if equal. If different, writes
+      `source_value` into the shape's first text run (clearing any extra runs so the
+      concatenation stays exact), rewrites the single changed zip entry via a
+      temp-file-then-`os.replace` swap (every other entry copied byte-for-byte,
+      preserving `p:`/`a:` namespace prefixes via `ET.register_namespace`), then
+      re-opens the file from disk and re-hashes the written-back value — never assumes
+      the write succeeded from the write call alone. Raises `ValueError` (does not
+      silently no-op or invent a run) when a shape has no `<a:t>` run to write into,
+      per `shp-groupshape.pptx`'s empty-decoration shapes. Added
+      `tests/test_verification.py` (4 tests) using a temp copy of
+      `mst-slide-layouts.pptx`'s title placeholder (real seed text "Click to edit
+      Master title style"): no-op leaves the file byte-identical to the original
+      fixture; a real write is confirmed both via a fresh read and via
+      `result.verified`; every other zip entry is confirmed byte-for-byte untouched
+      after a write (no data loss from the rewrite); and the no-text-runs case on
+      `shp-groupshape.pptx` raises rather than corrupting. Confirmed
+      `python3 -m pytest tests/ -v` (24 passed) and `python3 -m mypy src/` (no issues)
+      both pass.
 
 - [ ] Implement structural verification after duplication: shape count, type, and
       identity-tag correspondence between a duplicate and its source, checked
