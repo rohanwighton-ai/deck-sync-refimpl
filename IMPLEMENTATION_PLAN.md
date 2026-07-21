@@ -25,7 +25,7 @@ hypothetical one.
       to paper over). Confirmed `python3 -m pytest tests/ -v` (3 passed) and
       `python3 -m mypy src/` (no issues) both pass.
 
-- [ ] Capture actual placeholder `type`/`idx` attributes on `Candidate`, not just the
+- [x] Capture actual placeholder `type`/`idx` attributes on `Candidate`, not just the
       current `has_placeholder: bool` (why: specs/matching.md's most reliable scoring
       signal is "layout placeholder index (if applicable, most stable)" — a boolean
       can't express an index. Confirmed by reading `mst-slide-layouts.pptx`'s
@@ -33,6 +33,18 @@ hypothetical one.
       `<p:ph type="body" sz="quarter" idx="10"/>` with real type/idx values that a
       future matching module will need. `_has_placeholder()` in discovery.py currently
       discards this data.)
+      Replaced `has_placeholder: bool` with `placeholder_type: str | None` and
+      `placeholder_idx: int | None` on `Candidate`; `has_placeholder` is now a derived
+      property (`placeholder_type is not None`) kept for convenience. New
+      `_placeholder_info()` reads `<p:ph>` and applies OOXML's own attribute defaults
+      (`type` defaults to `"obj"`, `idx` defaults to `0`) when the element is present
+      but the attribute is omitted — the element's mere presence, not its attributes,
+      is what marks a shape as a placeholder. Tested against
+      `mst-slide-layouts.pptx`'s `slideLayout1.xml` by calling `discover()` directly on
+      the parsed layout root: `discover()` is root-agnostic (only looks for
+      `.//p:spTree`), so this works even before a dedicated slideLayout loader exists
+      (that loader is the next task below). Confirmed `python3 -m pytest tests/ -v`
+      (5 passed) and `python3 -m mypy src/` (no issues) both pass.
 
 - [ ] Add discovery support and tests for `test-fixtures/mst-slide-layouts.pptx` (why:
       this fixture is currently unused by any test — confirmed via grep across

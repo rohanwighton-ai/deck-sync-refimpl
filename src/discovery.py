@@ -23,8 +23,13 @@ class Candidate:
     group_path: tuple[str, ...]
     z_order: int
     shape_type: str  # "autoshape_or_textbox" | "picture"
-    has_placeholder: bool
+    placeholder_type: str | None  # e.g. "title", "body"; None if not a placeholder
+    placeholder_idx: int | None  # layout placeholder index; None if not a placeholder
     has_text: bool
+
+    @property
+    def has_placeholder(self) -> bool:
+        return self.placeholder_type is not None
 
     @property
     def is_candidate_field(self) -> bool:
@@ -43,8 +48,17 @@ def _has_text(sp: ET.Element) -> bool:
     return any((t.text or "").strip() for t in sp.findall(".//a:t", NS))
 
 
-def _has_placeholder(el: ET.Element) -> bool:
-    return el.find(".//p:nvPr/p:ph", NS) is not None
+def _placeholder_info(el: ET.Element) -> tuple[str, int] | None:
+    """Return (type, idx) if el's nvPr declares a placeholder, else None.
+
+    Per OOXML, both attributes are optional on <p:ph> itself: an omitted
+    `type` defaults to "obj" and an omitted `idx` defaults to 0 -- the
+    element's mere presence is what marks a shape as a placeholder.
+    """
+    ph = el.find(".//p:nvPr/p:ph", NS)
+    if ph is None:
+        return None
+    return ph.get("type", "obj"), int(ph.get("idx", "0"))
 
 
 def discover(slide_xml_root: ET.Element) -> list[Candidate]:
@@ -64,13 +78,15 @@ def discover(slide_xml_root: ET.Element) -> list[Candidate]:
             elif tag in ("sp", "pic"):
                 z[0] += 1
                 is_pic = tag == "pic"
+                ph_info = _placeholder_info(child)
                 results.append(
                     Candidate(
                         name=_shape_name(child),
                         group_path=group_path,
                         z_order=z[0],
                         shape_type="picture" if is_pic else "autoshape_or_textbox",
-                        has_placeholder=_has_placeholder(child),
+                        placeholder_type=ph_info[0] if ph_info else None,
+                        placeholder_idx=ph_info[1] if ph_info else None,
                         has_text=_has_text(child) if not is_pic else False,
                     )
                 )
