@@ -218,9 +218,11 @@ while true; do
   # Backup runs on HOST after container exits
   # Note: MODEL is already validated against whitelist above
   if docker run --rm \
+    --user "$(id -u):$(id -g)" \
     -v "$PROJECT_DIR:/workspace" \
     -w /workspace \
     -e "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN" \
+    -e "HOME=/tmp" \
     "$IMAGE_NAME" \
     bash -c "cat '$PROMPT_FILE' | claude --model '$MODEL' -p --dangerously-skip-permissions --output-format text" \
     2>&1 | tee -a "$LOG_FILE"; then
