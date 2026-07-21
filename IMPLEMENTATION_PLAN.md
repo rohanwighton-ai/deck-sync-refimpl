@@ -71,7 +71,7 @@ hypothetical one.
 
 ## Priority 2: Matching module (specs/matching.md)
 
-- [ ] Implement `src/matching.py` per specs/matching.md, depends on Priority 1's
+- [x] Implement `src/matching.py` per specs/matching.md, depends on Priority 1's
       placeholder type/idx data being available on `Candidate` (why: nothing in
       src/ implements matching yet — confirmed via `find`/`grep`, no stub exists).
       Required behavior per spec:
@@ -86,17 +86,38 @@ hypothetical one.
   - Sibling ambiguity: when untagged candidates score closely to each other, treat
     the closeness itself as signal (flag, don't arbitrarily break the tie); add
     z-order as a supplementary disambiguating signal before falling back to "flag."
-  - Note: `Candidate` doesn't currently carry geometry (position/size) or a
-    reference to compare against — will likely need a small extension (e.g. reading
-    `a:off`/`a:ext` from `a:xfrm`) alongside a "reference candidate" input shape,
-    neither of which exist in discovery.py today. Confirm exact geometry fields
-    needed while implementing, since specs/discovery.md's metadata list doesn't
-    mention position/size explicitly.
+      Extended `Candidate` (discovery.py) with `position`/`size` (EMU, read from each
+      shape's own `<p:spPr>/<a:xfrm>` — deliberately does not walk up through parent
+      group transforms; documented as exact only when a group's chOff/chExt equals its
+      own off/ext, true for every current fixture) and `identity_tag: str | None = None`
+      (always None out of `discover()` today, since discovery still doesn't read/write
+      tags per its non-goals — the field exists purely so `matching.py`'s tier-1 logic
+      has somewhere to look). `matching.py`'s `match(candidates, reference, valid_tags)`
+      implements: tier-1 tag trust (single valid tag wins immediately; >1 same-tag
+      candidates is a flagged collision); tier-2 `score_candidate()` combining
+      placeholder-index/geometry/shape-type/content-has-text signals by weight
+      (0.5/0.3/0.15/0.05), renormalized over only the signals applicable to the
+      reference (e.g. geometry skipped, not zeroed, if the reference carries none);
+      high/medium/low thresholds at 0.75/0.4; sibling-ambiguity handling that flags any
+      set of candidates scoring within 0.1 of the top score unless z-order uniquely
+      picks one winner among them. Confirmed `python3 -m pytest tests/ -v` (20 passed)
+      and `python3 -m mypy src/` (no issues) both pass.
 
-- [ ] Add matching tests using `shp-groupshape.pptx` (sibling ambiguity / z-order
+- [x] Add matching tests using `shp-groupshape.pptx` (sibling ambiguity / z-order
       disambiguation — this fixture's whole SOURCE.md purpose per its own
       description) and `mst-slide-layouts.pptx` (placeholder-index tier) once
       Priority 1's loader work lands.
+      Added `tests/test_matching.py` (11 tests): tier-1 trust/collision using synthetic
+      `Candidate`s; `shp-groupshape.pptx`'s 4 tied leaf shapes (identical shape_type/
+      has_text) to exercise a genuine 4-way score tie resolved by z-order, plus a 2-way
+      case where z-order also ties and must be flagged, not guessed; `mst-slide-
+      layouts.pptx`'s two layouts' body placeholder (same idx=10, very different
+      geometry) to show placeholder-index match alone correctly lands at medium
+      confidence (flagged) rather than forcing an auto-accept. Also added 3 tests to
+      `tests/test_discovery.py` covering the new `position`/`size`/`identity_tag`
+      fields (position/size checked against both fixtures' raw XML `a:off`/`a:ext`
+      values directly). Confirmed `python3 -m pytest tests/ -v` (20 passed) and
+      `python3 -m mypy src/` (no issues) both pass.
 
 ## Priority 3: Verification module (specs/verification.md)
 
@@ -157,3 +178,17 @@ hypothetical one.
   point rather than duplicating them per-module.
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
   settings. Worth confirming this stays intentional as more modules are added.
+- `matching.py`'s `identity_tag` field on `Candidate` is always `None` out of
+  `discover()` — there's still no decided physical storage format for identity tags
+  (alt-text? custom XML part? something else). Priority 3 (verification.py, which
+  needs to check "identity-tag correspondence" after duplication) will likely be the
+  thing that forces this decision; matching.py's tier-1 logic only needs the field to
+  exist and doesn't care how it gets populated.
+- `matching.py`'s content-pattern signal degrades to a has-text boolean match because
+  `Candidate` doesn't store actual text content, only `has_text`. If a fixture surfaces
+  a real need for pattern-based matching (e.g. distinguishing a date field from a
+  status field by format), `Candidate` will need a text-content field added.
+- `matching.py`'s geometry reading (`_geometry()` in discovery.py) uses each shape's
+  raw local `a:off`/`a:ext` without walking up through parent group transforms — exact
+  only when a group's `chOff`/`chExt` equals its own `off`/`ext` (true for every
+  current fixture, not guaranteed in general OOXML).

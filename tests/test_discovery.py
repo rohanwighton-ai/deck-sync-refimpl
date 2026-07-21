@@ -79,3 +79,33 @@ def test_mst_slide_layouts_layout2_also_discoverable():
     path = os.path.join(FIXTURES, "mst-slide-layouts.pptx")
     candidates = discover_from_pptx_layout(path, layout_index=2)
     assert len(candidates) > 0
+
+
+def test_mst_slide_layouts_captures_position_and_size():
+    # Confirmed against slideLayout1.xml's raw <a:xfrm> directly: Title 1 has
+    # <a:off x="467544" y="2060848"/><a:ext cx="8229600" cy="1143000"/>.
+    path = os.path.join(FIXTURES, "mst-slide-layouts.pptx")
+    candidates = discover_from_pptx_layout(path, layout_index=1)
+    title = next(c for c in candidates if c.name == "Title 1")
+    assert title.position == (467544, 2060848)
+    assert title.size == (8229600, 1143000)
+
+
+def test_shp_groupshape_captures_position_and_size():
+    # Confirmed against slide1.xml's raw <a:xfrm> directly: "Oval 2" has
+    # <a:off x="5940152" y="2708920"/><a:ext cx="914400" cy="914400"/>.
+    path = os.path.join(FIXTURES, "shp-groupshape.pptx")
+    candidates = discover_from_pptx(path)
+    oval = next(c for c in candidates if c.name == "Oval 2")
+    assert oval.position == (5940152, 2708920)
+    assert oval.size == (914400, 914400)
+
+
+def test_discover_never_sets_identity_tag():
+    # discover() only finds and describes candidates -- it never reads or
+    # writes identity tags (specs/discovery.md's non-goals). identity_tag
+    # exists on Candidate purely so matching.py has somewhere to look for a
+    # tag set by some later pass.
+    path = os.path.join(FIXTURES, "shp-groupshape.pptx")
+    candidates = discover_from_pptx(path)
+    assert all(c.identity_tag is None for c in candidates)

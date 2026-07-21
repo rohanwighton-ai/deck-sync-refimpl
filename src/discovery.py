@@ -26,6 +26,14 @@ class Candidate:
     placeholder_type: str | None  # e.g. "title", "body"; None if not a placeholder
     placeholder_idx: int | None  # layout placeholder index; None if not a placeholder
     has_text: bool
+    position: tuple[int, int] | None = None  # (off_x, off_y) in EMU; None if no a:xfrm
+    size: tuple[int, int] | None = None  # (cx, cy) in EMU; None if no a:xfrm
+    # Set by a previous matching/tagging pass, per specs/matching.md's two-tier
+    # rule. discover() never populates this (per specs/discovery.md's non-goals,
+    # discovery only finds and describes candidates -- it doesn't read or write
+    # identity tags), so this is always None coming out of discover(). It exists
+    # on Candidate so matching.py has somewhere to look for an already-trusted tag.
+    identity_tag: str | None = None
 
     @property
     def has_placeholder(self) -> bool:
@@ -61,6 +69,29 @@ def _placeholder_info(el: ET.Element) -> tuple[str, int] | None:
     return ph.get("type", "obj"), int(ph.get("idx", "0"))
 
 
+def _geometry(el: ET.Element) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    """Return ((off_x, off_y), (cx, cy)) in EMU from el's own <p:spPr/a:xfrm>.
+
+    Reads the shape's own local off/ext verbatim -- it does not walk up
+    through any parent group's transform, so a nested shape's position is
+    only absolute when its group's chOff/chExt equals the group's own
+    off/ext (true for every group in this project's current fixtures). A
+    general child-coordinate-system transform is future work if a fixture
+    ever needs it.
+    """
+    xfrm = el.find("./p:spPr/a:xfrm", NS)
+    if xfrm is None:
+        return None
+    off = xfrm.find("./a:off", NS)
+    ext = xfrm.find("./a:ext", NS)
+    if off is None or ext is None:
+        return None
+    return (int(off.get("x", "0")), int(off.get("y", "0"))), (
+        int(ext.get("cx", "0")),
+        int(ext.get("cy", "0")),
+    )
+
+
 def discover(slide_xml_root: ET.Element) -> list[Candidate]:
     """Walk a slide's shape tree per specs/discovery.md: type-agnostic,
     recurses into groups, tags leaves not containers."""
@@ -79,6 +110,7 @@ def discover(slide_xml_root: ET.Element) -> list[Candidate]:
                 z[0] += 1
                 is_pic = tag == "pic"
                 ph_info = _placeholder_info(child)
+                geometry = _geometry(child)
                 results.append(
                     Candidate(
                         name=_shape_name(child),
@@ -88,6 +120,8 @@ def discover(slide_xml_root: ET.Element) -> list[Candidate]:
                         placeholder_type=ph_info[0] if ph_info else None,
                         placeholder_idx=ph_info[1] if ph_info else None,
                         has_text=_has_text(child) if not is_pic else False,
+                        position=geometry[0] if geometry else None,
+                        size=geometry[1] if geometry else None,
                     )
                 )
 
