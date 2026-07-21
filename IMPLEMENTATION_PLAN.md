@@ -46,7 +46,7 @@ hypothetical one.
       (that loader is the next task below). Confirmed `python3 -m pytest tests/ -v`
       (5 passed) and `python3 -m mypy src/` (no issues) both pass.
 
-- [ ] Add discovery support and tests for `test-fixtures/mst-slide-layouts.pptx` (why:
+- [x] Add discovery support and tests for `test-fixtures/mst-slide-layouts.pptx` (why:
       this fixture is currently unused by any test — confirmed via grep across
       `tests/`. It is also structurally different from what `discover_from_pptx`
       assumes: unzipping it shows it has **no `ppt/slides/*` entries at all**, only
@@ -58,6 +58,16 @@ hypothetical one.
       `ppt/slideLayouts/slideLayoutN.xml`, plus tests asserting placeholder type/idx
       are correctly discovered per spec's "whether it carries a placeholder type/index"
       metadata requirement, per test-fixtures/SOURCE.md's stated purpose for this file.)
+      Refactored `discover_from_pptx` to delegate to a new generic
+      `discover_from_pptx_part(path, part_name)` that opens any shape-tree-bearing
+      zip member, and added `discover_from_pptx_layout(path, layout_index=1)` on top
+      of it targeting `ppt/slideLayouts/slideLayoutN.xml`. Replaced the earlier
+      hand-rolled `ZipFile`/`ET.parse` test (which bypassed the loader gap entirely)
+      with one using the new loader, plus a `KeyError`-on-`ppt/slides/*` regression
+      test confirming the fixture really does lack slide entries, and a second-layout
+      test confirming the loader isn't hardcoded to index 1. Confirmed
+      `python3 -m pytest tests/ -v` (7 passed) and `python3 -m mypy src/` (no issues)
+      both pass.
 
 ## Priority 2: Matching module (specs/matching.md)
 

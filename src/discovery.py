@@ -97,7 +97,21 @@ def discover(slide_xml_root: ET.Element) -> list[Candidate]:
 
 def discover_from_pptx(path: str, slide_index: int = 1) -> list[Candidate]:
     """Convenience entry point: discover candidates on slideN.xml of a .pptx file."""
+    return discover_from_pptx_part(path, f"ppt/slides/slide{slide_index}.xml")
+
+
+def discover_from_pptx_layout(path: str, layout_index: int = 1) -> list[Candidate]:
+    """Convenience entry point: discover candidates on slideLayoutN.xml of a .pptx
+    file. Some decks (e.g. a layouts-only master export) have no ppt/slides/* entries
+    at all -- discover() itself is root-agnostic (only looks for p:spTree), so the
+    same walk applies unchanged to a slideLayout root."""
+    return discover_from_pptx_part(path, f"ppt/slideLayouts/slideLayout{layout_index}.xml")
+
+
+def discover_from_pptx_part(path: str, part_name: str) -> list[Candidate]:
+    """Discover candidates on an arbitrary shape-tree-bearing part (e.g. a slide or
+    slideLayout XML entry) inside a .pptx file."""
     with ZipFile(path) as z:
-        with z.open(f"ppt/slides/slide{slide_index}.xml") as f:
+        with z.open(part_name) as f:
             root = ET.parse(f).getroot()
     return discover(root)
