@@ -51,6 +51,8 @@ def discover(slide_xml_root: ET.Element) -> list[Candidate]:
     """Walk a slide's shape tree per specs/discovery.md: type-agnostic,
     recurses into groups, tags leaves not containers."""
     spTree = slide_xml_root.find(".//p:spTree", NS)
+    if spTree is None:
+        raise ValueError("no p:spTree found in slide XML root")
     results: list[Candidate] = []
     z = [0]
 

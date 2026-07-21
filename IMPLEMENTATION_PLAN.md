@@ -13,12 +13,17 @@ hypothetical one.
 
 ## Priority 1: Fix and harden discovery (foundational — everything else reads its output)
 
-- [ ] Fix the `mypy src/` failure in `src/discovery.py:76` (why: `spTree = slide_xml_root.find(...)`
+- [x] Fix the `mypy src/` failure in `src/discovery.py:76` (why: `spTree = slide_xml_root.find(...)`
       returns `Element | None`, but `walk()` requires `Element`; `discover()` calls
       `walk(spTree, ())` unchecked. AGENTS.md's mandated validation command is
       `python3 -m mypy src/` and PROMPT_build.md step 4 requires validation to pass
       before every commit — this blocks every future iteration's ability to commit
       cleanly until fixed. Confirmed by running mypy directly, not assumed.)
+      Fixed by raising `ValueError` when `spTree` is `None` instead of walking it
+      unchecked — narrows the type for mypy and matches discovery's "never silently
+      guess" ethos (a slide XML with no `p:spTree` is malformed input, not something
+      to paper over). Confirmed `python3 -m pytest tests/ -v` (3 passed) and
+      `python3 -m mypy src/` (no issues) both pass.
 
 - [ ] Capture actual placeholder `type`/`idx` attributes on `Candidate`, not just the
       current `has_placeholder: bool` (why: specs/matching.md's most reliable scoring
