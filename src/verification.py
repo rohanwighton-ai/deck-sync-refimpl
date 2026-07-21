@@ -12,10 +12,11 @@ import hashlib
 import os
 import tempfile
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Sequence
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from discovery import NS, Candidate
+from discovery import NS, Candidate, discover_from_pptx_part
 
 _XML_DECLARATION = b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n'
 
@@ -139,3 +140,93 @@ def inject_primitive(path: str, part_name: str, shape: Candidate, source_value: 
         final_hash=final_hash,
         verified=final_hash == source_hash,
     )
+
+
+@dataclass(frozen=True)
+class StructuralMismatch:
+    # Position in the shape sequence (paired by discover()'s z_order, the
+    # same canonical ordering _find_shape_by_z_order already relies on).
+    # -1 for whole-sequence issues (e.g. the count mismatch itself) that
+    # aren't about one specific position.
+    index: int
+    kind: str  # "shape_count" | "type" | "identity_tag" | "missing_in_duplicate" | "extra_in_duplicate"
+    detail: str
+
+
+@dataclass(frozen=True)
+class StructuralVerification:
+    source_count: int
+    duplicate_count: int
+    mismatches: list[StructuralMismatch] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.mismatches
+
+
+def verify_structure(source: Sequence[Candidate], duplicate: Sequence[Candidate]) -> StructuralVerification:
+    """Structural verification after duplication, per specs/verification.md:
+    shape count, type, and identity-tag correspondence between a duplicate
+    and its source, checked explicitly rather than assumed from the
+    duplication API succeeding.
+
+    `source` and `duplicate` are the discover() output for the source part
+    and its duplicate, respectively. Shapes are paired positionally by
+    z_order -- the order discover() walks the tree in -- since a faithful
+    duplication should walk to the same shape sequence. Any count mismatch
+    is reported explicitly rather than silently truncating the comparison
+    to whichever list is shorter.
+    """
+    mismatches: list[StructuralMismatch] = []
+
+    if len(source) != len(duplicate):
+        mismatches.append(
+            StructuralMismatch(
+                index=-1,
+                kind="shape_count",
+                detail=f"source has {len(source)} shape(s), duplicate has {len(duplicate)}",
+            )
+        )
+
+    for i, (s, d) in enumerate(zip(source, duplicate)):
+        if s.shape_type != d.shape_type:
+            mismatches.append(
+                StructuralMismatch(
+                    index=i,
+                    kind="type",
+                    detail=f"source shape {i} is {s.shape_type!r}, duplicate is {d.shape_type!r}",
+                )
+            )
+        if s.identity_tag != d.identity_tag:
+            mismatches.append(
+                StructuralMismatch(
+                    index=i,
+                    kind="identity_tag",
+                    detail=f"source shape {i} is tagged {s.identity_tag!r}, duplicate is tagged {d.identity_tag!r}",
+                )
+            )
+
+    for i in range(len(duplicate), len(source)):
+        mismatches.append(
+            StructuralMismatch(
+                index=i, kind="missing_in_duplicate", detail=f"source shape {i} ({source[i].name!r}) has no counterpart"
+            )
+        )
+    for i in range(len(source), len(duplicate)):
+        mismatches.append(
+            StructuralMismatch(
+                index=i, kind="extra_in_duplicate", detail=f"duplicate shape {i} ({duplicate[i].name!r}) has no source counterpart"
+            )
+        )
+
+    return StructuralVerification(source_count=len(source), duplicate_count=len(duplicate), mismatches=mismatches)
+
+
+def verify_structure_from_pptx(
+    path: str, source_part: str, duplicate_part: str
+) -> StructuralVerification:
+    """Convenience entry point: run verify_structure() on two shape-tree-bearing
+    parts of a .pptx file (e.g. a source slide and its duplicate)."""
+    source = discover_from_pptx_part(path, source_part)
+    duplicate = discover_from_pptx_part(path, duplicate_part)
+    return verify_structure(source, duplicate)

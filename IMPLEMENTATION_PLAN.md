@@ -151,7 +151,7 @@ hypothetical one.
       `python3 -m pytest tests/ -v` (24 passed) and `python3 -m mypy src/` (no issues)
       both pass.
 
-- [ ] Implement structural verification after duplication: shape count, type, and
+- [x] Implement structural verification after duplication: shape count, type, and
       identity-tag correspondence between a duplicate and its source, checked
       explicitly rather than assumed from the duplication API succeeding (why: spec
       explicitly calls out that duplication succeeding is not sufficient evidence).
@@ -160,6 +160,23 @@ hypothetical one.
       duplicate of the other) since none of the pulled python-pptx fixtures cover
       this; note this as a new-fixture task rather than assuming an existing one
       applies.
+      Added `verify_structure(source, duplicate)` (plus `verify_structure_from_pptx`
+      convenience wrapper) to `src/verification.py`, operating on two `discover()`
+      output lists paired positionally by z_order — the same canonical ordering
+      `_find_shape_by_z_order` already relies on. Reports every count/type/tag
+      mismatch as a `StructuralMismatch` rather than stopping at the first one or
+      silently truncating to the shorter list when counts differ (`missing_in_duplicate`
+      / `extra_in_duplicate` kinds cover the leftover positions explicitly). No
+      multi-slide fixture existed in test-fixtures/, so tests synthesize one: a temp
+      copy of `shp-groupshape.pptx` with a second `ppt/slides/slide2.xml` zip entry
+      appended (byte-identical, a dropped-shape mutation, and a retagged-shape-type
+      mutation) — valid since `discover_from_pptx_part()` only ever opens a named zip
+      member directly and never validates `[Content_Types].xml`/relationships. The
+      identity-tag correspondence case uses directly-constructed `Candidate`s (like
+      `test_matching.py`'s tier-1 tests) since `identity_tag` is always `None` out of
+      `discover()` — no physical tag storage format is decided yet. Confirmed
+      `python3 -m pytest tests/ -v` (29 passed) and `python3 -m mypy src/` (no issues)
+      both pass.
 
 - [ ] Implement the z-order check as a check distinct from value/tag correspondence
       (why: spec explicitly warns these are different claims — a duplicate can have

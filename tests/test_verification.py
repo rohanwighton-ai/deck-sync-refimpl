@@ -14,13 +14,18 @@ import zipfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from discovery import NS, discover_from_pptx, discover_from_pptx_layout  # noqa: E402
-from verification import inject_primitive  # noqa: E402
+from discovery import NS, Candidate, discover_from_pptx, discover_from_pptx_layout  # noqa: E402
+from verification import inject_primitive, verify_structure, verify_structure_from_pptx  # noqa: E402
+
+for _prefix, _uri in NS.items():
+    ET.register_namespace(_prefix, _uri)
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "..", "test-fixtures")
 
 LAYOUT_PART = "ppt/slideLayouts/slideLayout1.xml"
 TITLE_SEED_TEXT = "Click to edit Master title style"
+SOURCE_SLIDE_PART = "ppt/slides/slide1.xml"
+DUPLICATE_SLIDE_PART = "ppt/slides/slide2.xml"
 
 
 def _copy_fixture(name):
@@ -106,3 +111,117 @@ def test_inject_primitive_raises_rather_than_silently_dropping_a_write_it_cant_m
             pass
     finally:
         os.remove(path)
+
+
+def _duplicate_slide_fixture(mutate=None):
+    """Build a temp copy of shp-groupshape.pptx with a second slide part
+    (ppt/slides/slide2.xml) appended -- a duplicate of slide1.xml, optionally
+    passed through `mutate` first. No checked-in fixture has more than one
+    slide, so this synthesizes the minimal thing verify_structure needs: two
+    shape-tree-bearing parts in one zip. discover_from_pptx_part() only ever
+    opens a named zip member directly, so the archive doesn't need a valid
+    [Content_Types].xml/relationships/presentation.xml entry for slide2 to be
+    readable here -- only a real pptx viewer would care about those.
+    """
+    path = _copy_fixture("shp-groupshape.pptx")
+    with zipfile.ZipFile(path) as z:
+        slide1_bytes = z.read(SOURCE_SLIDE_PART)
+    slide2_bytes = mutate(slide1_bytes) if mutate else slide1_bytes
+    with zipfile.ZipFile(path, "a") as z:
+        z.writestr(DUPLICATE_SLIDE_PART, slide2_bytes)
+    return path
+
+
+def _drop_last_shape(xml_bytes):
+    root = ET.fromstring(xml_bytes)
+    spTree = root.find(".//p:spTree", NS)
+    direct_shapes = [c for c in spTree if c.tag.split("}")[-1] in ("sp", "pic")]
+    spTree.remove(direct_shapes[-1])
+    return ET.tostring(root, encoding="unicode").encode("utf-8")
+
+
+def _retag_last_shape_as_picture(xml_bytes):
+    root = ET.fromstring(xml_bytes)
+    spTree = root.find(".//p:spTree", NS)
+    direct_shapes = [c for c in spTree if c.tag.split("}")[-1] == "sp"]
+    direct_shapes[-1].tag = direct_shapes[-1].tag.replace("}sp", "}pic")
+    return ET.tostring(root, encoding="unicode").encode("utf-8")
+
+
+def test_verify_structure_ok_for_an_identical_duplicate():
+    path = _duplicate_slide_fixture()
+    try:
+        result = verify_structure_from_pptx(path, SOURCE_SLIDE_PART, DUPLICATE_SLIDE_PART)
+        assert result.ok
+        assert result.source_count == result.duplicate_count == 4
+        assert result.mismatches == []
+    finally:
+        os.remove(path)
+
+
+def test_verify_structure_flags_a_missing_shape_rather_than_assuming_duplication_succeeded():
+    path = _duplicate_slide_fixture(mutate=_drop_last_shape)
+    try:
+        result = verify_structure_from_pptx(path, SOURCE_SLIDE_PART, DUPLICATE_SLIDE_PART)
+        assert not result.ok
+        assert result.source_count == 4
+        assert result.duplicate_count == 3
+        kinds = {m.kind for m in result.mismatches}
+        assert "shape_count" in kinds
+        assert "missing_in_duplicate" in kinds
+    finally:
+        os.remove(path)
+
+
+def test_verify_structure_flags_a_shape_type_change():
+    path = _duplicate_slide_fixture(mutate=_retag_last_shape_as_picture)
+    try:
+        result = verify_structure_from_pptx(path, SOURCE_SLIDE_PART, DUPLICATE_SLIDE_PART)
+        assert not result.ok
+        assert result.source_count == result.duplicate_count == 4
+        type_mismatches = [m for m in result.mismatches if m.kind == "type"]
+        assert len(type_mismatches) == 1
+        assert type_mismatches[0].index == 3  # "Rectangle 5", the 4th (last) shape
+    finally:
+        os.remove(path)
+
+
+def test_verify_structure_flags_an_identity_tag_mismatch():
+    # identity_tag is always None straight out of discover() (no physical
+    # storage format decided yet -- see IMPLEMENTATION_PLAN.md's notes), so
+    # this constructs Candidates directly, same as test_matching.py's tier-1
+    # tests, rather than round-tripping through a pptx that can't yet carry
+    # a tag on disk.
+    def _c(z_order, tag):
+        return Candidate(
+            name=f"shape{z_order}",
+            group_path=(),
+            z_order=z_order,
+            shape_type="autoshape_or_textbox",
+            placeholder_type=None,
+            placeholder_idx=None,
+            has_text=True,
+            identity_tag=tag,
+        )
+
+    source = [_c(1, "title_field")]
+    duplicate = [_c(1, "subtitle_field")]
+
+    result = verify_structure(source, duplicate)
+    assert not result.ok
+    tag_mismatches = [m for m in result.mismatches if m.kind == "identity_tag"]
+    assert len(tag_mismatches) == 1
+    assert tag_mismatches[0].index == 0
+
+
+def test_verify_structure_reports_extra_shapes_in_duplicate_too():
+    duplicate_candidates = discover_from_pptx(os.path.join(FIXTURES, "shp-groupshape.pptx"))
+
+    result = verify_structure([], duplicate_candidates)
+
+    assert not result.ok
+    assert result.source_count == 0
+    assert result.duplicate_count == 4
+    kinds = {m.kind for m in result.mismatches}
+    assert "shape_count" in kinds
+    assert "extra_in_duplicate" in kinds
