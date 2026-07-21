@@ -5,6 +5,7 @@ Uses a temp copy of mst-slide-layouts.pptx's title placeholder (real text:
 never the checked-in fixture itself.
 """
 
+import dataclasses
 import os
 import shutil
 import sys
@@ -15,7 +16,13 @@ import zipfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from discovery import NS, Candidate, discover_from_pptx, discover_from_pptx_layout  # noqa: E402
-from verification import inject_primitive, verify_structure, verify_structure_from_pptx  # noqa: E402
+from verification import (  # noqa: E402
+    inject_primitive,
+    verify_structure,
+    verify_structure_from_pptx,
+    verify_z_order,
+    verify_z_order_from_pptx,
+)
 
 for _prefix, _uri in NS.items():
     ET.register_namespace(_prefix, _uri)
@@ -225,3 +232,106 @@ def test_verify_structure_reports_extra_shapes_in_duplicate_too():
     kinds = {m.kind for m in result.mismatches}
     assert "shape_count" in kinds
     assert "extra_in_duplicate" in kinds
+
+
+def _swap_last_two_shapes_in_group(xml_bytes):
+    """Reorder (not mutate) shp-groupshape.pptx's group's last two shapes
+    ("Oval 2" and "Isosceles Triangle 3") in the XML -- a pure stacking-order
+    regression: same shapes, same tags, same types/text, just rendered in a
+    different order."""
+    root = ET.fromstring(xml_bytes)
+    grpSp = root.find(".//p:grpSp", NS)
+    direct_shapes = [c for c in grpSp if c.tag.split("}")[-1] in ("sp", "pic")]
+    a, b = direct_shapes[-2], direct_shapes[-1]
+    grpSp.remove(a)
+    grpSp.remove(b)
+    grpSp.append(b)
+    grpSp.append(a)
+    return ET.tostring(root, encoding="unicode").encode("utf-8")
+
+
+def _tag_by_name(candidates):
+    # identity_tag is always None straight out of discover() (no physical
+    # storage format decided yet), so tests stand in a shape's own name --
+    # which the reorder mutation below never changes -- as the persistent
+    # identity a real tag would provide.
+    return [dataclasses.replace(c, identity_tag=c.name) for c in candidates]
+
+
+def test_verify_z_order_ok_for_an_identical_duplicate():
+    path = _duplicate_slide_fixture()
+    try:
+        source = _tag_by_name(discover_from_pptx(path))
+        duplicate = _tag_by_name(discover_from_pptx(path, slide_index=2))
+
+        result = verify_z_order(source, duplicate)
+
+        assert result.ok
+        assert result.pairs_checked == 6  # 4 shapes -> C(4, 2)
+        assert result.mismatches == []
+    finally:
+        os.remove(path)
+
+
+def test_verify_z_order_flags_a_stacking_regression_even_with_matching_shapes_tags_and_values():
+    # This is exactly the case specs/verification.md calls out: right
+    # shapes, right tags, but the last two got reordered, which would leave
+    # verify_structure's positional shape/tag/type checks blind (z_order is
+    # literally list position for both sides, so position-to-position
+    # comparison can never see a reorder).
+    path = _duplicate_slide_fixture(mutate=_swap_last_two_shapes_in_group)
+    try:
+        source = _tag_by_name(discover_from_pptx(path))
+        duplicate = _tag_by_name(discover_from_pptx(path, slide_index=2))
+        structural = verify_structure(source, duplicate)
+        assert structural.ok  # same shapes/types/tags -- structurally "fine"
+
+        result = verify_z_order(source, duplicate)
+
+        assert not result.ok
+        tags = {frozenset((m.tag_a, m.tag_b)) for m in result.mismatches}
+        # Only "Oval 2" and "Isosceles Triangle 3" swapped places; both stay
+        # after "Rounded Rectangle 1" and before "Rectangle 5" either way, so
+        # only their relative order to *each other* flipped.
+        assert tags == {frozenset(("Oval 2", "Isosceles Triangle 3"))}
+    finally:
+        os.remove(path)
+
+
+def test_verify_z_order_ignores_untagged_shapes():
+    def _c(z_order, tag):
+        return Candidate(
+            name=f"shape{z_order}",
+            group_path=(),
+            z_order=z_order,
+            shape_type="autoshape_or_textbox",
+            placeholder_type=None,
+            placeholder_idx=None,
+            has_text=True,
+            identity_tag=tag,
+        )
+
+    # "b" is untagged on the duplicate side -- reordered relative to "a",
+    # but since there's no reliable way to say which duplicate shape an
+    # untagged source shape corresponds to, it can't be checked at all.
+    source = [_c(1, "a"), _c(2, "b")]
+    duplicate = [_c(1, None), _c(2, "a")]
+
+    result = verify_z_order(source, duplicate)
+
+    assert result.ok
+    assert result.pairs_checked == 0
+
+
+def test_verify_z_order_from_pptx_has_nothing_to_check_without_tags_on_disk():
+    # discover_from_pptx_part() never populates identity_tag (no physical
+    # storage format decided yet), so the convenience wrapper -- unlike the
+    # tests above, which stand in shape name for identity -- finds zero
+    # common tags and is trivially ok rather than raising or guessing.
+    path = _duplicate_slide_fixture(mutate=_swap_last_two_shapes_in_group)
+    try:
+        result = verify_z_order_from_pptx(path, SOURCE_SLIDE_PART, DUPLICATE_SLIDE_PART)
+        assert result.ok
+        assert result.pairs_checked == 0
+    finally:
+        os.remove(path)

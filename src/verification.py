@@ -230,3 +230,77 @@ def verify_structure_from_pptx(
     source = discover_from_pptx_part(path, source_part)
     duplicate = discover_from_pptx_part(path, duplicate_part)
     return verify_structure(source, duplicate)
+
+
+@dataclass(frozen=True)
+class ZOrderMismatch:
+    tag_a: str
+    tag_b: str
+    detail: str
+
+
+@dataclass(frozen=True)
+class ZOrderVerification:
+    pairs_checked: int
+    mismatches: list[ZOrderMismatch] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.mismatches
+
+
+def verify_z_order(source: Sequence[Candidate], duplicate: Sequence[Candidate]) -> ZOrderVerification:
+    """Z-order (stacking order) verification per specs/verification.md, kept
+    distinct from verify_structure's count/type/tag correspondence: a
+    duplicate can have exactly the right shapes, tags, and values while a
+    stacking-order regression still makes an overlaid field invisible (e.g. a
+    transparent text box ending up behind its background shape). Structural
+    correctness and stacking correctness are different claims, so neither is
+    inferred from the other.
+
+    Pairing here is by identity_tag, not by list position. Pairing
+    positionally (as verify_structure does) can never observe a stacking
+    regression, since discover()'s z_order *is* each shape's position in its
+    own list -- position-to-position comparison always finds z_order ==
+    z_order. Only identity-based pairing can tell whether a shape's stacking
+    position *relative to another shape* moved between source and duplicate.
+    Untagged shapes (identity_tag is None) are excluded: there's no reliable
+    way to say which duplicate shape an untagged source shape corresponds to.
+
+    Every pair of commonly-tagged shapes is compared (not just adjacent
+    ones), so a single swap deep in the stack is caught regardless of how
+    many other shapes sit between the two that moved.
+    """
+    source_by_tag = {c.identity_tag: c for c in source if c.identity_tag is not None}
+    duplicate_by_tag = {c.identity_tag: c for c in duplicate if c.identity_tag is not None}
+    common_tags = sorted(set(source_by_tag) & set(duplicate_by_tag))
+
+    mismatches: list[ZOrderMismatch] = []
+    for i, tag_a in enumerate(common_tags):
+        for tag_b in common_tags[i + 1 :]:
+            source_below = source_by_tag[tag_a].z_order < source_by_tag[tag_b].z_order
+            duplicate_below = duplicate_by_tag[tag_a].z_order < duplicate_by_tag[tag_b].z_order
+            if source_below != duplicate_below:
+                mismatches.append(
+                    ZOrderMismatch(
+                        tag_a=tag_a,
+                        tag_b=tag_b,
+                        detail=(
+                            f"{tag_a!r} is {'below' if source_below else 'above'} {tag_b!r} in the source "
+                            f"(z_order {source_by_tag[tag_a].z_order} vs {source_by_tag[tag_b].z_order}), but "
+                            f"{'below' if duplicate_below else 'above'} it in the duplicate "
+                            f"(z_order {duplicate_by_tag[tag_a].z_order} vs {duplicate_by_tag[tag_b].z_order})"
+                        ),
+                    )
+                )
+
+    n = len(common_tags)
+    return ZOrderVerification(pairs_checked=n * (n - 1) // 2, mismatches=mismatches)
+
+
+def verify_z_order_from_pptx(path: str, source_part: str, duplicate_part: str) -> ZOrderVerification:
+    """Convenience entry point: run verify_z_order() on two shape-tree-bearing
+    parts of a .pptx file (e.g. a source slide and its duplicate)."""
+    source = discover_from_pptx_part(path, source_part)
+    duplicate = discover_from_pptx_part(path, duplicate_part)
+    return verify_z_order(source, duplicate)
