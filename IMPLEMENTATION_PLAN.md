@@ -211,7 +211,7 @@ hypothetical one.
 
 ## Priority 4: Excel output module (specs/excel-output.md)
 
-- [ ] Implement an excel-output module (e.g. `src/excel_output.py`) producing the
+- [x] Implement an excel-output module (e.g. `src/excel_output.py`) producing the
       structure specs/excel-output.md defines (why: nothing in src/ implements this
       yet — confirmed via `find`/`grep`). Required behavior:
   - One column per confirmed field, named by stable field identity (not
@@ -230,8 +230,55 @@ hypothetical one.
     `xml.etree.ElementTree` approach discovery.py already uses — confirm this
     holds before reaching for a dependency, per AGENTS.md's stated preference.
   - No existing `.xlsx` test fixtures exist in `test-fixtures/` — will need to
-    create minimal synthetic ones (or generate the minimal valid OOXML by hand)
+    create minimal synthetic ones (or generate the minimal valid OOXML by hand
     to test against, since none were pulled from upstream for this spec.
+
+      Implemented `src/excel_output.py` fully stdlib (zipfile + xml.etree), hand-
+      writing the minimal valid `.xlsx` OOXML package: `[Content_Types].xml`,
+      `_rels/.rels`, `xl/workbook.xml`(+`.rels`), `xl/styles.xml` as static
+      boilerplate (never varies by data), plus `xl/worksheets/sheet1.xml` and
+      `docProps/custom.xml` built dynamically via ElementTree. Uses inline
+      strings (`t="inlineStr"`) rather than a shared-strings table, so a write
+      never has to merge/dedupe a separate string part — one less moving piece
+      for a read-merge-write design to get wrong. Column A is a reserved,
+      position-addressed "Instance ID" column (a structural convention of this
+      module, not a field subject to the spec's name-based-identity rule);
+      confirmed fields occupy columns B.. in first-seen order, looked up by
+      header text on every read, never assumed from position. The deck
+      reference lives in `docProps/custom.xml` as a real OOXML custom document
+      property — a dedicated metadata slot, not a row/column that could collide
+      with real data, satisfying "never inferred solely from column-name
+      matching." `create_sheet(path, deck_reference)` makes a fresh empty sheet
+      and refuses to overwrite an existing file (a second "create" would
+      silently discard whatever's already there). `upsert_row(path, instance_id,
+      values)` is the read-merge-write primitive: unknown field names in
+      `values` are appended as new columns (existing columns never reordered or
+      touched); a new `instance_id` is appended as a new row seeded entirely
+      from `values`; an existing `instance_id` is merged field-by-field, so a
+      partial re-sync (e.g. one changed field) can never blank out that
+      instance's other already-populated fields. A field absent from a given
+      instance's dict renders as an omitted cell, not a forced blank. Whole-file
+      writes go through a temp-file-then-`os.replace` swap, same safety pattern
+      `verification.py`'s `_write_part` uses. No `.xlsx` fixtures existed to test
+      against (none pulled from upstream for this spec, per the note above still
+      accurate at the time this task started) — `tests/test_excel_output.py`
+      round-trips writer against reader instead (8 tests): deck-reference
+      round-trip, create-refuses-overwrite, seed-from-harvested-values,
+      column-append-without-touching-existing-data, partial-update-merges,
+      new-instance-doesn't-disturb-existing-rows, field/instance order
+      preserved across multiple writes, and column-A-reservation checked
+      directly against the written XML. Confirmed `python3 -m pytest tests/ -v`
+      (41 passed) and `python3 -m mypy src/` (no issues, 4 source files) both
+      pass.
+
+## All tasks complete
+
+Every Priority 1-4 item above is checked off. No further gaps identified
+against specs/discovery.md, specs/matching.md, specs/verification.md, or
+specs/excel-output.md as of this pass — see "Notes for next planning pass"
+above for open design questions (identity-tag physical storage format,
+`src/lib/` promotion) that weren't blocking but are worth a decision if this
+project continues.
 
 ## Notes for next planning pass
 
