@@ -271,7 +271,7 @@ hypothetical one.
       (41 passed) and `python3 -m mypy src/` (no issues, 4 source files) both
       pass.
 
-## All tasks complete
+## All tasks complete (Priority 1-4)
 
 Every Priority 1-4 item above is checked off. No further gaps identified
 against specs/discovery.md, specs/matching.md, specs/verification.md, or
@@ -279,6 +279,40 @@ specs/excel-output.md as of this pass — see "Notes for next planning pass"
 above for open design questions (identity-tag physical storage format,
 `src/lib/` promotion) that weren't blocking but are worth a decision if this
 project continues.
+
+## Priority 5: Sync operations decision tree (specs/sync-operations.md)
+
+- [x] Implement dispatch logic for cases 1 (no_change), 3 (new_record), and 4
+      (in_place_correction) per the underlying `crc-vba-deck-sync` skill's
+      `sync-cases.md`/`run-sync.md`, translated into specs/sync-operations.md.
+      `plan_routine_sync(path, instances, data_sheet)` reuses existing
+      primitives directly rather than reimplementing anything: `inject_primitive`'s
+      own no-op/write result is the case-1-vs-4 classifier; a Data-sheet row
+      whose instance key matches no known `SlideInstance` is case 3 (the
+      decision only — physically duplicating a slide is a non-goal, see below).
+      Case 6 (unclassified_slide) is also implemented, cheaply: type is an
+      explicit declaration per input-contract.md, so a missing/unrecognized
+      type tag or instance key is a trivial flag, not a confidence score.
+      Case 2 (period_rollover) is `plan_period_rollover(instance, new_values)`,
+      a separate, explicitly-invoked function never reachable from
+      `plan_routine_sync` — matches the source design's "never inferred from a
+      value looking different" rule (tested directly:
+      `test_period_rollover_never_produced_by_routine_sync`).
+      **Deliberately not built** (see specs/sync-operations.md's Non-goals for
+      the reasoning): physical slide duplication (a distinct, harder
+      OOXML-surgery problem), case 5 record_retired (no agreed
+      retirement-status convention exists in the source design), case 7
+      deck_side_conflict (needs a last-synced-value store nothing in this
+      project persists today — `inject_primitive` only ever does a 2-way
+      current-vs-target comparison, not the 3-way one this needs). All three
+      are open design questions to raise before building, not oversights.
+      `SlideInstance` (the input this module operates on) is deliberately an
+      already-resolved dataclass, not something this module reads off a real
+      pptx itself — instance_key/type_tag/field-to-shape correspondence still
+      depends on the identity-tag physical storage format that's remained an
+      open question since Priority 2-3 (see "Notes for next planning pass"
+      below). Confirmed `python3 -m pytest tests/ -v` (49 passed) and
+      `python3 -m mypy src/` (no issues, 5 source files) both pass.
 
 ## Notes for next planning pass
 
