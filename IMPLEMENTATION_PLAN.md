@@ -314,21 +314,44 @@ project continues.
       below). Confirmed `python3 -m pytest tests/ -v` (49 passed) and
       `python3 -m mypy src/` (no issues, 5 source files) both pass.
 
+## Priority 6: Identity tag physical storage (specs/identity-tags.md)
+
+- [x] Resolve and implement the physical storage format for `identity_tag`,
+      open since Priority 2-3 (see below). Verified against ECMA-376's User
+      Defined Tags Part definition and a real-world example rather than
+      guessed, since python-pptx has no built-in support for this and no
+      fixture on disk carried any tags to reverse-engineer from (citations
+      in specs/identity-tags.md). `src/identity_tags.py`: slide-level tags
+      (`slide_type`/`instance_key`/`period_key`) via a direct relationship
+      from the slide part's own `.rels` to a Tags Part (`ppt/tags/tagN.xml`,
+      `<p:tagLst>`/`<p:tag>`); shape-level tags (`role`) via the shape's own
+      `<p:nvPr>/<p:custDataLst>/<p:tags r:id>`, resolved through the owning
+      slide's `.rels` to the same kind of Tags Part (a shape has no `.rels`
+      of its own). Respects `CT_ApplicationNonVisualDrawingProps`' schema
+      child order (`ph, media, custDataLst, extLst`). `upsert_slide_tags`/
+      `upsert_shape_tags` are read-merge-write, same pattern as
+      `excel_output.upsert_row`: first write creates the Tags Part +
+      relationship + `[Content_Types].xml` override; later writes reuse them
+      idempotently. Confirmed `python3 -m pytest tests/ -v` (59 passed) and
+      `python3 -m mypy src/` (no issues, 6 source files) both pass.
+      **Not yet done**: wiring this into an actual end-to-end "resolve a real
+      slide into a `sync_operations.SlideInstance`" function (compose
+      `discover()` + `identity_tags.read_*` + `matching.match()`) — every
+      module so far is individually tested but nothing composes them against
+      a real deck yet. Flagged as the next real gap, not an oversight.
+
 ## Notes for next planning pass
 
-- src/lib/ (shared utilities) does not exist in this repo yet — nothing to study
-  there. If Priority 2-4 modules end up sharing OOXML helpers (namespace maps,
-  zip read/write, XML find helpers currently private to discovery.py as `NS`,
-  `_shape_name`, etc.), consider promoting shared pieces into `src/lib/` at that
-  point rather than duplicating them per-module.
+- **`src/lib/` promotion is now overdue, not speculative.** Two real
+  duplications exist: a shape-tree z-order re-walk (`verification.py`'s
+  `_find_shape_by_z_order` and `identity_tags.py`'s `_find_nvpr`), and three
+  slightly different "safely rewrite some zip parts" implementations
+  (`verification.py`'s single-part swap, `excel_output.py`'s whole-file
+  rebuild, `identity_tags.py`'s multi-part swap). The next module that needs
+  either should promote it to `src/lib/` rather than writing a fourth
+  variant.
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
   settings. Worth confirming this stays intentional as more modules are added.
-- `matching.py`'s `identity_tag` field on `Candidate` is always `None` out of
-  `discover()` — there's still no decided physical storage format for identity tags
-  (alt-text? custom XML part? something else). Priority 3 (verification.py, which
-  needs to check "identity-tag correspondence" after duplication) will likely be the
-  thing that forces this decision; matching.py's tier-1 logic only needs the field to
-  exist and doesn't care how it gets populated.
 - `matching.py`'s content-pattern signal degrades to a has-text boolean match because
   `Candidate` doesn't store actual text content, only `has_text`. If a fixture surfaces
   a real need for pattern-based matching (e.g. distinguishing a date field from a
