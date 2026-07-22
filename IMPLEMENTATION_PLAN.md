@@ -178,10 +178,36 @@ hypothetical one.
       `python3 -m pytest tests/ -v` (29 passed) and `python3 -m mypy src/` (no issues)
       both pass.
 
-- [ ] Implement the z-order check as a check distinct from value/tag correspondence
+- [x] Implement the z-order check as a check distinct from value/tag correspondence
       (why: spec explicitly warns these are different claims — a duplicate can have
       correct shapes/tags/values while a stacking-order regression still makes an
       overlaid field invisible, e.g. transparent text box behind its background).
+      `verify_z_order(source, duplicate)` (plus `verify_z_order_from_pptx`) pairs
+      shapes by `identity_tag` (untagged shapes excluded — no reliable
+      correspondence signal for them) and compares every pair of commonly-tagged
+      shapes' relative stacking order (not just adjacent ones), so a swap deep in
+      the stack is caught regardless of how many shapes sit between the two that
+      moved. The code and its tests already existed on disk from the prior
+      iteration but were uncommitted-plan-wise; running the suite surfaced a real
+      bug in the already-checked-off `verify_structure` (Priority 3, first
+      structural-verification task above): it paired shapes purely by list
+      position, so a pure reorder of tagged shapes (same shapes/tags/values, just
+      restacked) *also* tripped its tag-correspondence check, since a shape's tag
+      moves with it when the list is reordered — directly contradicting the
+      spec's claim that structural and stacking correctness are separate claims a
+      duplicate can satisfy independently. Fixed by having `verify_structure` pair
+      tagged shapes by `identity_tag` (order-independent) and only fall back to
+      positional pairing for untagged shapes, which have no other correspondence
+      signal. This changes one existing test's semantics:
+      `test_verify_structure_flags_an_identity_tag_mismatch`'s single relabeled
+      shape now correctly reads as "expected tagged shape gone" +
+      "unexpected tagged shape appeared" (`missing_in_duplicate`/
+      `extra_in_duplicate`) rather than a same-position `identity_tag` mismatch,
+      since tag-based pairing has no positional signal to distinguish "renamed"
+      from "swapped for something else" — updated its assertions accordingly, and
+      removed the now-impossible `"identity_tag"` mismatch kind. Confirmed
+      `python3 -m pytest tests/ -v` (33 passed, was 32 passed/1 failed before this
+      fix) and `python3 -m mypy src/` (no issues) both pass.
 
 ## Priority 4: Excel output module (specs/excel-output.md)
 

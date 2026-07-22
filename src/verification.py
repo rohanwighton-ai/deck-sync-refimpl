@@ -149,7 +149,7 @@ class StructuralMismatch:
     # -1 for whole-sequence issues (e.g. the count mismatch itself) that
     # aren't about one specific position.
     index: int
-    kind: str  # "shape_count" | "type" | "identity_tag" | "missing_in_duplicate" | "extra_in_duplicate"
+    kind: str  # "shape_count" | "type" | "missing_in_duplicate" | "extra_in_duplicate"
     detail: str
 
 
@@ -171,11 +171,16 @@ def verify_structure(source: Sequence[Candidate], duplicate: Sequence[Candidate]
     duplication API succeeding.
 
     `source` and `duplicate` are the discover() output for the source part
-    and its duplicate, respectively. Shapes are paired positionally by
-    z_order -- the order discover() walks the tree in -- since a faithful
-    duplication should walk to the same shape sequence. Any count mismatch
-    is reported explicitly rather than silently truncating the comparison
-    to whichever list is shorter.
+    and its duplicate, respectively. Tagged shapes (identity_tag is not
+    None) are paired by tag, not by list position: a tag is the persistent
+    identity, so a pure reorder -- verify_z_order's whole concern -- must
+    not also look like a structural defect here. Pairing tagged shapes
+    positionally would make that impossible, since a reorder moves a tag's
+    list position by definition. Untagged shapes (always true straight out
+    of today's discover(), which never sets identity_tag) have no such
+    signal and fall back to positional pairing within just the untagged
+    subsequence. Any count mismatch is reported explicitly rather than
+    silently truncating the comparison to whichever list is shorter.
     """
     mismatches: list[StructuralMismatch] = []
 
@@ -188,7 +193,40 @@ def verify_structure(source: Sequence[Candidate], duplicate: Sequence[Candidate]
             )
         )
 
-    for i, (s, d) in enumerate(zip(source, duplicate)):
+    source_tagged = {c.identity_tag: c for c in source if c.identity_tag is not None}
+    duplicate_tagged = {c.identity_tag: c for c in duplicate if c.identity_tag is not None}
+
+    for tag in sorted(set(source_tagged) & set(duplicate_tagged)):
+        s, d = source_tagged[tag], duplicate_tagged[tag]
+        if s.shape_type != d.shape_type:
+            mismatches.append(
+                StructuralMismatch(
+                    index=s.z_order,
+                    kind="type",
+                    detail=f"tagged shape {tag!r}: source is {s.shape_type!r}, duplicate is {d.shape_type!r}",
+                )
+            )
+    for tag in sorted(set(source_tagged) - set(duplicate_tagged)):
+        mismatches.append(
+            StructuralMismatch(
+                index=source_tagged[tag].z_order,
+                kind="missing_in_duplicate",
+                detail=f"tagged shape {tag!r} has no counterpart in duplicate",
+            )
+        )
+    for tag in sorted(set(duplicate_tagged) - set(source_tagged)):
+        mismatches.append(
+            StructuralMismatch(
+                index=duplicate_tagged[tag].z_order,
+                kind="extra_in_duplicate",
+                detail=f"duplicate has tagged shape {tag!r} with no source counterpart",
+            )
+        )
+
+    source_untagged = [c for c in source if c.identity_tag is None]
+    duplicate_untagged = [c for c in duplicate if c.identity_tag is None]
+
+    for i, (s, d) in enumerate(zip(source_untagged, duplicate_untagged)):
         if s.shape_type != d.shape_type:
             mismatches.append(
                 StructuralMismatch(
@@ -197,25 +235,21 @@ def verify_structure(source: Sequence[Candidate], duplicate: Sequence[Candidate]
                     detail=f"source shape {i} is {s.shape_type!r}, duplicate is {d.shape_type!r}",
                 )
             )
-        if s.identity_tag != d.identity_tag:
-            mismatches.append(
-                StructuralMismatch(
-                    index=i,
-                    kind="identity_tag",
-                    detail=f"source shape {i} is tagged {s.identity_tag!r}, duplicate is tagged {d.identity_tag!r}",
-                )
-            )
 
-    for i in range(len(duplicate), len(source)):
+    for i in range(len(duplicate_untagged), len(source_untagged)):
         mismatches.append(
             StructuralMismatch(
-                index=i, kind="missing_in_duplicate", detail=f"source shape {i} ({source[i].name!r}) has no counterpart"
+                index=i,
+                kind="missing_in_duplicate",
+                detail=f"source shape {i} ({source_untagged[i].name!r}) has no counterpart",
             )
         )
-    for i in range(len(source), len(duplicate)):
+    for i in range(len(source_untagged), len(duplicate_untagged)):
         mismatches.append(
             StructuralMismatch(
-                index=i, kind="extra_in_duplicate", detail=f"duplicate shape {i} ({duplicate[i].name!r}) has no source counterpart"
+                index=i,
+                kind="extra_in_duplicate",
+                detail=f"duplicate shape {i} ({duplicate_untagged[i].name!r}) has no source counterpart",
             )
         )
 
@@ -258,14 +292,17 @@ def verify_z_order(source: Sequence[Candidate], duplicate: Sequence[Candidate]) 
     correctness and stacking correctness are different claims, so neither is
     inferred from the other.
 
-    Pairing here is by identity_tag, not by list position. Pairing
-    positionally (as verify_structure does) can never observe a stacking
-    regression, since discover()'s z_order *is* each shape's position in its
-    own list -- position-to-position comparison always finds z_order ==
-    z_order. Only identity-based pairing can tell whether a shape's stacking
-    position *relative to another shape* moved between source and duplicate.
-    Untagged shapes (identity_tag is None) are excluded: there's no reliable
-    way to say which duplicate shape an untagged source shape corresponds to.
+    Pairing here is by identity_tag, same as verify_structure's tagged-shape
+    path -- both need tag-based, order-independent correspondence for the
+    same reason: position-based pairing can never observe a reorder, since
+    discover()'s z_order *is* each shape's position in its own list, so
+    position-to-position comparison always finds z_order == z_order. This
+    function only checks *relative* stacking order between tagged shapes
+    (verify_structure already confirms the tagged shapes themselves
+    correspond); untagged shapes (identity_tag is None) are excluded here
+    for the same reason verify_structure falls back to position for them --
+    there's no reliable way to say which duplicate shape an untagged source
+    shape corresponds to.
 
     Every pair of commonly-tagged shapes is compared (not just adjacent
     ones), so a single swap deep in the stack is caught regardless of how

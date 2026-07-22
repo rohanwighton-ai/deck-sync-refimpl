@@ -211,14 +211,21 @@ def test_verify_structure_flags_an_identity_tag_mismatch():
             identity_tag=tag,
         )
 
+    # Tagged shapes are paired by tag, not position (see verify_structure's
+    # docstring -- position-based pairing would make a pure reorder
+    # indistinguishable from a real structural defect). With no positional
+    # signal in play, "title_field" replaced by "subtitle_field" reads
+    # exactly like it is: the tagged shape source expected is gone, and an
+    # unrelated tagged shape duplicate wasn't expected to have appeared.
     source = [_c(1, "title_field")]
     duplicate = [_c(1, "subtitle_field")]
 
     result = verify_structure(source, duplicate)
     assert not result.ok
-    tag_mismatches = [m for m in result.mismatches if m.kind == "identity_tag"]
-    assert len(tag_mismatches) == 1
-    assert tag_mismatches[0].index == 0
+    kinds = {m.kind for m in result.mismatches}
+    assert "missing_in_duplicate" in kinds
+    assert "extra_in_duplicate" in kinds
+    assert "identity_tag" not in kinds
 
 
 def test_verify_structure_reports_extra_shapes_in_duplicate_too():
