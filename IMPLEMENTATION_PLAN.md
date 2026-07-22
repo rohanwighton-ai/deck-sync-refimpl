@@ -373,16 +373,35 @@ project continues.
       slide. Confirmed `python3 -m pytest tests/ -v` (64 passed) and
       `python3 -m mypy src/` (no issues, 9 source files) both pass.
 
-## Notes for next planning pass
+## Priority 8: Onboarding — matching a new slide against an established template
 
-- **Onboarding (tier-2 matching + reference-shape configuration storage) is
-  the next real gap**, surfaced by resolve.py's own scoping boundary above:
-  nothing in this project stores or reads "the example shape a type's field
-  was configured from" — `resolve_slide_instance()` only ever exercises
-  tier-1 (already-tagged) trust. Building this would need a decision on
-  where per-type reference configs live (a dedicated config part? convention
-  over the type's template slide itself?) before matching.py's tier-2
-  scoring path could be exercised against a real deck.
+- [x] Close the onboarding gap flagged after Priority 7. Reading the underlying skill's
+      own `onboard-slide-type.md` first resolved the "reference config storage" question
+      it seemed to imply: **first-time onboarding of a type needs no scoring or new code
+      at all** — "the working copy IS becoming the reference," tagged directly after a
+      human confirms it, verified by `inject_primitive` hitting the no-op path (already
+      fully covered by `tests/test_resolve.py`'s no-change case). The actual gap was
+      narrower: matching a *subsequent* slide of an already-established type against its
+      template. `src/onboarding.py`: `match_slide_against_template()` scores every
+      untagged candidate on a new slide against each of the template's field roles via
+      `matching.match()`'s tier-2 path; `onboard_new_instance()` tags the new instance's
+      slide-level identity unconditionally (supplied by whatever created it, e.g. a
+      duplication — not matched) and auto-accepts + tags any high-confidence field match
+      immediately (self-healing into a tier-1 fast match next time, per
+      specs/matching.md's confidence_thresholds), leaving medium/low-confidence matches
+      unresolved; `confirm_field_match()` is the explicit primitive a human's decision
+      (or an eventual shape-selection UI — see Non-goals) calls to resolve one. Tested
+      against real fixture drift, not synthetic scores: `mst-slide-layouts.pptx`'s two
+      layouts' title placeholder cross-matches at high confidence (auto-accepted), its
+      body placeholder at medium (correctly left flagged, per the geometry drift
+      `test_matching.py` already established), then resolved via `confirm_field_match()`.
+      **Deliberately not built**: the selection UI/mechanism itself (a human clicking a
+      shape in PowerPoint) — this Python reference implementation has no real deck-editing
+      UI to select from; this module builds the primitive that UI would call, not the UI.
+      Confirmed `python3 -m pytest tests/ -v` (68 passed) and `python3 -m mypy src/` (no
+      issues, 10 source files) both pass.
+
+## Notes for next planning pass
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
   settings. Worth confirming this stays intentional as more modules are added.
 - `matching.py`'s content-pattern signal degrades to a has-text boolean match because
