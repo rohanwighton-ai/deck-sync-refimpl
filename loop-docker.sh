@@ -66,6 +66,50 @@ if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
   fi
 fi
 
+# ============================================================================
+# DOCKER HEALTH CHECK
+# ============================================================================
+# WSL2 + Docker Desktop occasionally drops the Linux-side `docker` CLI from
+# this distro (a WSL-integration hiccup, not a real engine crash -- Docker
+# Desktop itself and the underlying WSL VMs stay up). Rather than stopping to
+# ask the user to re-toggle Settings -> Resources -> WSL Integration each
+# time, nudge Docker Desktop's own engine via its Windows-side CLI plugin
+# (`docker.exe desktop restart`), which works even while the broken Linux
+# symlink can't, then poll until the Linux CLI comes back.
+WINDOWS_DOCKER_CLI="/mnt/c/Program Files/Docker/Docker/resources/bin/docker.exe"
+
+ensure_docker_available() {
+  if docker version >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "docker CLI unavailable -- attempting self-heal via Docker Desktop restart..."
+
+  if [ ! -x "$WINDOWS_DOCKER_CLI" ]; then
+    echo "FATAL: docker unavailable and no Windows-side Docker Desktop CLI found at:"
+    echo "  $WINDOWS_DOCKER_CLI"
+    echo "(expected only on WSL2 + Docker Desktop -- on native Linux/Mac, check the docker daemon directly)"
+    return 1
+  fi
+
+  "$WINDOWS_DOCKER_CLI" desktop restart >/dev/null 2>&1 || true
+
+  local attempt
+  for attempt in $(seq 1 30); do
+    sleep 2
+    if docker version >/dev/null 2>&1; then
+      echo "docker CLI recovered after Docker Desktop restart (waited ~$((attempt * 2))s)."
+      return 0
+    fi
+  done
+
+  echo "FATAL: docker still unavailable $((attempt * 2))s after a Docker Desktop restart attempt."
+  echo "Check Docker Desktop -> Settings -> Resources -> WSL Integration manually."
+  return 1
+}
+
+ensure_docker_available || exit 1
+
 # Handle --build-image flag
 if [ "$1" = "--build-image" ]; then
   echo "Building Docker image..."
