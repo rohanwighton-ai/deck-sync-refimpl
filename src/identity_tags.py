@@ -10,13 +10,12 @@ carried any tags to reverse-engineer from.
 
 from __future__ import annotations
 
-import os
 import posixpath
-import tempfile
 import xml.etree.ElementTree as ET
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZipFile
 
 from discovery import NS, Candidate
+from lib.ooxml import find_shape_element_by_z_order, write_zip_parts
 
 PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 DOC_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -110,32 +109,19 @@ def _add_content_type_override(ct_bytes: bytes, part_name: str, content_type: st
 
 
 def _find_nvpr(spTree: ET.Element, z_order: int) -> ET.Element:
-    """Re-walk to the shape at `z_order` (same numbering discover() assigns;
-    same walk shape as verification.py's _find_shape_by_z_order) and return
-    its <p:nvPr>. Only leaf sp/pic shapes carry a tag-bearing nvPr -- a group
-    is never itself tagged (shape-identity-and-matching.md's discovery_scope:
-    "tag the leaf, not the container"), so groups aren't candidates here.
+    """Locate the shape at `z_order` (via the shared shape-tree walk) and
+    return its <p:nvPr>. Only leaf sp/pic shapes carry a tag-bearing nvPr --
+    a group is never itself tagged (shape-identity-and-matching.md's
+    discovery_scope: "tag the leaf, not the container"), so groups aren't
+    candidates here.
     """
-    z = [0]
-    found: list[ET.Element] = []
-
-    def walk(el: ET.Element) -> None:
-        for child in el:
-            tag = child.tag.split("}")[-1]
-            if tag == "grpSp":
-                walk(child)
-            elif tag in ("sp", "pic"):
-                z[0] += 1
-                if z[0] == z_order:
-                    nvpr_path = "./p:nvSpPr/p:nvPr" if tag == "sp" else "./p:nvPicPr/p:nvPr"
-                    nvpr = child.find(nvpr_path, NS)
-                    if nvpr is not None:
-                        found.append(nvpr)
-
-    walk(spTree)
-    if not found:
-        raise ValueError(f"no shape with z_order={z_order} (or it has no nvPr) found")
-    return found[0]
+    shape = find_shape_element_by_z_order(spTree, z_order)
+    tag = shape.tag.split("}")[-1]
+    nvpr_path = "./p:nvSpPr/p:nvPr" if tag == "sp" else "./p:nvPicPr/p:nvPr"
+    nvpr = shape.find(nvpr_path, NS)
+    if nvpr is None:
+        raise ValueError(f"shape with z_order={z_order} has no nvPr")
+    return nvpr
 
 
 def _insert_after_ph(nvpr: ET.Element, new_el: ET.Element) -> None:
@@ -148,33 +134,6 @@ def _insert_after_ph(nvpr: ET.Element, new_el: ET.Element) -> None:
         nvpr.insert(list(nvpr).index(ext_lst), new_el)
     else:
         nvpr.append(new_el)
-
-
-def _write_parts(path: str, updates: dict[str, bytes]) -> None:
-    """Rewrite `path`, replacing or adding each part in `updates`, copying
-    every other existing entry byte-for-byte untouched. Generalizes
-    verification.py's single-part _write_part to multiple parts at once
-    (needed here since a from-scratch tag write touches the tags part, the
-    owning part's .rels, and [Content_Types].xml together) -- same
-    temp-file-then-os.replace safety pattern.
-    """
-    directory = os.path.dirname(os.path.abspath(path)) or "."
-    fd, tmp_path = tempfile.mkstemp(suffix=".pptx", dir=directory)
-    os.close(fd)
-    try:
-        with ZipFile(path) as src, ZipFile(tmp_path, "w", ZIP_DEFLATED) as dst:
-            written = set()
-            for item in src.infolist():
-                data = updates.get(item.filename)
-                dst.writestr(item, data if data is not None else src.read(item.filename))
-                written.add(item.filename)
-            for name, data in updates.items():
-                if name not in written:
-                    dst.writestr(name, data)
-        os.replace(tmp_path, path)
-    except BaseException:
-        os.remove(tmp_path)
-        raise
 
 
 def read_slide_tags(path: str, slide_part: str) -> dict[str, str]:
@@ -221,7 +180,7 @@ def upsert_slide_tags(path: str, slide_part: str, tags: dict[str, str]) -> None:
         updates[rels_part] = _serialize_rels(relationships)
         updates[CONTENT_TYPES_PART] = _add_content_type_override(ct_bytes, tags_part, TAGS_CONTENT_TYPE)
 
-    _write_parts(path, updates)
+    write_zip_parts(path, updates)
 
 
 def read_shape_tags(path: str, slide_part: str, shape: Candidate) -> dict[str, str]:
@@ -300,4 +259,4 @@ def upsert_shape_tags(path: str, slide_part: str, shape: Candidate, tags: dict[s
         updates[rels_part] = _serialize_rels(relationships)
         updates[CONTENT_TYPES_PART] = _add_content_type_override(ct_bytes, tags_part, TAGS_CONTENT_TYPE)
 
-    _write_parts(path, updates)
+    write_zip_parts(path, updates)

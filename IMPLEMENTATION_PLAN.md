@@ -340,16 +340,49 @@ project continues.
       module so far is individually tested but nothing composes them against
       a real deck yet. Flagged as the next real gap, not an oversight.
 
+## Priority 7: src/lib promotion + real end-to-end composition proof
+
+- [x] Promote the two real duplications flagged after Priority 6 into
+      `src/lib/ooxml.py`: `find_shape_element_by_z_order()` (was
+      `verification.py`'s `_find_shape_by_z_order` and the tree-walk half of
+      `identity_tags.py`'s `_find_nvpr`) and `write_zip_parts()` (was
+      `verification.py`'s single-part `_write_part` and `identity_tags.py`'s
+      multi-part `_write_parts` — the same shape once generalized to a dict
+      of updates). Both call sites refactored to import from `lib.ooxml`
+      rather than keeping private copies. `excel_output.py`'s `_write_xlsx`
+      deliberately kept separate — it always rebuilds every part from
+      scratch (it fully owns its file, no "preserve untouched existing
+      parts" concern the way a `.pptx` we don't fully own has), so forcing
+      it onto the shared helper would be the wrong generalization.
+- [x] Close the integration gap flagged after Priority 6: `src/resolve.py`'s
+      `resolve_slide_instance(path, slide_part)` composes
+      `discover_from_pptx_part()` + `identity_tags.read_slide_tags()` +
+      `identity_tags.read_shape_tags()` into a real `sync_operations.
+      SlideInstance` — tier-1 trust only (a shape reaching this function is
+      assumed already tagged from onboarding; scoring untagged candidates
+      against a reference is matching.py's tier-2 path and needs a
+      per-type reference-shape configuration that doesn't exist anywhere in
+      this project yet — deliberately not invented here, flagged instead).
+      `tests/test_resolve.py` is the actual end-to-end proof this project was
+      missing: tag a real fixture on disk via `identity_tags`, resolve it,
+      run it through `sync_operations.plan_routine_sync()`, and confirm
+      real dispatch against a real Data-sheet row — no_change when the seed
+      value matches, in_place_correction (with the write actually landing on
+      disk, re-read and confirmed) when it doesn't, new_record for an
+      unmatched row, and unclassified_slide flagging for a never-onboarded
+      slide. Confirmed `python3 -m pytest tests/ -v` (64 passed) and
+      `python3 -m mypy src/` (no issues, 9 source files) both pass.
+
 ## Notes for next planning pass
 
-- **`src/lib/` promotion is now overdue, not speculative.** Two real
-  duplications exist: a shape-tree z-order re-walk (`verification.py`'s
-  `_find_shape_by_z_order` and `identity_tags.py`'s `_find_nvpr`), and three
-  slightly different "safely rewrite some zip parts" implementations
-  (`verification.py`'s single-part swap, `excel_output.py`'s whole-file
-  rebuild, `identity_tags.py`'s multi-part swap). The next module that needs
-  either should promote it to `src/lib/` rather than writing a fourth
-  variant.
+- **Onboarding (tier-2 matching + reference-shape configuration storage) is
+  the next real gap**, surfaced by resolve.py's own scoping boundary above:
+  nothing in this project stores or reads "the example shape a type's field
+  was configured from" — `resolve_slide_instance()` only ever exercises
+  tier-1 (already-tagged) trust. Building this would need a decision on
+  where per-type reference configs live (a dedicated config part? convention
+  over the type's template slide itself?) before matching.py's tier-2
+  scoring path could be exercised against a real deck.
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
   settings. Worth confirming this stays intentional as more modules are added.
 - `matching.py`'s content-pattern signal degrades to a has-text boolean match because

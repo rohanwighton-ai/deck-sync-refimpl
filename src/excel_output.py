@@ -181,7 +181,10 @@ def _build_custom_props_xml(deck_reference: str) -> bytes:
 def _write_xlsx(path: str, sheet: Sheet) -> None:
     """Regenerate the whole .xlsx from `sheet`. Safe against a crash mid-write:
     written to a sibling temp file first, then swapped into place, same
-    pattern verification.py's _write_part uses for its own writes.
+    pattern lib.ooxml.write_zip_parts uses -- kept separate rather than
+    sharing that helper since this always rebuilds every part from scratch
+    (Sheet fully owns its file; there's no "preserve untouched existing
+    parts" concern the way a .pptx we don't fully own has).
     """
     directory = os.path.dirname(os.path.abspath(path)) or "."
     fd, tmp_path = tempfile.mkstemp(suffix=".xlsx", dir=directory)

@@ -9,14 +9,13 @@ See specs/verification.md for the requirements this implements. Stdlib-only
 from __future__ import annotations
 
 import hashlib
-import os
-import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Sequence
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZipFile
 
 from discovery import NS, Candidate, discover_from_pptx_part
+from lib.ooxml import find_shape_element_by_z_order, write_zip_parts
 
 _XML_DECLARATION = b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n'
 
@@ -56,47 +55,6 @@ def _set_text(sp: ET.Element, value: str) -> None:
         extra.text = ""
 
 
-def _find_shape_by_z_order(spTree: ET.Element, z_order: int) -> ET.Element:
-    """Re-walk in the exact order discover() numbers shapes in (see
-    discovery.py's walk()), to locate the element a previously-discovered
-    Candidate.z_order refers to."""
-    z = [0]
-    found: list[ET.Element] = []
-
-    def walk(el: ET.Element) -> None:
-        for child in el:
-            tag = child.tag.split("}")[-1]
-            if tag == "grpSp":
-                walk(child)
-            elif tag in ("sp", "pic"):
-                z[0] += 1
-                if z[0] == z_order:
-                    found.append(child)
-
-    walk(spTree)
-    if not found:
-        raise ValueError(f"no shape with z_order={z_order} found")
-    return found[0]
-
-
-def _write_part(path: str, part_name: str, xml_bytes: bytes) -> None:
-    """Zip write-back: replace part_name's bytes, leaving every other zip
-    entry byte-for-byte untouched. Writes to a sibling temp file first and
-    swaps it into place so a failure mid-write never leaves `path` corrupt."""
-    directory = os.path.dirname(os.path.abspath(path)) or "."
-    fd, tmp_path = tempfile.mkstemp(suffix=".pptx", dir=directory)
-    os.close(fd)
-    try:
-        with ZipFile(path) as src, ZipFile(tmp_path, "w", ZIP_DEFLATED) as dst:
-            for item in src.infolist():
-                data = xml_bytes if item.filename == part_name else src.read(item.filename)
-                dst.writestr(item, data)
-        os.replace(tmp_path, path)
-    except BaseException:
-        os.remove(tmp_path)
-        raise
-
-
 def _read_part(path: str, part_name: str) -> ET.Element:
     with ZipFile(path) as z, z.open(part_name) as f:
         return ET.parse(f).getroot()
@@ -113,7 +71,7 @@ def inject_primitive(path: str, part_name: str, shape: Candidate, source_value: 
     spTree = root.find(".//p:spTree", NS)
     if spTree is None:
         raise ValueError(f"no p:spTree found in {part_name}")
-    sp = _find_shape_by_z_order(spTree, shape.z_order)
+    sp = find_shape_element_by_z_order(spTree, shape.z_order)
 
     initial_hash = _hash(_get_text(sp))
     source_hash = _hash(source_value)
@@ -124,13 +82,13 @@ def inject_primitive(path: str, part_name: str, shape: Candidate, source_value: 
         )
 
     _set_text(sp, source_value)
-    _write_part(path, part_name, _XML_DECLARATION + ET.tostring(root, encoding="unicode").encode("utf-8"))
+    write_zip_parts(path, {part_name: _XML_DECLARATION + ET.tostring(root, encoding="unicode").encode("utf-8")})
 
     reread_root = _read_part(path, part_name)
     reread_spTree = reread_root.find(".//p:spTree", NS)
     if reread_spTree is None:
         raise ValueError(f"no p:spTree found in {part_name} after write-back")
-    reread_sp = _find_shape_by_z_order(reread_spTree, shape.z_order)
+    reread_sp = find_shape_element_by_z_order(reread_spTree, shape.z_order)
     final_hash = _hash(_get_text(reread_sp))
 
     return InjectResult(
@@ -145,7 +103,7 @@ def inject_primitive(path: str, part_name: str, shape: Candidate, source_value: 
 @dataclass(frozen=True)
 class StructuralMismatch:
     # Position in the shape sequence (paired by discover()'s z_order, the
-    # same canonical ordering _find_shape_by_z_order already relies on).
+    # same canonical ordering find_shape_element_by_z_order already relies on).
     # -1 for whole-sequence issues (e.g. the count mismatch itself) that
     # aren't about one specific position.
     index: int
