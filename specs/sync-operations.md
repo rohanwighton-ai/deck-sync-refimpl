@@ -38,10 +38,16 @@ fit into a case the input doesn't actually satisfy.
 
 - **Physical slide duplication.** Deciding a duplicate is needed (cases 2 and 3) is in
   scope; performing it — inserting a new `ppt/slides/slideN.xml` part and wiring
-  `presentation.xml`/relationships/content-types to match — is not. That is a distinct,
-  materially harder OOXML-surgery problem; `verification.py`'s `verify_structure`/
-  `verify_z_order` already assume a duplicate exists and only check it, and this module
-  keeps that same boundary rather than quietly absorbing the harder problem.
+  `presentation.xml`/relationships/content-types to match — is not. This isn't just
+  deferred as "materially harder OOXML surgery" (though it is that, in Python); it's
+  **not needed at all in the real VBA target**, where duplication is one native call
+  (`Slide.Duplicate`). Building Python-side duplication mechanics would validate nothing
+  about VBA's actual duplication path — the real target gets this for free from the
+  PowerPoint object model. What *is* language-independent and worth keeping here is the
+  post-duplication check (`verification.py`'s `verify_structure`/`verify_z_order`) — "did
+  the duplicate actually come out right" is a real question in any language; "how do you
+  physically copy a slide's XML" only exists because Python has no PowerPoint object
+  model to lean on.
 - **Case 5 (record_retired).** The source design has no agreed trigger convention for
   "this record is done" vs. "temporarily unchanged" — building detection now would mean
   inventing a convention the design never settled, not implementing something already
