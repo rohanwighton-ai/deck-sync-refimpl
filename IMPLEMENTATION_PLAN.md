@@ -533,6 +533,56 @@ open task. Gap analysis below is what's actually new/actionable.
       now assume `EnrichPlaceholderIdx` is available when it needs placeholder-index
       scoring, rather than inheriting a fresh gap.
 
+## Priority 14 (2026-07-24 pass): VBA port order, module 4 (resolve + sync_operations)
+
+- [x] Port `resolve` + `sync_operations` per `specs/vba-port.md`'s numbered port order
+      (module 4 of 6, after discovery/identity_tags/matching). Confirmed nothing else in
+      the order had started beyond `Discovery.bas`/`Matching.bas` (`ls vba/` before this
+      task showed only `InjectPrimitive.bas`, `SPIKE_NOTES.md`, `Discovery.bas`,
+      `SPIKE_NOTES_Discovery.md`, `Matching.bas`, `SPIKE_NOTES_Matching.md`).
+      Found and closed a real, previously-mis-stated gap before porting further:
+      `specs/vba-port.md`'s port order describes module 2 (`identity_tags`) as "already
+      done (`InjectPrimitive.bas`'s `Shape.Tags`/`Slide.Tags` reads)" -- grepping
+      `InjectPrimitive.bas` confirmed it only ever reads `Shape.Tags("role")`; it never
+      once reads `Slide.Tags`. Module 4 is the first module that actually needs
+      slide-level tags (`slide_type`/`instance_key`), so `vba/Resolve.bas`'s
+      `ResolveSlideInstance(sld)` adds the missing native `Slide.Tags` reads itself
+      (scoped to reads only -- writing slide-level tags is onboarding's job, port-order
+      step 5, still open) rather than carrying the mis-statement forward.
+      Added `vba/Resolve.bas` (`ResolveSlideInstance`) and `vba/SyncOperations.bas`
+      (`PlanRoutineSync` for cases 1/3/4/6, `PlanPeriodRollover` for case 2, never
+      dispatched from routine sync). Deliberately does **not** port `resolve.py`'s
+      `field_shapes` pre-resolution step: Python needs it because file-surgery
+      `inject_primitive` requires a `Candidate`'s `z_order`, but VBA's `InjectPrimitive`
+      already does its own tag-based shape lookup on every call, so
+      `PlanRoutineSync` calls `InjectPrimitive.InjectPrimitive(slide, fieldName, value)`
+      directly per field -- a genuine simplification, not a corner cut, same category as
+      `Shape.Tags` collapsing `identity_tags.py`'s hand-rolled XML in the original spike.
+      Since port-order step 6 (Excel-side reads) isn't built yet, `PlanRoutineSync`
+      accepts an already-read Data-sheet shape (`Scripting.Dictionary` of
+      `Scripting.Dictionary`s plus an order `Collection`) as a documented interface
+      contract for that future module to satisfy, rather than reading a worksheet
+      itself -- mirrors `plan_routine_sync()`'s own separation from `excel_output.py`.
+      Added `vba/SPIKE_NOTES_Resolve.md` (covering both files, since `specs/vba-port.md`
+      groups them as one port-order item) documenting the closed `Slide.Tags` gap, 7
+      deliberate divergences (including one arguably *safer* than the Python original:
+      `InjectPrimitive`'s ambiguous-tag refusal vs. `resolve.py`'s silent
+      last-write-wins on a duplicate role tag), and a manual verification recipe
+      cross-checked against `tests/test_resolve.py`'s and `tests/test_sync_operations.py`'s
+      already-proven values for all of cases 1/2/3/4/6. No `src`/`tests` changes;
+      confirmed `python3 -m pytest tests/ -v` (70 passed) and `python3 -m mypy src/` (no
+      issues, 10 source files) both still pass (unaffected, as expected for a vba/-only
+      change).
+      **Still open for a future pass**: port-order steps 5 (`onboarding`) and 6
+      (Excel-side) remain unported. Step 5 will need to close the write-side of the
+      `Slide.Tags` gap flagged above (writing `slide_type`/`instance_key`, not just
+      reading them). Step 6's Data-sheet Dictionary/Collection shape is now a fixed
+      interface contract this module already depends on, not an open design question.
+      Also unconfirmed and worth resolving whenever a real Office install is available:
+      whether `CustomLayout` objects expose a native `.Tags` property the same way
+      `Slide` does (needed to resolve `mst-slide-layouts.pptx`-style fixtures directly,
+      per `SPIKE_NOTES_Resolve.md`'s divergence 6).
+
 ## Notes for next planning pass
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
   settings. Worth confirming this stays intentional as more modules are added. Still true
