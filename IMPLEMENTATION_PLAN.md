@@ -430,28 +430,25 @@ open task. Gap analysis below is what's actually new/actionable.
       `python3 -m pytest tests/ -v` (68 passed) and `python3 -m mypy src/` (no issues, 10
       source files) both still pass after editing.
 
-- [ ] Decide and document whether `vba/` follows the specs-driven process the rest of
+- [x] Decide and document whether `vba/` follows the specs-driven process the rest of
       this repo uses (why: every file under `src/` traces to a `specs/*.md` file that
       defines its scope, requirements, and non-goals before code is written — confirmed
       by checking all 7 specs against all 10 `src/*.py`/`src/lib/*.py` files, every one
       has a governing spec. `vba/InjectPrimitive.bas` has no `specs/*.md` counterpart; its
       scope lives only in its own `SPIKE_NOTES.md`, self-authored alongside the code
-      rather than preceding it. This isn't necessarily wrong — `AGENTS.md`'s Constraints
-      section already frames Python as "a reference/test implementation, not the
-      production sync engine" with VBA as "the real target," and `SPIKE_NOTES.md` cites
-      an external roadmap-correction note deciding physical duplication moves entirely to
-      VBA's native `Slide.Duplicate` — but it means the one spec that *is* closest to
-      governing VBA scope, `specs/sync-operations.md`, only covers what Python decides,
-      not what VBA itself must do with that decision. If more VBA porting is wanted next
-      (discovery, matching, or sync-dispatch logic, all explicitly out of scope for this
-      spike per its own "What was deliberately left out of scope" section), write
-      `specs/vba-port.md` first, mirroring how every other module here started from a
-      spec rather than growing scope ad hoc after the fact. If no further VBA porting is
-      currently wanted, note that explicitly instead (e.g. in `AGENTS.md`'s Constraints
-      section) so the next planning pass doesn't have to re-derive this same open
-      question from git history again.) This is a process/documentation decision, not an
-      implementation task — do not write VBA or Python code for it beyond whatever
-      doc/spec file the decision produces.
+      rather than preceding it.)
+      Decision: no further VBA porting (discovery, matching, or sync-dispatch logic) is
+      currently planned or wanted beyond the existing `InjectPrimitive.bas` spike — there
+      is no task anywhere in this plan calling for more VBA work, so writing a
+      `specs/vba-port.md` now would be speculative scope for hypothetical future work.
+      Documented this explicitly in `AGENTS.md`'s Constraints section instead (a new
+      bullet after the existing "reference/test implementation... real target is VBA"
+      one), including the fallback instruction: if more VBA porting *is* wanted later,
+      write `specs/vba-port.md` first, mirroring how every other module here started from
+      a spec. This closes the open question so a future planning pass doesn't have to
+      re-derive it from git history again. Pure doc change, no code touched. Confirmed
+      `python3 -m pytest tests/ -v` (68 passed) and `python3 -m mypy src/` (no issues, 10
+      source files) both still pass.
 
 ## Notes for next planning pass
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
