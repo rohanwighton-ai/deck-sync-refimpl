@@ -34,11 +34,8 @@ guidance.
   spec asks for it.
 - Keep this repo separate from both `claude-brain` and any CRC system — see the initial
   commit message for why.
-- `vba/` does not follow the specs-driven process `src/` uses (every `src/*.py` traces
-  to a governing `specs/*.md` written before the code). `vba/InjectPrimitive.bas` is a
-  single de-risking spike — its scope lives in its own `vba/SPIKE_NOTES.md`, written
-  alongside the code, not a preceding spec. This is intentional: no further VBA porting
-  (discovery, matching, or sync-dispatch logic) is currently planned or wanted beyond
-  that one spike. If that changes, write `specs/vba-port.md` first, mirroring how every
-  other module here started from a spec, rather than growing VBA scope ad hoc after the
-  fact.
+- `vba/InjectPrimitive.bas` was a single de-risking spike, not yet governed by a spec
+  the way every `src/*.py` file is. Further VBA porting (discovery, matching,
+  sync-dispatch logic) is planned — write `specs/vba-port.md` before that work starts,
+  mirroring how every other module here began from a spec rather than growing VBA scope
+  ad hoc after the fact.
