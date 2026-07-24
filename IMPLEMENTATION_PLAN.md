@@ -401,9 +401,62 @@ project continues.
       Confirmed `python3 -m pytest tests/ -v` (68 passed) and `python3 -m mypy src/` (no
       issues, 10 source files) both pass.
 
+## Priority 9 (2026-07-24 pass): VBA spike follow-up + one stale doc found
+
+Re-verified this pass by actually running `python3 -m pytest tests/ -v` (68 passed) and
+`python3 -m mypy src/` (no issues, 10 source files) — both still green, no regressions
+since Priority 8. Confirmed via `git log`/`git show` that one thing changed since this
+plan was last written: commit `333c53a` added `vba/InjectPrimitive.bas` +
+`vba/SPIKE_NOTES.md`, a hand-port of `inject_primitive` to VBA. That spike is real,
+already self-documents its own scope/divergences/manual-verification recipe in
+`vba/SPIKE_NOTES.md`, and needs no Python-side work — noted here for context, not as an
+open task. Gap analysis below is what's actually new/actionable.
+
+- [ ] Fix `src/resolve.py`'s module docstring (lines 9-15): it says scoring untagged
+      candidates against a reference "needs a per-type reference configuration that
+      doesn't exist anywhere in this project yet" and calls this "a real, separate gap."
+      That gap is already closed — confirmed by reading `tests/test_onboarding.py`
+      (`_onboard()` helper at line 47 and every test after it): `onboarding.py`'s
+      `match_slide_against_template(path, slide_part, template: SlideInstance)` takes
+      exactly the `SlideInstance` shape `resolve_slide_instance()` already produces, and
+      the tests literally call `resolve_slide_instance(path, LAYOUT1_PART)` to build the
+      `template` argument passed into it. `resolve.py`'s docstring was written in commit
+      `637a130`, before `onboarding.py` existed (`b7f07b4`, later) — it's stale
+      documentation actively misleading a future reader into re-solving an already-solved
+      problem, not a real gap. Fix: replace the "real, separate gap" paragraph with a
+      pointer to `onboarding.py`'s actual resolution (an onboarded template slide, run
+      through `resolve_slide_instance()` itself, *is* the per-type reference — no
+      separate config format was ever needed). Pure doc fix, no behavior change, no new
+      tests required — but re-run `python3 -m pytest tests/ -v` and `python3 -m mypy src/`
+      after editing to confirm nothing else assumed the stale framing.
+
+- [ ] Decide and document whether `vba/` follows the specs-driven process the rest of
+      this repo uses (why: every file under `src/` traces to a `specs/*.md` file that
+      defines its scope, requirements, and non-goals before code is written — confirmed
+      by checking all 7 specs against all 10 `src/*.py`/`src/lib/*.py` files, every one
+      has a governing spec. `vba/InjectPrimitive.bas` has no `specs/*.md` counterpart; its
+      scope lives only in its own `SPIKE_NOTES.md`, self-authored alongside the code
+      rather than preceding it. This isn't necessarily wrong — `AGENTS.md`'s Constraints
+      section already frames Python as "a reference/test implementation, not the
+      production sync engine" with VBA as "the real target," and `SPIKE_NOTES.md` cites
+      an external roadmap-correction note deciding physical duplication moves entirely to
+      VBA's native `Slide.Duplicate` — but it means the one spec that *is* closest to
+      governing VBA scope, `specs/sync-operations.md`, only covers what Python decides,
+      not what VBA itself must do with that decision. If more VBA porting is wanted next
+      (discovery, matching, or sync-dispatch logic, all explicitly out of scope for this
+      spike per its own "What was deliberately left out of scope" section), write
+      `specs/vba-port.md` first, mirroring how every other module here started from a
+      spec rather than growing scope ad hoc after the fact. If no further VBA porting is
+      currently wanted, note that explicitly instead (e.g. in `AGENTS.md`'s Constraints
+      section) so the next planning pass doesn't have to re-derive this same open
+      question from git history again.) This is a process/documentation decision, not an
+      implementation task — do not write VBA or Python code for it beyond whatever
+      doc/spec file the decision produces.
+
 ## Notes for next planning pass
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
-  settings. Worth confirming this stays intentional as more modules are added.
+  settings. Worth confirming this stays intentional as more modules are added. Still true
+  as of this pass (confirmed: no such files at repo root).
 - `matching.py`'s content-pattern signal degrades to a has-text boolean match because
   `Candidate` doesn't store actual text content, only `has_text`. If a fixture surfaces
   a real need for pattern-based matching (e.g. distinguishing a date field from a
@@ -412,3 +465,7 @@ project continues.
   raw local `a:off`/`a:ext` without walking up through parent group transforms — exact
   only when a group's `chOff`/`chExt` equals its own `off`/`ext` (true for every
   current fixture, not guaranteed in general OOXML).
+- `vba/InjectPrimitive.bas` is unexecuted and unverified (no Windows/Office in this
+  environment, per `SPIKE_NOTES.md`) — if a Windows/Office environment ever becomes
+  available, running the manual verification recipe in `SPIKE_NOTES.md` is real
+  outstanding work, just not automatable from here.
