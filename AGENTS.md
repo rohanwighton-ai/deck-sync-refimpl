@@ -25,6 +25,22 @@ guidance.
   `is not None` checks per candidate, never `or`-chain `Element.find()` calls. (Hit and
   fixed during initial design, 2026-07-19 — see `src/discovery.py`'s `_shape_name`.)
 
+## Cost / Tool Selection
+
+- This repo is small (specs/ and src/ are each under a dozen short files). A direct
+  `Read` is strictly cheaper than a subagent spawn for a file this size — every subagent
+  is a fresh, uncached API call, and pays a full context-establishment cost to read
+  something a direct Read gets for a fraction of that. Reserve parallel subagents for
+  genuinely large fan-out (dozens-to-hundreds of files, or slow independent searches),
+  not as a default "study the codebase" step. (Root-caused 2026-07-25: an earlier
+  version of `PROMPT_build.md`/`PROMPT_plan.md` authorized "up to 500 parallel Sonnet
+  subagents" for exactly this small a repo, which was almost certainly the dominant
+  cost driver during real iterations, independent of the retry-storm bug logged below.)
+- If a task's obvious approach would be expensive relative to what it accomplishes, say
+  so — in the commit message or a plan note — rather than silently paying the cost.
+  Flagging "this would cost too much, here's a cheaper way" is a valid, wanted outcome
+  of an iteration, not a failure to complete the task.
+
 ## Constraints
 
 - This is a reference/test implementation, not the production sync engine — the real

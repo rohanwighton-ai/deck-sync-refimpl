@@ -8,10 +8,12 @@ Study specifications and existing code, then generate a prioritized implementati
 
 ## Process
 
-0a. Study specs/* (use up to 250 parallel Sonnet subagents)
-0b. Study @IMPLEMENTATION_PLAN.md (if exists)
-0c. Study src/lib/* (shared utilities to understand patterns)
-0d. Reference: src/* (as needed for gap analysis)
+0a. Study specs/*, @IMPLEMENTATION_PLAN.md (if exists), src/lib/*, and src/* — read
+    these directly. This repo is small (a dozen or so files total, all short); a direct
+    Read is strictly cheaper than a subagent spawn for a file this size, since each
+    subagent is a fresh, uncached API call. Reserve parallel subagents for genuinely
+    large fan-out (dozens-to-hundreds of files, or slow independent searches) — not as
+    a default for a repo this size.
 
 1. Gap Analysis
    - Compare each spec against existing code

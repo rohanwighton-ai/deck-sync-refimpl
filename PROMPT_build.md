@@ -34,10 +34,11 @@ Select the most important task from the implementation plan, implement it correc
 
 ## Process
 
-0a. Study specs/* (use up to 500 parallel Sonnet subagents)
-0b. Study @IMPLEMENTATION_PLAN.md
-0c. Study @AGENTS.md (if exists)
-0d. Reference: src/* (use parallel Sonnet subagents for code reading)
+0a. Study specs/*, @IMPLEMENTATION_PLAN.md, @AGENTS.md (if exists), and src/* — read
+    these directly. This repo is small (specs/ and src/ are each under a dozen files,
+    all short); a direct Read is strictly cheaper than a subagent spawn for a file this
+    size, since each subagent is a fresh, uncached API call. Do not reach for parallel
+    subagents here — there is no fan-out to justify.
 
 1. Select Task
    - Pick the most important uncompleted task from IMPLEMENTATION_PLAN.md
@@ -47,7 +48,13 @@ Select the most important task from the implementation plan, implement it correc
 2. Investigate Before Implementing
    - Search codebase first (don't assume missing)
    - Understand existing patterns and conventions
-   - Use up to 500 Sonnet subagents for reading/searching
+   - Parallel subagents are for when the read/search volume genuinely justifies the
+     fan-out cost (e.g. scanning dozens-to-hundreds of files, or independent searches
+     that would otherwise serialize for a long time) — not a default. For a repo this
+     size, direct reads/greps are almost always cheaper and just as fast. If a task's
+     obvious approach would be expensive relative to what it accomplishes, say so in
+     the commit message or plan update rather than silently paying the cost — flag the
+     cheaper alternative instead of defaulting to maximum parallelism.
    - Study similar existing implementations
    - Identify exactly what needs to change
 

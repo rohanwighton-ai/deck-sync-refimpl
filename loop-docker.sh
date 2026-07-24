@@ -237,6 +237,7 @@ echo "---"
 echo "=== Ralph Docker $(date '+%Y-%m-%d %H:%M:%S') ===" > "$LOG_FILE"
 
 ITERATION=0
+FAST_STREAK=0
 while true; do
   ITERATION=$((ITERATION + 1))
 
@@ -261,6 +262,7 @@ while true; do
   # Container runs ONE iteration, then exits
   # Backup runs on HOST after container exits
   # Note: MODEL is already validated against whitelist above
+  ITERATION_START=$(date +%s)
   if docker run --rm \
     --user "$(id -u):$(id -g)" \
     -v "$PROJECT_DIR:/workspace" \
@@ -271,7 +273,30 @@ while true; do
     bash -c "cat '$PROMPT_FILE' | claude --model '$MODEL' -p --dangerously-skip-permissions --output-format text" \
     2>&1 | tee -a "$LOG_FILE"; then
 
-    echo "Iteration $ITERATION complete"
+    ITERATION_DURATION=$(( $(date +%s) - ITERATION_START ))
+    echo "Iteration $ITERATION complete (${ITERATION_DURATION}s)"
+
+    # A real iteration (study specs, investigate, implement, test, commit) takes
+    # minutes. A run that "completes" in under 30s almost always means the underlying
+    # `claude` call failed fast (auth/rate-limit/session-limit) but still exited 0 --
+    # e.g. a session-limit rejection returns near-instantly. Without this check the
+    # loop just keeps retrying every ~5s until it burns through the iteration cap,
+    # silently wasting attempts instead of surfacing the real problem. (Hit 2026-07-24:
+    # iterations 9-16 all completed within 45s total.)
+    if [ "$ITERATION_DURATION" -lt 30 ]; then
+      FAST_STREAK=$((FAST_STREAK + 1))
+      if [ "$FAST_STREAK" -ge 3 ]; then
+        echo ""
+        echo "FATAL: $FAST_STREAK consecutive iterations completed in under 30s each."
+        echo "This is not real work -- almost certainly a fast-failing claude call"
+        echo "(auth, rate limit, or session/usage limit) that still exits 0. Check"
+        echo "$LOG_FILE for the actual error, then re-run once resolved."
+        push_to_backup
+        exit 1
+      fi
+    else
+      FAST_STREAK=0
+    fi
 
     # Push to backup ON HOST (has gh auth)
     push_to_backup
