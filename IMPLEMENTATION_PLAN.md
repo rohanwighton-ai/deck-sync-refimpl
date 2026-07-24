@@ -491,6 +491,48 @@ open task. Gap analysis below is what's actually new/actionable.
       explicit-fallback allowance) before it can port `matching.md`'s
       placeholder-index signal faithfully.
 
+## Priority 13 (2026-07-24 pass): VBA port order, module 3 (matching)
+
+- [x] Port `matching` per `specs/vba-port.md`'s numbered port order (module 3 of 6,
+      after discovery and identity_tags; module 2/identity_tags was already done
+      out-of-order as the original spike). Confirmed nothing else in the order had
+      started beyond `Discovery.bas` (`ls vba/` before this task showed only
+      `InjectPrimitive.bas`, `SPIKE_NOTES.md`, `Discovery.bas`,
+      `SPIKE_NOTES_Discovery.md`). Added `vba/Matching.bas`: `ScoreCandidate()`/
+      `Match()` port `matching.py`'s tier-1 tag-trust + tier-2 weighted scoring
+      (placeholder-index/geometry/shape-type/content at the same 0.5/0.3/0.15/0.05
+      weights and 0.75/0.4 thresholds) and sibling-ambiguity z-order tie-break,
+      field-for-field.
+      Also resolved `SPIKE_NOTES_Discovery.md`'s flagged `PlaceholderIdx` gap (always
+      `-1` in `Discovery.bas` since the object model has no
+      `Shape.PlaceholderFormat.Idx` equivalent) via the raw-OOXML fallback
+      `specs/vba-port.md` explicitly allows when no native path exists:
+      `EnrichPlaceholderIdx`/`LoadPartXml`/`PlaceholderIdxFromDom` extract a part's XML
+      via `Shell.Application`'s native zip-folder support (no zip library in stock
+      VBA) and read `<p:cNvPr name>`'s sibling `<p:nvPr>/<p:ph idx>`, applying OOXML's
+      own idx-omitted-defaults-to-0 rule, matching `discovery.py`'s
+      `_placeholder_info`. Added a safety guard `score_candidate.py` doesn't need:
+      `PlaceholderScore` treats an unresolved `-1` sentinel as "signal not applicable"
+      rather than risking two unresolved placeholders falsely comparing `-1=-1` as a
+      match. Added `vba/SPIKE_NOTES_Matching.md` (same format as prior modules)
+      documenting this and 5 other real divergences (geometry/shape-type/content
+      always-applicable in VBA vs. Python's optionality; fallback reads last-saved
+      disk state, not live unsaved edits; duplicate-shape-name lookup ambiguity
+      inherited from `InjectPrimitive.bas`'s already-documented risk; `CopyHere`'s
+      async-completion gotcha; no `Candidate | None` equivalent so `MatchResult` uses
+      an array-index convention instead), plus a manual verification recipe
+      cross-checked against `tests/test_matching.py`'s already-proven values
+      (`shp-groupshape.pptx`'s 4-way z-order tie-break landing on "Oval 2";
+      `mst-slide-layouts.pptx`'s body placeholder idx=10 match alone correctly
+      landing at medium, not auto-accepted). No `src`/`tests` changes; confirmed
+      `python3 -m pytest tests/ -v` (70 passed) and `python3 -m mypy src/` (no issues,
+      10 source files) both still pass (unaffected, as expected for a vba/-only
+      change).
+      **Still open for a future pass**: port-order steps 4 (`resolve`+
+      `sync_operations`), 5 (`onboarding`), 6 (Excel-side) remain unported. Step 4 can
+      now assume `EnrichPlaceholderIdx` is available when it needs placeholder-index
+      scoring, rather than inheriting a fresh gap.
+
 ## Notes for next planning pass
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
   settings. Worth confirming this stays intentional as more modules are added. Still true
