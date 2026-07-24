@@ -32,10 +32,18 @@ def match_slide_against_template(path: str, slide_part: str, template: SlideInst
     that role, per specs/matching.md's tier-2 path (already-tagged
     candidates are excluded from the pool -- they're either this same field
     from a prior pass or a different field entirely, neither is a fresh
-    match target).
+    match target). Pure decoration (no text, not a picture) is also excluded
+    per specs/discovery.md: "Pure decoration must be correctly excluded, not
+    force-matched" -- discover() itself still reports these shapes (other
+    callers, e.g. verify_structure, need the full shape list), so the filter
+    belongs here, at the point candidates are handed to the matcher.
     """
     candidates = discover_from_pptx_part(path, slide_part)
-    untagged = [c for c in candidates if read_shape_tags(path, slide_part, c).get("role") is None]
+    untagged = [
+        c
+        for c in candidates
+        if c.is_candidate_field and read_shape_tags(path, slide_part, c).get("role") is None
+    ]
 
     return [FieldMatch(role=role, result=match(untagged, reference_shape)) for role, reference_shape in template.field_shapes.items()]
 

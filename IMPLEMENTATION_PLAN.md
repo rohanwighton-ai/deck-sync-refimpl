@@ -466,3 +466,37 @@ open task. Gap analysis below is what's actually new/actionable.
   environment, per `SPIKE_NOTES.md`) — if a Windows/Office environment ever becomes
   available, running the manual verification recipe in `SPIKE_NOTES.md` is real
   outstanding work, just not automatable from here.
+
+## Priority 10 (2026-07-24 pass): pure decoration could be auto-tagged as a field
+
+- [x] Fix `src/onboarding.py`'s `match_slide_against_template()`: it built its untagged
+      candidate pool as "discovered minus already-tagged" only, never excluding pure
+      decoration (no text, not a picture). specs/discovery.md is explicit: "A shape with
+      no text content and that is not a picture is not a candidate... Pure decoration
+      must be correctly excluded, not force-matched." `Candidate.is_candidate_field`
+      already computes this (discovery.py:42-44) but was, until this fix, checked in
+      exactly one place in the whole repo (`tests/test_discovery.py`, a post-hoc
+      assertion) — never as an actual filter anywhere real matching happened. Confirmed
+      concretely, not hypothetically: `tests/test_matching.py`'s existing
+      `test_shp_groupshape_sibling_ambiguity_resolved_by_zorder` already showed `match()`
+      itself will happily return a HIGH-confidence match onto `shp-groupshape.pptx`'s
+      "Oval 2" — a shape `test_discovery.py`'s own
+      `test_shp_groupshape_finds_zero_candidate_fields` proves is pure decoration. Since
+      `onboard_new_instance()` auto-tags any HIGH-confidence match immediately with no
+      human in the loop, this was a real path to silently linking a business field to an
+      empty decoration shape.
+      `discover()` itself was deliberately left unchanged — it must keep returning every
+      shape (decoration included), since other callers (e.g. `verification.
+      verify_structure`) need the full shape list for structural correspondence, not just
+      fields. The filter belongs at the point candidates are handed to the matcher, so it
+      was added to `match_slide_against_template()`'s `untagged` list comprehension
+      (`c.is_candidate_field and ...`), not to `discover()` or to `matching.match()`
+      itself (matching.md's spec is silent on decoration — that's discovery.md's
+      requirement, and `match()`'s own tests deliberately use decoration shapes as
+      synthetic tie-breaking fixtures, unrelated to this gap). Added two regression tests
+      to `tests/test_onboarding.py` using `shp-groupshape.pptx`'s real decoration shapes
+      and the same reference `test_matching.py` uses to previously force a HIGH match:
+      confirms `match_slide_against_template` now reports LOW/unmatched instead, and that
+      `onboard_new_instance` never auto-tags them. Confirmed `python3 -m pytest tests/ -v`
+      (70 passed, was 68) and `python3 -m mypy src/` (no issues, 10 source files) both
+      pass.

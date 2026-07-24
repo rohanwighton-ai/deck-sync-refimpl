@@ -16,15 +16,17 @@ import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from discovery import discover_from_pptx_layout  # noqa: E402
+from discovery import discover_from_pptx, discover_from_pptx_layout  # noqa: E402
 from identity_tags import upsert_shape_tags, upsert_slide_tags  # noqa: E402
 from matching import Confidence  # noqa: E402
 from onboarding import confirm_field_match, match_slide_against_template, onboard_new_instance  # noqa: E402
 from resolve import resolve_slide_instance  # noqa: E402
+from sync_operations import SlideInstance  # noqa: E402
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "..", "test-fixtures")
 LAYOUT1_PART = "ppt/slideLayouts/slideLayout1.xml"
 LAYOUT2_PART = "ppt/slideLayouts/slideLayout2.xml"
+SLIDE1_PART = "ppt/slides/slide1.xml"
 
 
 def _copy_fixture(name):
@@ -111,5 +113,54 @@ def test_onboard_new_instance_tags_slide_identity_unconditionally():
         instance = resolve_slide_instance(path, LAYOUT2_PART)
         assert instance.instance_key == "rec-2"
         assert instance.type_tag == "quarterly-update"
+    finally:
+        os.remove(path)
+
+
+def _decoration_reference():
+    # Same reference shape test_matching.py's sibling-ambiguity test uses --
+    # against shp-groupshape.pptx's 4 pure-decoration shapes (no text, not
+    # pictures), it previously scored a HIGH-confidence match onto "Oval 2"
+    # when handed directly to match(). is_candidate_field is False for all
+    # four (see test_discovery.py's test_shp_groupshape_finds_zero_candidate_
+    # fields), so specs/discovery.md requires they never be matched at all.
+    candidates = discover_from_pptx(os.path.join(FIXTURES, "shp-groupshape.pptx"))
+    assert not any(c.is_candidate_field for c in candidates)
+    return next(c for c in candidates if c.name == "Oval 2")
+
+
+def test_match_slide_against_template_never_matches_pure_decoration():
+    path = _copy_fixture("shp-groupshape.pptx")
+    try:
+        template = SlideInstance(
+            part_path=SLIDE1_PART,
+            instance_key="rec-1",
+            type_tag="deco-test",
+            field_shapes={"Deco": _decoration_reference()},
+        )
+
+        matches = match_slide_against_template(path, SLIDE1_PART, template)
+
+        assert len(matches) == 1
+        assert matches[0].result.candidate is None
+        assert matches[0].result.confidence is Confidence.LOW
+    finally:
+        os.remove(path)
+
+
+def test_onboard_new_instance_never_auto_tags_pure_decoration():
+    path = _copy_fixture("shp-groupshape.pptx")
+    try:
+        template = SlideInstance(
+            part_path=SLIDE1_PART,
+            instance_key="rec-1",
+            type_tag="deco-test",
+            field_shapes={"Deco": _decoration_reference()},
+        )
+
+        onboard_new_instance(path, SLIDE1_PART, template, slide_type="deco-test", instance_key="rec-2")
+
+        instance = resolve_slide_instance(path, SLIDE1_PART)
+        assert instance.field_shapes == {}
     finally:
         os.remove(path)
