@@ -36,6 +36,7 @@ guidance.
   commit message for why.
 - `vba/InjectPrimitive.bas` was a single de-risking spike, not yet governed by a spec
   the way every `src/*.py` file is. Further VBA porting (discovery, matching,
-  sync-dispatch logic) is planned — write `specs/vba-port.md` before that work starts,
-  mirroring how every other module here began from a spec rather than growing VBA scope
-  ad hoc after the fact.
+  sync-dispatch logic) is planned and now has a governing spec, `specs/vba-port.md` —
+  written 2026-07-24, mirroring how every other module here began from a spec rather
+  than growing VBA scope ad hoc after the fact. Follow its port order and
+  manual-verification-recipe requirement for every subsequent VBA module.

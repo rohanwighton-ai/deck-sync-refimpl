@@ -467,6 +467,28 @@ open task. Gap analysis below is what's actually new/actionable.
   available, running the manual verification recipe in `SPIKE_NOTES.md` is real
   outstanding work, just not automatable from here.
 
+## Priority 11 (2026-07-24 pass): AGENTS.md's VBA-port cross-reference went stale mid-iteration
+
+- [x] Context: commit `67f4df8` had a human revert the loop's own prior "no further VBA
+      porting is wanted" call (`ba05df2`), correcting it to "full VBA production porting is
+      planned — write `specs/vba-port.md` before that work starts." That gap closed during
+      this same pass, but via a separate concurrent commit (`06767da`, "Add
+      specs/vba-port.md: scope the production VBA port") that landed while this iteration
+      was independently drafting the identical file — confirmed by comparing timestamps and
+      `git log`; not this iteration's own work, and not re-done here to avoid clobbering it.
+      Reviewed `06767da`'s `specs/vba-port.md` directly: it satisfies AGENTS.md's ask
+      (port order mirroring the real dependency chain, each existing `specs/*.md` staying
+      the governing spec for its own VBA translation, "translate the mechanism not the
+      Python workaround" called out per module via `vba/SPIKE_NOTES.md`'s already-demonstrated
+      pattern, and a per-module manual-verification-recipe requirement since this
+      environment has no Windows/Office install). What was still stale after that commit:
+      `AGENTS.md`'s own Constraints bullet still said "write `specs/vba-port.md` before that
+      work starts" as an open ask, now factually wrong since the spec exists. Fixed by
+      updating that bullet to point at the spec instead of asking for it. Pure doc fix, no
+      `src`/`tests`/`specs` change. Confirmed `python3 -m pytest tests/ -v` (70 passed) and
+      `python3 -m mypy src/` (no issues, 10 source files) both still pass (unaffected, as
+      expected for a docs-only change).
+
 ## Priority 10 (2026-07-24 pass): pure decoration could be auto-tagged as a field
 
 - [x] Fix `src/onboarding.py`'s `match_slide_against_template()`: it built its untagged
