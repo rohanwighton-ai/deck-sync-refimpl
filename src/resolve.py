@@ -7,12 +7,13 @@ isolation -- individually correct, but nothing composed them against a real
 deck. This module is that composition, for the one case sync_operations.py
 actually needs: an *already onboarded* slide (tags already written via
 identity_tags.upsert_slide_tags/upsert_shape_tags). It intentionally does
-not implement onboarding itself -- scoring untagged candidates against a
-reference shape (matching.py's tier-2 path) needs a per-type reference
-configuration that doesn't exist anywhere in this project yet (where would
-"the example shape for the 'quarterly-update' type's title field" be
-stored?). That's a real, separate gap, not something to paper over here by
-inventing a config format nobody asked for.
+not implement onboarding itself -- matching a subsequent slide's untagged
+candidates against a reference (matching.py's tier-2 path) is
+onboarding.py's job. The "per-type reference configuration" that scoring
+needs isn't a separate format this module would have to invent: it's just
+another already-onboarded slide of that type, resolved through
+resolve_slide_instance() itself, and passed to
+onboarding.match_slide_against_template() as its `template` argument.
 """
 
 from __future__ import annotations

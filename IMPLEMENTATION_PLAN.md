@@ -412,7 +412,7 @@ already self-documents its own scope/divergences/manual-verification recipe in
 `vba/SPIKE_NOTES.md`, and needs no Python-side work — noted here for context, not as an
 open task. Gap analysis below is what's actually new/actionable.
 
-- [ ] Fix `src/resolve.py`'s module docstring (lines 9-15): it says scoring untagged
+- [x] Fix `src/resolve.py`'s module docstring (lines 9-15): it says scoring untagged
       candidates against a reference "needs a per-type reference configuration that
       doesn't exist anywhere in this project yet" and calls this "a real, separate gap."
       That gap is already closed — confirmed by reading `tests/test_onboarding.py`
@@ -423,12 +423,12 @@ open task. Gap analysis below is what's actually new/actionable.
       `template` argument passed into it. `resolve.py`'s docstring was written in commit
       `637a130`, before `onboarding.py` existed (`b7f07b4`, later) — it's stale
       documentation actively misleading a future reader into re-solving an already-solved
-      problem, not a real gap. Fix: replace the "real, separate gap" paragraph with a
+      problem, not a real gap. Fixed: replaced the "real, separate gap" paragraph with a
       pointer to `onboarding.py`'s actual resolution (an onboarded template slide, run
       through `resolve_slide_instance()` itself, *is* the per-type reference — no
-      separate config format was ever needed). Pure doc fix, no behavior change, no new
-      tests required — but re-run `python3 -m pytest tests/ -v` and `python3 -m mypy src/`
-      after editing to confirm nothing else assumed the stale framing.
+      separate config format was ever needed). Pure doc fix, no behavior change. Confirmed
+      `python3 -m pytest tests/ -v` (68 passed) and `python3 -m mypy src/` (no issues, 10
+      source files) both still pass after editing.
 
 - [ ] Decide and document whether `vba/` follows the specs-driven process the rest of
       this repo uses (why: every file under `src/` traces to a `specs/*.md` file that
