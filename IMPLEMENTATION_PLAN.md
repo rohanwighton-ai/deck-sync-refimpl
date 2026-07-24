@@ -450,6 +450,47 @@ open task. Gap analysis below is what's actually new/actionable.
       `python3 -m pytest tests/ -v` (68 passed) and `python3 -m mypy src/` (no issues, 10
       source files) both still pass.
 
+## Priority 12 (2026-07-24 pass): VBA port order, module 1 (discovery)
+
+- [x] Port `discovery` per `specs/vba-port.md`'s numbered port order (module 1 of 6;
+      module 2, `identity_tags`, was already done out-of-order as the original spike —
+      confirmed nothing else in that order has been started: `ls vba/` before this task
+      showed only `InjectPrimitive.bas`/`SPIKE_NOTES.md`). Added `vba/Discovery.bas`:
+      `DiscoverSlide(sld)`/`DiscoverCustomLayout(layout)` walk the live `Shapes`/
+      `GroupShapes` collections recursively (no XML at all, unlike the Python original,
+      which has no host application to ask), reproducing `discovery.py`'s actual walked
+      scope — including the non-obvious detail that it only ever recognizes
+      `<p:grpSp>`/`<p:sp>`/`<p:pic>`, so tables/charts/connectors/OLE objects are already
+      invisible to the Python version regardless of content, not merely "type-agnostic"
+      per discovery.md's requirement language taken alone. Added
+      `vba/SPIKE_NOTES_Discovery.md` (mirroring `SPIKE_NOTES.md`'s format) documenting
+      real, unresolved divergences found while porting rather than glossed over:
+      **`PlaceholderIdx` cannot be ported at all** — PowerPoint's object model has no
+      `Shape.PlaceholderFormat.Idx`-equivalent (unlike `Shape.Tags`, which the earlier
+      spike found *does* have a native equivalent), so this is flagged as real
+      unfinished work for whichever module needs it first (almost certainly `matching`,
+      port-order step 3, since idx is `matching.md`'s top-weighted signal) rather than
+      invented or silently dropped; placeholder *type* is a best-effort enum-to-string
+      mapping, not authoritative; position/size convert points→EMU (×12700) and are not
+      always bit-exact against Python's raw integer EMU reads; whether VBA already
+      resolves nested-shape position to slide-absolute coordinates (which would make
+      this port *more* correct than Python's documented local-offset-only limit) is
+      flagged explicitly as unconfirmed, not assumed either way. Manual verification
+      recipe cross-checks against both existing fixtures' exact already-proven Python
+      values (`tests/test_discovery.py`'s shp-groupshape.pptx 4-shape/zero-field/
+      Group-4-nesting case and mst-slide-layouts.pptx's title/body placeholder type
+      case) — not executed here (no Windows/Office in this environment, same
+      constraint `InjectPrimitive.bas` already documented). No `src`/`tests` changes;
+      confirmed `python3 -m pytest tests/ -v` (70 passed) and `python3 -m mypy src/`
+      (no issues, 10 source files) both still pass (unaffected, as expected for a
+      vba/-only change).
+      **Still open for a future pass**: port-order steps 3 (`matching`), 4
+      (`resolve`+`sync_operations`), 5 (`onboarding`), 6 (Excel-side) remain unported.
+      Step 3 in particular inherits this task's flagged `PlaceholderIdx` gap and will
+      need to resolve it (native fallback to raw OOXML, per `specs/vba-port.md`'s
+      explicit-fallback allowance) before it can port `matching.md`'s
+      placeholder-index signal faithfully.
+
 ## Notes for next planning pass
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
   settings. Worth confirming this stays intentional as more modules are added. Still true
