@@ -282,8 +282,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons()
-    AppendResult report, "CommandBarUI_ShowToolbarCreatesFourWiredButtons", r
+    r = Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons()
+    AppendResult report, "CommandBarUI_ShowToolbarCreatesFiveWiredButtons", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -294,6 +294,26 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     r = "": On Error Resume Next: Err.Clear
     r = Test_CommandBarUI_HideToolbarRemovesIt()
     AppendResult report, "CommandBarUI_HideToolbarRemovesIt", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_AdoptFlow_ValidateAdoptionSelectionSortsIntoDeckOrder()
+    AppendResult report, "AdoptFlow_ValidateAdoptionSelectionSortsIntoDeckOrder", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_AdoptFlow_ValidateAdoptionSelectionRejectsNonSlideSelection()
+    AppendResult report, "AdoptFlow_ValidateAdoptionSelectionRejectsNonSlideSelection", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_AdoptFlow_ExcludeTemplateSlideRemovesOnlyTemplate()
+    AppendResult report, "AdoptFlow_ExcludeTemplateSlideRemovesOnlyTemplate", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_AdoptFlow_BuildAdoptionReviewSummaryCountsAndListsNonReady()
+    AppendResult report, "AdoptFlow_BuildAdoptionReviewSummaryCountsAndListsNonReady", r
     On Error GoTo 0
 
     RunAllTests = report
@@ -2096,7 +2116,7 @@ End Function
 ' CommandBarUI
 ' ---------------------------------------------------------------------
 
-Private Function Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons() As String
+Private Function Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons() As String
     Dim result As String
 
     CommandBarUI.ShowToolbar
@@ -2104,14 +2124,14 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons() As Strin
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar 'Deck Sync' exists after ShowToolbar")
-    result = result & Assert(bar.Controls.count = 4, "toolbar has 4 buttons, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 5, "toolbar has 5 buttons, got " & bar.Controls.count)
 
     ' PowerPoint normalizes a set OnAction like "RibbonUI.SyncNow" to its own
     ' "<PresentationName>!SyncNow" display form (module-unqualified) --
     ' confirmed 2026-07-26 against real Office. Match on the bare Sub name
     ' rather than the string this module actually assigns.
     Dim expectedActions As String
-    expectedActions = "SyncNow|NewPeriod|OnboardNewType|ResolveUnmatchedFields"
+    expectedActions = "SyncNow|NewPeriod|OnboardNewType|ResolveUnmatchedFields|AdoptExistingSlides"
 
     Dim i As Long
     For i = 1 To bar.Controls.count
@@ -2121,11 +2141,11 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons() As Strin
         bangPos = InStr(ctrl.OnAction, "!")
         Dim subName As String
         subName = IIf(bangPos > 0, Mid(ctrl.OnAction, bangPos + 1), ctrl.OnAction)
-        result = result & Assert(InStr(expectedActions, subName) > 0, "button '" & ctrl.Caption & "' OnAction '" & ctrl.OnAction & "' resolves to one of the four real action Subs")
+        result = result & Assert(InStr(expectedActions, subName) > 0, "button '" & ctrl.Caption & "' OnAction '" & ctrl.OnAction & "' resolves to one of the five real action Subs")
     Next i
 
     CommandBarUI.HideToolbar
-    Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons = result
+    Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons = result
 End Function
 
 Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
@@ -2137,7 +2157,7 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar still exists after calling ShowToolbar twice")
-    result = result & Assert(bar.Controls.count = 4, "still exactly 4 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 5, "still exactly 5 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarIsIdempotent = result
@@ -2160,4 +2180,131 @@ Private Function Test_CommandBarUI_HideToolbarRemovesIt() As String
     result = result & Assert(True, "HideToolbar is safe to call when nothing exists")
 
     Test_CommandBarUI_HideToolbarRemovesIt = result
+End Function
+
+' ---------------------------------------------------------------------
+' AdoptFlow
+' ---------------------------------------------------------------------
+
+Private Function Test_AdoptFlow_ValidateAdoptionSelectionSortsIntoDeckOrder() As String
+    Dim result As String
+
+    Dim sld1 As Object, sld2 As Object, sld3 As Object
+    Set sld1 = NewBlankSlide()
+    Set sld2 = NewBlankSlide()
+    Set sld3 = NewBlankSlide()
+
+    ' Slides.Range(...).Select only actually registers as a slide-type
+    ' selection (Selection.Type = ppSelectionSlides) when the window is in
+    ' Slide Sorter view -- confirmed 2026-07-26 against real Office: in
+    ' Normal view (where NewBlankSlide() leaves the window via GotoSlide),
+    ' Selection.Type stayed ppSelectionNone under COM automation even though
+    ' the .Select call itself raised no error. This is an automation-only
+    ' quirk, not a real-user limitation -- a human Ctrl/Shift-clicking slide
+    ' thumbnails in Normal view's own thumbnail pane does not have this
+    ' problem, only headless automation driving .Select with no genuine pane
+    ' focus does. Switched back to Normal view afterward so later tests in
+    ' this suite (which all assume Normal view, e.g. NewBlankSlide()'s own
+    ' GotoSlide) are unaffected.
+    Dim priorViewType As Long
+    priorViewType = Application.ActiveWindow.ViewType
+    Application.ActiveWindow.ViewType = 7 ' ppViewSlideSorter
+    Application.ActivePresentation.Slides.Range(Array(sld3.SlideIndex, sld1.SlideIndex, sld2.SlideIndex)).Select
+
+    Dim outSlides() As Object
+    Dim errMsg As String
+    errMsg = AdoptFlow.ValidateAdoptionSelection(Application.ActiveWindow.Selection, outSlides)
+
+    Application.ActiveWindow.ViewType = priorViewType
+
+    result = result & Assert(errMsg = "", "selection validated, got error '" & errMsg & "'")
+
+    Dim lo As Long, hi As Long, hasSlides As Boolean
+    On Error Resume Next
+    lo = LBound(outSlides): hi = UBound(outSlides): hasSlides = (Err.Number = 0)
+    On Error GoTo 0
+
+    result = result & Assert(hasSlides And (hi - lo + 1) = 3, "all 3 selected slides returned, got " & IIf(hasSlides, hi - lo + 1, 0))
+    If hasSlides And (hi - lo + 1) = 3 Then
+        result = result & Assert(outSlides(lo).SlideID = sld1.SlideID, "first returned slide is the lowest SlideIndex (sld1), got SlideID " & outSlides(lo).SlideID)
+        result = result & Assert(outSlides(lo + 1).SlideID = sld2.SlideID, "second returned slide is sld2")
+        result = result & Assert(outSlides(lo + 2).SlideID = sld3.SlideID, "third returned slide is the highest SlideIndex (sld3)")
+    End If
+
+    Test_AdoptFlow_ValidateAdoptionSelectionSortsIntoDeckOrder = result
+End Function
+
+Private Function Test_AdoptFlow_ValidateAdoptionSelectionRejectsNonSlideSelection() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp.Select
+
+    Dim outSlides() As Object
+    Dim errMsg As String
+    errMsg = AdoptFlow.ValidateAdoptionSelection(Application.ActiveWindow.Selection, outSlides)
+
+    result = result & Assert(errMsg <> "", "a shape selection (not a slide selection) is rejected with an error message")
+
+    Test_AdoptFlow_ValidateAdoptionSelectionRejectsNonSlideSelection = result
+End Function
+
+Private Function Test_AdoptFlow_ExcludeTemplateSlideRemovesOnlyTemplate() As String
+    Dim result As String
+
+    Dim sld1 As Object, sld2 As Object, sld3 As Object
+    Set sld1 = NewBlankSlide()
+    Set sld2 = NewBlankSlide()
+    Set sld3 = NewBlankSlide()
+
+    Dim slides(1 To 3) As Object
+    Set slides(1) = sld1
+    Set slides(2) = sld2
+    Set slides(3) = sld3
+
+    Dim filtered() As Object
+    filtered = AdoptFlow.ExcludeTemplateSlide(slides, sld2)
+
+    result = result & Assert((UBound(filtered) - LBound(filtered) + 1) = 2, "2 slides remain after excluding the template, got " & (UBound(filtered) - LBound(filtered) + 1))
+    Dim lo As Long
+    lo = LBound(filtered)
+    result = result & Assert(filtered(lo).SlideID = sld1.SlideID, "first remaining slide is sld1")
+    result = result & Assert(filtered(lo + 1).SlideID = sld3.SlideID, "second remaining slide is sld3 (order preserved, sld2 removed)")
+
+    Test_AdoptFlow_ExcludeTemplateSlideRemovesOnlyTemplate = result
+End Function
+
+Private Function Test_AdoptFlow_BuildAdoptionReviewSummaryCountsAndListsNonReady() As String
+    Dim result As String
+
+    Dim plans(1 To 4) As AdoptionSlidePlan
+    plans(1).SlideLabel = "Slide 1 (A)"
+    plans(1).Disposition = "ready"
+    plans(1).Reason = "no existing keyless Data-sheet row matches verbatim -- will create a fresh row (instance_key required from the human)"
+
+    plans(2).SlideLabel = "Slide 2 (B)"
+    plans(2).Disposition = "already_linked"
+
+    plans(3).SlideLabel = "Slide 3 (C)"
+    plans(3).Disposition = "needs_confirmation"
+
+    plans(4).SlideLabel = "Slide 4 (D)"
+    plans(4).Disposition = "unclassified"
+
+    Dim summary As String
+    summary = AdoptFlow.BuildAdoptionReviewSummary(plans)
+
+    result = result & Assert(InStr(summary, "1 ready to link") > 0, "summary reports 1 ready, got: " & summary)
+    result = result & Assert(InStr(summary, "1 already linked") > 0, "summary reports 1 already linked, got: " & summary)
+    result = result & Assert(InStr(summary, "1 need confirmation") > 0, "summary reports 1 needing confirmation, got: " & summary)
+    result = result & Assert(InStr(summary, "1 unclassified") > 0, "summary reports 1 unclassified, got: " & summary)
+    result = result & Assert(InStr(summary, "Slide 1 (A)") > 0, "ready slide is listed by label")
+    result = result & Assert(InStr(summary, "Slide 3 (C)") > 0, "needs_confirmation slide is listed by label")
+    result = result & Assert(InStr(summary, "Slide 4 (D)") > 0, "unclassified slide is listed by label")
+    result = result & Assert(InStr(summary, "Slide 2 (B)") = 0, "already_linked slides are NOT listed in the detail section (counted only)")
+
+    Test_AdoptFlow_BuildAdoptionReviewSummaryCountsAndListsNonReady = result
 End Function

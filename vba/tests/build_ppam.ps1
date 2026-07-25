@@ -57,7 +57,7 @@ $productionModules = @(
     "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas",
     "SlideDuplication.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas",
     "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas",
-    "CommandBarUI.bas"
+    "AdoptFlow.bas", "CommandBarUI.bas"
 )
 
 function Request-GracefulQuit {

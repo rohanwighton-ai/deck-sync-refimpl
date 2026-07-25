@@ -1,5 +1,32 @@
 # Implementation Plan
 
+## Priority 25 (2026-07-26 pass): Priority 22's own deferred "future pass" — Adopt Existing Slides wired to the toolbar
+
+Closes the one deferral Priority 22 (`deck-adoption.md`) explicitly left open:
+"`ribbon-ui.md` gets an 'Adopt Existing Slides' entry point in a *future*
+pass." Built `vba/AdoptFlow.bas` (mirrors `OnboardFlow.bas`'s relationship to
+`Onboarding.bas` — pure interactive glue, `DeckAdoption.bas`'s `PlanAdoption`/
+`CommitAdoption` still does every real decision) and wired a fifth
+`CommandBarUI.bas` toolbar button to it.
+
+Two real bugs found and fixed this pass, full account in
+`SPIKE_NOTES_AdoptFlow.md`:
+1. A whole-array `ByRef` assignment (`outSlides = unsorted`) left the
+   caller's array genuinely unallocated — first time this project tried that
+   shape for a `ByRef` array out-param; fixed to match `PlanAdoption`'s own
+   `ReDim`-then-populate-in-place convention.
+2. `Slides.Range(...).Select` under COM automation only registers as a real
+   slide-type selection in Slide Sorter view — in Normal view (where
+   `NewBlankSlide()` leaves the test window), `Selection.Type` silently
+   stayed `ppSelectionNone`. Confirmed automation-only, not a real-user
+   limitation; fixed in the test, not the production code.
+
+65/65 real-Office tests pass (up from 61 at the end of Priority 24).
+Requires a full rebuild of `dist/deck-sync-refimpl.ppam` (import all 18
+modules, Save As again) to actually reach a real installed add-in — same
+manual release-step constraint Priority 24 already established, not a new
+one.
+
 ## Priority 23 (2026-07-26 pass, hand-driven, WSL host with real Office): real-Office verification + starting Priority 21
 
 Run directly on the WSL host (not the Docker container) with `powershell.exe`
@@ -378,13 +405,14 @@ this task's own future filename).
       Needs `SPIKE_NOTES_DeckAdoption.md` (new file, same format as every other VBA
       module) with a manual verification recipe — no automated harness exists for
       this either, same constraint as Priority 21.
-      **Deliberately excluded per the spec's own Non-goals**: no UI for this yet
-      (`ribbon-ui.md` gets an "Adopt Existing Slides" entry point in a *future*
-      pass, per that spec's own Non-goals section — confirmed by reading both
-      specs' Non-goals side by side, they agree on this boundary) — build the
+      **Deliberately excluded per the spec's own Non-goals at the time**: no UI
+      for this yet (`ribbon-ui.md` gets an "Adopt Existing Slides" entry point
+      in a *future* pass, per that spec's own Non-goals section) — build the
       engine layer only, callable from the VBE, same as every other module before
-      its own ribbon wiring landed. No mixed-type auto-classification, no
-      multi-period-history reconstruction, no whole-deck implicit scanning.
+      its own ribbon wiring landed. **That future pass is Priority 25** (same
+      day, 2026-07-26) — `vba/AdoptFlow.bas` + a fifth toolbar button now wire
+      this in. No mixed-type auto-classification, no multi-period-history
+      reconstruction, no whole-deck implicit scanning remain true non-goals.
 
       Built `vba/DeckAdoption.bas` as a plan/commit pair, mirroring this project's
       own existing `SyncOperations.Plan*` / `RunSync.Run*` split rather than
