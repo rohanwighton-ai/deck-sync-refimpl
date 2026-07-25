@@ -5,42 +5,51 @@ Module 3 of `specs/vba-port.md`'s port order. Ports `src/matching.py`'s
 operating on `Discovery.Candidate` arrays.
 
 **Executed against real Office for the first time on 2026-07-25** (`Discover
-Slide`+`Match`'s core scoring/tier-1/sibling-ambiguity path all confirmed
-correct via `vba/tests/TestRunner.bas`, driven headlessly by
-`vba/tests/run_vba_tests.ps1`). One real, confirmed finding from that run,
-documented below under "EnrichPlaceholderIdx's zip-extraction fallback is
-broken as written" -- everything else in this file describes the
-pre-execution design and still stands.
+Slide`+`Match`'s core scoring/tier-1/sibling-ambiguity path, and as of a
+same-day follow-up pass, `EnrichPlaceholderIdx`'s raw-OOXML fallback too --
+all confirmed correct via `vba/tests/TestRunner.bas`, driven headlessly by
+`vba/tests/run_vba_tests.ps1`). Two real, confirmed, and now-fixed findings
+from that work are documented below; everything else in this file describes
+the pre-execution design and still stands.
 
-## EnrichPlaceholderIdx's zip-extraction fallback is broken as written (confirmed 2026-07-25)
+## EnrichPlaceholderIdx's zip-extraction fallback was broken as originally written (found + fixed 2026-07-25)
 
-`LoadPartXml`'s `shellApp.Namespace(zipPath)` call reliably returns
+`LoadPartXml`'s `shellApp.Namespace(zipPath)` call reliably returned
 `Nothing` when driven via COM automation (`Application.Run` from an
 external client), even against a **verified-valid, non-corrupt** `.pptx`
-copy (confirmed independently: .NET's `System.IO.Compression.ZipFile` opens
-the same file and reports all 39 real entries without issue). Reproduced
+copy (confirmed independently: .NET's `System.IO.Compression.ZipFile` opened
+the same file and reported all 39 real entries without issue). Reproduced
 three times, including with a 2-second delay before the `Namespace()` call
 (ruling out a shell-notification-lag race). Root cause not fully isolated
 (a plausible theory: the Explorer "compressed folder" shell namespace
 extension behaves differently, or isn't reliably available, under
-automation-driven COM sessions vs. genuine interactive use -- not confirmed
-further, diminishing returns on this session's time budget).
+automation-driven COM sessions vs. genuine interactive use).
 
-**Practical impact**: `EnrichPlaceholderIdx` -- and therefore the
-placeholder-index matching signal it's meant to resolve -- does not
-currently work as implemented, for any caller, not just the manual
-recipe below. This is a real, load-bearing gap: `ManualSmokeTest_
-PlaceholderIndex`'s recipe (below) has never actually been exercisable.
-`Match()`/`ScoreCandidate()` themselves are unaffected and confirmed
-correct -- they just never receive a resolved placeholder index in
-practice, so the placeholder signal silently stays inapplicable
-(renormalized away) rather than contributing, in every real run so far.
+**Fixed** by replacing the `Shell.Application` technique entirely: `LoadPartXml`
+now shells out to `tar.exe` (bsdtar, bundled with Windows 10 1803+/Windows 11
+by default) via `WScript.Shell.Run("cmd.exe /c tar -xf ... -C ... <entry>",
+0, True)` -- confirmed working standalone against a real `.pptx` (correct
+XML content extracted and readable) before being wired into `LoadPartXml`,
+and confirmed working end-to-end via the real test suite after. Avoids the
+Windows shell namespace layer entirely, which is exactly what was failing.
 
-**Not fixed in this pass** -- this needs a real design decision (a
-different zip-access technique entirely, e.g. driving a visible Explorer
-window instead of a headless `Shell.Application` object, or dropping the
-raw-OOXML fallback in favor of something else), not a one-line patch.
-Flagged here and in `IMPLEMENTATION_PLAN.md` as open.
+**A second, previously-masked bug this fix exposed**: `CreateObject
+("MSXML2.DOMDocument60")` (no dots) raises Err 429 "ActiveX component can't
+create object" on this machine -- `LoadPartXml` never actually reached this
+line before the fix above, since the `Shell.Application` failure always
+short-circuited first, so this had never been exercised. The dotted ProgID
+`"MSXML2.DOMDocument.6.0"` works and returns the identical real
+`DOMDocument60` object (confirmed via `TypeName`). Fixed by switching the
+ProgID string; the object type/API used afterward is unchanged.
+
+**Practical impact of both fixes**: `EnrichPlaceholderIdx` -- and therefore
+the placeholder-index matching signal it resolves -- now genuinely works,
+confirmed end-to-end (extracts a real saved slide's XML, resolves a real
+`<p:ph>` index) via `Test_Matching_EnrichPlaceholderIdxReadsRealFile`.
+`ManualSmokeTest_PlaceholderIndex`'s recipe (below) is now actually
+exercisable, not just documented. `Match()`/`ScoreCandidate()` themselves
+were never affected -- they just now receive a genuinely resolved
+placeholder index instead of the signal silently staying inapplicable.
 
 ## What was ported
 

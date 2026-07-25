@@ -66,6 +66,35 @@ guidance.
   harness the same day this was found; see each module's own
   `SPIKE_NOTES_*.md` for the specific sites.
 
+- **VBA: `Shell.Application.Namespace(zipPath)` (the standard "no zip
+  library in stock VBA" escape hatch) reliably returns `Nothing` under COM
+  automation** (`Application.Run` from an external client), even against
+  an independently-verified-valid, non-corrupt zip -- confirmed 2026-07-25
+  against a real `.pptx`, reproduced 3x including with a delay to rule out
+  a shell-notification race. Root cause not fully isolated (plausible
+  theory: the Explorer "compressed folder" namespace extension behaves
+  differently under automation vs. genuine interactive use). **Prefer
+  shelling out to `tar.exe`** instead (bsdtar, bundled with Windows 10
+  1803+/Windows 11 by default, auto-detects zip format despite the name):
+  `CreateObject("WScript.Shell").Run("cmd.exe /c tar -xf ""<zip>"" -C
+  ""<destdir>"" ""<entry>""", 0, True)` -- windowStyle 0 keeps it
+  invisible, the `True` waits for completion and returns tar's real exit
+  code, avoiding the shell namespace layer (and its polling-for-async-
+  completion dance) entirely. Fixed in `Matching.bas`'s `LoadPartXml`.
+
+- **VBA: `CreateObject("MSXML2.DOMDocument60")` (no dots) can raise Err 429
+  "ActiveX component can't create object" even when MSXML 6.0 is genuinely
+  installed** -- confirmed 2026-07-25: the dotted ProgID form,
+  `"MSXML2.DOMDocument.6.0"`, works and returns the identical real
+  `DOMDocument60` object (`TypeName` confirmed) on the same machine where
+  the no-dot form fails. This bug had been silently masked in
+  `Matching.bas` for a full session because the `Shell.Application`
+  zip-extraction failure above always short-circuited first, so this line
+  had never actually been reached before both were found and fixed the
+  same day. If a future module needs any other versioned MSXML/ActiveX
+  ProgID, try the dotted form first rather than assuming the no-dot form
+  is equivalent.
+
 ## Testing
 
 - **A real, headless test harness now exists and has actually run against

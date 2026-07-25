@@ -298,8 +298,11 @@ Private Function Test_Matching_EnrichPlaceholderIdxReadsRealFile(stagingDir As S
     Dim candidates() As Candidate
     candidates = Discovery.DiscoverSlide(sld)
 
+    Dim partName As String
+    partName = "ppt/slides/slide" & sld.SlideIndex & ".xml"
+
     Dim ok As Boolean
-    ok = Matching.EnrichPlaceholderIdx(candidates, savePath, "ppt/slides/slide" & sld.SlideIndex & ".xml")
+    ok = Matching.EnrichPlaceholderIdx(candidates, savePath, partName)
     result = result & Assert(ok, "EnrichPlaceholderIdx completed without error against a real saved file")
 
     Dim anyPlaceholder As Boolean, anyResolved As Boolean

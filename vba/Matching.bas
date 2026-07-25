@@ -12,12 +12,6 @@ Option Explicit
 ' via a raw-OOXML fallback (ResolvePlaceholderIdx/EnrichPlaceholderIdx)
 ' since PowerPoint's object model has no native placeholder-idx property.
 
-#If VBA7 Then
-    Private Declare PtrSafe Sub SleepAPI Lib "kernel32" Alias "Sleep" (ByVal dwMilliseconds As Long)
-#Else
-    Private Declare Sub SleepAPI Lib "kernel32" Alias "Sleep" (ByVal dwMilliseconds As Long)
-#End If
-
 ' Signal weights, in specs/matching.md's reliability order -- identical
 ' values to matching.py's module-level constants.
 Private Const PLACEHOLDER_WEIGHT As Double = 0.5
@@ -360,10 +354,25 @@ Public Function EnrichPlaceholderIdx(ByRef candidates() As Candidate, pptxPath A
     EnrichPlaceholderIdx = True
 End Function
 
-' Extracts `pptxPath` (a zip under the hood) to a temp folder using
-' Shell.Application's native zip-folder support -- there is no zip library
-' in stock VBA, and this is the standard escape hatch. Loads and returns
+' Extracts `pptxPath` (a zip under the hood) to a temp folder and loads
 ' `partName`'s XML as an MSXML2.DOMDocument60, or Nothing on any failure.
+'
+' Originally used Shell.Application's Namespace()/CopyHere zip-folder
+' support -- the standard VBA escape hatch for "no zip library in stock
+' VBA" -- but that technique was confirmed BROKEN under COM automation on
+' 2026-07-25: Namespace(zipPath) reliably returned Nothing even against an
+' independently-verified-valid .pptx (opened cleanly by .NET's
+' ZipFile.OpenRead, 39 real entries), reproduced 3x including with an
+' explicit delay to rule out a shell-notification race. Root cause not
+' fully isolated; see SPIKE_NOTES_Matching.md's original finding.
+'
+' Replaced with shelling out to tar.exe (bsdtar, bundled with Windows 10
+' 1803+ and Windows 11 by default -- confirmed present and working against
+' a real .pptx on this exact machine, including extracting a real slide
+' part and loading its actual XML content, before this replacement was
+' written). tar.exe auto-detects zip format despite the name; this avoids
+' Shell.Application/the Windows shell namespace entirely, which is exactly
+' the layer that was failing under automation.
 Private Function LoadPartXml(pptxPath As String, partName As String) As Object
     On Error GoTo Fail
 
@@ -380,32 +389,37 @@ Private Function LoadPartXml(pptxPath As String, partName As String) As Object
     fso.CopyFile pptxPath, zipPath, True
     fso.CreateFolder extractPath
 
-    Dim shellApp As Object
-    Set shellApp = CreateObject("Shell.Application")
-    Dim zipFolder As Object, destFolder As Object
-    Set zipFolder = shellApp.Namespace(zipPath)
-    Set destFolder = shellApp.Namespace(extractPath)
-    If zipFolder Is Nothing Or destFolder Is Nothing Then GoTo Fail
+    ' -xf: extract from file. -C: change to this directory first. The
+    ' final argument is the specific archive entry to extract (tar accepts
+    ' forward slashes on Windows) -- only that one part is pulled out, not
+    ' the whole package. WScript.Shell.Run's windowStyle=0 keeps this
+    ' invisible; waitOnReturn=True (last arg) blocks until tar exits and
+    ' returns its real exit code, so there is no CopyHere-style "did it
+    ' actually finish yet" polling needed this time -- Run's own return is
+    ' the completion signal.
+    Dim cmd As String
+    cmd = "cmd.exe /c tar -xf """ & zipPath & """ -C """ & extractPath & """ """ & partName & """"
 
-    ' Flags 4+16: no progress UI, no overwrite-confirmation dialog.
-    destFolder.CopyHere zipFolder.Items, 20
+    Dim wsh As Object
+    Set wsh = CreateObject("WScript.Shell")
+    Dim exitCode As Long
+    exitCode = wsh.Run(cmd, 0, True)
+    If exitCode <> 0 Then GoTo Fail
 
-    ' CopyHere is an async shell operation under the hood -- it can return
-    ' before the files are actually on disk. Poll for the target part
-    ' rather than assuming completion the instant CopyHere returns (a real,
-    ' documented gotcha with this technique, not paranoia).
     Dim targetPath As String
     targetPath = extractPath & "\" & Replace(partName, "/", "\")
-    Dim waitedMs As Long
-    waitedMs = 0
-    Do While Not fso.FileExists(targetPath) And waitedMs < 10000
-        SleepAPI 200
-        waitedMs = waitedMs + 200
-    Loop
     If Not fso.FileExists(targetPath) Then GoTo Fail
 
+    ' ProgID is "MSXML2.DOMDocument.6.0" (dotted), not "MSXML2.DOMDocument60"
+    ' (no dots) -- confirmed by direct probe (2026-07-25) that the no-dot
+    ' form raises Err 429 "ActiveX component can't create object" on this
+    ' machine while the dotted form succeeds and returns the identical real
+    ' DOMDocument60 object (TypeName confirmed). A second, previously-masked
+    ' bug: the original Shell.Application failure always short-circuited
+    ' before execution ever reached this line, so this was never actually
+    ' exercised until the zip-extraction technique was replaced.
     Dim dom As Object
-    Set dom = CreateObject("MSXML2.DOMDocument60")
+    Set dom = CreateObject("MSXML2.DOMDocument.6.0")
     dom.async = False
     dom.setProperty "SelectionLanguage", "XPath"
     If Not dom.Load(targetPath) Then GoTo Fail

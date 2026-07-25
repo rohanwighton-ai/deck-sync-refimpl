@@ -131,4 +131,6 @@ else {
     Write-Output $excelReport
 }
 
-Remove-Item -Path $staging -Recurse -Force -ErrorAction SilentlyContinue
+if (-not $env:DECK_SYNC_KEEP_STAGING) {
+    Remove-Item -Path $staging -Recurse -Force -ErrorAction SilentlyContinue
+}

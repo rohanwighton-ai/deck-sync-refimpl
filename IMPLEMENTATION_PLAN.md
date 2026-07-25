@@ -731,6 +731,41 @@ open task. Gap analysis below is what's actually new/actionable.
       No `src`/`tests` changes. `python3 -m pytest`/`mypy` not re-run (bare host has
       neither; unaffected regardless since nothing under `src/`/`tests/` changed).
 
+## Priority 18 (2026-07-25 pass): fix EnrichPlaceholderIdx's zip-extraction, all 21 real tests now pass
+
+- [x] Fix the `Matching.EnrichPlaceholderIdx` zip-extraction failure Priority 17 found and left
+      open. Replaced `LoadPartXml`'s `Shell.Application.Namespace()`/`CopyHere` technique
+      entirely with shelling out to `tar.exe` (bsdtar, bundled with Windows 10 1803+/Windows 11
+      by default) via `WScript.Shell.Run("cmd.exe /c tar -xf ... -C ... <entry>", 0, True)` --
+      confirmed working standalone against a real saved `.pptx` (correct real XML content
+      extracted) before being wired in, avoiding the Windows shell namespace layer entirely
+      (the layer that was actually failing, per Priority 17's finding).
+      That fix immediately surfaced a **second, previously-masked bug**: `CreateObject
+      ("MSXML2.DOMDocument60")` (no dots) raises Err 429 "ActiveX component can't create
+      object" on this machine -- execution had never actually reached that line before,
+      since the `Shell.Application` failure always short-circuited first. Root-caused by
+      probing every plausible MSXML ProgID variant directly: `"MSXML2.DOMDocument.6.0"`
+      (dotted) works and returns the identical real `DOMDocument60` object (confirmed via
+      `TypeName`). Fixed by switching the ProgID string only -- the object type/API used
+      afterward (`.async`, `SelectionLanguage`/XPath, `.Load`) is unchanged.
+      Diagnosed via a temporary debug-log instrumentation added directly to `LoadPartXml`
+      (write cmd/exitCode/file-existence/dom-load-result to a log file on every call),
+      re-run through the real `run_vba_tests.ps1` pipeline rather than isolated probes --
+      isolated ad hoc probes of the exact same file/part succeeded even while the real test
+      still failed, which is what actually pointed at "something after the point my probes
+      covered" rather than the extraction step itself. Instrumentation removed before commit.
+      **Result: all 21 real tests now pass** (13/13 PowerPoint, 8/8 Excel) -- the full suite
+      is clean for the first time. Updated `SPIKE_NOTES_Matching.md`'s finding from "confirmed
+      broken, not fixed this pass" to "found and fixed," with both root causes and the fix
+      technique documented.
+      No `src`/`tests` changes. `python3 -m pytest`/`mypy` not re-run (bare host has neither;
+      unaffected regardless since nothing under `src/`/`tests/` changed).
+      **New assumption now load-bearing, worth flagging**: the raw-OOXML fallback path
+      depends on `tar.exe` being present (Windows 10 1803+/Windows 11 default -- true of the
+      real target machine, confirmed, but not universally true of every conceivable Windows
+      install `EnrichPlaceholderIdx` might someday run on). Not treated as a blocker; noted
+      for awareness if this ever needs to run somewhere older.
+
 ## Notes for next planning pass
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
   settings. Worth confirming this stays intentional as more modules are added. Still true
