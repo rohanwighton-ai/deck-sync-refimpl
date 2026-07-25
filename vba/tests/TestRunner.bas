@@ -141,6 +141,36 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckAdoption_AlreadyLinkedSlideSkipped()
+    AppendResult report, "DeckAdoption_AlreadyLinkedSlideSkipped", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow()
+    AppendResult report, "DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckAdoption_MediumConfidenceSlideNeedsConfirmationAndIsNotTagged()
+    AppendResult report, "DeckAdoption_MediumConfidenceSlideNeedsConfirmationAndIsNotTagged", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckAdoption_UnclassifiedSlideExcluded()
+    AppendResult report, "DeckAdoption_UnclassifiedSlideExcluded", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckAdoption_MatchesExistingKeylessRowLinksWithoutCreatingNewRow()
+    AppendResult report, "DeckAdoption_MatchesExistingKeylessRowLinksWithoutCreatingNewRow", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckAdoption_MultiSlideZeroBasedBatchKeepsIndicesAligned()
+    AppendResult report, "DeckAdoption_MultiSlideZeroBasedBatchKeepsIndicesAligned", r
+    On Error GoTo 0
+
     RunAllTests = report
 End Function
 
@@ -1030,4 +1060,373 @@ Private Function Test_RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched(
     result = result & Assert(Not dupDr.Ok, "re-rolling over to an already-used instance_key is refused, not silently double-created")
 
     Test_RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched = result
+End Function
+
+' ---------------------------------------------------------------------
+' DeckAdoption
+' ---------------------------------------------------------------------
+
+' Opens a fresh, blank Excel worksheet via cross-app automation, same
+' pattern as Test_RunSync_EndToEndCreatesSlidesFromFreshSheet -- DeckAdoption
+' always reads/writes a live worksheet, never a closed file. Caller is
+' responsible for wb.Close False / xl.Quit when done.
+Private Sub NewTestWorksheet(ByRef xl As Object, ByRef wb As Object, ByRef ws As Object)
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+    ws.Cells(1, 1).Value = "Instance ID"
+End Sub
+
+Private Function Test_DeckAdoption_AlreadyLinkedSlideSkipped() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim titleShp As Object
+    Set titleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 300, 50)
+    titleShp.TextFrame.TextRange.Text = "Template Title"
+    titleShp.Tags.Add "role", "Title"
+
+    Dim alreadySld As Object
+    Set alreadySld = NewBlankSlide()
+    Dim alreadyShp As Object
+    Set alreadyShp = alreadySld.Shapes.AddTextbox(msoTextOrientationHorizontal, 101, 100, 300, 50)
+    alreadyShp.TextFrame.TextRange.Text = "Already Linked"
+    alreadySld.Tags.Add "slide_type", "adopt-type"
+    alreadySld.Tags.Add "instance_key", "already-1"
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+
+    Dim slidesToAdopt(1 To 1) As Object
+    Set slidesToAdopt(1) = alreadySld
+
+    Dim harvestedValues() As Object
+    Dim plans() As AdoptionSlidePlan
+    plans = DeckAdoption.PlanAdoption(slidesToAdopt, templateSld, ws, harvestedValues)
+
+    result = result & Assert(UBound(plans) = 1, "one plan entry produced, got " & (UBound(plans) - LBound(plans) + 1))
+    result = result & Assert(plans(1).Disposition = "already_linked", "disposition is already_linked, got '" & plans(1).Disposition & "'")
+
+    Dim confirmedKeys(1 To 1) As String
+    confirmedKeys(1) = ""
+
+    Dim commitResult As AdoptionResult
+    commitResult = DeckAdoption.CommitAdoption(plans, slidesToAdopt, harvestedValues, confirmedKeys, "adopt-type", templateSld, ws)
+
+    result = result & Assert(commitResult.AlreadyLinkedCount = 1, "AlreadyLinkedCount=1, got " & commitResult.AlreadyLinkedCount)
+    result = result & Assert(commitResult.LinkedCount = 0, "LinkedCount=0 (nothing to link), got " & commitResult.LinkedCount)
+
+    wb.Close False
+    xl.Quit
+
+    Test_DeckAdoption_AlreadyLinkedSlideSkipped = result
+End Function
+
+Private Function Test_DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim titleShp As Object
+    Set titleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 300, 50)
+    titleShp.TextFrame.TextRange.Text = "Template Title"
+    titleShp.Tags.Add "role", "Title"
+
+    Dim candidateSld As Object
+    Set candidateSld = NewBlankSlide()
+    Dim candidateShp As Object
+    Set candidateShp = candidateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 102, 101, 300, 50)
+    candidateShp.TextFrame.TextRange.Text = "Harvested Title Value"
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+
+    Dim slidesToAdopt(1 To 1) As Object
+    Set slidesToAdopt(1) = candidateSld
+
+    Dim harvestedValues() As Object
+    Dim plans() As AdoptionSlidePlan
+    plans = DeckAdoption.PlanAdoption(slidesToAdopt, templateSld, ws, harvestedValues)
+
+    result = result & Assert(plans(1).Disposition = "ready", "disposition is ready, got '" & plans(1).Disposition & "'")
+    result = result & Assert(plans(1).MatchedKeylessRowId = "", "no keyless row to match against an empty sheet")
+    result = result & Assert(Not harvestedValues(1) Is Nothing, "harvested values captured for a ready slide")
+    If Not harvestedValues(1) Is Nothing Then
+        result = result & Assert(harvestedValues(1)("Title") = "Harvested Title Value", "harvested Title value correct, got '" & harvestedValues(1)("Title") & "'")
+    End If
+
+    Dim confirmedKeys(1 To 1) As String
+    confirmedKeys(1) = "adopt-rec-1"
+
+    Dim commitResult As AdoptionResult
+    commitResult = DeckAdoption.CommitAdoption(plans, slidesToAdopt, harvestedValues, confirmedKeys, "adopt-type", templateSld, ws)
+
+    result = result & Assert(commitResult.LinkedCount = 1, "LinkedCount=1, got " & commitResult.LinkedCount)
+    result = result & Assert(commitResult.FailedVerificationCount = 0, "no verification failures, got " & commitResult.FailedVerificationCount)
+
+    Dim instance As SlideInstance
+    instance = Resolve.ResolveSlideInstance(candidateSld)
+    result = result & Assert(instance.HasTypeTag And instance.TypeTag = "adopt-type", "slide tagged with slide_type, got '" & instance.TypeTag & "'")
+    result = result & Assert(instance.HasInstanceKey And instance.InstanceKey = "adopt-rec-1", "slide tagged with instance_key, got '" & instance.InstanceKey & "'")
+
+    Dim sheet As Sheet
+    sheet = ExcelOutput.ReadSheet(ws)
+    result = result & Assert(sheet.Rows.Exists("adopt-rec-1"), "Data-sheet row created for the new instance")
+    If sheet.Rows.Exists("adopt-rec-1") Then
+        result = result & Assert(sheet.Rows("adopt-rec-1")("Title") = "Harvested Title Value", "Data-sheet row carries the harvested value, got '" & sheet.Rows("adopt-rec-1")("Title") & "'")
+    End If
+
+    wb.Close False
+    xl.Quit
+
+    Test_DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow = result
+End Function
+
+' Reuses the exact same drift (title barely moved, body moved 600pt away)
+' Test_Onboarding_HighAndMediumConfidence already established scores
+' high/medium respectively (not low) -- see that test's own comment for why
+' this specific offset was chosen empirically.
+Private Function Test_DeckAdoption_MediumConfidenceSlideNeedsConfirmationAndIsNotTagged() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim titleShp As Object
+    Set titleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 300, 50)
+    titleShp.TextFrame.TextRange.Text = "Title text"
+    titleShp.Tags.Add "role", "Title"
+    Dim bodyShp As Object
+    Set bodyShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 200, 300, 200)
+    bodyShp.TextFrame.TextRange.Text = "Body text"
+    bodyShp.Tags.Add "role", "Body"
+
+    Dim candidateSld As Object
+    Set candidateSld = NewBlankSlide()
+    Dim candidateTitleShp As Object
+    Set candidateTitleShp = candidateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 102, 101, 300, 50)
+    candidateTitleShp.TextFrame.TextRange.Text = "Title text drifted"
+    Dim candidateBodyShp As Object
+    Set candidateBodyShp = candidateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 700, 700, 300, 200)
+    candidateBodyShp.TextFrame.TextRange.Text = "Body text drifted"
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+
+    Dim slidesToAdopt(1 To 1) As Object
+    Set slidesToAdopt(1) = candidateSld
+
+    Dim harvestedValues() As Object
+    Dim plans() As AdoptionSlidePlan
+    plans = DeckAdoption.PlanAdoption(slidesToAdopt, templateSld, ws, harvestedValues)
+
+    result = result & Assert(plans(1).Disposition = "needs_confirmation", "disposition is needs_confirmation, got '" & plans(1).Disposition & "'")
+
+    Dim confirmedKeys(1 To 1) As String
+    confirmedKeys(1) = "" ' irrelevant -- needs_confirmation is never committed regardless
+
+    Dim commitResult As AdoptionResult
+    commitResult = DeckAdoption.CommitAdoption(plans, slidesToAdopt, harvestedValues, confirmedKeys, "adopt-type", templateSld, ws)
+
+    result = result & Assert(commitResult.LinkedCount = 0, "nothing committed for a needs_confirmation slide, got LinkedCount=" & commitResult.LinkedCount)
+    result = result & Assert(commitResult.ExcludedUnclassifiedCount = 1, "reported in the excluded/unclassified bucket, got " & commitResult.ExcludedUnclassifiedCount)
+
+    Dim instance As SlideInstance
+    instance = Resolve.ResolveSlideInstance(candidateSld)
+    result = result & Assert(Not instance.HasTypeTag And Not instance.HasInstanceKey, "slide-level tags never written for a needs_confirmation slide")
+    Dim untouchedTitleShp As Object
+    Set untouchedTitleShp = FindShapeByRole(candidateSld, "Title")
+    result = result & Assert(untouchedTitleShp Is Nothing, "Title shape was never tagged either -- no partial commit")
+
+    wb.Close False
+    xl.Quit
+
+    Test_DeckAdoption_MediumConfidenceSlideNeedsConfirmationAndIsNotTagged = result
+End Function
+
+Private Function Test_DeckAdoption_UnclassifiedSlideExcluded() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim titleShp As Object
+    Set titleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 300, 50)
+    titleShp.TextFrame.TextRange.Text = "Template Title"
+    titleShp.Tags.Add "role", "Title"
+
+    Dim unrelatedSld As Object
+    Set unrelatedSld = NewBlankSlide()
+    unrelatedSld.Shapes.AddShape msoShapeOval, 500, 500, 50, 50 ' pure decoration, no text -- excluded by IsCandidateField entirely
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+
+    Dim slidesToAdopt(1 To 1) As Object
+    Set slidesToAdopt(1) = unrelatedSld
+
+    Dim harvestedValues() As Object
+    Dim plans() As AdoptionSlidePlan
+    plans = DeckAdoption.PlanAdoption(slidesToAdopt, templateSld, ws, harvestedValues)
+
+    result = result & Assert(plans(1).Disposition = "unclassified", "disposition is unclassified, got '" & plans(1).Disposition & "'")
+
+    Dim confirmedKeys(1 To 1) As String
+    confirmedKeys(1) = ""
+
+    Dim commitResult As AdoptionResult
+    commitResult = DeckAdoption.CommitAdoption(plans, slidesToAdopt, harvestedValues, confirmedKeys, "adopt-type", templateSld, ws)
+
+    result = result & Assert(commitResult.ExcludedUnclassifiedCount = 1, "reported excluded/unclassified, got " & commitResult.ExcludedUnclassifiedCount)
+    result = result & Assert(commitResult.LinkedCount = 0, "never forced in, got LinkedCount=" & commitResult.LinkedCount)
+
+    wb.Close False
+    xl.Quit
+
+    Test_DeckAdoption_UnclassifiedSlideExcluded = result
+End Function
+
+Private Function Test_DeckAdoption_MatchesExistingKeylessRowLinksWithoutCreatingNewRow() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim titleShp As Object
+    Set titleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 300, 50)
+    titleShp.TextFrame.TextRange.Text = "Template Title"
+    titleShp.Tags.Add "role", "Title"
+
+    Dim candidateSld As Object
+    Set candidateSld = NewBlankSlide()
+    Dim candidateShp As Object
+    Set candidateShp = candidateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 102, 101, 300, 50)
+    candidateShp.TextFrame.TextRange.Text = "Existing Value X"
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+    ws.Cells(1, 2).Value = "Title"
+    ws.Cells(2, 2).Value = "Existing Value X" ' row 2: real data, blank Instance ID -- a keyless row
+
+    Dim slidesToAdopt(1 To 1) As Object
+    Set slidesToAdopt(1) = candidateSld
+
+    Dim harvestedValues() As Object
+    Dim plans() As AdoptionSlidePlan
+    plans = DeckAdoption.PlanAdoption(slidesToAdopt, templateSld, ws, harvestedValues)
+
+    result = result & Assert(plans(1).Disposition = "ready", "disposition is ready, got '" & plans(1).Disposition & "'")
+    result = result & Assert(plans(1).MatchedKeylessRowId = "2", "matched keyless row 2, got '" & plans(1).MatchedKeylessRowId & "'")
+
+    Dim confirmedKeys(1 To 1) As String
+    confirmedKeys(1) = "adopt-rec-existing"
+
+    Dim commitResult As AdoptionResult
+    commitResult = DeckAdoption.CommitAdoption(plans, slidesToAdopt, harvestedValues, confirmedKeys, "adopt-type", templateSld, ws)
+
+    result = result & Assert(commitResult.LinkedCount = 1, "LinkedCount=1, got " & commitResult.LinkedCount)
+    result = result & Assert(ws.Cells(2, 1).Value = "adopt-rec-existing", "row 2's Instance ID cell was filled in, got '" & ws.Cells(2, 1).Value & "'")
+
+    Dim sheet As Sheet
+    sheet = ExcelOutput.ReadSheet(ws)
+    result = result & Assert(sheet.InstanceOrder.count = 1, "no new row was appended -- still exactly one instance row, got " & sheet.InstanceOrder.count)
+
+    wb.Close False
+    xl.Quit
+
+    Test_DeckAdoption_MatchesExistingKeylessRowLinksWithoutCreatingNewRow = result
+End Function
+
+' Regression test for a real bug found and fixed during review (2026-07-25,
+' see SPIKE_NOTES_DeckAdoption.md): an earlier version of PlanAdoption forced
+' its returned AdoptionSlidePlan() array to be 1-based (via a separate
+' counter) while harvestedValues() kept whatever base the caller's
+' slidesToAdopt() array used -- CommitAdoption then indexed both (plus
+' confirmedInstanceKeys()) with one shared loop variable, silently
+' misattributing which slide's harvest/confirmation belongs to which plan
+' entry for any non-1-based slidesToAdopt(). Every other DeckAdoption test
+' uses a 1-based Dim slidesToAdopt(1 To 1), which would never have exposed
+' this -- this test deliberately uses a 0-based array with 3 slides of 3
+' different dispositions to prove indices stay aligned end-to-end.
+Private Function Test_DeckAdoption_MultiSlideZeroBasedBatchKeepsIndicesAligned() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim titleShp As Object
+    Set titleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 300, 50)
+    titleShp.TextFrame.TextRange.Text = "Template Title"
+    titleShp.Tags.Add "role", "Title"
+
+    Dim alreadySld As Object
+    Set alreadySld = NewBlankSlide()
+    alreadySld.Tags.Add "slide_type", "adopt-type"
+    alreadySld.Tags.Add "instance_key", "already-batch-1"
+
+    Dim readySld As Object
+    Set readySld = NewBlankSlide()
+    Dim readyShp As Object
+    Set readyShp = readySld.Shapes.AddTextbox(msoTextOrientationHorizontal, 101, 100, 300, 50)
+    readyShp.TextFrame.TextRange.Text = "Batch Ready Title"
+
+    Dim unrelatedSld As Object
+    Set unrelatedSld = NewBlankSlide()
+    unrelatedSld.Shapes.AddShape msoShapeOval, 500, 500, 50, 50 ' pure decoration -- unclassified
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+
+    Dim slidesToAdopt(0 To 2) As Object ' deliberately 0-based, not 1-based
+    Set slidesToAdopt(0) = alreadySld
+    Set slidesToAdopt(1) = readySld
+    Set slidesToAdopt(2) = unrelatedSld
+
+    Dim harvestedValues() As Object
+    Dim plans() As AdoptionSlidePlan
+    plans = DeckAdoption.PlanAdoption(slidesToAdopt, templateSld, ws, harvestedValues)
+
+    result = result & Assert(LBound(plans) = 0 And UBound(plans) = 2, "plans() shares slidesToAdopt's 0-based range, got " & LBound(plans) & " To " & UBound(plans))
+    result = result & Assert(plans(0).Disposition = "already_linked", "index 0 (alreadySld) is already_linked, got '" & plans(0).Disposition & "'")
+    result = result & Assert(plans(1).Disposition = "ready", "index 1 (readySld) is ready, got '" & plans(1).Disposition & "'")
+    result = result & Assert(plans(2).Disposition = "unclassified", "index 2 (unrelatedSld) is unclassified, got '" & plans(2).Disposition & "'")
+    result = result & Assert(Not harvestedValues(1) Is Nothing, "harvested values captured at index 1, not misattributed to another index")
+    If Not harvestedValues(1) Is Nothing Then
+        result = result & Assert(harvestedValues(1)("Title") = "Batch Ready Title", "harvested value at index 1 belongs to readySld, got '" & harvestedValues(1)("Title") & "'")
+    End If
+
+    Dim confirmedKeys(0 To 2) As String
+    confirmedKeys(0) = ""
+    confirmedKeys(1) = "adopt-batch-ready-1"
+    confirmedKeys(2) = ""
+
+    Dim commitResult As AdoptionResult
+    commitResult = DeckAdoption.CommitAdoption(plans, slidesToAdopt, harvestedValues, confirmedKeys, "adopt-type", templateSld, ws)
+
+    result = result & Assert(commitResult.AlreadyLinkedCount = 1, "AlreadyLinkedCount=1, got " & commitResult.AlreadyLinkedCount)
+    result = result & Assert(commitResult.LinkedCount = 1, "LinkedCount=1, got " & commitResult.LinkedCount)
+    result = result & Assert(commitResult.ExcludedUnclassifiedCount = 1, "ExcludedUnclassifiedCount=1, got " & commitResult.ExcludedUnclassifiedCount)
+
+    ' The critical correctness check: readySld (index 1) actually received
+    ' the tag/instance_key confirmed for index 1 -- not index 0's or 2's.
+    Dim readyInstance As SlideInstance
+    readyInstance = Resolve.ResolveSlideInstance(readySld)
+    result = result & Assert(readyInstance.HasInstanceKey And readyInstance.InstanceKey = "adopt-batch-ready-1", "readySld (index 1) tagged with its own confirmed instance_key, got '" & readyInstance.InstanceKey & "'")
+    Dim readyTitleShp As Object
+    Set readyTitleShp = FindShapeByRole(readySld, "Title")
+    result = result & Assert(Not readyTitleShp Is Nothing, "readySld's Title shape was tagged")
+
+    ' alreadySld (index 0) must be untouched -- still its original key, not overwritten.
+    Dim alreadyInstance As SlideInstance
+    alreadyInstance = Resolve.ResolveSlideInstance(alreadySld)
+    result = result & Assert(alreadyInstance.InstanceKey = "already-batch-1", "alreadySld (index 0) instance_key unchanged, got '" & alreadyInstance.InstanceKey & "'")
+
+    ' unrelatedSld (index 2) must remain untagged.
+    Dim unrelatedInstance As SlideInstance
+    unrelatedInstance = Resolve.ResolveSlideInstance(unrelatedSld)
+    result = result & Assert(Not unrelatedInstance.HasInstanceKey, "unrelatedSld (index 2) never tagged")
+
+    wb.Close False
+    xl.Quit
+
+    Test_DeckAdoption_MultiSlideZeroBasedBatchKeepsIndicesAligned = result
 End Function

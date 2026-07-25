@@ -174,7 +174,7 @@ verify-the-link pass generalized across a batch — none of these exist anywhere
 `vba/` today (confirmed via `grep -rli "adopt\|batch" vba/` returning nothing beyond
 this task's own future filename).
 
-- [ ] Build `vba/DeckAdoption.bas`: entry point takes
+- [x] Build `vba/DeckAdoption.bas`: entry point takes
       `Application.ActiveWindow.Selection.SlideRange` as scope (why: spec's explicit
       "explicit selection, not whole-deck scanning" requirement, deliberately not a
       reversal of the 2026-07-19 default-posture decision the spec itself cites).
@@ -231,6 +231,75 @@ this task's own future filename).
       engine layer only, callable from the VBE, same as every other module before
       its own ribbon wiring landed. No mixed-type auto-classification, no
       multi-period-history reconstruction, no whole-deck implicit scanning.
+
+      Built `vba/DeckAdoption.bas` as a plan/commit pair, mirroring this project's
+      own existing `SyncOperations.Plan*` / `RunSync.Run*` split rather than
+      inventing a new shape: `PlanAdoption(slidesToAdopt(), templateSld, ws,
+      ByRef harvestedValues())` writes nothing and returns one `AdoptionSlidePlan`
+      per slide (`Disposition`: `already_linked` / `ready` / `needs_confirmation` /
+      `unclassified`, plus `MatchedKeylessRowId` and a human-readable `Reason`) —
+      inspecting this array *is* the phase-gate review, standing in for the
+      not-yet-built form the same way `RunRoutineSync`'s report string already
+      does for routine sync. `CommitAdoption(plans(), slidesToAdopt(),
+      harvestedValues(), confirmedInstanceKeys(), slideType, templateSld, ws)` is
+      the only function that writes: reuses `Onboarding.OnboardNewInstance`
+      unchanged for tagging (it already does exactly "tag identity + auto-accept
+      every high-confidence field," which is precisely what a `ready` slide
+      needs — no new tagging logic was written), `ExcelOutput.UpsertRow` for the
+      Data-sheet write (linking into a matched keyless row by writing its
+      Instance ID cell directly first, so `UpsertRow` finds and merges into it
+      rather than appending a duplicate), and `InjectPrimitive.InjectPrimitive`'s
+      no-op round trip for the verify-the-link check. `ready`/`needs_confirmation`/
+      `unclassified` dispatch is a per-slide aggregation of `Matching.Match`'s
+      existing per-field confidence (spec says "same thresholds as onboarding.md"
+      but those are inherently per-field, not per-slide) — documented as a real,
+      un-pinned-down judgment call in `SPIKE_NOTES_DeckAdoption.md`, same posture
+      as `RunSync.bas`'s resequencing-anchor choice. `ReadKeylessRows`/
+      `FindMatchingKeylessRow` close the one genuinely new gap the spec calls
+      out: `ExcelOutput.ReadSheet` deliberately excludes blank-Instance-ID rows
+      (correct for every existing caller, but exactly the rows this task needs to
+      see) — read locally in `DeckAdoption.bas` via `ws.UsedRange` rather than
+      reopening `ExcelOutput.bas`'s already-shipped read contract, and rather
+      than reusing its `Cells(Rows.Count,1).End(xlUp)` idiom (which walks column
+      A specifically, exactly the column a keyless row has nothing in).
+      `AdoptionSlidePlan` is deliberately scalar-only (no member is a dynamic
+      array of another UDT) — this project has never exercised that construct in
+      a real Office run, and given how many genuine Office-specific VBA gotchas
+      this project has already hit the hard way (`AGENTS.md`'s Known Patterns),
+      untested territory was avoided where the design didn't strictly require it;
+      `CommitAdoption` re-derives field-shape matches via `OnboardNewInstance`'s
+      own internal `MatchSlideAgainstTemplate` call instead of threading
+      `PlanAdoption`'s match results through. Added 6 tests to
+      `vba/tests/TestRunner.bas`: idempotent already-linked skip, a
+      high-confidence slide committed end-to-end (tags + fresh Data-sheet row +
+      verified), a medium-confidence slide correctly left fully untouched (no
+      partial tag write), a fully unrelated slide excluded, linking into a
+      pre-existing keyless Data-sheet row without creating a duplicate row, and
+      (added after an adversarial review pass, see below) a 0-based 3-slide
+      batch mixing all three live dispositions.
+
+      A dedicated review pass (this container has no Office to compile against,
+      so a careful line-by-line manual trace stood in for a compiler) caught one
+      real, un-triggered bug before commit: `PlanAdoption` originally tracked
+      its returned `AdoptionSlidePlan()` with a separate 1-based counter while
+      `harvestedValues()` kept whatever index base the caller's
+      `slidesToAdopt()` used, and `CommitAdoption` indexed both (plus
+      `confirmedInstanceKeys()`) with one shared loop variable — correct only
+      for a 1-based `slidesToAdopt`, which every original test happened to use,
+      so nothing caught it. Fixed by allocating `plans` over `slidesToAdopt`'s
+      own `LBound`/`UBound` directly rather than a separate counter, and added
+      the 0-based regression test above specifically to catch a recurrence.
+      Full account in `SPIKE_NOTES_DeckAdoption.md`'s new "A real bug found and
+      fixed during review" section.
+      **Not executed against real Office this pass** — `powershell.exe`
+      unreachable from this plain-Linux container (confirmed via `which
+      powershell.exe`), same constraint as Priority 20a; needs a real
+      `run_vba_tests.ps1` run on the WSL/Windows host next time this project is
+      picked up there. `python3 -m pytest tests/ -v` (70 passed) and `python3 -m
+      mypy src/` (no issues, 10 source files) both confirmed unaffected
+      (VBA-only change). Full design rationale, the plan/commit phase-gate
+      design, and the manual verification recipe are in the new
+      `SPIKE_NOTES_DeckAdoption.md`.
 
 ## Notes carried forward from Priority 19 (still open, unaffected by this pass)
 - Cases 5 (`record_retired`) and 7 (`deck_side_conflict`) remain non-goals
