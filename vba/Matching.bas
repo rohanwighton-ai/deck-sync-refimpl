@@ -167,8 +167,20 @@ End Function
 Public Function Match(candidates() As Candidate, reference As Candidate, Optional validTags As Variant) As MatchResult
     Dim result As MatchResult
     Dim lo As Long, hi As Long, i As Long
+    ' `candidates` can be genuinely unallocated (a caller with zero
+    ' candidates -- e.g. onboarding's untagged pool when every candidate is
+    ' either already tagged or pure decoration -- never gets to ReDim it at
+    ' all; see AGENTS.md's Known Patterns on why ReDim-to-(1 To 0) can't be
+    ' used to represent that instead). Treat that the same as the existing
+    ' hi < lo "no candidates" path below, not as a fresh error.
+    On Error Resume Next
     lo = LBound(candidates)
     hi = UBound(candidates)
+    If Err.Number <> 0 Then
+        lo = 1
+        hi = 0
+    End If
+    On Error GoTo 0
 
     Dim taggedIdx As Collection
     Set taggedIdx = New Collection
@@ -329,8 +341,18 @@ Public Function EnrichPlaceholderIdx(ByRef candidates() As Candidate, pptxPath A
         Exit Function
     End If
 
-    Dim i As Long
-    For i = LBound(candidates) To UBound(candidates)
+    Dim i As Long, lo As Long, hi As Long
+    ' `candidates` may be genuinely unallocated (a slide with zero
+    ' candidates) -- see Match()'s identical guard above.
+    On Error Resume Next
+    lo = LBound(candidates)
+    hi = UBound(candidates)
+    If Err.Number <> 0 Then
+        EnrichPlaceholderIdx = True ' nothing to enrich is not a failure
+        Exit Function
+    End If
+    On Error GoTo 0
+    For i = lo To hi
         If candidates(i).HasPlaceholder Then
             candidates(i).PlaceholderIdx = PlaceholderIdxFromDom(dom, candidates(i).Name)
         End If

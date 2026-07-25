@@ -39,10 +39,15 @@ End Type
 ' discovery.py's discover(): type-agnostic, never treats a group as one
 ' opaque candidate, tags leaves not containers.
 Public Function DiscoverSlide(sld As Object) As Candidate()
+    ' Deliberately NOT pre-ReDim'd to (1 To 0) here: a real, confirmed VBA
+    ' restriction (see AGENTS.md's Known Patterns) makes ReDim-to-an-empty-
+    ' range throw "Subscript out of range" at runtime. Left genuinely
+    ' unallocated instead -- Walk's own ReDim Preserve on first append
+    ' handles allocation correctly (confirmed), and a slide with zero
+    ' candidates returns a genuinely unallocated array, which callers must
+    ' check for with an error-guarded UBound/LBound, never assume allocated.
     Dim results() As Candidate
     Dim shapes() As Object ' unused by this entry point -- see DiscoverSlideWithShapes
-    ReDim results(1 To 0)
-    ReDim shapes(1 To 0)
     Dim count As Long
     count = 0
     Dim z As Long
@@ -61,10 +66,10 @@ End Function
 ' SlideMaster.CustomLayouts(i).Shapes directly -- callers pass whichever
 ' CustomLayout object they already have.
 Public Function DiscoverCustomLayout(layout As Object) As Candidate()
+    ' See DiscoverSlide's comment on why this is deliberately not
+    ' pre-ReDim'd to (1 To 0).
     Dim results() As Candidate
     Dim shapes() As Object ' unused by this entry point -- see DiscoverCustomLayoutWithShapes
-    ReDim results(1 To 0)
-    ReDim shapes(1 To 0)
     Dim count As Long
     count = 0
     Dim z As Long
@@ -90,9 +95,9 @@ End Function
 ' re-match. Purely additive: DiscoverSlide/DiscoverCustomLayout's own
 ' behavior/output is unchanged (see SPIKE_NOTES_Onboarding.md).
 Public Function DiscoverSlideWithShapes(sld As Object, ByRef shapes() As Object) As Candidate()
+    ' See DiscoverSlide's comment on why this is deliberately not
+    ' pre-ReDim'd to (1 To 0).
     Dim results() As Candidate
-    ReDim results(1 To 0)
-    ReDim shapes(1 To 0)
     Dim count As Long
     count = 0
     Dim z As Long
@@ -104,9 +109,9 @@ Public Function DiscoverSlideWithShapes(sld As Object, ByRef shapes() As Object)
 End Function
 
 Public Function DiscoverCustomLayoutWithShapes(layout As Object, ByRef shapes() As Object) As Candidate()
+    ' See DiscoverSlide's comment on why this is deliberately not
+    ' pre-ReDim'd to (1 To 0).
     Dim results() As Candidate
-    ReDim results(1 To 0)
-    ReDim shapes(1 To 0)
     Dim count As Long
     count = 0
     Dim z As Long
@@ -266,9 +271,24 @@ Public Sub ManualSmokeTest()
     Dim candidates() As Candidate
     candidates = DiscoverSlide(sld)
 
+    ' candidates may be genuinely unallocated (zero candidates found) --
+    ' UBound/LBound on it would throw, not return 0/1, so this must be
+    ' error-guarded rather than assumed allocated. See AGENTS.md's Known
+    ' Patterns on the (1 To 0) restriction this project ran into.
+    Dim lo As Long, hi As Long
+    On Error Resume Next
+    lo = LBound(candidates)
+    hi = UBound(candidates)
+    If Err.Number <> 0 Then
+        Debug.Print "DiscoverSlide found 0 candidate(s)."
+        MsgBox "DiscoverSlide found 0 candidate(s)."
+        Exit Sub
+    End If
+    On Error GoTo 0
+
     Dim i As Long
-    Debug.Print "DiscoverSlide found " & (UBound(candidates) - LBound(candidates) + 1) & " candidate(s):"
-    For i = LBound(candidates) To UBound(candidates)
+    Debug.Print "DiscoverSlide found " & (hi - lo + 1) & " candidate(s):"
+    For i = lo To hi
         With candidates(i)
             Debug.Print "  z=" & .ZOrder & " name=" & .Name & " group=" & .GroupPath & _
                 " type=" & .ShapeType & " hasPlaceholder=" & .HasPlaceholder & _

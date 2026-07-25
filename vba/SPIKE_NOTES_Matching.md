@@ -4,12 +4,43 @@ Module 3 of `specs/vba-port.md`'s port order. Ports `src/matching.py`'s
 `score_candidate()`/`match()` (see `specs/matching.md`) to native VBA,
 operating on `Discovery.Candidate` arrays.
 
-**Not executed or verified in this environment** -- there is no
-Windows/Office install here, same constraint as `InjectPrimitive.bas` and
-`Discovery.bas`. `Matching.bas` has not been run. The manual verification
-recipe below is how to actually prove it against a real Office install,
-cross-checked against `tests/test_matching.py`'s already-proven Python
-values.
+**Executed against real Office for the first time on 2026-07-25** (`Discover
+Slide`+`Match`'s core scoring/tier-1/sibling-ambiguity path all confirmed
+correct via `vba/tests/TestRunner.bas`, driven headlessly by
+`vba/tests/run_vba_tests.ps1`). One real, confirmed finding from that run,
+documented below under "EnrichPlaceholderIdx's zip-extraction fallback is
+broken as written" -- everything else in this file describes the
+pre-execution design and still stands.
+
+## EnrichPlaceholderIdx's zip-extraction fallback is broken as written (confirmed 2026-07-25)
+
+`LoadPartXml`'s `shellApp.Namespace(zipPath)` call reliably returns
+`Nothing` when driven via COM automation (`Application.Run` from an
+external client), even against a **verified-valid, non-corrupt** `.pptx`
+copy (confirmed independently: .NET's `System.IO.Compression.ZipFile` opens
+the same file and reports all 39 real entries without issue). Reproduced
+three times, including with a 2-second delay before the `Namespace()` call
+(ruling out a shell-notification-lag race). Root cause not fully isolated
+(a plausible theory: the Explorer "compressed folder" shell namespace
+extension behaves differently, or isn't reliably available, under
+automation-driven COM sessions vs. genuine interactive use -- not confirmed
+further, diminishing returns on this session's time budget).
+
+**Practical impact**: `EnrichPlaceholderIdx` -- and therefore the
+placeholder-index matching signal it's meant to resolve -- does not
+currently work as implemented, for any caller, not just the manual
+recipe below. This is a real, load-bearing gap: `ManualSmokeTest_
+PlaceholderIndex`'s recipe (below) has never actually been exercisable.
+`Match()`/`ScoreCandidate()` themselves are unaffected and confirmed
+correct -- they just never receive a resolved placeholder index in
+practice, so the placeholder signal silently stays inapplicable
+(renormalized away) rather than contributing, in every real run so far.
+
+**Not fixed in this pass** -- this needs a real design decision (a
+different zip-access technique entirely, e.g. driving a visible Explorer
+window instead of a headless `Shell.Application` object, or dropping the
+raw-OOXML fallback in favor of something else), not a one-line patch.
+Flagged here and in `IMPLEMENTATION_PLAN.md` as open.
 
 ## What was ported
 

@@ -52,8 +52,9 @@ End Type
 '                  Dictionary of fieldName (String) -> value (String)
 '   instanceOrder - Collection of instance-id strings, in the Data-sheet's
 '                  row order
-' `instances` must be a 1-based array, using the same "(1 To 0)" convention
-' Discovery.bas's own output uses for "no items".
+' `instances` must be a 1-based array when non-empty; a genuinely
+' unallocated array (never ReDim'd) represents "no items" -- see this
+' function's own comment on why (1 To 0) can't be used for that instead.
 '
 ' Module 6 (Excel-side reads) is not yet ported (per specs/vba-port.md's
 ' port order, it's step 6, after onboarding) -- this function accepts the
@@ -62,37 +63,50 @@ End Type
 ' file directly either, excel_output.py reads the Sheet it operates on.
 Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collection, dataRows As Object) As SyncAction()
     Dim actions() As SyncAction
-    ReDim actions(1 To 0)
     Dim n As Long
     n = 0
 
+    ' `instances` may be genuinely unallocated -- zero known instances of
+    ' this type exist yet (e.g. before anything of this type has ever been
+    ' onboarded). ReDim-to-(1 To 0) throws at runtime (a real, confirmed VBA
+    ' restriction, see AGENTS.md's Known Patterns), so this can't be
+    ' represented the way Discovery.bas's own "(1 To 0) convention" this
+    ' comment used to describe assumed -- error-guard instead of assuming
+    ' LBound/UBound are always safe to call.
+    Dim hasInstances As Boolean
     Dim lo As Long, hi As Long
+    On Error Resume Next
     lo = LBound(instances)
     hi = UBound(instances)
+    hasInstances = (Err.Number = 0)
+    On Error GoTo 0
 
     Dim resolved() As SlideInstance
-    ReDim resolved(lo To hi)
-
     Dim i As Long
-    For i = lo To hi
-        resolved(i) = Resolve.ResolveSlideInstance(instances(i))
-        If Not resolved(i).HasTypeTag Or Not resolved(i).HasInstanceKey Then
-            n = n + 1
-            ReDim Preserve actions(1 To n)
-            actions(n).Kind = "flagged"
-            actions(n).Subject = "SlideID " & instances(i).SlideID
-            actions(n).FlagKind = "unclassified_slide"
-            actions(n).Reason = "no recognized type tag / persistent instance key -- flagged for reclassification, not guessed"
-        End If
-    Next i
+    If hasInstances Then
+        ReDim resolved(lo To hi)
+        For i = lo To hi
+            resolved(i) = Resolve.ResolveSlideInstance(instances(i))
+            If Not resolved(i).HasTypeTag Or Not resolved(i).HasInstanceKey Then
+                n = n + 1
+                ReDim Preserve actions(1 To n)
+                actions(n).Kind = "flagged"
+                actions(n).Subject = "SlideID " & instances(i).SlideID
+                actions(n).FlagKind = "unclassified_slide"
+                actions(n).Reason = "no recognized type tag / persistent instance key -- flagged for reclassification, not guessed"
+            End If
+        Next i
+    End If
 
     Dim knownByKey As Object
     Set knownByKey = CreateObject("Scripting.Dictionary")
-    For i = lo To hi
-        If resolved(i).HasInstanceKey Then
-            knownByKey(resolved(i).InstanceKey) = i
-        End If
-    Next i
+    If hasInstances Then
+        For i = lo To hi
+            If resolved(i).HasInstanceKey Then
+                knownByKey(resolved(i).InstanceKey) = i
+            End If
+        Next i
+    End If
 
     Dim instanceId As Variant
     For Each instanceId In instanceOrder

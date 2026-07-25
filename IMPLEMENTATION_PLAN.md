@@ -682,6 +682,55 @@ open task. Gap analysis below is what's actually new/actionable.
       conflict-resolution/propagation, stale-queue -- see `claude-brain`'s
       `project_active_ventures.md`, 2026-07-25 entries) remains entirely unspecified.
 
+## Priority 17 (2026-07-25 pass): first real-Office execution + hardening loop
+
+- [x] Every VBA module's `SPIKE_NOTES_*.md` said "not executed or verified in this
+      environment" since there was no Windows/Office install available. That changed this
+      pass: `powershell.exe` is reachable from this WSL environment and can drive a real
+      Windows-side PowerPoint 16.0 + Excel 16.0 install directly via COM automation
+      (confirmed, not assumed). Built `vba/tests/TestRunner.bas` (PowerPoint: Discovery,
+      InjectPrimitive, Matching, Resolve, SyncOperations, Onboarding -- 13 assertion-based
+      test functions) and `vba/tests/TestRunnerExcel.bas` (Excel: ExcelOutput -- 8 test
+      functions), deliberately NOT reusing the existing `ManualSmokeTest*` subs (those use
+      `MsgBox`, which hangs a headless run waiting on a click that never comes). Built
+      `vba/tests/run_vba_tests.ps1`: stages `.bas` files + `test-fixtures/shp-groupshape.pptx`
+      into a Windows-native temp dir (COM automation across the `\\wsl.localhost\...` UNC
+      boundary is flaky; plain file copies across it aren't), imports everything, runs both
+      test suites, prints one machine-readable report per host app.
+      Real environment blockers hit and resolved, not hypothetical: (1) "Trust access to the
+      VBA project object model" was actually off (a first probe looked like it was already
+      enabled but was a false positive from PowerShell silently returning null on a null COM
+      *property* access rather than throwing -- only method *calls* on null reliably throw;
+      confirmed via registry, `AccessVBOM` unset under both `HKCU:\...\PowerPoint\Security`
+      and `\Excel\Security`) -- enabled with Rohan's explicit sign-off (real security
+      setting, not flipped silently, see claude-brain's DECISIONS.md 2026-07-25 entry). (2) A zombie
+      POWERPNT.EXE from an interrupted probe made `New-Object -ComObject` attach to the
+      stale instance instead of spawning fresh, breaking `VBProject` access in a way that
+      looked identical to the trust-setting problem -- script now always kills stray
+      processes first. (3) `Application.Run` with inline arguments fails PowerShell's own
+      COM method-overload resolution; fixed via `InvokeMember` reflection with explicit
+      `[string]` casts on every argument.
+      **The real finding, not incidental to the tooling**: `ReDim arr(1 To 0)` throws
+      "Subscript out of range" at runtime in real VBA -- confirmed via multiple clean
+      isolated repros, contradicting the "(1 To 0) = empty array" convention every module
+      in this port used since Priority 12. Root-caused and fixed across `Discovery.bas`,
+      `Matching.bas`, `SyncOperations.bas`, `Onboarding.bas`, and `TestRunner.bas`: never
+      pre-ReDim to an empty range; leave arrays genuinely unallocated until the first
+      `ReDim Preserve` (confirmed safe as a first allocation, including for UDT arrays);
+      callers must error-guard `LBound`/`UBound` rather than assume a returned array is
+      allocated. Documented as a new AGENTS.md Known Pattern.
+      **Result after fixing**: 12 of 13 PowerPoint tests pass for real, all 8 Excel tests
+      pass for real. The one remaining failure is itself a genuine, confirmed finding, not
+      a bug in this pass's fix: `Matching.EnrichPlaceholderIdx`'s `Shell.Application.
+      Namespace(zipPath)` reliably returns `Nothing` when driven via COM automation, even
+      against an independently-verified-valid `.pptx` (opened cleanly by .NET's
+      `ZipFile.OpenRead`, 39 real entries) -- reproduced 3 times including with an explicit
+      delay (rules out a shell-notification race). Not fixed this pass -- needs a real
+      redesign of the zip-extraction technique, not a patch; documented in
+      `SPIKE_NOTES_Matching.md` and left open.
+      No `src`/`tests` changes. `python3 -m pytest`/`mypy` not re-run (bare host has
+      neither; unaffected regardless since nothing under `src/`/`tests/` changed).
+
 ## Notes for next planning pass
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
   settings. Worth confirming this stays intentional as more modules are added. Still true

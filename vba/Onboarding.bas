@@ -45,14 +45,27 @@ Public Function BuildTemplateFieldShapes(templateSld As Object, ByRef roles() As
     Dim allShapes() As Object
     allCandidates = Discovery.DiscoverSlideWithShapes(templateSld, allShapes)
 
+    ' results()/roles() are deliberately NOT pre-ReDim'd to (1 To 0) -- a
+    ' real, confirmed VBA restriction (AGENTS.md's Known Patterns) makes
+    ' that throw "Subscript out of range" at runtime. Left unallocated
+    ' instead; the first ReDim Preserve below allocates correctly on its
+    ' own. A template with zero tagged fields returns a genuinely
+    ' unallocated array -- callers must error-guard, never assume allocated.
     Dim results() As Candidate
-    ReDim results(1 To 0)
-    ReDim roles(1 To 0)
     Dim n As Long
     n = 0
 
-    Dim i As Long
-    For i = LBound(allCandidates) To UBound(allCandidates)
+    Dim i As Long, lo As Long, hi As Long
+    On Error Resume Next
+    lo = LBound(allCandidates)
+    hi = UBound(allCandidates)
+    If Err.Number <> 0 Then
+        BuildTemplateFieldShapes = results ' both results and roles stay unallocated -- zero candidates on the template slide
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    For i = lo To hi
         Dim role As String
         role = allShapes(i).Tags("role")
         If role <> "" Then
@@ -92,39 +105,53 @@ Public Function MatchSlideAgainstTemplate(sld As Object, templateRoles() As Stri
     Dim allShapes() As Object
     allCandidates = Discovery.DiscoverSlideWithShapes(sld, allShapes)
 
+    ' untagged()/untaggedShapes()/results() are deliberately NOT pre-ReDim'd
+    ' to (1 To 0) -- see BuildTemplateFieldShapes' identical comment. Every
+    ' LBound/UBound call on a possibly-unallocated array below is
+    ' error-guarded rather than assumed safe.
     Dim untagged() As Candidate
-    ReDim untagged(1 To 0)
-    ReDim untaggedShapes(1 To 0)
     Dim n As Long
     n = 0
 
-    Dim i As Long
-    For i = LBound(allCandidates) To UBound(allCandidates)
-        If IsCandidateField(allCandidates(i)) And allShapes(i).Tags("role") = "" Then
-            n = n + 1
-            ReDim Preserve untagged(1 To n)
-            ReDim Preserve untaggedShapes(1 To n)
-            untagged(n) = allCandidates(i)
-            Set untaggedShapes(n) = allShapes(i)
-        End If
-    Next i
+    Dim i As Long, allLo As Long, allHi As Long
+    On Error Resume Next
+    allLo = LBound(allCandidates)
+    allHi = UBound(allCandidates)
+    Dim hasAllCandidates As Boolean
+    hasAllCandidates = (Err.Number = 0)
+    On Error GoTo 0
+
+    If hasAllCandidates Then
+        For i = allLo To allHi
+            If IsCandidateField(allCandidates(i)) And allShapes(i).Tags("role") = "" Then
+                n = n + 1
+                ReDim Preserve untagged(1 To n)
+                ReDim Preserve untaggedShapes(1 To n)
+                untagged(n) = allCandidates(i)
+                Set untaggedShapes(n) = allShapes(i)
+            End If
+        Next i
+    End If
 
     Dim results() As FieldMatch
-    Dim resultCount As Long
-    If UBound(templateRoles) < LBound(templateRoles) Then
-        resultCount = 0
-    Else
-        resultCount = UBound(templateRoles) - LBound(templateRoles) + 1
-    End If
-    ReDim results(1 To resultCount)
+    Dim roleLo As Long, roleHi As Long
+    On Error Resume Next
+    roleLo = LBound(templateRoles)
+    roleHi = UBound(templateRoles)
+    Dim hasRoles As Boolean
+    hasRoles = (Err.Number = 0)
+    On Error GoTo 0
 
-    Dim idx As Long, outIdx As Long
-    outIdx = 0
-    For idx = LBound(templateRoles) To UBound(templateRoles)
-        outIdx = outIdx + 1
-        results(outIdx).Role = templateRoles(idx)
-        results(outIdx).Result = Matching.Match(untagged, templateFieldShapes(idx))
-    Next idx
+    If hasRoles Then
+        Dim outIdx As Long, idx As Long
+        outIdx = 0
+        For idx = roleLo To roleHi
+            outIdx = outIdx + 1
+            ReDim Preserve results(1 To outIdx)
+            results(outIdx).Role = templateRoles(idx)
+            results(outIdx).Result = Matching.Match(untagged, templateFieldShapes(idx))
+        Next idx
+    End If
 
     MatchSlideAgainstTemplate = results
 End Function
@@ -176,12 +203,20 @@ Public Function OnboardNewInstance(sld As Object, templateRoles() As String, tem
     Dim matches() As FieldMatch
     matches = MatchSlideAgainstTemplate(sld, templateRoles, templateFieldShapes, untaggedShapes)
 
-    Dim i As Long
-    For i = LBound(matches) To UBound(matches)
-        If matches(i).Result.Confidence = "high" And matches(i).Result.HasCandidate Then
-            ConfirmFieldMatch untaggedShapes(matches(i).Result.CandidateIndex), matches(i).Role
-        End If
-    Next i
+    Dim i As Long, lo As Long, hi As Long, hasMatches As Boolean
+    On Error Resume Next
+    lo = LBound(matches)
+    hi = UBound(matches)
+    hasMatches = (Err.Number = 0)
+    On Error GoTo 0
+
+    If hasMatches Then
+        For i = lo To hi
+            If matches(i).Result.Confidence = "high" And matches(i).Result.HasCandidate Then
+                ConfirmFieldMatch untaggedShapes(matches(i).Result.CandidateIndex), matches(i).Role
+            End If
+        Next i
+    End If
 
     OnboardNewInstance = matches
 End Function
@@ -211,11 +246,20 @@ Public Sub ManualSmokeTest_OnboardNewInstance()
     Dim matches() As FieldMatch
     matches = OnboardNewInstance(newSld, templateRoles, templateFieldShapes, "quarterly-update", "rec-2")
 
-    Dim i As Long, msg As String
-    For i = LBound(matches) To UBound(matches)
-        msg = msg & matches(i).Role & ": confidence=" & matches(i).Result.Confidence & _
-            " hasCandidate=" & matches(i).Result.HasCandidate & vbCrLf
-    Next i
+    Dim i As Long, msg As String, lo As Long, hi As Long
+    On Error Resume Next
+    lo = LBound(matches)
+    hi = UBound(matches)
+    If Err.Number = 0 Then
+        On Error GoTo 0
+        For i = lo To hi
+            msg = msg & matches(i).Role & ": confidence=" & matches(i).Result.Confidence & _
+                " hasCandidate=" & matches(i).Result.HasCandidate & vbCrLf
+        Next i
+    Else
+        On Error GoTo 0
+        msg = "(no field matches -- template had zero tagged roles)"
+    End If
     Debug.Print msg
     MsgBox msg & "(expected: one role high/True (auto-tagged), one role medium/False)"
 End Sub
