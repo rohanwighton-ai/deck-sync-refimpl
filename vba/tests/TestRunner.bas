@@ -171,6 +171,31 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "DeckAdoption_MultiSlideZeroBasedBatchKeepsIndicesAligned", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ResolveFields_ValidateSingleShapeSelectionAcceptsOneShape()
+    AppendResult report, "ResolveFields_ValidateSingleShapeSelectionAcceptsOneShape", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ResolveFields_ValidateSingleShapeSelectionRejectsMultiple()
+    AppendResult report, "ResolveFields_ValidateSingleShapeSelectionRejectsMultiple", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ResolveFields_BuildRolePickerPromptListsRolesNumbered()
+    AppendResult report, "ResolveFields_BuildRolePickerPromptListsRolesNumbered", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ResolveFields_PickRoleFromListAcceptsNumberOrName()
+    AppendResult report, "ResolveFields_PickRoleFromListAcceptsNumberOrName", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ResolveFields_EndToEndTagsSelectedShapeViaPickedRole()
+    AppendResult report, "ResolveFields_EndToEndTagsSelectedShapeViaPickedRole", r
+    On Error GoTo 0
+
     RunAllTests = report
 End Function
 
@@ -1429,4 +1454,134 @@ Private Function Test_DeckAdoption_MultiSlideZeroBasedBatchKeepsIndicesAligned()
     xl.Quit
 
     Test_DeckAdoption_MultiSlideZeroBasedBatchKeepsIndicesAligned = result
+End Function
+
+' ---------------------------------------------------------------------
+' ResolveFields
+' ---------------------------------------------------------------------
+
+Private Function Test_ResolveFields_ValidateSingleShapeSelectionAcceptsOneShape() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp.TextFrame.TextRange.Text = "Untagged Field"
+    shp.Select
+
+    Dim outShp As Object
+    Dim errMsg As String
+    errMsg = ResolveFields.ValidateSingleShapeSelection(Application.ActiveWindow.Selection, outShp)
+
+    result = result & Assert(errMsg = "", "single-shape selection accepted, got error '" & errMsg & "'")
+    result = result & Assert(Not outShp Is Nothing, "outShp was set")
+    If Not outShp Is Nothing Then
+        result = result & Assert(outShp.Name = shp.Name, "outShp is the selected shape, got '" & outShp.Name & "' want '" & shp.Name & "'")
+    End If
+
+    Test_ResolveFields_ValidateSingleShapeSelectionAcceptsOneShape = result
+End Function
+
+Private Function Test_ResolveFields_ValidateSingleShapeSelectionRejectsMultiple() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shp1 As Object, shp2 As Object
+    Set shp1 = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 100, 50)
+    Set shp2 = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 200, 50, 100, 50)
+    sld.Shapes.Range(Array(shp1.Name, shp2.Name)).Select
+
+    Dim outShp As Object
+    Dim errMsg As String
+    errMsg = ResolveFields.ValidateSingleShapeSelection(Application.ActiveWindow.Selection, outShp)
+
+    result = result & Assert(errMsg <> "", "multi-shape selection rejected with an error message")
+    result = result & Assert(InStr(errMsg, "2") > 0, "error message mentions the selected count (2), got '" & errMsg & "'")
+
+    Test_ResolveFields_ValidateSingleShapeSelectionRejectsMultiple = result
+End Function
+
+Private Function Test_ResolveFields_BuildRolePickerPromptListsRolesNumbered() As String
+    Dim result As String
+
+    Dim roles(1 To 2) As String
+    roles(1) = "Title"
+    roles(2) = "Date"
+
+    Dim prompt As String
+    prompt = ResolveFields.BuildRolePickerPrompt(roles)
+
+    result = result & Assert(InStr(prompt, "1) Title") > 0, "prompt lists role 1 as 'Title', got: " & prompt)
+    result = result & Assert(InStr(prompt, "2) Date") > 0, "prompt lists role 2 as 'Date', got: " & prompt)
+
+    Dim emptyRoles() As String
+    Dim emptyPrompt As String
+    emptyPrompt = ResolveFields.BuildRolePickerPrompt(emptyRoles)
+    result = result & Assert(InStr(emptyPrompt, "no defined roles") > 0, "unallocated roles() produces a 'no defined roles' prompt, got: " & emptyPrompt)
+
+    Test_ResolveFields_BuildRolePickerPromptListsRolesNumbered = result
+End Function
+
+Private Function Test_ResolveFields_PickRoleFromListAcceptsNumberOrName() As String
+    Dim result As String
+
+    Dim roles(1 To 2) As String
+    roles(1) = "Title"
+    roles(2) = "Date"
+
+    result = result & Assert(ResolveFields.PickRoleFromList("1", roles) = "Title", "'1' resolves to Title")
+    result = result & Assert(ResolveFields.PickRoleFromList("date", roles) = "Date", "'date' resolves case-insensitively to Date")
+    result = result & Assert(ResolveFields.PickRoleFromList("nonsense", roles) = "", "an unrecognized name resolves to ''")
+    result = result & Assert(ResolveFields.PickRoleFromList("99", roles) = "", "an out-of-range number resolves to ''")
+
+    Dim emptyRoles() As String
+    result = result & Assert(ResolveFields.PickRoleFromList("1", emptyRoles) = "", "unallocated roles() always resolves to ''")
+
+    Test_ResolveFields_PickRoleFromListAcceptsNumberOrName = result
+End Function
+
+' Exercises the full pipeline the InputBox-driven PromptResolveUnmatchedField
+' wraps (selection validation -> role lookup -> ConfirmFieldMatch) without
+' the InputBox itself, since TestRunner.bas cannot drive a live modal
+' dialog -- proves the pieces actually wire together correctly, which the
+' unit-level tests above don't on their own.
+Private Function Test_ResolveFields_EndToEndTagsSelectedShapeViaPickedRole() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim templateTitleShp As Object
+    Set templateTitleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    templateTitleShp.TextFrame.TextRange.Text = "Template Title"
+    templateTitleShp.Tags.Add "role", "Title"
+
+    Dim newSld As Object
+    Set newSld = NewBlankSlide()
+    Dim newShp As Object
+    Set newShp = newSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 51, 50, 200, 50)
+    newShp.TextFrame.TextRange.Text = "New Value"
+    newShp.Select
+
+    Dim outShp As Object
+    Dim selErr As String
+    selErr = ResolveFields.ValidateSingleShapeSelection(Application.ActiveWindow.Selection, outShp)
+    result = result & Assert(selErr = "", "selection validated, got error '" & selErr & "'")
+
+    Dim roles() As String
+    Dim fieldShapes() As Candidate
+    fieldShapes = Onboarding.BuildTemplateFieldShapes(templateSld, roles)
+
+    Dim role As String
+    role = ResolveFields.PickRoleFromList("1", roles)
+    result = result & Assert(role = "Title", "role 1 off the template resolves to 'Title', got '" & role & "'")
+
+    If Not outShp Is Nothing And role <> "" Then
+        Onboarding.ConfirmFieldMatch outShp, role
+    End If
+
+    result = result & Assert(newShp.Tags("role") = "Title", "selected shape was tagged with the picked role, got '" & newShp.Tags("role") & "'")
+
+    Test_ResolveFields_EndToEndTagsSelectedShapeViaPickedRole = result
 End Function

@@ -132,12 +132,47 @@ don't attempt all of `ribbon-ui.md` in a single pass.
       discovered fields with proposed name/shape ref/harvested value" structure
       formatted for display; needs its own light presentation-layer code, not just
       a call into `Discovery.DiscoverSlideWithShapes`.
-- [ ] "Resolve Unmatched Fields" flow: user clicks a shape
+- [x] "Resolve Unmatched Fields" flow: user clicks a shape
       (`Application.ActiveWindow.Selection.ShapeRange`), picks a role from the
       template's defined roles, calls `Onboarding.ConfirmFieldMatch` (why: spec
       names this exact mechanism and primitive — the only new code is the shape-
       click capture and role picker, both pure UI; `ConfirmFieldMatch` already
       exists and is tested per `SPIKE_NOTES_Onboarding.md`).
+      Built `vba/ResolveFields.bas`: `PromptResolveUnmatchedField(templateSld)`
+      is the ribbon-button entry point (reads
+      `Application.ActiveWindow.Selection`, drives an `InputBox`, calls
+      `Onboarding.ConfirmFieldMatch` unchanged — no new matching logic).
+      Split into that thin interactive entry point plus three `Public`
+      pure-logic helpers (`ValidateSingleShapeSelection`,
+      `BuildRolePickerPrompt`, `PickRoleFromList`), mirroring
+      `DeckAdoption.bas`'s posture of keeping decision logic testable by
+      taking objects as parameters. **Deliberately used `InputBox` instead of
+      a `UserForm` ListBox**: this project has never authored a VBA UserForm
+      before, and whether a `.frm` can carry its full control layout as plain
+      text (vs. requiring an opaque binary `.frx`) can't be confirmed without
+      a real VBE to export/import against — this container has none
+      (`powershell.exe` unreachable, same constraint as every VBA task this
+      pass). Rather than hand-author an unverifiable binary-adjacent file,
+      picked the lower-risk, already-proven mechanism; flagged as an open
+      question for `ribbon-ui.md`'s shared-result-form bullet too, which will
+      hit this identical question for its own dialog. Added 5 tests to
+      `vba/tests/TestRunner.bas`: two `ValidateSingleShapeSelection` cases
+      that turned out to be genuinely testable against a real selection (not
+      a mock) since `run_vba_tests.ps1` runs PowerPoint visible, so
+      `shp.Select`/`Shapes.Range(Array(...)).Select` really do change
+      `Application.ActiveWindow.Selection`; `BuildRolePickerPrompt` and
+      `PickRoleFromList` unit tests; and one end-to-end test wiring
+      selection→role-lookup→`ConfirmFieldMatch` together (skipping only the
+      `InputBox` call itself) to prove the pieces actually compose. The
+      `InputBox` interaction itself has no automated coverage (no headless
+      harness can click through a live modal) — covered by a manual
+      verification recipe in the new `SPIKE_NOTES_ResolveFields.md` instead.
+      `python3 -m pytest tests/ -v` (70 passed) and `python3 -m mypy src/`
+      (no issues, 10 source files) both confirmed unaffected (VBA-only
+      change). **Not executed against real Office this pass** —
+      `powershell.exe` unreachable from this container; needs a real
+      `run_vba_tests.ps1` run on the WSL/Windows host next time this project
+      is picked up there.
 - [ ] Shared result form: one form reused after Sync Now, New Period, and the
       onboarding verify step, showing counts (no-op/created/corrected/flagged
       unclassified/flagged conflict) with flagged items listed by slide name/index
