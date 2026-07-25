@@ -96,6 +96,46 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "Onboarding_PureDecorationNeverMatched", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_Verification_StructureMatchesAfterDuplicate()
+    AppendResult report, "Verification_StructureMatchesAfterDuplicate", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_Verification_DetectsShapeCountMismatch()
+    AppendResult report, "Verification_DetectsShapeCountMismatch", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_Verification_DetectsZOrderSwap()
+    AppendResult report, "Verification_DetectsZOrderSwap", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_SlideDuplication_CreatesTaggedInjectedSlide()
+    AppendResult report, "SlideDuplication_CreatesTaggedInjectedSlide", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_SlideDuplication_RefusesInstanceKeyCollision()
+    AppendResult report, "SlideDuplication_RefusesInstanceKeyCollision", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_SlideDuplication_PartialRowStillCreatesSlideButFlagsMissing()
+    AppendResult report, "SlideDuplication_PartialRowStillCreatesSlideButFlagsMissing", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_RunSync_GatherInstancesFiltersByType()
+    AppendResult report, "RunSync_GatherInstancesFiltersByType", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_RunSync_EndToEndCreatesSlidesFromFreshSheet()
+    AppendResult report, "RunSync_EndToEndCreatesSlidesFromFreshSheet", r
+    On Error GoTo 0
+
     RunAllTests = report
 End Function
 
@@ -121,6 +161,17 @@ Private Function NewBlankSlide() As Object
     Dim n As Long
     n = Application.ActivePresentation.Slides.count + 1
     Set NewBlankSlide = Application.ActivePresentation.Slides.Add(n, ppLayoutBlank)
+End Function
+
+Private Function FindShapeByRole(sld As Object, role As String) As Object
+    Dim shp As Object
+    For Each shp In sld.Shapes
+        If shp.Tags("role") = role Then
+            Set FindShapeByRole = shp
+            Exit Function
+        End If
+    Next shp
+    Set FindShapeByRole = Nothing
 End Function
 
 ' ---------------------------------------------------------------------
@@ -567,4 +618,355 @@ Private Function Test_Onboarding_PureDecorationNeverMatched() As String
     End If
 
     Test_Onboarding_PureDecorationNeverMatched = result
+End Function
+
+' ---------------------------------------------------------------------
+' Verification
+' ---------------------------------------------------------------------
+
+Private Function Test_Verification_StructureMatchesAfterDuplicate() As String
+    Dim result As String
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shp1 As Object, shp2 As Object
+    Set shp1 = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp1.TextFrame.TextRange.Text = "Title"
+    shp1.Tags.Add "role", "Title"
+    Set shp2 = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 50)
+    shp2.TextFrame.TextRange.Text = "Body"
+    shp2.Tags.Add "role", "Body"
+
+    Dim dupSlides As Object
+    Set dupSlides = sld.Duplicate()
+    Dim dupSld As Object
+    Set dupSld = dupSlides(1)
+
+    Dim structCheck As StructuralVerification
+    structCheck = Verification.VerifyStructure(sld, dupSld)
+    result = result & Assert(structCheck.Ok, "structure matches after a clean duplicate, got " & structCheck.MismatchCount & " mismatch(es)")
+    result = result & Assert(structCheck.SourceCount = structCheck.DuplicateCount, "counts match, got " & structCheck.SourceCount & " vs " & structCheck.DuplicateCount)
+
+    Dim zCheck As ZOrderVerification
+    zCheck = Verification.VerifyZOrder(sld, dupSld)
+    result = result & Assert(zCheck.Ok, "z-order matches after a clean duplicate, got " & zCheck.MismatchCount & " mismatch(es)")
+
+    Test_Verification_StructureMatchesAfterDuplicate = result
+End Function
+
+Private Function Test_Verification_DetectsShapeCountMismatch() As String
+    Dim result As String
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shp1 As Object, shp2 As Object
+    Set shp1 = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp1.TextFrame.TextRange.Text = "Title"
+    shp1.Tags.Add "role", "Title"
+    Set shp2 = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 50)
+    shp2.TextFrame.TextRange.Text = "Body"
+    shp2.Tags.Add "role", "Body"
+
+    Dim dupSlides As Object
+    Set dupSlides = sld.Duplicate()
+    Dim dupSld As Object
+    Set dupSld = dupSlides(1)
+    dupSld.Shapes(2).Delete ' real structural defect: duplicate is missing a shape
+
+    Dim structCheck As StructuralVerification
+    structCheck = Verification.VerifyStructure(sld, dupSld)
+    result = result & Assert(Not structCheck.Ok, "structure mismatch detected")
+    result = result & Assert(structCheck.MismatchCount > 0, "at least one mismatch reported")
+
+    Test_Verification_DetectsShapeCountMismatch = result
+End Function
+
+Private Function Test_Verification_DetectsZOrderSwap() As String
+    Dim result As String
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shp1 As Object, shp2 As Object
+    Set shp1 = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp1.TextFrame.TextRange.Text = "Title"
+    shp1.Tags.Add "role", "Title"
+    Set shp2 = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 50)
+    shp2.TextFrame.TextRange.Text = "Body"
+    shp2.Tags.Add "role", "Body"
+
+    Dim dupSlides As Object
+    Set dupSlides = sld.Duplicate()
+    Dim dupSld As Object
+    Set dupSld = dupSlides(1)
+    ' Shapes(1) (Title) was added first, so it's already backmost among just
+    ' 2 shapes -- sending it "to back" would be a no-op (first attempt here
+    ' did exactly that and found nothing, a test bug not a Verification.bas
+    ' bug, per the real 2026-07-25 run). Bring it to front instead, which
+    ' actually swaps its relative order against Body.
+    dupSld.Shapes(1).ZOrder msoBringToFront ' same shapes/tags/types, stacking order swapped on the duplicate only
+
+    Dim zCheck As ZOrderVerification
+    zCheck = Verification.VerifyZOrder(sld, dupSld)
+    result = result & Assert(Not zCheck.Ok, "z-order swap detected")
+    result = result & Assert(zCheck.MismatchCount > 0, "at least one z-order mismatch reported")
+
+    Dim structCheck As StructuralVerification
+    structCheck = Verification.VerifyStructure(sld, dupSld)
+    result = result & Assert(structCheck.Ok, "structure itself is unaffected by a pure z-order swap, got " & structCheck.MismatchCount & " mismatch(es)")
+
+    Test_Verification_DetectsZOrderSwap = result
+End Function
+
+' ---------------------------------------------------------------------
+' SlideDuplication
+' ---------------------------------------------------------------------
+
+Private Function Test_SlideDuplication_CreatesTaggedInjectedSlide() As String
+    Dim result As String
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim titleShp As Object, bodyShp As Object
+    Set titleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    titleShp.TextFrame.TextRange.Text = "Template Title"
+    titleShp.Tags.Add "role", "Title"
+    Set bodyShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 50)
+    bodyShp.TextFrame.TextRange.Text = "Template Body"
+    bodyShp.Tags.Add "role", "Body"
+    templateSld.Tags.Add "slide_type", "quarterly-update"
+    templateSld.Tags.Add "instance_key", "rec-template"
+
+    Dim values As Object
+    Set values = CreateObject("Scripting.Dictionary")
+    values("Title") = "Q3 Revenue"
+    values("Body") = "Strong quarter"
+
+    Dim noInstances() As Object ' deliberately unallocated -- nothing to collision-check against
+
+    Dim dr As DuplicateResult
+    dr = SlideDuplication.DuplicateAndTag(templateSld, "quarterly-update", "rec-new-1", values, noInstances)
+
+    result = result & Assert(dr.Ok, "DuplicateAndTag succeeded, reason='" & dr.Reason & "'")
+    If dr.Ok Then
+        Dim instance As SlideInstance
+        instance = Resolve.ResolveSlideInstance(dr.NewSlide)
+        result = result & Assert(instance.TypeTag = "quarterly-update", "new slide tagged with correct slide_type, got '" & instance.TypeTag & "'")
+        result = result & Assert(instance.InstanceKey = "rec-new-1", "new slide tagged with correct instance_key, got '" & instance.InstanceKey & "'")
+        result = result & Assert(dr.MissingFieldCount = 0, "no missing fields when values supplies everything, got " & dr.MissingFieldCount)
+
+        Dim newTitleShp As Object
+        Set newTitleShp = FindShapeByRole(dr.NewSlide, "Title")
+        result = result & Assert(Not newTitleShp Is Nothing, "Title shape found on new slide")
+        If Not newTitleShp Is Nothing Then
+            result = result & Assert(newTitleShp.TextFrame.TextRange.Text = "Q3 Revenue", "Title value injected correctly, got '" & newTitleShp.TextFrame.TextRange.Text & "'")
+        End If
+    End If
+
+    Test_SlideDuplication_CreatesTaggedInjectedSlide = result
+End Function
+
+Private Function Test_SlideDuplication_RefusesInstanceKeyCollision() As String
+    Dim result As String
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim titleShp As Object
+    Set titleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    titleShp.TextFrame.TextRange.Text = "Title"
+    titleShp.Tags.Add "role", "Title"
+    templateSld.Tags.Add "slide_type", "quarterly-update"
+    templateSld.Tags.Add "instance_key", "rec-a"
+
+    Dim existingSld As Object
+    Set existingSld = NewBlankSlide()
+    existingSld.Tags.Add "slide_type", "quarterly-update"
+    existingSld.Tags.Add "instance_key", "rec-dup"
+
+    Dim existingInstances(1 To 1) As Object
+    Set existingInstances(1) = existingSld
+
+    Dim values As Object
+    Set values = CreateObject("Scripting.Dictionary")
+    values("Title") = "New Value"
+
+    Dim slidesBefore As Long
+    slidesBefore = Application.ActivePresentation.Slides.count
+
+    Dim dr As DuplicateResult
+    dr = SlideDuplication.DuplicateAndTag(templateSld, "quarterly-update", "rec-dup", values, existingInstances)
+
+    result = result & Assert(Not dr.Ok, "refuses to create a duplicate instance_key")
+    result = result & Assert(Application.ActivePresentation.Slides.count = slidesBefore, "no new slide was left behind, got " & Application.ActivePresentation.Slides.count & " vs expected " & slidesBefore)
+
+    Test_SlideDuplication_RefusesInstanceKeyCollision = result
+End Function
+
+Private Function Test_SlideDuplication_PartialRowStillCreatesSlideButFlagsMissing() As String
+    Dim result As String
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim titleShp As Object, bodyShp As Object
+    Set titleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    titleShp.TextFrame.TextRange.Text = "Title"
+    titleShp.Tags.Add "role", "Title"
+    Set bodyShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 50)
+    bodyShp.TextFrame.TextRange.Text = "Body"
+    bodyShp.Tags.Add "role", "Body"
+    templateSld.Tags.Add "slide_type", "quarterly-update"
+    templateSld.Tags.Add "instance_key", "rec-template2"
+
+    Dim values As Object
+    Set values = CreateObject("Scripting.Dictionary")
+    values("Title") = "Only Title Supplied" ' Body deliberately missing
+
+    Dim noInstances() As Object
+
+    Dim dr As DuplicateResult
+    dr = SlideDuplication.DuplicateAndTag(templateSld, "quarterly-update", "rec-partial", values, noInstances)
+
+    result = result & Assert(dr.Ok, "slide still created despite a missing field, reason='" & dr.Reason & "'")
+    result = result & Assert(dr.MissingFieldCount = 1, "exactly one missing field flagged, got " & dr.MissingFieldCount)
+    If dr.MissingFieldCount = 1 Then
+        result = result & Assert(dr.MissingFields(1) = "Body", "flagged field is 'Body', got '" & dr.MissingFields(1) & "'")
+    End If
+
+    Test_SlideDuplication_PartialRowStillCreatesSlideButFlagsMissing = result
+End Function
+
+' ---------------------------------------------------------------------
+' RunSync
+' ---------------------------------------------------------------------
+
+Private Function Test_RunSync_GatherInstancesFiltersByType() As String
+    Dim result As String
+    Dim sldA As Object, sldB As Object, sldC As Object
+    Set sldA = NewBlankSlide()
+    sldA.Tags.Add "slide_type", "type-a"
+    sldA.Tags.Add "instance_key", "a-1"
+    Set sldB = NewBlankSlide()
+    sldB.Tags.Add "slide_type", "type-b"
+    sldB.Tags.Add "instance_key", "b-1"
+    Set sldC = NewBlankSlide()
+    sldC.Tags.Add "slide_type", "type-a"
+    sldC.Tags.Add "instance_key", "a-2"
+
+    Dim instances() As Object
+    instances = RunSync.GatherInstances("type-a")
+
+    Dim lo As Long, hi As Long, hasAny As Boolean
+    On Error Resume Next
+    lo = LBound(instances): hi = UBound(instances): hasAny = (Err.Number = 0)
+    On Error GoTo 0
+
+    result = result & Assert(hasAny And (hi - lo + 1) >= 2, "at least the 2 type-a slides found, got " & IIf(hasAny, hi - lo + 1, 0))
+
+    Dim foundA1 As Boolean, foundA2 As Boolean, foundB As Boolean
+    Dim i As Long
+    If hasAny Then
+        For i = lo To hi
+            Dim inst As SlideInstance
+            inst = Resolve.ResolveSlideInstance(instances(i))
+            If inst.InstanceKey = "a-1" Then foundA1 = True
+            If inst.InstanceKey = "a-2" Then foundA2 = True
+            If inst.InstanceKey = "b-1" Then foundB = True
+        Next i
+    End If
+    result = result & Assert(foundA1 And foundA2, "both type-a instances included")
+    result = result & Assert(Not foundB, "type-b instance correctly excluded")
+
+    Test_RunSync_GatherInstancesFiltersByType = result
+End Function
+
+' End-to-end: a template, a fresh Excel sheet (via cross-app Excel
+' automation -- the real intended usage per specs/vba-port.md's "VBA runs
+' inside Excel or drives it via COM from the PowerPoint side") with one
+' existing-and-stale row (exercises case 4) and two rows with no matching
+' slide yet (exercises case 3 twice, plus resequencing). Written directly
+' to the worksheet's cells matching ExcelOutput's own layout convention
+' rather than importing ExcelOutput.bas into a second, Excel-hosted VBA
+' project -- RunSync.RunRoutineSync's own ExcelOutput.ReadSheet call reads
+' it from the PowerPoint-hosted project against the live cross-app ws
+' object either way, which is the actual thing under test.
+Private Function Test_RunSync_EndToEndCreatesSlidesFromFreshSheet() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim titleShp As Object
+    Set titleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    titleShp.TextFrame.TextRange.Text = "Template Title"
+    titleShp.Tags.Add "role", "Title"
+    templateSld.Tags.Add "slide_type", "e2e-type"
+    templateSld.Tags.Add "instance_key", "e2e-template"
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+
+    ws.Cells(1, 1).Value = "Instance ID"
+    ws.Cells(1, 2).Value = "Title"
+    ws.Cells(2, 1).Value = "e2e-existing"
+    ws.Cells(2, 2).Value = "Existing Value"
+    ws.Cells(3, 1).Value = "e2e-new-1"
+    ws.Cells(3, 2).Value = "Brand New One"
+    ws.Cells(4, 1).Value = "e2e-new-2"
+    ws.Cells(4, 2).Value = "Brand New Two"
+
+    Dim existingSld As Object
+    Set existingSld = NewBlankSlide()
+    Dim existingTitleShp As Object
+    Set existingTitleShp = existingSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    existingTitleShp.TextFrame.TextRange.Text = "Stale Value"
+    existingTitleShp.Tags.Add "role", "Title"
+    existingSld.Tags.Add "slide_type", "e2e-type"
+    existingSld.Tags.Add "instance_key", "e2e-existing"
+
+    Dim report As String
+    report = RunSync.RunRoutineSync(ws, "e2e-type", templateSld)
+
+    Dim instances() As Object
+    instances = RunSync.GatherInstances("e2e-type")
+
+    Dim lo As Long, hi As Long, hasAny As Boolean
+    On Error Resume Next
+    lo = LBound(instances): hi = UBound(instances): hasAny = (Err.Number = 0)
+    On Error GoTo 0
+
+    result = result & Assert(hasAny And (hi - lo + 1) = 4, "4 total instances after sync (template+existing+2 new), got " & IIf(hasAny, hi - lo + 1, 0) & " -- report: " & report)
+
+    Dim byKey As Object
+    Set byKey = CreateObject("Scripting.Dictionary")
+    Dim i As Long
+    If hasAny Then
+        For i = lo To hi
+            Dim inst As SlideInstance
+            inst = Resolve.ResolveSlideInstance(instances(i))
+            If inst.HasInstanceKey Then Set byKey(inst.InstanceKey) = instances(i)
+        Next i
+    End If
+
+    result = result & Assert(byKey.Exists("e2e-new-1") And byKey.Exists("e2e-new-2"), "both new_record slides were created")
+
+    If byKey.Exists("e2e-existing") Then
+        Dim correctedShp As Object
+        Set correctedShp = FindShapeByRole(byKey("e2e-existing"), "Title")
+        Dim correctedText As String
+        correctedText = IIf(correctedShp Is Nothing, "<shape not found>", correctedShp.TextFrame.TextRange.Text)
+        result = result & Assert(correctedText = "Existing Value", "existing slide's stale value was corrected (case 4), got '" & correctedText & "'")
+    End If
+    If byKey.Exists("e2e-new-1") Then
+        Dim new1Shp As Object
+        Set new1Shp = FindShapeByRole(byKey("e2e-new-1"), "Title")
+        Dim new1Text As String
+        new1Text = IIf(new1Shp Is Nothing, "<shape not found>", new1Shp.TextFrame.TextRange.Text)
+        result = result & Assert(new1Text = "Brand New One", "new slide's value injected correctly, got '" & new1Text & "'")
+    End If
+
+    If byKey.Exists("e2e-existing") And byKey.Exists("e2e-new-1") And byKey.Exists("e2e-new-2") Then
+        result = result & Assert(byKey("e2e-existing").SlideIndex < byKey("e2e-new-1").SlideIndex, "e2e-existing sits before e2e-new-1 after resequencing")
+        result = result & Assert(byKey("e2e-new-1").SlideIndex < byKey("e2e-new-2").SlideIndex, "e2e-new-1 sits before e2e-new-2 after resequencing")
+    End If
+
+    wb.Close False
+    xl.Quit
+
+    Test_RunSync_EndToEndCreatesSlidesFromFreshSheet = result
 End Function

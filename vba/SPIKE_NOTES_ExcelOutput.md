@@ -5,15 +5,36 @@ Module 6 of `specs/vba-port.md`'s port order -- the last one. Ports
 operating on a live `Worksheet` object instead of rebuilding a `.xlsx` zip
 from scratch on every write.
 
-**Not executed or verified in this environment** -- there is no
-Windows/Office install here, same constraint as every prior module.
-`ExcelOutput.bas` has not been run. The manual verification recipe below is
-how to actually prove it against a real Office install, cross-checked
-against `tests/test_excel_output.py`'s already-proven Python values. Same
-limitation the Python side itself notes: no `.xlsx` fixture exists in
-`test-fixtures/` for this spec, so both languages' own tests are necessarily
-round-trip/self-consistency checks (write then read), not checks against an
-externally-produced file.
+**Executed against real Office (2026-07-25)** -- all 8 tests in
+`vba/tests/TestRunnerExcel.bas` pass for real, run inside Excel's own VBA
+project via `run_vba_tests.ps1`. Same limitation the Python side itself
+notes: no `.xlsx` fixture exists in `test-fixtures/` for this spec, so both
+languages' own tests are necessarily round-trip/self-consistency checks
+(write then read), not checks against an externally-produced file.
+
+## A real cross-app finding (2026-07-25): named Excel constants don't resolve outside Excel's own project
+
+`LastUsedColumn`/`LastUsedRow` originally used the named constants
+`xlToLeft`/`xlUp` (from Excel's `XlDirection` enum). These resolve fine
+when this module runs *inside Excel's own VBA project* (which is how
+`TestRunnerExcel.bas` has always exercised it, and why every prior test
+pass here looked completely clean) -- but `vba-port.md`'s stated real
+target also includes driving Excel *from PowerPoint* via COM automation
+("VBA runs inside Excel or drives it via COM from the PowerPoint side").
+When `RunSync.bas` (a PowerPoint-hosted module) actually did that for the
+first time, `xlToLeft` raised a hard compile error: "Variable not defined"
+-- a PowerPoint-hosted VBA project has no reference to Excel's type
+library, so Excel-specific named constants simply don't exist there, even
+though the exact same code compiles and runs fine inside Excel itself. This
+had been silently true since `ExcelOutput.bas` was first written; nothing
+had ever exercised the cross-app path until `RunSync.bas` did.
+
+**Fixed** by replacing both named constants with their numeric literal
+values (`XL_TO_LEFT = -4159`, `XL_UP = -4162`, module-level `Private
+Const`s) -- stable, documented Office constants unaffected by which host
+application's VBA project this runs in. See `SPIKE_NOTES_RunSync.md` for
+where this was actually found (a real PowerPoint-driven end-to-end test,
+not a code review).
 
 ## What was ported
 

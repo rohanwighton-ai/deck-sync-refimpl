@@ -95,6 +95,38 @@ guidance.
   ProgID, try the dotted form first rather than assuming the no-dot form
   is equivalent.
 
+- **VBA: an application's named constants (e.g. Excel's `xlToLeft`/`xlUp`)
+  only resolve inside that application's own VBA project.** A module built
+  to run cross-app (e.g. `ExcelOutput.bas`, driven from PowerPoint per
+  `vba-port.md`'s "runs inside Excel or drives it via COM from the
+  PowerPoint side") cannot rely on the foreign app's named enum constants
+  being defined -- confirmed 2026-07-25: `xlToLeft` compiled and ran fine
+  inside Excel's own project (every `TestRunnerExcel.bas` run before this
+  looked completely clean) but raised "Variable not defined" the moment
+  `RunSync.bas` (PowerPoint-hosted) called into `ExcelOutput.bas` for the
+  first time. **Use the numeric literal instead** (e.g. `XL_TO_LEFT =
+  -4159`, `XL_UP = -4162`, as module-level `Private Const`s with a comment)
+  for any constant a module might use from outside its "home" application.
+  A module tested only in its home app can carry this bug invisibly for an
+  arbitrarily long time -- it only surfaces once something genuinely drives
+  it cross-app, which is exactly what happened here.
+
+- **A hung headless run (no output, process still alive) is very often a
+  VBA *compile* error, not a runtime hang** -- `On Error` cannot catch
+  compile-time issues (see the Testing section's modal-dialog note below),
+  so they can manifest as an indefinite wait rather than a clean COM
+  exception. Don't keep guessing blindly at the cause: take an actual
+  screenshot. `Add-Type -AssemblyName System.Windows.Forms,
+  System.Drawing` + `[Graphics]::CopyFromScreen` captures the full screen
+  to a PNG reliably; bring the right window to front first with
+  `SetForegroundWindow`/`ShowWindow` (P/Invoke `user32.dll`) since a hung
+  Office process is very likely sitting behind whatever terminal window
+  triggered it, not on top. The compile-error dialog's own text names the
+  exact problem directly -- confirmed 2026-07-25, both bugs in this list
+  ("Sub or function not defined" from a missing `ExcelOutput.bas` import,
+  and this one) were found this way after other diagnostic techniques
+  stalled.
+
 ## Testing
 
 - **A real, headless test harness now exists and has actually run against

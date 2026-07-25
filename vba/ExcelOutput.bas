@@ -31,6 +31,21 @@ Option Explicit
 Public Const INSTANCE_ID_HEADER As String = "Instance ID"
 Private Const DECK_REFERENCE_PROPERTY_NAME As String = "DeckReference"
 
+' XlDirection enum values, as numeric literals rather than the named
+' constants (xlToLeft/xlUp) -- confirmed real (2026-07-25) that the named
+' forms only resolve when this module runs inside Excel's own VBA project
+' (which has the Excel type library referenced natively). Driven cross-app
+' from PowerPoint (RunSync.bas's actual real usage, per vba-port.md's "VBA
+' runs inside Excel or drives it via COM from the PowerPoint side"), the
+' PowerPoint-hosted project has no such reference, and the named constants
+' raise a compile error ("Variable not defined") -- found via a real
+' PowerPoint-driven end-to-end test, not caught by any of ExcelOutput's own
+' prior tests since those all ran inside Excel's own project, where the
+' names happened to resolve. Numeric values are stable, documented Office
+' constants, unaffected by which host application's project this runs in.
+Private Const XL_TO_LEFT As Long = -4159
+Private Const XL_UP As Long = -4162
+
 ' Sheet.Fields/InstanceOrder are Collections (ordered, append-only), not
 ' Dictionary keys -- matches this project's existing convention for ordered
 ' lists (SyncOperations.bas's instanceOrder) rather than relying on
@@ -124,7 +139,7 @@ Private Function LastUsedColumn(ws As Object) As Long
         LastUsedColumn = 0
         Exit Function
     End If
-    LastUsedColumn = ws.Cells(1, ws.Columns.count).End(xlToLeft).Column
+    LastUsedColumn = ws.Cells(1, ws.Columns.count).End(XL_TO_LEFT).Column
 End Function
 
 Private Function LastUsedRow(ws As Object) As Long
@@ -132,7 +147,7 @@ Private Function LastUsedRow(ws As Object) As Long
         LastUsedRow = 0
         Exit Function
     End If
-    LastUsedRow = ws.Cells(ws.Rows.count, 1).End(xlUp).Row
+    LastUsedRow = ws.Cells(ws.Rows.count, 1).End(XL_UP).Row
 End Function
 
 Private Sub WriteDeckReference(wb As Object, deckReference As String)

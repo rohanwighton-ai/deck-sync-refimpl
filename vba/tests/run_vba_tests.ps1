@@ -45,7 +45,7 @@ Write-Output "RepoRoot: $RepoRoot"
 Write-Output "vbaSourceDir: $vbaSourceDir"
 Write-Output "fixturesSourceDir: $fixturesSourceDir"
 
-$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "tests\TestRunner.bas")
+$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "Verification.bas", "SlideDuplication.bas", "RunSync.bas", "tests\TestRunner.bas")
 foreach ($m in $pptModules) {
     Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging
 }
@@ -68,7 +68,7 @@ try {
     $ppt.Visible = -1  # msoTrue -- visible on purpose for a first real run, see script header
     $pres = $ppt.Presentations.Add()
 
-    foreach ($m in @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "TestRunner.bas")) {
+    foreach ($m in @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas", "SlideDuplication.bas", "RunSync.bas", "TestRunner.bas")) {
         $comp = $pres.VBProject.VBComponents.Import((Join-Path $staging $m))
         Write-Output ("Imported $m as component name: " + $comp.Name)
     }

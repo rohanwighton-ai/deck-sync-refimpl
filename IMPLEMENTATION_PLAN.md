@@ -766,6 +766,65 @@ open task. Gap analysis below is what's actually new/actionable.
       install `EnrichPlaceholderIdx` might someday run on). Not treated as a blocker; noted
       for awareness if this ever needs to run somewhere older.
 
+## Priority 19 (2026-07-25 pass): the orchestration layer -- deck-sync-refimpl is now a real, runnable sync tool
+
+- [x] Build the piece every module in this port explicitly deferred: gathering live
+      instances, executing a decided duplication, and reconciling deck order every sync.
+      Three new modules, all written and executed against real Office the same day:
+      **`Verification.bas`** (new port, not in the original 6-module order --
+      `verify_structure`/`verify_z_order` from `src/verification.py`, needed because
+      `specs/slide-duplication-trigger.md` makes them mandatory before tagging any
+      duplicate; had to do its own `DiscoverSlideWithShapes` + role-tag read internally
+      since `Candidate.IdentityTag` is always blank, same reason `Onboarding.
+      BuildTemplateFieldShapes` already does this). **`SlideDuplication.bas`**
+      (`DuplicateAndTag`, the first real implementation of `specs/slide-duplication-
+      trigger.md`: instance-key collision guard, `Slide.Duplicate`, mandatory
+      structural/z-order verification before any tag write -- a failed check deletes the
+      malformed duplicate rather than leaving it as untagged debris, a judgment call the
+      spec itself doesn't dictate -- then tags and injects with partial-row handling).
+      **`RunSync.bas`** (`GatherInstances`, `RunRoutineSync` dispatching `SyncOperations.
+      PlanRoutineSync`'s decisions to `SlideDuplication.DuplicateAndTag`, and
+      `ResequenceByRowOrder` applying the row-order standing invariant to the whole type
+      every pass -- anchored at the type's current lowest `SlideIndex` rather than the
+      front/back of the deck, another judgment call the spec leaves open).
+      Extended `vba/tests/TestRunner.bas` with 8 new real tests (3 Verification, 3
+      SlideDuplication, 2 RunSync -- including a full end-to-end pass: a template, a live
+      cross-app Excel worksheet with one stale row and two brand-new rows, confirming
+      case 4 correction, case 3 creation ×2, correct injection, and post-sync
+      resequencing all in one real run).
+      **Two real bugs found and fixed via the hardening loop, not code review**: (1) the
+      driver script's own PowerPoint-side import list never included `ExcelOutput.bas`
+      (a tooling gap in `run_vba_tests.ps1`, not production code) -- `RunSync.bas`
+      declares `Dim sheet As Sheet` and calls `ExcelOutput.ReadSheet`, so without that
+      import the whole project failed to compile ("Sub or function not defined"). (2) A
+      genuine production bug found the same way: `ExcelOutput.bas`'s `xlToLeft`/`xlUp`
+      named constants (Excel's `XlDirection` enum) only resolve inside Excel's own VBA
+      project -- every prior `ExcelOutput.bas` test had run there and looked completely
+      clean, but `RunSync.bas` (PowerPoint-hosted) was the first code in this whole
+      project to actually call `ExcelOutput.ReadSheet` cross-app, and hit "Variable not
+      defined" immediately. Fixed by switching both to numeric literals (`XL_TO_LEFT =
+      -4159`, `XL_UP = -4162`).
+      Both bugs manifested as an indefinite hang rather than a clean COM exception
+      (compile errors aren't catchable by `On Error`, consistent with this project's
+      earlier modal-dialog finding) -- diagnosed by literally screenshotting the
+      PowerPoint/VBE window mid-hang (bringing it to the foreground first via
+      `SetForegroundWindow`, since a hung Office process sits behind whatever terminal
+      triggered it) rather than continuing to guess blindly. Both new techniques
+      documented in `AGENTS.md`'s Known Patterns for future passes.
+      **Result: all 29 real tests now pass** (21/21 PowerPoint, 8/8 Excel) -- the fullest
+      real end-to-end proof this project has produced: a fresh Excel sheet genuinely
+      drives real slide creation, correction, and reordering in a real PowerPoint deck.
+      No `src`/`tests` changes (this priority has no Python equivalent at all --
+      orchestration was explicitly out of scope for every Python module by design).
+      **Still open**: case 2 (period rollover) is not driven from `RunRoutineSync` (by
+      design, per `sync-operations.md`'s own "never inferred from routine sync" rule) --
+      no orchestration exists yet for the explicit rollover command itself. Cases 5/7
+      remain non-goals throughout. The parked multi-deck design (export,
+      conflict-resolution/propagation, stale-queue -- see `claude-brain`'s
+      `project_active_ventures.md`) remains entirely unspecified, as does deciding where
+      a type's template is actually stored/looked up (currently caller-supplied to
+      `RunRoutineSync`, per `onboarding.md`'s own non-goal).
+
 ## Notes for next planning pass
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
   settings. Worth confirming this stays intentional as more modules are added. Still true
