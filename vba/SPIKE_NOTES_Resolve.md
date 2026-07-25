@@ -14,6 +14,17 @@ verification recipe below is how to actually prove them against a real
 Office install, cross-checked against `tests/test_resolve.py`'s and
 `tests/test_sync_operations.py`'s already-proven Python values.
 
+**2026-07-25 addendum**: `SyncAction`'s `ChangedFields As Object` (a single
+`Scripting.Dictionary fieldName -> InjectResult`) was fixed to two
+Dictionaries, `ChangedFieldVerified`/`ChangedFieldError` (fieldName ->
+Boolean / String) -- a UDT (`InjectResult`) cannot be assigned to a
+`Variant` in VBA, so the original design could not have compiled. Found
+while building `Onboarding.bas` (module 5); see its own
+`SPIKE_NOTES_Onboarding.md` and `AGENTS.md`'s Known Patterns for the general
+restriction. `Found`/`Written` weren't carried forward into the split --
+both are always `True` for any field that reaches this Dictionary in the
+first place, per `PlanRoutineSync`'s own gate.
+
 ## A real, previously-mis-stated gap this module closes
 
 `specs/vba-port.md`'s port order describes module 2 (`identity_tags`) as

@@ -21,7 +21,16 @@ Option Explicit
 Public Type SyncAction
     Kind As String              ' "no_change" | "in_place_correction" | "new_record" | "flagged"
     InstanceKey As String       ' no_change / in_place_correction
-    ChangedFields As Object     ' in_place_correction: Scripting.Dictionary fieldName -> InjectResult
+    ChangedFieldVerified As Object ' in_place_correction: Scripting.Dictionary fieldName -> Boolean
+    ChangedFieldError As Object    ' in_place_correction: Scripting.Dictionary fieldName -> String (ErrorMessage, "" if none)
+    ' NOTE: was a single "ChangedFields fieldName -> InjectResult" Dictionary until
+    ' 2026-07-25 -- a UDT cannot be assigned to a Variant in VBA (compile-time "Invalid
+    ' use of type"), so a Dictionary can never hold an InjectResult value directly. Split
+    ' into two Dictionaries of primitives instead (Found/Written are always True for any
+    ' field that reaches `changed` in the first place, per PlanRoutineSync's own gate
+    ' below, so only Verified/ErrorMessage are worth carrying per field). See
+    ' SPIKE_NOTES_Onboarding.md, which is where this was first found (in Onboarding.bas's
+    ' own design), and AGENTS.md's Known Patterns.
     RowInstanceKey As String    ' new_record: the Data-sheet row's instance key
     Values As Object            ' new_record: Scripting.Dictionary fieldName -> String value
     Subject As String           ' flagged: a readable handle on the flagged slide (its SlideID)
@@ -110,8 +119,9 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
             Dim instanceSlide As Object
             Set instanceSlide = instances(idx)
 
-            Dim changed As Object
-            Set changed = CreateObject("Scripting.Dictionary")
+            Dim changedVerified As Object, changedError As Object
+            Set changedVerified = CreateObject("Scripting.Dictionary")
+            Set changedError = CreateObject("Scripting.Dictionary")
 
             Dim fieldName As Variant
             For Each fieldName In rowValues.Keys
@@ -132,16 +142,18 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                 ' adjacent territory, a non-goal per
                 ' specs/sync-operations.md. See SPIKE_NOTES_Resolve.md.
                 If r.Found And r.Written Then
-                    changed(fieldName) = r
+                    changedVerified(fieldName) = r.Verified
+                    changedError(fieldName) = r.ErrorMessage
                 End If
             Next fieldName
 
             n = n + 1
             ReDim Preserve actions(1 To n)
-            If changed.count > 0 Then
+            If changedVerified.count > 0 Then
                 actions(n).Kind = "in_place_correction"
                 actions(n).InstanceKey = key
-                Set actions(n).ChangedFields = changed
+                Set actions(n).ChangedFieldVerified = changedVerified
+                Set actions(n).ChangedFieldError = changedError
             Else
                 actions(n).Kind = "no_change"
                 actions(n).InstanceKey = key
