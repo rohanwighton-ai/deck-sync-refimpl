@@ -583,6 +583,54 @@ open task. Gap analysis below is what's actually new/actionable.
       `Slide` does (needed to resolve `mst-slide-layouts.pptx`-style fixtures directly,
       per `SPIKE_NOTES_Resolve.md`'s divergence 6).
 
+## Priority 15 (2026-07-25 pass): VBA port order, module 5 (onboarding)
+
+- [x] Port `onboarding` per `specs/vba-port.md`'s numbered port order (module 5 of 6,
+      after discovery/identity_tags/matching/resolve+sync_operations). Confirmed via `ls
+      vba/` that modules 1-4 were the only ones present before this task.
+      Found and closed a real gap before porting: neither `Discovery.DiscoverSlide` nor
+      `DiscoverCustomLayout` ever exposed the live `Shape` object behind a returned
+      `Candidate` -- no prior caller needed the Candidate-to-shape direction
+      (`InjectPrimitive.bas` goes tag-to-shape, never candidate-to-shape). Onboarding is
+      the first caller needing it (to write a tag onto a matched candidate, or read a
+      template's existing role tags), so `Discovery.bas` gained
+      `DiscoverSlideWithShapes`/`DiscoverCustomLayoutWithShapes` (parallel `shapes()`
+      array, same index as the returned `Candidate()`, since `Candidate.ZOrder` is exactly
+      the deterministic position `Walk` already assigns) -- purely additive,
+      `DiscoverSlide`/`DiscoverCustomLayout`'s own signatures and output are unchanged.
+      Also found a real VBA restriction while designing this: a UDT cannot be assigned to
+      a `Variant`, so a `Scripting.Dictionary` (the natural port of Python's
+      `dict[str, Candidate]`) cannot hold `Candidate`/`MatchResult`/`InjectResult` values
+      -- confirmed this is why `Onboarding.bas` uses parallel arrays
+      (`roles() As String` / `Candidate()`) instead of a dictionary, and flagged (not
+      fixed) that `SyncOperations.bas`'s already-shipped `PlanRoutineSync`
+      (`changed(fieldName) = r` where `r As InjectResult`) appears to hit this exact
+      restriction -- a different, already-committed module, left for a separate decision
+      rather than silently patched here.
+      Added `vba/Onboarding.bas`: `BuildTemplateFieldShapes` (role -> reference `Candidate`,
+      the field-shapes half `Resolve.SlideInstance` deliberately doesn't carry),
+      `MatchSlideAgainstTemplate` (per-role tier-2 scoring via `Matching.Match`, excluding
+      already-tagged and pure-decoration candidates), `ConfirmFieldMatch` (the write
+      primitive a selection UI would call), and `OnboardNewInstance` (unconditional
+      slide-identity tagging + auto-accept of high-confidence matches only), field-for-field
+      against `src/onboarding.py`. `Shape.Tags.Add`/`Slide.Tags.Add` upsert natively, so no
+      read-merge-write logic was needed the way `identity_tags.py`'s hand-rolled XML
+      required.
+      Added `vba/SPIKE_NOTES_Onboarding.md` documenting both real findings above, 5
+      deliberate divergences, and a manual verification recipe cross-checked against
+      `tests/test_onboarding.py`'s already-proven values (high/medium confidence split on
+      `mst-slide-layouts.pptx`'s two layouts, pure-decoration exclusion on
+      `shp-groupshape.pptx`). No `src`/`tests` changes -- `python3 -m pytest tests/ -v` /
+      `python3 -m mypy src/` were not re-run this pass (no pytest/mypy on this bare host;
+      those only ever ran inside the Ralph Docker container per `AGENTS.md`, which wasn't
+      available this pass either), but since nothing under `src/`/`tests/` was touched,
+      there is nothing on the Python side that could have regressed.
+      **Still open for a future pass**: port-order step 6 (Excel-side reads/writes) is the
+      only module left. Also still open: whether `CustomLayout` exposes a native `.Tags`
+      property (flagged since `SPIKE_NOTES_Resolve.md`, still unconfirmed -- no Office
+      install here), and the `SyncOperations.bas` UDT/Dictionary finding above, which needs
+      its own fix decision.
+
 ## Notes for next planning pass
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
   settings. Worth confirming this stays intentional as more modules are added. Still true

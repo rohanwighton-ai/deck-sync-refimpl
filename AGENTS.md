@@ -25,6 +25,18 @@ guidance.
   `is not None` checks per candidate, never `or`-chain `Element.find()` calls. (Hit and
   fixed during initial design, 2026-07-19 — see `src/discovery.py`'s `_shape_name`.)
 
+- VBA: a user-defined `Type` cannot be assigned to a `Variant` (compile-time
+  "Invalid use of type"). This means a `Scripting.Dictionary` -- whose `Item`
+  is `Variant`-typed -- cannot hold a UDT value, even though it happily
+  holds strings/numbers/objects. The natural VBA port of a Python
+  `dict[str, SomeDataclass]` is a `Scripting.Dictionary`; it isn't viable
+  once the value type is a UDT (`Candidate`, `MatchResult`, `InjectResult`,
+  ...) -- use parallel arrays (same index across a `String()` key array and
+  a `TheType()` value array) instead. Found while building `Onboarding.bas`
+  (2026-07-25); `SyncOperations.bas`'s existing `PlanRoutineSync`
+  (`changed(fieldName) = r`, `r As InjectResult`) appears to hit this same
+  restriction and is flagged, unresolved, in `SPIKE_NOTES_Onboarding.md`.
+
 ## Cost / Tool Selection
 
 - This repo is small (specs/ and src/ are each under a dozen short files). A direct

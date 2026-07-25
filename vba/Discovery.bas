@@ -11,6 +11,12 @@ Option Explicit
 ' couple of real, unresolved gaps -- placeholder idx chief among them -- not
 ' just stylistic ones) and the manual verification recipe, since there is no
 ' Windows/Office install in this environment to run it against.
+'
+' 2026-07-25: added DiscoverSlideWithShapes/DiscoverCustomLayoutWithShapes
+' (module 5, onboarding, needed a way back from a Candidate to its live
+' Shape -- see the gap note above DiscoverSlideWithShapes and
+' SPIKE_NOTES_Onboarding.md). DiscoverSlide/DiscoverCustomLayout's own
+' behavior is unchanged.
 
 Public Type Candidate
     Name As String              ' shape name, for humans -- never used as an identity key (see identity_tags.py)
@@ -34,13 +40,15 @@ End Type
 ' opaque candidate, tags leaves not containers.
 Public Function DiscoverSlide(sld As Object) As Candidate()
     Dim results() As Candidate
+    Dim shapes() As Object ' unused by this entry point -- see DiscoverSlideWithShapes
     ReDim results(1 To 0)
+    ReDim shapes(1 To 0)
     Dim count As Long
     count = 0
     Dim z As Long
     z = 0
 
-    Walk sld.Shapes, "", results, count, z
+    Walk sld.Shapes, "", results, shapes, count, z
 
     DiscoverSlide = results
 End Function
@@ -54,18 +62,62 @@ End Function
 ' CustomLayout object they already have.
 Public Function DiscoverCustomLayout(layout As Object) As Candidate()
     Dim results() As Candidate
+    Dim shapes() As Object ' unused by this entry point -- see DiscoverCustomLayoutWithShapes
     ReDim results(1 To 0)
+    ReDim shapes(1 To 0)
     Dim count As Long
     count = 0
     Dim z As Long
     z = 0
 
-    Walk layout.Shapes, "", results, count, z
+    Walk layout.Shapes, "", results, shapes, count, z
 
     DiscoverCustomLayout = results
 End Function
 
-Private Sub Walk(shapesColl As Object, groupPath As String, ByRef results() As Candidate, ByRef count As Long, ByRef z As Long)
+' Gap closed for onboarding (port-order step 5): neither DiscoverSlide nor
+' DiscoverCustomLayout expose the live Shape object behind each Candidate,
+' because no caller needed one before now -- InjectPrimitive.bas re-locates
+' a shape by its role TAG (FindShapeByRoleTag), never by Candidate identity.
+' Onboarding is the first caller that must go the other direction: given a
+' Candidate a human/matcher accepted, write a tag onto its actual shape (or,
+' for a template, read the tag a shape already carries). Candidate.ZOrder is
+' exactly "1-based position among discovered leaf shapes" (see the Public
+' Type comment below) and Walk assigns it in one deterministic pass over the
+' same tree DiscoverSlide/DiscoverCustomLayout already traverse -- so a
+' second, identically-filtered walk that also stashes each leaf's live Shape
+' reference at the same index is a safe, exact pairing, not a heuristic
+' re-match. Purely additive: DiscoverSlide/DiscoverCustomLayout's own
+' behavior/output is unchanged (see SPIKE_NOTES_Onboarding.md).
+Public Function DiscoverSlideWithShapes(sld As Object, ByRef shapes() As Object) As Candidate()
+    Dim results() As Candidate
+    ReDim results(1 To 0)
+    ReDim shapes(1 To 0)
+    Dim count As Long
+    count = 0
+    Dim z As Long
+    z = 0
+
+    Walk sld.Shapes, "", results, shapes, count, z
+
+    DiscoverSlideWithShapes = results
+End Function
+
+Public Function DiscoverCustomLayoutWithShapes(layout As Object, ByRef shapes() As Object) As Candidate()
+    Dim results() As Candidate
+    ReDim results(1 To 0)
+    ReDim shapes(1 To 0)
+    Dim count As Long
+    count = 0
+    Dim z As Long
+    z = 0
+
+    Walk layout.Shapes, "", results, shapes, count, z
+
+    DiscoverCustomLayoutWithShapes = results
+End Function
+
+Private Sub Walk(shapesColl As Object, groupPath As String, ByRef results() As Candidate, ByRef shapes() As Object, ByRef count As Long, ByRef z As Long)
     Dim shp As Object
     For Each shp In shapesColl
         If shp.Type = msoGroup Then
@@ -75,7 +127,7 @@ Private Sub Walk(shapesColl As Object, groupPath As String, ByRef results() As C
             Else
                 childPath = groupPath & "/" & shp.Name
             End If
-            Walk shp.GroupItems, childPath, results, count, z
+            Walk shp.GroupItems, childPath, results, shapes, count, z
         ElseIf IsCandidateLeafType(shp) Then
             z = z + 1
 
@@ -108,7 +160,9 @@ Private Sub Walk(shapesColl As Object, groupPath As String, ByRef results() As C
 
             count = count + 1
             ReDim Preserve results(1 To count)
+            ReDim Preserve shapes(1 To count)
             results(count) = c
+            Set shapes(count) = shp
         End If
         ' Anything that is neither msoGroup nor a candidate-eligible leaf type
         ' (table, chart, connector, OLE object, ...) is skipped entirely here,
