@@ -1,5 +1,230 @@
 # Implementation Plan
 
+## Priority 20 (2026-07-25 pass): two new specs landed with zero implementation — this is the real gap
+
+Re-verified this pass by actually running `python3 -m pytest tests/ -v` (**70 passed**)
+and `python3 -m mypy src/` (**no issues, 10 source files**) — both green, no
+regressions since Priority 19. Note: this pass runs in a plain Linux container
+(`Dockerfile`/`loop-docker.sh`), not the WSL host with a real Windows/Office install
+Priorities 17-19 used — `powershell.exe` is not reachable here (confirmed:
+`which powershell.exe` fails), so nothing VBA-side can be executed or re-verified
+against real Office this pass. All VBA gap analysis below is via direct code reading
+only, same constraint the original 6-module port order operated under before
+Priority 17.
+
+Confirmed via `git log` that two commits landed since Priority 19 (`ab86ea0`) closed:
+`be6ddee` (`specs/ribbon-ui.md`) and `8b1bb32` (`specs/deck-adoption.md`). Both read in
+full this pass. Confirmed via `find`/`grep` across `vba/` and `src/` that **neither has
+any implementation at all** — no `RibbonUI.bas`, no `customUI14.xml` anywhere in the
+repo, no `DeckAdoption.bas`, no `Ribbon`/`Adopt` symbol of any kind in `vba/` or `src/`.
+This is the first planning pass where the gap isn't "one module in an established
+port order" but two full new specs with nothing built yet — treat both as the
+headline priority below, ahead of the stale lower-numbered priorities kept for
+history.
+
+While reading both specs against the existing engine, found one concrete,
+already-confirmed **prerequisite gap that blocks part of `ribbon-ui.md`**, not just a
+UI-wiring task: `ribbon-ui.md`'s "New Period" button says to call into "an existing
+Sub" for case 2, but no such Sub exists. `SyncOperations.PlanPeriodRollover`
+(`vba/SyncOperations.bas:183`) only *decides* a rollover (returns a `PeriodRollover`
+struct); nothing calls `SlideDuplication.DuplicateAndTag` with that decision the way
+`RunSync.RunRoutineSync` already does for case 3. `RunSync.bas`'s own header comment
+and `SPIKE_NOTES_RunSync.md:79` already flag this as intentionally out of scope for
+Priority 19 ("case 2... not driven from here") — confirmed still true by reading the
+full file, not just grepping for a TODO (there are none; this project doesn't leave
+TODO markers, per `grep -rn TODO` returning nothing repo-wide). See Priority 20a below.
+
+## Priority 20a: `RunSync.RunPeriodRollover` — the missing case-2 execution primitive
+
+- [ ] Add an execution path for `SyncOperations.PlanPeriodRollover`'s decision,
+      mirroring `RunRoutineSync`'s case-3 handling (why: this is the one real engine
+      gap blocking `ribbon-ui.md`'s "New Period" button — everything else that spec
+      needs, per the Reference-code check below, already exists and is already
+      tested). Given an existing `SlideInstance` (the record rolling to a new
+      period) and `newValues`, call `SyncOperations.PlanPeriodRollover` to get the
+      `PeriodRollover` decision, then call `SlideDuplication.DuplicateAndTag` with
+      the *current* slide as source and a caller-supplied new `instance_key` for the
+      new period (mirrors `slide-duplication-trigger.md`'s "one primitive, two
+      callers" framing for cases 2/3 — `DuplicateAndTag`'s signature is already
+      generic enough for this, confirmed by reading `vba/SlideDuplication.bas:34`
+      directly; it takes `sourceSld`/`slideType`/`newInstanceKey`/`values`/
+      `existingInstances` with no case-3-specific assumption baked in). Should live
+      in `RunSync.bas` next to `RunRoutineSync`/`ResequenceByRowOrder` (same module
+      that already owns "decision struct in, real deck mutation out" for case 3) —
+      not a new module, to avoid duplicating `GatherInstances`/collision-guard
+      wiring. Needs its own `SPIKE_NOTES_RunSync.md` update (new section, not a new
+      file — the existing one already governs `RunSync.bas`) documenting the design
+      choice of where the source slide comes from (the instance's own current slide,
+      confirmed by `Resolve.ResolveSlideInstance`) and a manual verification recipe,
+      per `vba-port.md`'s per-module-recipe requirement that still applies to every
+      VBA addition in this repo. This function is a prerequisite for Priority 21's
+      "New Period" button — do this first so that task is pure UI wiring, not engine
+      design under a UI task's scope.
+
+## Priority 21: `specs/ribbon-ui.md` — the ribbon/forms layer
+
+Confirmed by reading `ribbon-ui.md` requirement-by-requirement against the current
+engine (`vba/RunSync.bas`, `Onboarding.bas`, `SlideDuplication.bas`, `ExcelOutput.bas`,
+`Resolve.bas`) that every button besides "New Period" (Priority 20a) already has a
+tested Sub/Function to call — this task is genuinely "thin ribbon calling existing
+code," as the spec's own opening paragraph claims, once 20a lands. Split into
+sub-tasks below since the spec itself describes several independent pieces (a ribbon
+XML, several forms, one shared result form) — each is completable in one iteration;
+don't attempt all of `ribbon-ui.md` in a single pass.
+
+- [ ] `customUI14.xml` + ribbon callback module: the tab, "Sync Now" and "New Period"
+      always-visible buttons, "Onboard New Slide Type" and "Resolve Unmatched
+      Fields" buttons (why: this is the literal entry surface the spec exists to
+      build — "there is no surface a real user opens PowerPoint and clicks" is the
+      spec's own stated problem). "Sync Now" calls `RunSync.RunRoutineSync` directly
+      (needs a decision on where `ws`/`slideType`/`templateSld` come from for a
+      one-click button with no picker — the spec doesn't fully pin this down beyond
+      "the currently open deck and its paired workbook" per `input-contract.md`'s
+      pairing, which is referenced but not present in this repo — confirmed via
+      `grep -rl input-contract /workspace` finding only cross-references, no such
+      file; flag this as a real open sub-decision for whoever picks up this task,
+      not a blocker to defer the whole button). Package as a `.ppam` per the spec's
+      explicit packaging requirement, tied to the COM-add-in decision it cites
+      (`DECISIONS.md`, 2026-07-25 — also not present in this repo; treat the
+      spec's own text as authoritative since the decision doc it cites isn't
+      available to double-check against).
+- [ ] "New Period" picker (type, then record) → `RunSync.RunPeriodRollover` from
+      Priority 20a (why: spec requires this be per-type-and-record, not global,
+      per `run-sync.md`'s Step 3 — a doc this repo doesn't have a local copy of
+      either, so implement against `ribbon-ui.md`'s own restatement of that
+      requirement directly).
+- [ ] "Onboard New Slide Type" flow: duplicate the user's current selection into a
+      working copy, run `Discovery` against it, show the Review form (rename/
+      exclude/mark-period-key/mark-evergreen, phase-gated — nothing written until
+      confirmed), then on confirm commit via `Onboarding.bas`/`ExcelOutput.bas` and
+      run the existing verify-the-link pass, reporting pass/fail per field (why:
+      six explicit steps in the spec, all naming existing calls except the Review
+      form itself, which is new UI). The Review form is the one genuinely new
+      piece of state here — no existing VBA module currently produces a "list of
+      discovered fields with proposed name/shape ref/harvested value" structure
+      formatted for display; needs its own light presentation-layer code, not just
+      a call into `Discovery.DiscoverSlideWithShapes`.
+- [ ] "Resolve Unmatched Fields" flow: user clicks a shape
+      (`Application.ActiveWindow.Selection.ShapeRange`), picks a role from the
+      template's defined roles, calls `Onboarding.ConfirmFieldMatch` (why: spec
+      names this exact mechanism and primitive — the only new code is the shape-
+      click capture and role picker, both pure UI; `ConfirmFieldMatch` already
+      exists and is tested per `SPIKE_NOTES_Onboarding.md`).
+- [ ] Shared result form: one form reused after Sync Now, New Period, and the
+      onboarding verify step, showing counts (no-op/created/corrected/flagged
+      unclassified/flagged conflict) with flagged items listed by slide name/index
+      (why: spec explicitly calls out "not a bespoke dialog per action" — building
+      this once, generically, before wiring the three call sites above avoids
+      three divergent one-off dialogs; do this before or alongside the first
+      button that needs it, e.g. "Sync Now," so later buttons reuse it rather than
+      each inventing their own). Note `RunRoutineSync` already returns a
+      formatted `String` report (`vba/RunSync.bas:64-135`) — this form's job is
+      structured display of that same data, not re-deriving the counts; may be
+      worth changing `RunRoutineSync`'s return type to a structured result the
+      form can consume directly instead of parsing its own `String` report back
+      apart, flag this as a design choice for whoever picks up the task rather
+      than deciding it here.
+- [ ] Each of the above needs its own manual-verification-recipe addition (no
+      automated UI test harness exists or is planned — `TestRunner.bas` exercises
+      Subs/Functions directly, not `UserForm` click-through interaction; confirmed
+      by reading `vba/tests/TestRunner.bas` and `run_vba_tests.ps1`, neither
+      references any `UserForm`). Follow the existing `SPIKE_NOTES_*.md` format.
+
+## Priority 22: `specs/deck-adoption.md` — bulk retroactive linking
+
+Confirmed by reading `deck-adoption.md` against `Onboarding.bas`/`Matching.bas`/
+`Verification.bas`/`InjectPrimitive.bas` that the *scoring* and *tag-write*
+primitives it needs already exist and are reusable as-is (`Onboarding.
+BuildTemplateFieldShapes`, `MatchSlideAgainstTemplate`, `ConfirmFieldMatch`) — but the
+**batch orchestration itself is new logic**, not just wiring, unlike most of
+`ribbon-ui.md` above. In particular: idempotent-skip-if-already-tagged, harvesting
+verbatim values per matched slide, resolving against pre-existing keyless Data-sheet
+rows (exact non-key-field match required, ambiguous → fresh row, never guessed), the
+whole-batch phase gate before any write, deck-order-bootstraps-row-order (the one-time
+exception to `slide-duplication-trigger.md`'s normal invariant), and the
+verify-the-link pass generalized across a batch — none of these exist anywhere in
+`vba/` today (confirmed via `grep -rli "adopt\|batch" vba/` returning nothing beyond
+this task's own future filename).
+
+- [ ] Build `vba/DeckAdoption.bas`: entry point takes
+      `Application.ActiveWindow.Selection.SlideRange` as scope (why: spec's explicit
+      "explicit selection, not whole-deck scanning" requirement, deliberately not a
+      reversal of the 2026-07-19 default-posture decision the spec itself cites).
+      Greenfield path (no template yet) hands the user's chosen template slide to
+      the *existing*, unchanged `onboard-slide-type.md` flow (i.e. Priority 21's
+      Onboard New Slide Type flow, once built — or the underlying primitives
+      directly if this lands first) — this spec adds nothing to template
+      establishment itself, confirm no new code duplicates that path.
+      Per-slide loop over every other slide in scope:
+        - Skip (report "already linked") if the slide already carries
+          `instance_key` + type tag — read via `Resolve.ResolveSlideInstance`,
+          already handles this exact check (`HasInstanceKey`/`HasTypeTag`).
+        - Score via `Onboarding.MatchSlideAgainstTemplate` unchanged (no new
+          matching logic, spec is explicit about this).
+        - Dispatch on confidence using the same thresholds `onboarding.md`
+          already defines (high → ready, medium → needs `ConfirmFieldMatch`,
+          low/none → excluded/unclassified) — reuse `MatchResult.Confidence`
+          directly, don't reimplement threshold comparison.
+        - Harvest verbatim values from matched fields (same technique
+          `InjectPrimitive.bas` already uses for reading current text —
+          `shp.TextFrame.TextRange.Text` — confirmed no dedicated "harvest"
+          function exists yet anywhere in `vba/`; this task is where one first
+          gets written, generalized enough that Priority 21's onboarding verify
+          step could reuse it too if convenient, though that's not required).
+        - Instance-key resolution against existing keyless Data-sheet rows: this
+          is the one piece of genuinely new decision logic in the whole spec (not
+          present in `onboarding.md` or `sync_operations.md` at all — those never
+          handle "a Data-sheet row that predates any linked slide"). Needs
+          `ExcelOutput.ReadSheet`'s row data plus an exact-match comparison
+          against each keyless row's non-key fields; zero-or-multiple matches
+          always falls back to a fresh row per the spec's explicit
+          never-guess rule.
+      One phase-gate review (all slides in scope, proposed disposition, proposed
+      instance_key) before any write — mirrors the Review-form pattern Priority 21
+      needs anyway for onboarding; consider sharing form-building code between the
+      two rather than writing two divergent review UIs, but the underlying data
+      each needs to display differs (per-field for onboarding vs. per-slide for
+      this), so don't force a shared abstraction if it doesn't fit cleanly.
+      Row-order bootstrap: newly created rows appended to the Data sheet in
+      current deck order of their source slides — a one-time exception, confirm
+      this doesn't fight `RunSync.ResequenceByRowOrder`'s normal invariant (which
+      takes over immediately after, per the spec).
+      Verify-the-link: reuse `InjectPrimitive`'s no-op round-trip per linked slide
+      (same check `onboarding.md` Step 6 already does for the template), generalized
+      across the batch; any non-no-op result is a harvest bug this pass must flag
+      and stop on, not something a later sync silently "corrects."
+      Needs `SPIKE_NOTES_DeckAdoption.md` (new file, same format as every other VBA
+      module) with a manual verification recipe — no automated harness exists for
+      this either, same constraint as Priority 21.
+      **Deliberately excluded per the spec's own Non-goals**: no UI for this yet
+      (`ribbon-ui.md` gets an "Adopt Existing Slides" entry point in a *future*
+      pass, per that spec's own Non-goals section — confirmed by reading both
+      specs' Non-goals side by side, they agree on this boundary) — build the
+      engine layer only, callable from the VBE, same as every other module before
+      its own ribbon wiring landed. No mixed-type auto-classification, no
+      multi-period-history reconstruction, no whole-deck implicit scanning.
+
+## Notes carried forward from Priority 19 (still open, unaffected by this pass)
+- Cases 5 (`record_retired`) and 7 (`deck_side_conflict`) remain non-goals
+  throughout — no spec has been written for either.
+- The parked multi-deck design (export, conflict-resolution/propagation,
+  stale-queue) remains entirely unspecified.
+- Where a type's template actually lives/is looked up is still caller-supplied
+  everywhere (`RunRoutineSync`'s `templateSld` parameter, `onboarding.md`'s own
+  non-goal) — Priority 21's ribbon buttons will need *some* answer for this to be
+  clickable at all (a picker, a naming convention, a stored reference — not
+  decided by any spec yet); flagged again here since Priority 21 is the first
+  place this actually has to be resolved concretely rather than left to a caller
+  that doesn't exist yet.
+- This pass found no regressions and no other undocumented gaps in `src/*.py` or
+  the 6 already-ported core VBA modules — confirmed via full `pytest`/`mypy` run
+  (green) and re-reading `AGENTS.md`'s Known Patterns/Constraints for anything
+  contradicted by current code (none found).
+
+---
+
+# Implementation Plan (history below this line)
+
 Generated by gap analysis of specs/* against src/* (2026-07-21). Confirmed by
 reading src/discovery.py, tests/test_discovery.py, both test-fixtures/*.pptx
 files (unzipped and inspected directly), and by actually running
