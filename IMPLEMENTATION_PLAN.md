@@ -631,6 +631,57 @@ open task. Gap analysis below is what's actually new/actionable.
       install here), and the `SyncOperations.bas` UDT/Dictionary finding above, which needs
       its own fix decision.
 
+## Priority 16 (2026-07-25 pass): VBA port order, module 6 (excel_output) -- port order complete
+
+- [x] Port `excel_output` per `specs/vba-port.md`'s numbered port order (module 6 of 6, the
+      last one). Confirmed via `ls vba/` that modules 1-5 were the only ones present before
+      this task.
+      Unlike every prior module, `vba-port.md` itself flags this one as strictly simpler
+      than its Python source, not just a mechanism swap: `excel_output.py` hand-rebuilds
+      the entire `.xlsx` zip package (six OOXML parts) on every single write, purely
+      because a headless script has no host application to lean on. A live `Worksheet`
+      doesn't need that -- `ExcelOutput.UpsertRow` finds-or-appends the target column/row
+      directly and writes only those specific cells, per `vba-port.md`'s explicit
+      instruction not to port the zip-rebuilding approach.
+      Added `vba/ExcelOutput.bas`: `CreateSheet` (writes the `"Instance ID"` header, stores
+      a deck reference via native `Workbook.CustomDocumentProperties` rather than a
+      hand-rolled custom-properties XML part, refusing to re-initialize an already-set-up
+      sheet), `ReadSheet` (recovers fields/instance rows/deck reference into a `Sheet` UDT,
+      using `IsEmpty()` rather than `= ""` to distinguish "never harvested" from "harvested
+      as an empty string," matching `read_sheet`'s structural cell-presence check), and
+      `UpsertRow` (appends a new field column or instance row as needed; only ever writes
+      the specific cells a call's `values` actually mentions, never touching an unrelated
+      field/instance).
+      Confirmed the port-order-4 interface contract is satisfied with **no adapter
+      needed**: `SPIKE_NOTES_Resolve.md`'s divergence 4 documented `PlanRoutineSync`'s
+      `dataRows`/`instanceOrder` parameters as "an interface contract for that future
+      module to satisfy" -- `ReadSheet(ws).Rows`/`.InstanceOrder` are exactly that shape
+      (`Scripting.Dictionary` of `Scripting.Dictionary`s / `Collection` of instance-ID
+      strings in row order) and plug straight in, confirmed in
+      `SPIKE_NOTES_ExcelOutput.md`'s own manual-recipe step 5.
+      Added `vba/SPIKE_NOTES_ExcelOutput.md`: 6 deliberate divergences and a manual
+      verification recipe cross-checked against `tests/test_excel_output.py`'s
+      already-proven round-trip values (no `.xlsx` fixture exists for this spec on either
+      language's side -- both are necessarily round-trip/self-consistency tests, not
+      checks against an externally-produced file). No `src`/`tests` changes; `python3 -m
+      pytest tests/`/`mypy src/` were not re-run this pass (no pytest/mypy on this bare
+      host, same as the prior pass), but nothing under `src/`/`tests/` was touched, so
+      there is nothing on the Python side that could have regressed.
+      **All 6 port-order modules now exist** (`Discovery.bas`, `InjectPrimitive.bas`,
+      `Matching.bas`, `Resolve.bas`+`SyncOperations.bas`, `Onboarding.bas`,
+      `ExcelOutput.bas`), each with its own `SPIKE_NOTES_*.md`. This is *not* the same as
+      "the VBA port is done": **nothing has ever been executed against a real Office
+      install** -- every module's correctness rests entirely on field-for-field comparison
+      against the Python side's 70 passing tests plus manual reasoning, not a single real
+      run. Also still genuinely open, independent of Office access: no orchestration/driver
+      exists tying the 6 modules together into an actual usable sync flow (each module's
+      own spec explicitly draws that boundary as someone else's job); `specs/slide-
+      duplication-trigger.md`'s row-order/resequence decisions aren't ported to VBA at all
+      yet (that spec was written after this port-order work started and targets a still-
+      unbuilt duplication primitive); and the parked multi-deck design (export,
+      conflict-resolution/propagation, stale-queue -- see `claude-brain`'s
+      `project_active_ventures.md`, 2026-07-25 entries) remains entirely unspecified.
+
 ## Notes for next planning pass
 - No `pyproject.toml`/`mypy.ini`/`setup.cfg` exists — mypy is running with default
   settings. Worth confirming this stays intentional as more modules are added. Still true
