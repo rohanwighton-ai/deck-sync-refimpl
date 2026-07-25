@@ -36,7 +36,7 @@ TODO markers, per `grep -rn TODO` returning nothing repo-wide). See Priority 20a
 
 ## Priority 20a: `RunSync.RunPeriodRollover` — the missing case-2 execution primitive
 
-- [ ] Add an execution path for `SyncOperations.PlanPeriodRollover`'s decision,
+- [x] Add an execution path for `SyncOperations.PlanPeriodRollover`'s decision,
       mirroring `RunRoutineSync`'s case-3 handling (why: this is the one real engine
       gap blocking `ribbon-ui.md`'s "New Period" button — everything else that spec
       needs, per the Reference-code check below, already exists and is already
@@ -60,6 +60,34 @@ TODO markers, per `grep -rn TODO` returning nothing repo-wide). See Priority 20a
       VBA addition in this repo. This function is a prerequisite for Priority 21's
       "New Period" button — do this first so that task is pure UI wiring, not engine
       design under a UI task's scope.
+      Added `RunSync.RunPeriodRollover(sourceSld, slideType, newInstanceKey,
+      newValues)` in `vba/RunSync.bas`, next to `RunRoutineSync`/`ResequenceByRowOrder`
+      as planned. Resolves `sourceSld` into a `SlideInstance`, calls `SyncOperations.
+      PlanPeriodRollover` to get the decision, gathers `slideType`'s current instances
+      itself (same non-goal-gathering posture every module in this port takes), then
+      calls `SlideDuplication.DuplicateAndTag(sourceSld, slideType, newInstanceKey,
+      rollover.NewValues, existingInstances)` — `sourceSld` is never mutated by
+      `DuplicateAndTag`, so "leave the original untouched as history" falls out of
+      reusing the existing primitive rather than needing new logic. Takes the slide
+      directly (not an instance_key to look up) — resolving "which slide is this
+      instance_key on" is left to the caller (e.g. Priority 21's picker), not
+      reinvented here. Returns `DuplicateResult` directly (already-structured, same
+      type `RunRoutineSync`'s case-3 branch consumes) rather than a new `String`
+      report format, since Priority 21's shared-result-form task hasn't yet decided
+      whether `RunRoutineSync` itself should move off `String` reports. Added
+      `Test_RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched` to
+      `vba/tests/TestRunner.bas`: confirms the new slide gets the injected value and
+      the new instance_key tag, confirms the *source* slide's value is unchanged
+      after the call (the actual case-2-specific claim), and confirms a second
+      rollover onto an already-used instance_key is refused via the same collision
+      guard `DuplicateAndTag` already enforces for case 3. Documented in a new
+      `SPIKE_NOTES_RunSync.md` section. **Not executed against real Office this
+      pass** — `powershell.exe` unreachable from this plain-Linux container
+      (confirmed via `which powershell.exe`), same constraint the rest of this pass
+      operates under; needs a real `run_vba_tests.ps1` run on the WSL/Windows host
+      next time this project is picked up there. `python3 -m pytest tests/ -v` (70
+      passed) and `python3 -m mypy src/` (no issues, 10 source files) both confirmed
+      unaffected (VBA-only change).
 
 ## Priority 21: `specs/ribbon-ui.md` — the ribbon/forms layer
 

@@ -136,6 +136,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "RunSync_EndToEndCreatesSlidesFromFreshSheet", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched()
+    AppendResult report, "RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched", r
+    On Error GoTo 0
+
     RunAllTests = report
 End Function
 
@@ -969,4 +974,60 @@ Private Function Test_RunSync_EndToEndCreatesSlidesFromFreshSheet() As String
     xl.Quit
 
     Test_RunSync_EndToEndCreatesSlidesFromFreshSheet = result
+End Function
+
+' Case 2 (period rollover): duplicates the source instance's current slide
+' into a new period's slide, injecting new values -- and confirms the
+' source slide itself is left untouched as history (specs/sync-
+' operations.md's explicit case-2 requirement), not just that a duplicate
+' with the right values exists. Also confirms RunPeriodRollover's own
+' collision guard (via the existingInstances it gathers internally) refuses
+' to roll over onto an instance_key that already exists, same posture
+' SlideDuplication.DuplicateAndTag already enforces for case 3.
+Private Function Test_RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched() As String
+    Dim result As String
+
+    Dim sourceSld As Object
+    Set sourceSld = NewBlankSlide()
+    Dim titleShp As Object
+    Set titleShp = sourceSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    titleShp.TextFrame.TextRange.Text = "Q1 Value"
+    titleShp.Tags.Add "role", "Title"
+    sourceSld.Tags.Add "slide_type", "rollover-type"
+    sourceSld.Tags.Add "instance_key", "rollover-q1"
+
+    Dim newValues As Object
+    Set newValues = CreateObject("Scripting.Dictionary")
+    newValues.Add "Title", "Q2 Value"
+
+    Dim dr As DuplicateResult
+    dr = RunSync.RunPeriodRollover(sourceSld, "rollover-type", "rollover-q2", newValues)
+
+    result = result & Assert(dr.Ok, "rollover duplication succeeded: " & dr.Reason)
+
+    If dr.Ok Then
+        Dim newTitleShp As Object
+        Set newTitleShp = FindShapeByRole(dr.NewSlide, "Title")
+        Dim newText As String
+        newText = IIf(newTitleShp Is Nothing, "<shape not found>", newTitleShp.TextFrame.TextRange.Text)
+        result = result & Assert(newText = "Q2 Value", "new period's slide got the new value injected, got '" & newText & "'")
+
+        Dim newInst As SlideInstance
+        newInst = Resolve.ResolveSlideInstance(dr.NewSlide)
+        result = result & Assert(newInst.HasInstanceKey And newInst.InstanceKey = "rollover-q2", "new slide tagged with the new period's instance_key")
+    End If
+
+    Dim sourceTitleShp As Object
+    Set sourceTitleShp = FindShapeByRole(sourceSld, "Title")
+    Dim sourceText As String
+    sourceText = IIf(sourceTitleShp Is Nothing, "<shape not found>", sourceTitleShp.TextFrame.TextRange.Text)
+    result = result & Assert(sourceText = "Q1 Value", "source slide left untouched as history, got '" & sourceText & "'")
+
+    ' Collision guard: rolling over to an instance_key that already exists
+    ' (e.g. the just-created new period) must refuse, not double-create.
+    Dim dupDr As DuplicateResult
+    dupDr = RunSync.RunPeriodRollover(sourceSld, "rollover-type", "rollover-q2", newValues)
+    result = result & Assert(Not dupDr.Ok, "re-rolling over to an already-used instance_key is refused, not silently double-created")
+
+    Test_RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched = result
 End Function

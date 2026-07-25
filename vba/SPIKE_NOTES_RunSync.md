@@ -76,12 +76,50 @@ call, same as `SlideDuplication.bas`'s delete-malformed-duplicate choice.
 
 ## What was deliberately left out of scope
 
-- Case 2 (period rollover) -- stays a distinct, explicitly-invoked action
-  per `sync-operations.md`'s own "never inferred from routine sync" rule,
-  not driven from `RunRoutineSync`.
 - Cases 5/7 -- non-goals throughout this entire project.
 - Deciding where a type's template lives -- `templateSld` is supplied by
   the caller, per `onboarding.md`'s own non-goal.
+
+## Case 2 (period rollover): `RunSync.RunPeriodRollover` (2026-07-25 pass)
+
+Added after `specs/ribbon-ui.md` landed and flagged its "New Period" button
+as needing an execution primitive that didn't exist yet -- `SyncOperations.
+PlanPeriodRollover` only ever *decided* a rollover (returned a
+`PeriodRollover` struct); nothing called `SlideDuplication.DuplicateAndTag`
+with that decision the way `RunRoutineSync` already does for case 3.
+
+`RunPeriodRollover(sourceSld, slideType, newInstanceKey, newValues)` closes
+that gap, mirroring `RunRoutineSync`'s own case-3 handling: resolves
+`sourceSld` (the instance's own current slide -- confirmed by
+`Resolve.ResolveSlideInstance`, no separate "look up the slide for this
+instance_key" step exists or is needed, since the caller already has the
+slide in hand) into a `SlideInstance`, calls `SyncOperations.
+PlanPeriodRollover` to get the rollover decision (this is what actually
+validates the instance carries an `instance_key` -- raises otherwise, same
+guard `PlanPeriodRollover` already had), gathers `slideType`'s current
+instances itself (same non-goal-gathering-is-someone-else's-job posture
+every other module in this port takes, and the same thing
+`RunRoutineSync` does before dispatching), then calls `SlideDuplication.
+DuplicateAndTag(sourceSld, slideType, newInstanceKey, rollover.NewValues,
+existingInstances)` -- `sourceSld` itself is never mutated by
+`DuplicateAndTag` (it only writes to the new duplicate), which is exactly
+`sync-operations.md`'s case-2 requirement that the original stays
+untouched as history, so no separate "leave the source alone" logic was
+needed here -- it falls out of reusing the existing primitive as-is.
+
+Deliberately narrow, matching the task's own scope: takes the *slide*
+directly (`sourceSld`), not an instance_key to look up -- resolving
+"which slide does this instance_key currently live on" across a whole
+deck is a search a caller (e.g. the New Period picker UI, Priority 21)
+is better positioned to have already done via its own selection/lookup,
+not something this primitive should reinvent. Returns `DuplicateResult`
+directly (the same structured type `RunRoutineSync`'s own case-3 branch
+already consumes) rather than a formatted `String` report -- deliberately
+not mirroring `RunRoutineSync`'s return type here, since `ribbon-ui.md`'s
+shared result form is unbuilt UI-layer work that hasn't decided yet
+whether `RunRoutineSync` itself should move off `String` reports too (see
+that task's own notes); a fresh function returning the already-structured
+type avoids adding a second `String`-report format to later un-parse.
 
 ## Verification
 
@@ -91,3 +129,16 @@ template, a live cross-app Excel worksheet with one stale existing row and
 two brand-new rows, confirming case 4 correction, case 3 creation ×2,
 correct field injection, and post-sync resequencing all in one real run),
 both passing via `run_vba_tests.ps1`. No separate manual recipe written.
+
+`Test_RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched` (added
+2026-07-25 alongside `RunPeriodRollover` itself) confirms: the new period's
+slide receives the injected new value; it's tagged with the new
+instance_key; the source slide's own value is unchanged after the call
+(the actual case-2-specific claim, not just "a duplicate was made"); and a
+second rollover onto the same already-used instance_key is refused, not
+silently double-created. **Not executed in this environment** --
+`powershell.exe` is unreachable from this pass's plain Linux container
+(confirmed: `which powershell.exe` fails), the same constraint Priority 20
+of `IMPLEMENTATION_PLAN.md` already documented for this whole pass; needs a
+real run via `run_vba_tests.ps1` on the WSL/Windows host next time this
+project is picked up there.
