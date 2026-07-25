@@ -9,13 +9,20 @@ sub-tasks `IMPLEMENTATION_PLAN.md` Priority 21 splits `ribbon-ui.md` into;
 the other four (ribbon XML/packaging, the New Period picker, the Onboard New
 Slide Type flow, and the shared result form) are untouched by this pass.
 
-**Not executed or verified in this environment** -- same constraint as every
-module built this project since the 2026-07-25 pass began: this container has
-no `powershell.exe` (confirmed via `which powershell.exe`), so there is no
-Windows/Office install reachable to run `run_vba_tests.ps1` against. The
-manual verification recipe below is how to actually prove it against a real
-Office install; the 5 tests added to `vba/tests/TestRunner.bas` are ready to
-run the next time this project is picked up on the WSL/Windows host.
+**Executed against real Office 2026-07-26** (WSL host, `run_vba_tests.ps1`
+run directly -- not the Docker container, which has no `powershell.exe`).
+First run found 3 real failures, all `Shape.Select`/`ShapeRange.Select ::
+Invalid request. To select a shape, its view must be active` -- not a bug in
+`ResolveFields.bas` itself, but in the test harness's shared `NewBlankSlide()`
+helper: `Slides.Add` doesn't navigate the window's view to the new slide, so
+`.Select` on a shape belonging to it fails until the view is moved there.
+Fixed by adding `Application.ActiveWindow.View.GotoSlide` to `NewBlankSlide()`
+(`vba/tests/TestRunner.bas`) -- benefits every caller, not just these tests.
+Also found `run_vba_tests.ps1`'s module import lists hadn't been updated for
+`DeckAdoption.bas`/`ResolveFields.bas` since they landed (caused a real
+`TestRunner.bas` compile error, "user-defined type not defined" on
+`AdoptionSlidePlan`, on the first run attempt) -- fixed alongside the above.
+All 5 tests here pass now; full run is 41/41 across both PowerPoint and Excel.
 
 ## Scope: exactly what the spec calls "the only new code"
 

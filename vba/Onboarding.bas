@@ -163,7 +163,13 @@ End Function
 ' src/onboarding.py's docstring quotes directly), not inside discovery
 ' itself (verify_structure and other callers still need the full,
 ' unfiltered shape list).
-Private Function IsCandidateField(c As Candidate) As Boolean
+' Public (was Private through Priority 22): OnboardFlow.bas (Priority 23,
+' the "Onboard New Slide Type" ribbon flow) needs the identical first-time-
+' onboarding candidate filter this module already applies to *subsequent*-
+' slide matching -- specs/onboard-slide-type.md's Step 2 explicitly reuses
+' shape-identity-and-matching.md's same signal (has text, or is a picture)
+' rather than defining its own. Widened visibility only; behavior unchanged.
+Public Function IsCandidateField(c As Candidate) As Boolean
     IsCandidateField = (c.ShapeType = "picture") Or c.HasText
 End Function
 

@@ -8,13 +8,14 @@ direct port of the spec's prose, not a translation of an existing
 implementation the way every other `vba/*.bas` module (except
 `InjectPrimitive.bas`, the original spike) has been so far.
 
-**Not executed or verified in this environment** -- same constraint as every
-module built this pass (2026-07-25): this container has no `powershell.exe`
-(confirmed via `which powershell.exe`), so there is no Windows/Office install
-reachable to run `run_vba_tests.ps1` against. The manual verification recipe
-below is how to actually prove it against a real Office install; the 5 tests
-added to `vba/tests/TestRunner.bas` are ready to run the next time this
-project is picked up on the WSL/Windows host.
+**Executed against real Office 2026-07-26** (WSL host, `run_vba_tests.ps1`).
+All 6 tests here pass unchanged from how they were written this pass -- the
+only real bug the first real run surfaced was in `ResolveFields.bas`'s test
+setup, not this module (see `SPIKE_NOTES_ResolveFields.md`). `run_vba_tests.ps1`
+itself needed a fix first: its module import lists hadn't been updated for
+`DeckAdoption.bas` since it landed, which produced a real `TestRunner.bas`
+compile error ("user-defined type not defined" on `AdoptionSlidePlan`) on
+the first run attempt. Full run is 41/41 across both PowerPoint and Excel.
 
 ## Scope boundary: engine layer only, per the spec's own Non-goals
 

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  NOT CURRENTLY USED -- kept as a historical record, not wired into the
+  shipped add-in. Confirmed 2026-07-26 against real Office: a .ppam's
+  add-in loader rejects the package outright if it contains anything
+  beyond its exact expected part set (verified with a totally unrelated,
+  unreferenced dummy part -- same failure, so it's not specific to this
+  file or the ribbon relationship type). There is no way to embed
+  customUI14.xml in a .ppam and have it still load. The shipped UI is
+  CommandBarUI.bas's toolbar instead (see its header comment for the full
+  account and SPIKE_NOTES_RibbonUI.md). Left here in case a future real
+  COM/VSTO add-in (a genuinely different technology, not a .ppam) picks
+  this back up -- RibbonUI.bas's action Subs are still plain, callback-
+  shaped logic a `(control As IRibbonControl)` wrapper could call directly.
+
+  Original intent, for that future reader: the tab, "Sync Now"/"New
+  Period" always-visible buttons, and the "Onboard New Slide Type"/
+  "Resolve Unmatched Fields" buttons, calling into RibbonUI.bas.
+-->
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui" onLoad="RibbonUI_OnLoad">
+  <ribbon>
+    <tabs>
+      <tab id="tabDeckSync" label="Deck Sync">
+        <group id="grpDeckSyncActions" label="Sync">
+          <button id="btnSyncNow"
+                  label="Sync Now"
+                  size="large"
+                  imageMso="RefreshAll"
+                  screentip="Sync Now"
+                  supertip="Run a routine sync for every registered slide type against this deck's paired workbook."
+                  onAction="RibbonUI_OnSyncNow" />
+          <button id="btnNewPeriod"
+                  label="New Period"
+                  size="large"
+                  imageMso="TableInsert"
+                  screentip="New Period"
+                  supertip="Roll a specific record forward into a new period: duplicates its current slide and injects the new period's already-entered Data-sheet row."
+                  onAction="RibbonUI_OnNewPeriod" />
+        </group>
+        <group id="grpDeckSyncTypes" label="Slide Types">
+          <button id="btnOnboardNewType"
+                  label="Onboard New Slide Type"
+                  size="large"
+                  imageMso="SlideMasterInsertPlaceholder"
+                  screentip="Onboard New Slide Type"
+                  supertip="Turn a selected example slide into a new type: discover its fields, review and confirm them, then commit as the type's template and seed Data-sheet row."
+                  onAction="RibbonUI_OnOnboardNewType" />
+          <button id="btnResolveFields"
+                  label="Resolve Unmatched Fields"
+                  size="normal"
+                  imageMso="FindDialog"
+                  screentip="Resolve Unmatched Fields"
+                  supertip="Select an ambiguous field shape on an already-typed slide, then pick which role it fills."
+                  onAction="RibbonUI_OnResolveFields" />
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>

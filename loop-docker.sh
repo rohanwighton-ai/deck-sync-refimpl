@@ -25,6 +25,8 @@ validate_model() {
 validate_model "$MODEL"
 PLAN_FILE="IMPLEMENTATION_PLAN.md"
 LOG_FILE="ralph.log"
+VBA_TEST_MARKER=".vba_tested_commit"
+VBA_RESULTS_FILE="vba/tests/LAST_TEST_RUN.md"
 
 # SAFETY: Verify PROJECT_DIR is safe to mount
 if [ -z "$PROJECT_DIR" ] || [ "$PROJECT_DIR" = "/" ] || [ "$PROJECT_DIR" = "$HOME" ]; then
@@ -190,6 +192,74 @@ push_to_backup() {
 }
 
 # ============================================================================
+# VBA TEST BRIDGE (runs on HOST -- real Office via COM, container can't do this)
+# ============================================================================
+# Ralph's container has no Windows/Office install, so VBA changes it commits
+# are never actually executed, only read. This runs the real test harness
+# (vba/tests/run_vba_tests.ps1) on the HOST via powershell.exe against every
+# vba/*.bas change since the last tested commit, and commits the report back
+# into the repo so the next iteration reads real pass/fail instead of
+# "not executed in this environment."
+#
+# run_vba_tests.ps1 itself refuses to force-close Office if you have unsaved
+# work open (asks Quit() nicely, which triggers Office's own save prompt, and
+# exits 2 -- "skip" -- if that isn't resolved within its timeout). This
+# function just needs to tell a skip apart from a real driver failure.
+run_vba_test_bridge_if_needed() {
+  local last_tested
+  if [ -f "$VBA_TEST_MARKER" ]; then
+    last_tested=$(cat "$VBA_TEST_MARKER")
+  else
+    last_tested=$(git rev-list --max-parents=0 HEAD | tail -1)
+  fi
+
+  if ! git cat-file -e "$last_tested" 2>/dev/null; then
+    last_tested=$(git rev-list --max-parents=0 HEAD | tail -1)
+  fi
+
+  local changed
+  changed=$(git diff --name-only "$last_tested" HEAD -- 'vba/*.bas' 2>/dev/null)
+  if [ -z "$changed" ]; then
+    return 0
+  fi
+
+  echo "VBA changed since last real-Office test run:"
+  echo "$changed" | sed 's/^/  /'
+  echo "Running vba/tests/run_vba_tests.ps1 on host..."
+
+  local win_script
+  win_script=$(wslpath -w "$PROJECT_DIR/vba/tests/run_vba_tests.ps1")
+  local report rc
+  report=$(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$win_script" 2>&1)
+  rc=$?
+
+  if [ "$rc" -eq 2 ]; then
+    echo "VBA test bridge skipped this iteration (Office in use / unresolved save prompt) -- will retry next commit."
+    echo "$report" | tail -5
+    return 0
+  fi
+
+  local sha ts
+  sha=$(git rev-parse HEAD)
+  ts=$(date '+%Y-%m-%d %H:%M:%S %z')
+
+  {
+    echo "## $ts -- commit $sha"
+    echo
+    [ "$rc" -ne 0 ] && echo "DRIVER FAILED (exit $rc):"
+    echo '```'
+    echo "$report"
+    echo '```'
+    echo
+  } >> "$VBA_RESULTS_FILE"
+  echo "$sha" > "$VBA_TEST_MARKER"
+
+  git add "$VBA_RESULTS_FILE" "$VBA_TEST_MARKER"
+  git commit -m "[vba-test-bridge] real-Office run against ${sha:0:7}" >/dev/null 2>&1 || true
+  echo "VBA test bridge: results appended to $VBA_RESULTS_FILE"
+}
+
+# ============================================================================
 # COMPLETION DETECTION (runs on HOST)
 # ============================================================================
 
@@ -298,7 +368,8 @@ while true; do
       FAST_STREAK=0
     fi
 
-    # Push to backup ON HOST (has gh auth)
+    # Real-Office VBA test bridge ON HOST, then push (has gh auth)
+    run_vba_test_bridge_if_needed
     push_to_backup
   else
     echo "Claude exited with error"

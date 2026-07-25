@@ -40,6 +40,16 @@ Select the most important task from the implementation plan, implement it correc
     size, since each subagent is a fresh, uncached API call. Do not reach for parallel
     subagents here — there is no fan-out to justify.
 
+0b. If `vba/tests/LAST_TEST_RUN.md` exists, read its most recent entry. A host-side
+    bridge runs the real VBA test harness against real Office (PowerPoint/Excel via
+    COM) after every commit that touches vba/*.bas, and appends the actual report
+    here — this is real pass/fail from real Office, not a "not executed in this
+    environment" guess. Treat any real failure in the latest entry as the most
+    important task this iteration, ahead of anything in IMPLEMENTATION_PLAN.md,
+    and fix it before starting new feature work. An entry marked "DRIVER FAILED"
+    means the bridge itself broke (not your VBA) — note it in the plan but don't
+    treat it as a VBA bug to chase.
+
 1. Select Task
    - Pick the most important uncompleted task from IMPLEMENTATION_PLAN.md
    - Most important = most foundational or highest priority
@@ -71,6 +81,11 @@ Select the most important task from the implementation plan, implement it correc
    - If validation fails, investigate and fix
    - Do not commit until all validation passes
    - If repeatedly failing, note in plan and move to next task
+   - This container still can't execute VBA itself (no Office). Commit as before —
+     the host-side bridge tests real VBA changes after you exit and reports back
+     via `vba/tests/LAST_TEST_RUN.md` for the next iteration (see step 0b). Don't
+     claim a VBA change is "verified" in this iteration; say "implemented, pending
+     real-Office test" instead.
 
 5. Update Plan
    - Mark completed task with [x] in IMPLEMENTATION_PLAN.md

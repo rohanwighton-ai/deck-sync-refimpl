@@ -196,6 +196,106 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "ResolveFields_EndToEndTagsSelectedShapeViaPickedRole", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_BuildAndParseTypeRegistrationRoundTrip()
+    AppendResult report, "DeckRegistry_BuildAndParseTypeRegistrationRoundTrip", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_ParseTypeRegistrationRejectsMalformed()
+    AppendResult report, "DeckRegistry_ParseTypeRegistrationRejectsMalformed", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_GetOrCreateDeckIdIsStableAcrossCalls()
+    AppendResult report, "DeckRegistry_GetOrCreateDeckIdIsStableAcrossCalls", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_RegisterAndLookupTypeRoundTrip()
+    AppendResult report, "DeckRegistry_RegisterAndLookupTypeRoundTrip", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_LookupTypeFalseWhenNotRegistered()
+    AppendResult report, "DeckRegistry_LookupTypeFalseWhenNotRegistered", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_LookupTypeFalseWhenTemplateSlideDeleted()
+    AppendResult report, "DeckRegistry_LookupTypeFalseWhenTemplateSlideDeleted", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_ListRegisteredTypesListsAllRegistered()
+    AppendResult report, "DeckRegistry_ListRegisteredTypesListsAllRegistered", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_WorkbookPathRoundTrip()
+    AppendResult report, "DeckRegistry_WorkbookPathRoundTrip", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_WorkbookBridge_SanitizeSheetNameStripsInvalidCharsAndTruncates()
+    AppendResult report, "WorkbookBridge_SanitizeSheetNameStripsInvalidCharsAndTruncates", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_OnboardFlow_PlanOnboardingFindsCandidatesAndHarvestsText()
+    AppendResult report, "OnboardFlow_PlanOnboardingFindsCandidatesAndHarvestsText", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_OnboardFlow_ApplyFieldReviewAnswerRenamesOrExcludes()
+    AppendResult report, "OnboardFlow_ApplyFieldReviewAnswerRenamesOrExcludes", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_OnboardFlow_ApplyPeriodKeyAnswerMarksExactlyOneField()
+    AppendResult report, "OnboardFlow_ApplyPeriodKeyAnswerMarksExactlyOneField", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_OnboardFlow_DeriveSeedInstanceKeyUsesPeriodKeyOrEvergreen()
+    AppendResult report, "OnboardFlow_DeriveSeedInstanceKeyUsesPeriodKeyOrEvergreen", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_OnboardFlow_CommitAndVerifyOnboardingRoundTrip()
+    AppendResult report, "OnboardFlow_CommitAndVerifyOnboardingRoundTrip", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_RibbonUI_ResolveTypeAnswerAcceptsNumberOrName()
+    AppendResult report, "RibbonUI_ResolveTypeAnswerAcceptsNumberOrName", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_RibbonUI_ResolveRecordAnswerAcceptsNumberOnly()
+    AppendResult report, "RibbonUI_ResolveRecordAnswerAcceptsNumberOnly", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_RibbonUI_BuildTypePickerPromptListsAllTypes()
+    AppendResult report, "RibbonUI_BuildTypePickerPromptListsAllTypes", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons()
+    AppendResult report, "CommandBarUI_ShowToolbarCreatesFourWiredButtons", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_CommandBarUI_ShowToolbarIsIdempotent()
+    AppendResult report, "CommandBarUI_ShowToolbarIsIdempotent", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_CommandBarUI_HideToolbarRemovesIt()
+    AppendResult report, "CommandBarUI_HideToolbarRemovesIt", r
+    On Error GoTo 0
+
     RunAllTests = report
 End Function
 
@@ -217,10 +317,20 @@ Private Function Assert(cond As Boolean, msg As String) As String
     End If
 End Function
 
+' Shape.Select (used by ResolveFields' tests to simulate a real user click)
+' requires the shape's slide to be the window's active view -- confirmed the
+' hard way (2026-07-26 real-Office run): Slides.Add does not itself navigate
+' the view, so a shape on a freshly-added slide fails Select with "Invalid
+' request. To select a shape, its view must be active" until the view is
+' explicitly moved there. GotoSlide here makes every NewBlankSlide() caller
+' immediately select-able, not just ResolveFields' tests.
 Private Function NewBlankSlide() As Object
     Dim n As Long
     n = Application.ActivePresentation.Slides.count + 1
-    Set NewBlankSlide = Application.ActivePresentation.Slides.Add(n, ppLayoutBlank)
+    Dim sld As Object
+    Set sld = Application.ActivePresentation.Slides.Add(n, ppLayoutBlank)
+    Application.ActiveWindow.View.GotoSlide sld.SlideIndex
+    Set NewBlankSlide = sld
 End Function
 
 Private Function FindShapeByRole(sld As Object, role As String) As Object
@@ -1584,4 +1694,470 @@ Private Function Test_ResolveFields_EndToEndTagsSelectedShapeViaPickedRole() As 
     result = result & Assert(newShp.Tags("role") = "Title", "selected shape was tagged with the picked role, got '" & newShp.Tags("role") & "'")
 
     Test_ResolveFields_EndToEndTagsSelectedShapeViaPickedRole = result
+End Function
+
+' ---------------------------------------------------------------------
+' DeckRegistry
+' ---------------------------------------------------------------------
+
+Private Function Test_DeckRegistry_BuildAndParseTypeRegistrationRoundTrip() As String
+    Dim result As String
+
+    Dim raw As String
+    raw = DeckRegistry.BuildTypeRegistration(1234&, "QuarterlyData")
+    result = result & Assert(raw = "1234|QuarterlyData", "built registration is '1234|QuarterlyData', got '" & raw & "'")
+
+    Dim slideId As Long
+    Dim ws As String
+    Dim ok As Boolean
+    ok = DeckRegistry.ParseTypeRegistration(raw, slideId, ws)
+    result = result & Assert(ok, "parse succeeded")
+    result = result & Assert(slideId = 1234, "parsed slideId is 1234, got " & slideId)
+    result = result & Assert(ws = "QuarterlyData", "parsed worksheetName is 'QuarterlyData', got '" & ws & "'")
+
+    Test_DeckRegistry_BuildAndParseTypeRegistrationRoundTrip = result
+End Function
+
+Private Function Test_DeckRegistry_ParseTypeRegistrationRejectsMalformed() As String
+    Dim result As String
+    Dim slideId As Long
+    Dim ws As String
+
+    result = result & Assert(Not DeckRegistry.ParseTypeRegistration("", slideId, ws), "empty string rejected")
+    result = result & Assert(Not DeckRegistry.ParseTypeRegistration("no-separator", slideId, ws), "missing '|' rejected")
+    result = result & Assert(Not DeckRegistry.ParseTypeRegistration("abc|Sheet1", slideId, ws), "non-numeric slide id rejected")
+    result = result & Assert(Not DeckRegistry.ParseTypeRegistration("123|", slideId, ws), "empty worksheet name after '|' rejected")
+
+    Test_DeckRegistry_ParseTypeRegistrationRejectsMalformed = result
+End Function
+
+Private Function Test_DeckRegistry_GetOrCreateDeckIdIsStableAcrossCalls() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim first As String
+    first = DeckRegistry.GetOrCreateDeckId(pres)
+    result = result & Assert(first <> "", "a deck id was generated")
+
+    Dim second As String
+    second = DeckRegistry.GetOrCreateDeckId(pres)
+    result = result & Assert(second = first, "second call returns the same id, got '" & second & "' want '" & first & "'")
+
+    Test_DeckRegistry_GetOrCreateDeckIdIsStableAcrossCalls = result
+End Function
+
+Private Function Test_DeckRegistry_RegisterAndLookupTypeRoundTrip() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+
+    DeckRegistry.RegisterType pres, "test-registry-type-A", templateSld, "TestSheetA"
+
+    Dim foundSld As Object
+    Dim ws As String
+    Dim ok As Boolean
+    ok = DeckRegistry.LookupType(pres, "test-registry-type-A", foundSld, ws)
+
+    result = result & Assert(ok, "lookup found the registered type")
+    result = result & Assert(Not foundSld Is Nothing, "lookup returned a slide")
+    If Not foundSld Is Nothing Then
+        result = result & Assert(foundSld.SlideID = templateSld.SlideID, "returned slide matches the registered template, got SlideID " & foundSld.SlideID & " want " & templateSld.SlideID)
+    End If
+    result = result & Assert(ws = "TestSheetA", "returned worksheet name is 'TestSheetA', got '" & ws & "'")
+
+    Test_DeckRegistry_RegisterAndLookupTypeRoundTrip = result
+End Function
+
+Private Function Test_DeckRegistry_LookupTypeFalseWhenNotRegistered() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim foundSld As Object
+    Dim ws As String
+    Dim ok As Boolean
+    ok = DeckRegistry.LookupType(pres, "test-registry-type-never-registered", foundSld, ws)
+
+    result = result & Assert(Not ok, "lookup of an unregistered type returns False")
+    result = result & Assert(foundSld Is Nothing, "outSld left Nothing")
+    result = result & Assert(ws = "", "worksheetName left empty, got '" & ws & "'")
+
+    Test_DeckRegistry_LookupTypeFalseWhenNotRegistered = result
+End Function
+
+Private Function Test_DeckRegistry_LookupTypeFalseWhenTemplateSlideDeleted() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    DeckRegistry.RegisterType pres, "test-registry-type-deleted", templateSld, "TestSheetDeleted"
+    templateSld.Delete
+
+    Dim foundSld As Object
+    Dim ws As String
+    Dim ok As Boolean
+    ok = DeckRegistry.LookupType(pres, "test-registry-type-deleted", foundSld, ws)
+
+    result = result & Assert(Not ok, "lookup of a type whose template was deleted returns False, not an error")
+    result = result & Assert(foundSld Is Nothing, "outSld left Nothing")
+
+    Test_DeckRegistry_LookupTypeFalseWhenTemplateSlideDeleted = result
+End Function
+
+Private Function Test_DeckRegistry_ListRegisteredTypesListsAllRegistered() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim sld1 As Object, sld2 As Object
+    Set sld1 = NewBlankSlide()
+    Set sld2 = NewBlankSlide()
+    DeckRegistry.RegisterType pres, "test-registry-list-type-1", sld1, "Sheet1"
+    DeckRegistry.RegisterType pres, "test-registry-list-type-2", sld2, "Sheet2"
+
+    Dim types() As String
+    types = DeckRegistry.ListRegisteredTypes(pres)
+
+    Dim foundType1 As Boolean, foundType2 As Boolean
+    Dim lo As Long, hi As Long, i As Long
+    lo = LBound(types): hi = UBound(types)
+    For i = lo To hi
+        If types(i) = "test-registry-list-type-1" Then foundType1 = True
+        If types(i) = "test-registry-list-type-2" Then foundType2 = True
+    Next i
+
+    result = result & Assert(foundType1, "list includes 'test-registry-list-type-1'")
+    result = result & Assert(foundType2, "list includes 'test-registry-list-type-2'")
+
+    Test_DeckRegistry_ListRegisteredTypesListsAllRegistered = result
+End Function
+
+Private Function Test_DeckRegistry_WorkbookPathRoundTrip() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    result = result & Assert(DeckRegistry.GetWorkbookPath(pres) = "" Or DeckRegistry.GetWorkbookPath(pres) <> "", "GetWorkbookPath never raises before anything is set")
+
+    DeckRegistry.SetWorkbookPath pres, "C:\fake\path\Data.xlsx"
+    result = result & Assert(DeckRegistry.GetWorkbookPath(pres) = "C:\fake\path\Data.xlsx", "path round-trips, got '" & DeckRegistry.GetWorkbookPath(pres) & "'")
+
+    DeckRegistry.SetWorkbookPath pres, "C:\fake\path\Data2.xlsx"
+    result = result & Assert(DeckRegistry.GetWorkbookPath(pres) = "C:\fake\path\Data2.xlsx", "overwrite replaces the old path, got '" & DeckRegistry.GetWorkbookPath(pres) & "'")
+
+    Test_DeckRegistry_WorkbookPathRoundTrip = result
+End Function
+
+' ---------------------------------------------------------------------
+' WorkbookBridge
+' ---------------------------------------------------------------------
+
+Private Function Test_WorkbookBridge_SanitizeSheetNameStripsInvalidCharsAndTruncates() As String
+    Dim result As String
+
+    result = result & Assert(WorkbookBridge.SanitizeSheetName("quarterly-update") = "quarterly-update", "a clean name passes through unchanged, got '" & WorkbookBridge.SanitizeSheetName("quarterly-update") & "'")
+
+    Dim cleaned As String
+    cleaned = WorkbookBridge.SanitizeSheetName("a/b\c?d*e[f]g:h")
+    result = result & Assert(InStr(cleaned, "/") = 0 And InStr(cleaned, "\") = 0 And InStr(cleaned, "?") = 0 And InStr(cleaned, "*") = 0 And InStr(cleaned, "[") = 0 And InStr(cleaned, "]") = 0 And InStr(cleaned, ":") = 0, "every invalid Excel sheet-name char is stripped, got '" & cleaned & "'")
+
+    Dim longName As String
+    longName = String(50, "x")
+    result = result & Assert(Len(WorkbookBridge.SanitizeSheetName(longName)) = 31, "truncated to Excel's 31-char sheet name limit, got length " & Len(WorkbookBridge.SanitizeSheetName(longName)))
+
+    result = result & Assert(WorkbookBridge.SanitizeSheetName("") = "Data", "blank name falls back to 'Data', got '" & WorkbookBridge.SanitizeSheetName("") & "'")
+
+    Test_WorkbookBridge_SanitizeSheetNameStripsInvalidCharsAndTruncates = result
+End Function
+
+' ---------------------------------------------------------------------
+' OnboardFlow
+' ---------------------------------------------------------------------
+
+Private Function Test_OnboardFlow_PlanOnboardingFindsCandidatesAndHarvestsText() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim titleShp As Object
+    Set titleShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    titleShp.Name = "ph_title"
+    titleShp.TextFrame.TextRange.Text = "Q1 2026"
+    Dim decorShp As Object
+    Set decorShp = sld.Shapes.AddShape(msoShapeRectangle, 300, 50, 50, 50)
+    decorShp.TextFrame.TextRange.Text = ""
+
+    Dim fields() As PendingField
+    fields = OnboardFlow.PlanOnboarding(sld)
+
+    Dim lo As Long, hi As Long, hasFields As Boolean
+    On Error Resume Next
+    lo = LBound(fields): hi = UBound(fields): hasFields = (Err.Number = 0)
+    On Error GoTo 0
+
+    result = result & Assert(hasFields And (hi - lo + 1) = 1, "only the text-bearing shape is a candidate field (blank decoration excluded), got " & IIf(hasFields, hi - lo + 1, 0))
+    If hasFields Then
+        result = result & Assert(fields(lo).ProposedName = "ph_title", "proposed name reuses the shape's existing ph_ name, got '" & fields(lo).ProposedName & "'")
+        result = result & Assert(fields(lo).HarvestedValue = "Q1 2026", "harvested value matches the shape's current text, got '" & fields(lo).HarvestedValue & "'")
+        result = result & Assert(Not fields(lo).Excluded, "field starts un-excluded")
+    End If
+
+    Test_OnboardFlow_PlanOnboardingFindsCandidatesAndHarvestsText = result
+End Function
+
+Private Function Test_OnboardFlow_ApplyFieldReviewAnswerRenamesOrExcludes() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp.TextFrame.TextRange.Text = "value"
+
+    Dim fields(1 To 3) As PendingField
+    Dim i As Long
+    For i = 1 To 3
+        Set fields(i).Shape = shp
+        fields(i).ProposedName = "ph_default" & i
+        fields(i).HarvestedValue = "value"
+    Next i
+
+    OnboardFlow.ApplyFieldReviewAnswer fields, 1, ""
+    result = result & Assert(fields(1).ProposedName = "ph_default1" And Not fields(1).Excluded, "blank answer keeps the proposed name, got '" & fields(1).ProposedName & "'")
+
+    OnboardFlow.ApplyFieldReviewAnswer fields, 2, "ph_renamed"
+    result = result & Assert(fields(2).ProposedName = "ph_renamed" And Not fields(2).Excluded, "non-blank answer renames, got '" & fields(2).ProposedName & "'")
+
+    OnboardFlow.ApplyFieldReviewAnswer fields, 3, "skip"
+    result = result & Assert(fields(3).Excluded, "'skip' (any case) excludes the field")
+
+    Test_OnboardFlow_ApplyFieldReviewAnswerRenamesOrExcludes = result
+End Function
+
+Private Function Test_OnboardFlow_ApplyPeriodKeyAnswerMarksExactlyOneField() As String
+    Dim result As String
+
+    Dim fields(1 To 3) As PendingField
+    fields(1).ProposedName = "ph_a"
+    fields(2).ProposedName = "ph_b"
+    fields(3).ProposedName = "ph_c"
+    fields(3).Excluded = True
+
+    Dim ok As Boolean
+    ok = OnboardFlow.ApplyPeriodKeyAnswer(fields, "2")
+    result = result & Assert(ok, "answer '2' is accepted")
+    result = result & Assert(Not fields(1).IsPeriodKey And fields(2).IsPeriodKey, "only field 2 is marked as the period key")
+
+    ok = OnboardFlow.ApplyPeriodKeyAnswer(fields, "")
+    result = result & Assert(Not ok, "blank answer returns False (evergreen)")
+    result = result & Assert(Not fields(1).IsPeriodKey And Not fields(2).IsPeriodKey And Not fields(3).IsPeriodKey, "a blank answer clears every prior mark")
+
+    ok = OnboardFlow.ApplyPeriodKeyAnswer(fields, "3")
+    result = result & Assert(Not ok, "an excluded field's number is rejected")
+
+    Test_OnboardFlow_ApplyPeriodKeyAnswerMarksExactlyOneField = result
+End Function
+
+Private Function Test_OnboardFlow_DeriveSeedInstanceKeyUsesPeriodKeyOrEvergreen() As String
+    Dim result As String
+
+    Dim withKey(1 To 2) As PendingField
+    withKey(1).ProposedName = "ph_a"
+    withKey(2).ProposedName = "ph_quarter"
+    withKey(2).HarvestedValue = "Q1 2026"
+    withKey(2).IsPeriodKey = True
+
+    result = result & Assert(OnboardFlow.DeriveSeedInstanceKey(withKey) = "Q1-2026", "period-key value becomes the seed instance key (spaces to dashes), got '" & OnboardFlow.DeriveSeedInstanceKey(withKey) & "'")
+
+    Dim evergreen(1 To 1) As PendingField
+    evergreen(1).ProposedName = "ph_a"
+
+    result = result & Assert(OnboardFlow.DeriveSeedInstanceKey(evergreen) = "evergreen", "no period-key field falls back to 'evergreen', got '" & OnboardFlow.DeriveSeedInstanceKey(evergreen) & "'")
+
+    Test_OnboardFlow_DeriveSeedInstanceKeyUsesPeriodKeyOrEvergreen = result
+End Function
+
+Private Function Test_OnboardFlow_CommitAndVerifyOnboardingRoundTrip() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim titleShp As Object
+    Set titleShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    titleShp.Name = "ph_title"
+    titleShp.TextFrame.TextRange.Text = "Onboard Test Title"
+
+    Dim fields() As PendingField
+    fields = OnboardFlow.PlanOnboarding(sld)
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim deckId As String
+    deckId = DeckRegistry.GetOrCreateDeckId(pres)
+
+    Dim commitResult As OnboardingResult
+    commitResult = OnboardFlow.CommitOnboarding(pres, sld, fields, "onboard-test-type", ws, deckId)
+
+    result = result & Assert(commitResult.Ok, "commit reports Ok")
+    result = result & Assert(commitResult.FieldCount = 1, "1 field committed, got " & commitResult.FieldCount)
+    result = result & Assert(titleShp.Tags("role") = "ph_title", "shape was tagged with its role, got '" & titleShp.Tags("role") & "'")
+
+    Dim instance As SlideInstance
+    instance = Resolve.ResolveSlideInstance(sld)
+    result = result & Assert(instance.HasTypeTag And instance.TypeTag = "onboard-test-type", "example slide carries the new slide_type tag")
+    result = result & Assert(instance.HasInstanceKey And instance.InstanceKey = commitResult.InstanceKey, "example slide also became instance #1")
+
+    Dim foundTemplate As Object
+    Dim foundWs As String
+    Dim registered As Boolean
+    registered = DeckRegistry.LookupType(pres, "onboard-test-type", foundTemplate, foundWs)
+    result = result & Assert(registered And Not foundTemplate Is Nothing And foundTemplate.SlideID = sld.SlideID, "type was registered in DeckRegistry pointing back at this slide")
+
+    result = result & Assert(ws.Cells(2, 1).Value = commitResult.InstanceKey, "seed row's Instance ID cell matches, got '" & ws.Cells(2, 1).Value & "'")
+
+    Dim verifyReport As String
+    verifyReport = OnboardFlow.VerifyOnboarding(sld, fields)
+    result = result & Assert(InStr(verifyReport, "All fields verified") > 0, "verify-the-link pass reports every field on the no-op path, got: " & verifyReport)
+
+    Test_OnboardFlow_CommitAndVerifyOnboardingRoundTrip = result
+End Function
+
+' ---------------------------------------------------------------------
+' RibbonUI
+' ---------------------------------------------------------------------
+
+Private Function Test_RibbonUI_ResolveTypeAnswerAcceptsNumberOrName() As String
+    Dim result As String
+    Dim types(1 To 2) As String
+    types(1) = "quarterly-update"
+    types(2) = "annual-summary"
+
+    result = result & Assert(RibbonUI.ResolveTypeAnswer("1", types) = "quarterly-update", "numeric answer resolves by position")
+    result = result & Assert(RibbonUI.ResolveTypeAnswer("annual-summary", types) = "annual-summary", "name answer resolves case-insensitively")
+    result = result & Assert(RibbonUI.ResolveTypeAnswer("nonexistent", types) = "", "unknown name resolves to empty")
+    result = result & Assert(RibbonUI.ResolveTypeAnswer("", types) = "", "blank answer resolves to empty")
+
+    Test_RibbonUI_ResolveTypeAnswerAcceptsNumberOrName = result
+End Function
+
+Private Function Test_RibbonUI_ResolveRecordAnswerAcceptsNumberOnly() As String
+    Dim result As String
+
+    Dim sld1 As Object, sld2 As Object
+    Set sld1 = NewBlankSlide()
+    Set sld2 = NewBlankSlide()
+    Dim instances(1 To 2) As Object
+    Set instances(1) = sld1
+    Set instances(2) = sld2
+
+    Dim picked As Object
+    Set picked = RibbonUI.ResolveRecordAnswer("2", instances)
+    result = result & Assert(Not picked Is Nothing And picked.SlideID = sld2.SlideID, "numeric answer resolves to the matching instance")
+
+    Set picked = RibbonUI.ResolveRecordAnswer("not-a-number", instances)
+    result = result & Assert(picked Is Nothing, "non-numeric answer resolves to Nothing")
+
+    Set picked = RibbonUI.ResolveRecordAnswer("99", instances)
+    result = result & Assert(picked Is Nothing, "out-of-range answer resolves to Nothing")
+
+    Test_RibbonUI_ResolveRecordAnswerAcceptsNumberOnly = result
+End Function
+
+Private Function Test_RibbonUI_BuildTypePickerPromptListsAllTypes() As String
+    Dim result As String
+    Dim types(1 To 2) As String
+    types(1) = "quarterly-update"
+    types(2) = "annual-summary"
+
+    Dim prompt As String
+    prompt = RibbonUI.BuildTypePickerPrompt(types)
+
+    result = result & Assert(InStr(prompt, "1) quarterly-update") > 0, "prompt lists type 1, got: " & prompt)
+    result = result & Assert(InStr(prompt, "2) annual-summary") > 0, "prompt lists type 2, got: " & prompt)
+
+    Test_RibbonUI_BuildTypePickerPromptListsAllTypes = result
+End Function
+
+' ---------------------------------------------------------------------
+' CommandBarUI
+' ---------------------------------------------------------------------
+
+Private Function Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons() As String
+    Dim result As String
+
+    CommandBarUI.ShowToolbar
+
+    Dim bar As Object
+    Set bar = Application.CommandBars("Deck Sync")
+    result = result & Assert(Not bar Is Nothing, "toolbar 'Deck Sync' exists after ShowToolbar")
+    result = result & Assert(bar.Controls.count = 4, "toolbar has 4 buttons, got " & bar.Controls.count)
+
+    ' PowerPoint normalizes a set OnAction like "RibbonUI.SyncNow" to its own
+    ' "<PresentationName>!SyncNow" display form (module-unqualified) --
+    ' confirmed 2026-07-26 against real Office. Match on the bare Sub name
+    ' rather than the string this module actually assigns.
+    Dim expectedActions As String
+    expectedActions = "SyncNow|NewPeriod|OnboardNewType|ResolveUnmatchedFields"
+
+    Dim i As Long
+    For i = 1 To bar.Controls.count
+        Dim ctrl As Object
+        Set ctrl = bar.Controls.Item(i)
+        Dim bangPos As Long
+        bangPos = InStr(ctrl.OnAction, "!")
+        Dim subName As String
+        subName = IIf(bangPos > 0, Mid(ctrl.OnAction, bangPos + 1), ctrl.OnAction)
+        result = result & Assert(InStr(expectedActions, subName) > 0, "button '" & ctrl.Caption & "' OnAction '" & ctrl.OnAction & "' resolves to one of the four real action Subs")
+    Next i
+
+    CommandBarUI.HideToolbar
+    Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons = result
+End Function
+
+Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
+    Dim result As String
+
+    CommandBarUI.ShowToolbar
+    CommandBarUI.ShowToolbar  ' must not raise "toolbar already exists" or leave duplicates
+
+    Dim bar As Object
+    Set bar = Application.CommandBars("Deck Sync")
+    result = result & Assert(Not bar Is Nothing, "toolbar still exists after calling ShowToolbar twice")
+    result = result & Assert(bar.Controls.count = 4, "still exactly 4 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
+
+    CommandBarUI.HideToolbar
+    Test_CommandBarUI_ShowToolbarIsIdempotent = result
+End Function
+
+Private Function Test_CommandBarUI_HideToolbarRemovesIt() As String
+    Dim result As String
+
+    CommandBarUI.ShowToolbar
+    CommandBarUI.HideToolbar
+
+    Dim bar As Object
+    On Error Resume Next
+    Set bar = Application.CommandBars("Deck Sync")
+    On Error GoTo 0
+    result = result & Assert(bar Is Nothing, "toolbar no longer exists after HideToolbar")
+
+    ' Calling HideToolbar again with nothing to remove must not raise.
+    CommandBarUI.HideToolbar
+    result = result & Assert(True, "HideToolbar is safe to call when nothing exists")
+
+    Test_CommandBarUI_HideToolbarRemovesIt = result
 End Function

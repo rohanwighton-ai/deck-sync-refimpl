@@ -5,3 +5,4 @@ __pycache__/
 ralph.log
 .ralph_stuck_tracker
 REPORT.md
+dist/

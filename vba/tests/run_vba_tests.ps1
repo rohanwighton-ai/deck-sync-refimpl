@@ -22,14 +22,67 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# A prior interrupted run can leave a zombie POWERPNT.EXE/EXCEL.EXE process
-# behind; New-Object -ComObject then attaches to that stale instance
-# instead of spawning a fresh one, and its VBProject/VBComponents access
-# can come back genuinely null even though Trust access is enabled (found
-# the hard way on this script's first real run -- not a hypothetical).
-# Always start from a clean process table.
-Get-Process POWERPNT, EXCEL -ErrorAction SilentlyContinue | Stop-Process -Force
-Start-Sleep -Seconds 1
+# A prior interrupted run (or you just having Office open) can leave a live
+# POWERPNT.EXE/EXCEL.EXE process behind. New-Object -ComObject would attach
+# to that instance instead of spawning a fresh one, and a stale instance's
+# VBProject/VBComponents access can come back genuinely null even with Trust
+# access enabled (found the hard way on this script's first real run -- not
+# a hypothetical). So any existing instance must be closed first.
+#
+# This script is now also invoked unattended after autonomous commits, so
+# force-killing (the original approach) is no longer safe -- it would
+# silently discard unsaved work in a document you happen to have open at the
+# time. Instead: ask each running instance to Quit() normally. If it has
+# unsaved changes, Office shows its own native "Save changes?" dialog and
+# Quit() blocks until you respond. That's bounded by a timeout so an
+# unattended run doesn't hang forever -- if you don't respond in time, this
+# run is skipped (exit 2) rather than forcing the issue.
+function Request-GracefulQuit {
+    param([string]$ProgId, [int]$TimeoutSeconds = 180)
+
+    $job = Start-Job -ScriptBlock {
+        param($ProgId)
+        try {
+            $app = [System.Runtime.InteropServices.Marshal]::GetActiveObject($ProgId)
+        }
+        catch {
+            return "no-instance"
+        }
+        try {
+            $app.Quit()
+            return "quit-ok"
+        }
+        catch {
+            return "quit-error: $($_.Exception.Message)"
+        }
+    } -ArgumentList $ProgId
+
+    $completed = Wait-Job $job -Timeout $TimeoutSeconds
+    if (-not $completed) {
+        Stop-Job $job -ErrorAction SilentlyContinue
+        Remove-Job $job -Force -ErrorAction SilentlyContinue
+        return "timeout"
+    }
+    $result = Receive-Job $job
+    Remove-Job $job -ErrorAction SilentlyContinue
+    return $result
+}
+
+$processNameFor = @{ "PowerPoint.Application" = "POWERPNT"; "Excel.Application" = "EXCEL" }
+foreach ($progId in @("PowerPoint.Application", "Excel.Application")) {
+    $outcome = Request-GracefulQuit -ProgId $progId
+    if ($outcome -eq "timeout" -or $outcome -like "quit-error*") {
+        Write-Output "=== SKIPPED: $progId did not close cleanly ($outcome) -- likely an unresolved save prompt or in active use. Not forcing it closed. ==="
+        exit 2
+    }
+    # Give Office a moment to actually release the process after Quit()
+    Start-Sleep -Seconds 1
+    $stillRunning = Get-Process $processNameFor[$progId] -ErrorAction SilentlyContinue
+    if ($stillRunning) {
+        Write-Output "=== SKIPPED: $($processNameFor[$progId]) still running after a clean Quit() -- not forcing it closed. ==="
+        exit 2
+    }
+}
 
 $staging = Join-Path $env:TEMP ("deck-sync-vba-test-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
 $fixturesStaging = Join-Path $staging "fixtures\"
@@ -45,7 +98,7 @@ Write-Output "RepoRoot: $RepoRoot"
 Write-Output "vbaSourceDir: $vbaSourceDir"
 Write-Output "fixturesSourceDir: $fixturesSourceDir"
 
-$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "Verification.bas", "SlideDuplication.bas", "RunSync.bas", "tests\TestRunner.bas")
+$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "Verification.bas", "SlideDuplication.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas", "CommandBarUI.bas", "tests\TestRunner.bas")
 foreach ($m in $pptModules) {
     Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging
 }
@@ -68,7 +121,7 @@ try {
     $ppt.Visible = -1  # msoTrue -- visible on purpose for a first real run, see script header
     $pres = $ppt.Presentations.Add()
 
-    foreach ($m in @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas", "SlideDuplication.bas", "RunSync.bas", "TestRunner.bas")) {
+    foreach ($m in @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas", "SlideDuplication.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas", "CommandBarUI.bas", "TestRunner.bas")) {
         $comp = $pres.VBProject.VBComponents.Import((Join-Path $staging $m))
         Write-Output ("Imported $m as component name: " + $comp.Name)
     }

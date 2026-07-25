@@ -1,5 +1,105 @@
 # Implementation Plan
 
+## Priority 23 (2026-07-26 pass, hand-driven, WSL host with real Office): real-Office verification + starting Priority 21
+
+Run directly on the WSL host (not the Docker container) with `powershell.exe`
+and real PowerPoint/Excel reachable, so this pass gets the real-Office
+verification every prior VBA pass since Priority 20a had to defer.
+
+First real run of the full suite found two real bugs, both in test/harness
+code, not in `DeckAdoption.bas`/`RunSync.RunPeriodRollover` themselves:
+1. `vba/tests/run_vba_tests.ps1`'s module import lists were never updated
+   when `DeckAdoption.bas`/`ResolveFields.bas` landed (2026-07-25) — caused a
+   real `TestRunner.bas` compile error ("user-defined type not defined" on
+   `AdoptionSlidePlan`) on the first attempt. Fixed.
+2. `ResolveFields`'s 3 shape-selection tests failed with `Shape.Select ::
+   Invalid request. To select a shape, its view must be active` — the shared
+   `NewBlankSlide()` test helper never navigated the window's view to a newly
+   added slide, so `.Select` on its shapes failed. Fixed by adding
+   `Application.ActiveWindow.View.GotoSlide` to `NewBlankSlide()`. Full
+   account in `SPIKE_NOTES_ResolveFields.md`/`SPIKE_NOTES_DeckAdoption.md`.
+
+After both fixes: **41/41 real-Office tests pass**, PowerPoint and Excel
+sides both. `RunSync.RunPeriodRollover` (Priority 20a) and `DeckAdoption.bas`
+(Priority 22) are now genuinely proven against real Office, not just
+line-traced — both flagged "not executed this pass" caveats below are
+resolved as of this run.
+
+Moving on to Priority 21 (`ribbon-ui.md`) in this same pass, starting with
+the prerequisite gap Priority 21's own text didn't fully resolve: no module
+anywhere stores which template slide / worksheet / workbook backs a given
+slide type on a given deck (`ExcelOutput.bas`'s `WriteDeckReference`/
+`ReadDeckReference` only cover the workbook→deck direction, and are never
+actually called by anything — confirmed via `grep -rn WriteDeckReference
+vba/*.bas` matching only `ExcelOutput.bas` itself). Every existing entry
+point takes `ws`/`templateSld` as caller-supplied parameters specifically
+because "where a template lives" was deferred everywhere (see the Priority 19
+carry-forward note below) — a one-click ribbon button has no caller to
+supply them. See Priority 24 below for the registry this pass builds to
+close that gap before wiring any button to it.
+
+## Priority 24 (2026-07-26 pass): closed Priority 21 entirely — deck registry, all four ribbon actions, and a real shipped UI
+
+Everything in Priority 21's checklist is now `[x]`, but the *shape* of what
+shipped differs from the spec in one real way: no ribbon tab exists, because
+none can for a `.ppam` (see Priority 21's own updated bullet and
+`SPIKE_NOTES_RibbonUI.md` for the full, costly proof). What actually shipped:
+
+- `specs/deck-registry.md` + `vba/DeckRegistry.bas` — the prerequisite this
+  priority's own header flagged: deck GUID, paired workbook path, and
+  per-type (template SlideID, worksheet name) lookups, stored in
+  `Presentation.CustomDocumentProperties` mirroring `ExcelOutput.bas`'s
+  existing (never-called-until-now) `WriteDeckReference` pattern. 8 tests,
+  real-Office proven.
+- `vba/WorkbookBridge.bas` — small shared plumbing (get-or-open workbook,
+  get-or-add worksheet, sheet-name sanitizing) both `RibbonUI.bas` and
+  `OnboardFlow.bas` needed identically.
+- `vba/OnboardFlow.bas` — the Onboard New Slide Type flow, phase-gated
+  InputBox review, real design call on seeding (example slide becomes
+  instance #1 too, avoiding a second "keyless row" mechanism). 6 tests.
+- `vba/RibbonUI.bas` — all four action Subs (`SyncNow`/`NewPeriod`/
+  `OnboardNewType`/`ResolveUnmatchedFields`), refactored to be
+  callback-shape-agnostic (plain parameterless Subs) once the ribbon path
+  died, so `CommandBarUI.bas` could wire them directly. 5 tests plus the
+  full live add-in proof below.
+- `vba/CommandBarUI.bas` — the actual shipped UI: a `CommandBars` toolbar
+  (`Auto_Open`-driven), because a real ribbon is provably impossible for a
+  `.ppam`. 3 tests, plus the real end-to-end proof: 17 modules imported,
+  Rohan hand-saved a real `.ppam` (`Addin2.ppam`), loaded via `AddIns.Add` +
+  `.Loaded = True` — `Auto_Open` fired, the "Deck Sync" toolbar appeared with
+  all 4 buttons correctly wired, confirmed both via COM and visually by
+  Rohan. Copied into the repo at `dist/deck-sync-refimpl.ppam`.
+- Also fixed along the way: `run_vba_tests.ps1`'s stale import lists (missing
+  `DeckAdoption.bas`/`ResolveFields.bas`, caused a real compile error on first
+  attempt) and `TestRunner.bas`'s `NewBlankSlide()` (missing a
+  `View.GotoSlide` call, caused 3 real `Shape.Select` failures) — see
+  Priority 23 above.
+
+**Real, load-bearing finding for whoever packages a build next**: there is no
+way to automate producing or updating a `.ppam` end-to-end. `SaveAs(30)` fails
+via automation for reasons that aren't discoverable from outside Office, and a
+loaded add-in's `VBComponents` is genuinely `null` to automation (not just
+empty) — both confirmed, not assumed. `vba/tests/build_ppam.ps1` now documents
+and does the one half that *is* fully automatable (importing every production
+module into a fresh presentation) and stops there; the File > Save As click is
+real, permanent, human-required. This is a release-time cost, not a dev-loop
+one — `run_vba_tests.ps1` stays fully automated regardless.
+
+Full test count this pass: 61/61 real-Office tests pass (PowerPoint + Excel
+combined), up from 41 at the start of Priority 23. `python3 -m pytest`/`mypy`
+unaffected throughout (VBA-only work).
+
+## Notes carried forward, still open after this pass
+- The 1-vs-2-example-slide onboarding gap (Priority 21's `OnboardFlow.bas`
+  bullet) is real and deferred, not decided against.
+- The shared result reporting is `MsgBox`-backed, not a structured form —
+  deferred, `ShowSyncResult` is the single point a future upgrade would touch.
+- A real COM/VSTO add-in (genuinely different technology from `.ppam`) is the
+  only path to an actual ribbon tab, if that polish is ever wanted — not
+  started, `customUI14.xml` is kept as its starting point.
+- Cases 5/7 and the multi-deck design remain entirely unspecified, unchanged
+  from every prior pass's carry-forward note.
+
 ## Priority 20 (2026-07-25 pass): two new specs landed with zero implementation — this is the real gap
 
 Re-verified this pass by actually running `python3 -m pytest tests/ -v` (**70 passed**)
@@ -100,38 +200,61 @@ sub-tasks below since the spec itself describes several independent pieces (a ri
 XML, several forms, one shared result form) — each is completable in one iteration;
 don't attempt all of `ribbon-ui.md` in a single pass.
 
-- [ ] `customUI14.xml` + ribbon callback module: the tab, "Sync Now" and "New Period"
-      always-visible buttons, "Onboard New Slide Type" and "Resolve Unmatched
-      Fields" buttons (why: this is the literal entry surface the spec exists to
-      build — "there is no surface a real user opens PowerPoint and clicks" is the
-      spec's own stated problem). "Sync Now" calls `RunSync.RunRoutineSync` directly
-      (needs a decision on where `ws`/`slideType`/`templateSld` come from for a
-      one-click button with no picker — the spec doesn't fully pin this down beyond
-      "the currently open deck and its paired workbook" per `input-contract.md`'s
-      pairing, which is referenced but not present in this repo — confirmed via
-      `grep -rl input-contract /workspace` finding only cross-references, no such
-      file; flag this as a real open sub-decision for whoever picks up this task,
-      not a blocker to defer the whole button). Package as a `.ppam` per the spec's
-      explicit packaging requirement, tied to the COM-add-in decision it cites
-      (`DECISIONS.md`, 2026-07-25 — also not present in this repo; treat the
-      spec's own text as authoritative since the decision doc it cites isn't
-      available to double-check against).
-- [ ] "New Period" picker (type, then record) → `RunSync.RunPeriodRollover` from
-      Priority 20a (why: spec requires this be per-type-and-record, not global,
-      per `run-sync.md`'s Step 3 — a doc this repo doesn't have a local copy of
-      either, so implement against `ribbon-ui.md`'s own restatement of that
-      requirement directly).
-- [ ] "Onboard New Slide Type" flow: duplicate the user's current selection into a
-      working copy, run `Discovery` against it, show the Review form (rename/
-      exclude/mark-period-key/mark-evergreen, phase-gated — nothing written until
-      confirmed), then on confirm commit via `Onboarding.bas`/`ExcelOutput.bas` and
-      run the existing verify-the-link pass, reporting pass/fail per field (why:
-      six explicit steps in the spec, all naming existing calls except the Review
-      form itself, which is new UI). The Review form is the one genuinely new
-      piece of state here — no existing VBA module currently produces a "list of
-      discovered fields with proposed name/shape ref/harvested value" structure
-      formatted for display; needs its own light presentation-layer code, not just
-      a call into `Discovery.DiscoverSlideWithShapes`.
+- [x] `customUI14.xml` + ribbon callback module — **superseded, provably
+      impossible for a `.ppam`.** Built `customUI14.xml` and `RibbonUI.bas`'s
+      original `(control As IRibbonControl)` callbacks exactly as planned, then
+      spent most of a 2026-07-26 pass discovering a `.ppam`'s add-in loader
+      rejects the package outright if it contains anything beyond its exact
+      expected 5-part structure — proven definitively by adding a harmless,
+      totally unrelated, unreferenced dummy part and watching it fail to load
+      identically to the real ribbon injection attempt. Full blow-by-blow
+      (SaveAs(30)'s automation-only COMException, the reverse-engineered
+      5-part real structure, the failed vbaProject.bin splice, the
+      null-VBComponents-on-a-loaded-addin dead end) is in
+      `SPIKE_NOTES_RibbonUI.md` — read that before attempting this again.
+      **Shipped instead**: `CommandBarUI.bas`, the pre-Ribbon `CommandBars`
+      mechanism — pure runtime VBA, zero package changes needed, so it works
+      inside the exact `.ppam` structure already proven to load. `Auto_Open`
+      confirmed firing automatically on add-in load; toolbar with all 4
+      buttons visually confirmed live by Rohan. `RibbonUI.bas`'s action logic
+      was refactored into plain parameterless Subs (`SyncNow`/`NewPeriod`/
+      `OnboardNewType`/`ResolveUnmatchedFields`) so `CommandBarButton.OnAction`
+      can call them directly — `customUI14.xml` is kept in the repo,
+      unwired, as a starting point if a real COM/VSTO add-in (a genuinely
+      different technology) ever gets built. The one-click "Sync Now" open
+      sub-decision this bullet originally flagged is resolved by
+      `DeckRegistry.bas` (Priority 24 below): `GetWorkbookPath`/
+      `ListRegisteredTypes`/`LookupType` supply exactly what was missing.
+- [x] "New Period" picker (type, then record) → `RunSync.RunPeriodRollover`.
+      Built as `RibbonUI.NewPeriod`: type picker sourced from
+      `DeckRegistry.ListRegisteredTypes`, record picker from
+      `RunSync.GatherInstances`, new instance key entered directly (must
+      already have a row in the Data sheet — `run-sync.md` Step 3's "create
+      the row first" is a spreadsheet-first action the user takes before
+      clicking, not something this button invents values for). Real-Office
+      tested (`RibbonUI_ResolveTypeAnswerAcceptsNumberOrName`,
+      `RibbonUI_ResolveRecordAnswerAcceptsNumberOnly`, and the picker-prompt
+      builders); the interactive InputBox chain itself is manual-only, same
+      constraint as every other InputBox flow.
+- [x] "Onboard New Slide Type" flow. Built as `vba/OnboardFlow.bas`: duplicates
+      the selection into a working copy immediately (Step 1's invariant),
+      `Discovery` + a `PlanOnboarding` pass builds the reviewable field list,
+      an InputBox-chain Review phase-gates every write (rename/exclude/mark
+      period-key, final Yes/No confirm before anything is written — matches
+      the spec's phase-gate requirement, just not via a `UserForm` grid), then
+      `CommitOnboarding` tags fields/establishes the template+first-instance/
+      registers in `DeckRegistry`/seeds the Data-sheet row, and
+      `VerifyOnboarding` runs the Step-6 no-op-path check per field. Real bug
+      caught and fixed by this same design work: the seed row needs a real
+      `instance_key` or it becomes an invisible keyless row (`ExcelOutput.
+      ReadSheet` excludes blank-Instance-ID rows) — resolved by having the
+      example slide double as instance #1, not inventing new "keyless seed
+      row" handling. Real-Office tested end-to-end, including a full commit
+      against a real throwaway Excel workbook created via COM
+      (`OnboardFlow_CommitAndVerifyOnboardingRoundTrip`). Full design
+      rationale in `SPIKE_NOTES_OnboardFlow.md`. **Scope reduction from the
+      spec**: supports exactly 1 example slide, not "1-2" — flagged as
+      deferred, not silently dropped.
 - [x] "Resolve Unmatched Fields" flow: user clicks a shape
       (`Application.ActiveWindow.Selection.ShapeRange`), picks a role from the
       template's defined roles, calls `Onboarding.ConfirmFieldMatch` (why: spec
@@ -173,25 +296,21 @@ don't attempt all of `ribbon-ui.md` in a single pass.
       `powershell.exe` unreachable from this container; needs a real
       `run_vba_tests.ps1` run on the WSL/Windows host next time this project
       is picked up there.
-- [ ] Shared result form: one form reused after Sync Now, New Period, and the
-      onboarding verify step, showing counts (no-op/created/corrected/flagged
-      unclassified/flagged conflict) with flagged items listed by slide name/index
-      (why: spec explicitly calls out "not a bespoke dialog per action" — building
-      this once, generically, before wiring the three call sites above avoids
-      three divergent one-off dialogs; do this before or alongside the first
-      button that needs it, e.g. "Sync Now," so later buttons reuse it rather than
-      each inventing their own). Note `RunRoutineSync` already returns a
-      formatted `String` report (`vba/RunSync.bas:64-135`) — this form's job is
-      structured display of that same data, not re-deriving the counts; may be
-      worth changing `RunRoutineSync`'s return type to a structured result the
-      form can consume directly instead of parsing its own `String` report back
-      apart, flag this as a design choice for whoever picks up the task rather
-      than deciding it here.
-- [ ] Each of the above needs its own manual-verification-recipe addition (no
-      automated UI test harness exists or is planned — `TestRunner.bas` exercises
-      Subs/Functions directly, not `UserForm` click-through interaction; confirmed
-      by reading `vba/tests/TestRunner.bas` and `run_vba_tests.ps1`, neither
-      references any `UserForm`). Follow the existing `SPIKE_NOTES_*.md` format.
+- [x] Shared result reporting: `RibbonUI.ShowSyncResult(title, report)`, called
+      from every action (Sync Now, New Period, Onboard New Slide Type) rather
+      than divergent per-button `MsgBox` calls — meets the spec's "not a
+      bespoke dialog per action" intent, just backed by `MsgBox` instead of a
+      `UserForm` (same no-proven-`.frm`-precedent reasoning as everywhere
+      else this pass; upgrading the display mechanism later only touches this
+      one function, by design). Structured counts/flagged-item display (vs.
+      the current formatted `String` report) is a real, deliberate deferral,
+      not an oversight — `RunRoutineSync`'s return type would need to change
+      to a structured result for a form to consume directly, and that's a
+      bigger, separate refactor.
+- [x] Manual verification recipes added: `SPIKE_NOTES_OnboardFlow.md`,
+      `SPIKE_NOTES_RibbonUI.md`, `SPIKE_NOTES_CommandBarUI.md` (the last of
+      these is the one that actually matters for click-through verification,
+      since the ribbon itself was superseded).
 
 ## Priority 22: `specs/deck-adoption.md` — bulk retroactive linking
 
