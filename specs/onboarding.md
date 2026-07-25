@@ -14,6 +14,23 @@ drifted deck.
   on every field, since the seed value came from the shape's own harvested content. This is
   already fully covered by existing primitives (discovery, identity_tags, verification) —
   nothing new to build for this case.
+- **Boilerplate-vs-varying pre-filter, when 2+ example slides are supplied** (the
+  underlying skill's `onboard-slide-type.md` already allows 1-2 examples, and
+  `deck-adoption.md`'s bulk case routinely has many more). A richly-designed real slide
+  can discover 60-90 raw candidates (confirmed against a real 46-slide deck — see
+  `test-fixtures/SOURCE.md`'s `crc-real-deck-redacted.pptx` entry), the overwhelming
+  majority of which are static design chrome (section headers, icon labels, legend
+  text) that happen to contain text, not real dynamic fields — a human cannot review
+  that many shapes at the Step 4 confirm-with-user phase gate. Before presenting that
+  review: cluster corresponding shapes across the supplied instances using the same
+  geometry/placeholder-type signals `matching.md`'s tier-2 scoring already computes (no
+  new geometry logic), and partition candidates into **varies across instances**
+  (shown first, expanded — the likely real fields) vs. **identical across every
+  instance** (collapsed by default, never discarded — still fully visible and
+  includable with one action). With only one example slide supplied, there is no
+  second instance to diff against, so this filter cannot apply and the full unfiltered
+  candidate list is shown exactly as before — this is a pre-filter for the review
+  step, not a change to what `discover()` itself returns.
 - **Matching a subsequent slide against an established template** is the actual gap:
   discover the new slide's candidates, and for each field role the template defines, score
   every untagged candidate against the template's reference shape per specs/matching.md's
@@ -55,3 +72,8 @@ untagged_fallback note: "if there's already a partial reference to compare again
 `shape-identity-and-matching.md`'s `matching_tiers`/`confidence_thresholds` sections,
 restricted to the template-matching case — first-time onboarding needs no new logic here,
 per the Requirements section above.
+
+The boilerplate-vs-varying pre-filter reuses `matching.md`'s tier-2 geometry/placeholder
+scoring for shape correspondence across instances; it's a review-time filter only, not a
+change to `discovery.md`'s candidate rule. Motivating evidence:
+`test-fixtures/SOURCE.md`'s `crc-real-deck-redacted.pptx` entry (2026-07-25).

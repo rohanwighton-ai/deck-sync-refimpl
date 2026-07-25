@@ -61,6 +61,13 @@ sync takes over, not on every pass.
   confirmation/medium, excluded/unclassified) and the instance_key it would receive.
   Nothing is written until this is confirmed. The user can exclude any individual
   slide even if it scored ready — this is a review, not just a rubber stamp.
+  **This is exactly where `onboarding.md`'s boilerplate-vs-varying pre-filter matters
+  most** — a bulk-adoption batch routinely has many real instances of the same type to
+  diff against (unlike ordinary onboarding's 1-2 examples), so the filter has maximum
+  signal here: confirmed against a real 46-slide deck, raw discovery finds 60-90
+  candidates per slide, and the phase gate is unusable without collapsing the
+  identical-across-every-instance shapes first (see `test-fixtures/SOURCE.md`'s
+  `crc-real-deck-redacted.pptx` entry).
 - **Row order bootstraps from deck order**, not the other way around: newly created
   rows are appended to the Data sheet in the same order their source slides currently
   appear in the deck. This is the one-time exception to
