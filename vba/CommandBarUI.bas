@@ -49,6 +49,7 @@ Public Sub ShowToolbar()
     AddButton bar, "Onboard New Slide Type", "RibbonUI.OnboardNewType", 1697  ' faceId: new-item-like icon
     AddButton bar, "Resolve Unmatched Fields", "RibbonUI.ResolveUnmatchedFields", 594  ' faceId: find-like icon
     AddButton bar, "Adopt Existing Slides", "AdoptFlow.AdoptExistingSlides", 1651  ' faceId: bulk-link-like icon
+    AddButton bar, "Bulk Onboard Type", "BatchOnboardFlow.BatchOnboardType", 122  ' faceId: table/grid-like icon
 
     bar.Visible = True
 End Sub

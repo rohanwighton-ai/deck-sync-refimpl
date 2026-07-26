@@ -37,6 +37,20 @@ guidance.
   (`changed(fieldName) = r`, `r As InjectResult`) appears to hit this same
   restriction and was fixed the same day (split into two Dictionaries of
   primitives, `ChangedFieldVerified`/`ChangedFieldError`).
+  **Hit a third time, 2026-07-26**, in `BatchOnboardFlow.bas`'s
+  `BuildBatchPlan` (a `Candidate()` array cached per-slide in a
+  Dictionary) -- cost a long, confusing live-debugging session (VBE's
+  error-highlight under `Application.Run` landed on the calling function's
+  signature or an unrelated `Dim` line, not the actual offending
+  statement, making it look like a totally different bug each time) before
+  a fresh Fable-model agent's own from-scratch empirical probe reproduced
+  the real compile error text directly. **Takeaway for next time: check
+  this file's Known Patterns *before* writing new Dictionary-caching code
+  that might hold a UDT array, not after chasing the symptom for hours.**
+  Fixed by flattening the per-slide arrays into one array-of-primitives-
+  indexed set (`allOtherCandidates()`/`otherSlideCandStart()`/
+  `otherSlideCandCount()`) instead of a Dictionary -- see
+  `SPIKE_NOTES_BatchOnboardFlow.md`.
 
 - **VBA: `ReDim arr(1 To 0)` throws "Subscript out of range" (Err 9) at
   runtime** -- confirmed real via multiple clean, isolated repros against a

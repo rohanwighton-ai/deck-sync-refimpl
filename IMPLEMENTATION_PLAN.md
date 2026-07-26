@@ -1,6 +1,35 @@
 # Implementation Plan
 
-## Priority 25 (2026-07-26 pass): Priority 22's own deferred "future pass" — Adopt Existing Slides wired to the toolbar
+## Priority 26 (2026-07-26 pass): BatchOnboardFlow.bas — Excel-grid-driven bulk onboarding, closing the real-deck usability gap
+
+Built specifically for the real, richly-designed deck (`test.pptx`, kept
+local/unredacted) that discovers 60-90 raw candidate shapes per slide —
+`OnboardFlow.bas`'s InputBox-chain review is unusable at that density. New
+module `vba/BatchOnboardFlow.bas`: select 2+ slides of one type, it finds
+per-field correspondence across the whole batch via `Matching.Match` (reused
+unchanged), computes a "decoration vs. real field" suggestion by diffing
+harvested text across every selected slide, and presents it as an **editable
+Excel grid** instead of a sequential prompt chain — closes
+`specs/onboarding.md`'s long-documented-but-unbuilt "boilerplate-vs-varying
+pre-filter" gap, in a different shape than that spec sketched (a human-edited
+table beats an algorithm guessing alone, and Excel is a far more capable
+editing surface than anything hand-built here would be). Onboarding a new
+type and bulk-linking its existing instances happen in one pass. Sixth
+`CommandBarUI.bas` toolbar button: "Bulk Onboard Type."
+
+**Cost an unusually long debugging session** — full account in
+`SPIKE_NOTES_BatchOnboardFlow.md`, worth reading before touching VBA
+declaration order or Dictionary-of-array patterns in this project again.
+Three separate real bugs hid behind one consistent, misleading symptom
+("Compile error: User-defined type not defined" with VBE's navigation
+pointing at the wrong line almost every time): (1) a `Candidate()` UDT array
+stored in a `Scripting.Dictionary` — illegal, already logged in `AGENTS.md`
+but not checked before writing this module; (2) a newly-confirmed VBA
+compiler quirk — a `Public Type`/`Private Const` declared *after* a
+Function/Sub in the same module fails to resolve cross-module, fixed by
+moving every declaration to the top of the file; (3) an ordinary reserved-word
+typo (`single` as a variable name) and one test-data bug. **70/70 real-Office
+tests pass.**
 
 Closes the one deferral Priority 22 (`deck-adoption.md`) explicitly left open:
 "`ribbon-ui.md` gets an 'Adopt Existing Slides' entry point in a *future*

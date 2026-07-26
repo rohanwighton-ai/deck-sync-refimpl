@@ -316,6 +316,31 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "AdoptFlow_BuildAdoptionReviewSummaryCountsAndListsNonReady", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_AllValuesIdenticalDetectsMatchAndMismatch()
+    AppendResult report, "BatchOnboardFlow_AllValuesIdenticalDetectsMatchAndMismatch", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_SuggestBatchFieldNameReusesPhNameOrFallsBack()
+    AppendResult report, "BatchOnboardFlow_SuggestBatchFieldNameReusesPhNameOrFallsBack", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides()
+    AppendResult report, "BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_ReviewGridRoundTrip()
+    AppendResult report, "BatchOnboardFlow_ReviewGridRoundTrip", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_CommitBatchTagsLinksAndVerifies()
+    AppendResult report, "BatchOnboardFlow_CommitBatchTagsLinksAndVerifies", r
+    On Error GoTo 0
+
     RunAllTests = report
 End Function
 
@@ -2124,14 +2149,14 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons() As Strin
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar 'Deck Sync' exists after ShowToolbar")
-    result = result & Assert(bar.Controls.count = 5, "toolbar has 5 buttons, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 6, "toolbar has 6 buttons, got " & bar.Controls.count)
 
     ' PowerPoint normalizes a set OnAction like "RibbonUI.SyncNow" to its own
     ' "<PresentationName>!SyncNow" display form (module-unqualified) --
     ' confirmed 2026-07-26 against real Office. Match on the bare Sub name
     ' rather than the string this module actually assigns.
     Dim expectedActions As String
-    expectedActions = "SyncNow|NewPeriod|OnboardNewType|ResolveUnmatchedFields|AdoptExistingSlides"
+    expectedActions = "SyncNow|NewPeriod|OnboardNewType|ResolveUnmatchedFields|AdoptExistingSlides|BatchOnboardType"
 
     Dim i As Long
     For i = 1 To bar.Controls.count
@@ -2141,7 +2166,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons() As Strin
         bangPos = InStr(ctrl.OnAction, "!")
         Dim subName As String
         subName = IIf(bangPos > 0, Mid(ctrl.OnAction, bangPos + 1), ctrl.OnAction)
-        result = result & Assert(InStr(expectedActions, subName) > 0, "button '" & ctrl.Caption & "' OnAction '" & ctrl.OnAction & "' resolves to one of the five real action Subs")
+        result = result & Assert(InStr(expectedActions, subName) > 0, "button '" & ctrl.Caption & "' OnAction '" & ctrl.OnAction & "' resolves to one of the six real action Subs")
     Next i
 
     CommandBarUI.HideToolbar
@@ -2157,7 +2182,7 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar still exists after calling ShowToolbar twice")
-    result = result & Assert(bar.Controls.count = 5, "still exactly 5 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 6, "still exactly 6 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarIsIdempotent = result
@@ -2307,4 +2332,234 @@ Private Function Test_AdoptFlow_BuildAdoptionReviewSummaryCountsAndListsNonReady
     result = result & Assert(InStr(summary, "Slide 2 (B)") = 0, "already_linked slides are NOT listed in the detail section (counted only)")
 
     Test_AdoptFlow_BuildAdoptionReviewSummaryCountsAndListsNonReady = result
+End Function
+
+' ---------------------------------------------------------------------
+' BatchOnboardFlow
+' ---------------------------------------------------------------------
+
+Private Function Test_BatchOnboardFlow_AllValuesIdenticalDetectsMatchAndMismatch() As String
+    Dim result As String
+
+    Dim allSame As New Collection
+    allSame.Add "Overall Status"
+    allSame.Add "Overall Status"
+    allSame.Add "Overall Status"
+    result = result & Assert(BatchOnboardFlow.AllValuesIdentical(allSame), "identical values across the batch report True")
+
+    Dim differs As New Collection
+    differs.Add "Q1 2026"
+    differs.Add "Q2 2026"
+    result = result & Assert(Not BatchOnboardFlow.AllValuesIdentical(differs), "differing values across the batch report False")
+
+    Dim onlyOne As New Collection
+    onlyOne.Add "only one value"
+    result = result & Assert(BatchOnboardFlow.AllValuesIdentical(onlyOne), "a single value is trivially identical")
+
+    Test_BatchOnboardFlow_AllValuesIdenticalDetectsMatchAndMismatch = result
+End Function
+
+Private Function Test_BatchOnboardFlow_SuggestBatchFieldNameReusesPhNameOrFallsBack() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim named As Object
+    Set named = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    named.Name = "ph_quarter"
+    Dim unnamed As Object
+    Set unnamed = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 300, 50, 200, 50)
+
+    result = result & Assert(BatchOnboardFlow.SuggestBatchFieldName(named, 1) = "ph_quarter", "reuses an existing ph_ name, got '" & BatchOnboardFlow.SuggestBatchFieldName(named, 1) & "'")
+    result = result & Assert(BatchOnboardFlow.SuggestBatchFieldName(unnamed, 2) = "ph_field2", "falls back to a positional name, got '" & BatchOnboardFlow.SuggestBatchFieldName(unnamed, 2) & "'")
+
+    Test_BatchOnboardFlow_SuggestBatchFieldNameReusesPhNameOrFallsBack = result
+End Function
+
+Private Function Test_BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim tShapeA As Object, tShapeB As Object
+    Set tShapeA = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    tShapeA.TextFrame.TextRange.Text = "Same Everywhere"
+    Set tShapeB = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 50)
+    tShapeB.TextFrame.TextRange.Text = "Q1 2026"
+
+    Dim other1 As Object
+    Set other1 = NewBlankSlide()
+    Dim o1ShapeA As Object, o1ShapeB As Object
+    Set o1ShapeA = other1.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    o1ShapeA.TextFrame.TextRange.Text = "Same Everywhere"
+    Set o1ShapeB = other1.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 50)
+    o1ShapeB.TextFrame.TextRange.Text = "Q2 2026"
+
+    Dim other2 As Object
+    Set other2 = NewBlankSlide()
+    Dim o2ShapeA As Object, o2ShapeB As Object
+    Set o2ShapeA = other2.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    o2ShapeA.TextFrame.TextRange.Text = "Same Everywhere"
+    Set o2ShapeB = other2.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 50)
+    o2ShapeB.TextFrame.TextRange.Text = "Q3 2026"
+
+    Dim otherSlides(1 To 2) As Object
+    Set otherSlides(1) = other1
+    Set otherSlides(2) = other2
+
+    Dim plan As BatchOnboardPlan
+    plan = BatchOnboardFlow.BuildBatchPlan(templateSld, otherSlides)
+
+    result = result & Assert(plan.FieldCount = 2, "2 candidate fields found on the template, got " & plan.FieldCount)
+
+    ' Identify which field index corresponds to which shape by its
+    ' template value, since discovery/enumeration order isn't guaranteed.
+    Dim identicalFieldIdx As Long, varyingFieldIdx As Long
+    identicalFieldIdx = 0: varyingFieldIdx = 0
+    Dim fi As Long
+    For fi = 1 To plan.FieldCount
+        Dim tv As String
+        tv = plan.HarvestedText(CStr(fi) & "|0")
+        If tv = "Same Everywhere" Then identicalFieldIdx = fi
+        If tv = "Q1 2026" Then varyingFieldIdx = fi
+    Next fi
+
+    result = result & Assert(identicalFieldIdx > 0, "found the field whose template value is 'Same Everywhere'")
+    result = result & Assert(varyingFieldIdx > 0, "found the field whose template value is 'Q1 2026'")
+
+    If identicalFieldIdx > 0 Then
+        result = result & Assert(plan.FieldSuggestIdentical(identicalFieldIdx), "the identical-everywhere field is suggested as Decoration")
+        result = result & Assert(plan.HarvestedText(CStr(identicalFieldIdx) & "|1") = "Same Everywhere", "correspondence found on other1 for the identical field")
+        result = result & Assert(plan.HarvestedText(CStr(identicalFieldIdx) & "|2") = "Same Everywhere", "correspondence found on other2 for the identical field")
+    End If
+    If varyingFieldIdx > 0 Then
+        result = result & Assert(Not plan.FieldSuggestIdentical(varyingFieldIdx), "the varying field is suggested as a real Field, not Decoration")
+        result = result & Assert(plan.HarvestedText(CStr(varyingFieldIdx) & "|1") = "Q2 2026", "correspondence found on other1 for the varying field, got '" & plan.HarvestedText(CStr(varyingFieldIdx) & "|1") & "'")
+        result = result & Assert(plan.HarvestedText(CStr(varyingFieldIdx) & "|2") = "Q3 2026", "correspondence found on other2 for the varying field, got '" & plan.HarvestedText(CStr(varyingFieldIdx) & "|2") & "'")
+    End If
+
+    Test_BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides = result
+End Function
+
+Private Function Test_BatchOnboardFlow_ReviewGridRoundTrip() As String
+    Dim result As String
+
+    Dim plan As BatchOnboardPlan
+    Set plan.FieldNames = CreateObject("Scripting.Dictionary")
+    Set plan.FieldTemplateShapes = CreateObject("Scripting.Dictionary")
+    Set plan.FieldSuggestIdentical = CreateObject("Scripting.Dictionary")
+    Set plan.FieldInclude = CreateObject("Scripting.Dictionary")
+    Set plan.Correspondence = CreateObject("Scripting.Dictionary")
+    Set plan.HarvestedText = CreateObject("Scripting.Dictionary")
+    plan.FieldCount = 2
+    plan.FieldNames(1) = "ph_field1"
+    plan.FieldSuggestIdentical(1) = True
+    plan.FieldInclude(1) = False
+    plan.HarvestedText("1|0") = "Overall Status"
+    plan.FieldNames(2) = "ph_field2"
+    plan.FieldSuggestIdentical(2) = False
+    plan.FieldInclude(2) = True
+    plan.HarvestedText("2|0") = "Q1 2026"
+    plan.HarvestedText("2|1") = "Q2 2026"
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+
+    BatchOnboardFlow.WriteReviewGrid ws, plan, 1
+
+    result = result & Assert(ws.Cells(2, 2).Value = "ph_field1", "row 2 (field 1) name written, got '" & ws.Cells(2, 2).Value & "'")
+    result = result & Assert(ws.Cells(2, 4).Value = "N", "row 2 (field 1, suggested decoration) defaults Include to N, got '" & ws.Cells(2, 4).Value & "'")
+    result = result & Assert(ws.Cells(3, 4).Value = "Y", "row 3 (field 2, suggested real field) defaults Include to Y, got '" & ws.Cells(3, 4).Value & "'")
+    result = result & Assert(InStr(ws.Cells(3, 6).Value, "Q2 2026") > 0, "row 3's sample-other-values column includes the other slide's harvested value, got '" & ws.Cells(3, 6).Value & "'")
+
+    ' Simulate a human editing the sheet: rename field 1, flip its Include
+    ' to Y (overriding the suggestion), exclude field 2.
+    ws.Cells(2, 2).Value = "ph_renamed"
+    ws.Cells(2, 4).Value = "y" ' lower-case, must still be read as Y
+    ws.Cells(3, 4).Value = "n"
+
+    BatchOnboardFlow.ReadReviewGrid ws, plan
+
+    result = result & Assert(plan.FieldNames(1) = "ph_renamed", "renamed field name read back, got '" & plan.FieldNames(1) & "'")
+    result = result & Assert(plan.FieldInclude(1), "field 1's Include flipped to True after edit (lower-case 'y' accepted)")
+    result = result & Assert(Not plan.FieldInclude(2), "field 2's Include flipped to False after edit")
+
+    wb.Saved = True
+    wb.Close
+    xl.Quit
+
+    Test_BatchOnboardFlow_ReviewGridRoundTrip = result
+End Function
+
+Private Function Test_BatchOnboardFlow_CommitBatchTagsLinksAndVerifies() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim tShapeA As Object
+    Set tShapeA = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    tShapeA.TextFrame.TextRange.Text = "Overall Status"
+
+    Dim other1 As Object
+    Set other1 = NewBlankSlide()
+    Dim o1ShapeA As Object
+    Set o1ShapeA = other1.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    o1ShapeA.TextFrame.TextRange.Text = "Overall Status"
+
+    Dim otherSlides(1 To 1) As Object
+    Set otherSlides(1) = other1
+
+    Dim plan As BatchOnboardPlan
+    plan = BatchOnboardFlow.BuildBatchPlan(templateSld, otherSlides)
+    result = result & Assert(plan.FieldCount = 1, "1 candidate field found, got " & plan.FieldCount)
+
+    ' The harvested text ("Overall Status") is deliberately identical on
+    ' both slides -- confirms BuildBatchPlan's own classification correctly
+    ' suggests this as decoration (Include defaults to False) before this
+    ' test explicitly overrides it, exactly as a human reviewing the grid
+    ' and choosing to keep it would. Commit/tagging mechanics are this
+    ' test's actual subject, not the classification default itself (that's
+    ' BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides's job).
+    result = result & Assert(plan.FieldSuggestIdentical(1), "identical harvested text is correctly suggested as decoration")
+    result = result & Assert(Not plan.FieldInclude(1), "decoration defaults to excluded before the override below")
+    plan.FieldInclude(1) = True
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+    ExcelOutput.CreateSheet ws, "test-deck-id"
+
+    Dim confirmedKeys As Object
+    Set confirmedKeys = CreateObject("Scripting.Dictionary")
+    confirmedKeys(0) = "batch-template"
+    confirmedKeys(1) = "batch-other-1"
+
+    Dim commitResult As BatchCommitResult
+    commitResult = BatchOnboardFlow.CommitBatch(plan, templateSld, otherSlides, 1, "batch-test-type", ws, confirmedKeys)
+
+    result = result & Assert(commitResult.LinkedCount = 2, "both slides linked, got " & commitResult.LinkedCount)
+    result = result & Assert(commitResult.FailedVerificationCount = 0, "no verification failures, got " & commitResult.FailedVerificationCount)
+    result = result & Assert(tShapeA.Tags("role") = plan.FieldNames(1), "template shape tagged with the field's role")
+    result = result & Assert(o1ShapeA.Tags("role") = plan.FieldNames(1), "other1's corresponding shape tagged with the same role")
+
+    Dim templateInstance As SlideInstance
+    templateInstance = Resolve.ResolveSlideInstance(templateSld)
+    result = result & Assert(templateInstance.HasTypeTag And templateInstance.TypeTag = "batch-test-type", "template slide carries the new slide_type tag")
+    result = result & Assert(templateInstance.HasInstanceKey And templateInstance.InstanceKey = "batch-template", "template slide carries its confirmed instance key")
+
+    result = result & Assert(ws.Cells(2, 1).Value = "batch-template" Or ws.Cells(3, 1).Value = "batch-template", "a Data-sheet row exists for the template's instance key")
+    result = result & Assert(ws.Cells(2, 1).Value = "batch-other-1" Or ws.Cells(3, 1).Value = "batch-other-1", "a Data-sheet row exists for other1's instance key")
+
+    wb.Saved = True
+    wb.Close
+    xl.Quit
+
+    Test_BatchOnboardFlow_CommitBatchTagsLinksAndVerifies = result
 End Function
