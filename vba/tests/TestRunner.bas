@@ -369,6 +369,9 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     r = "": On Error Resume Next: Err.Clear
     r = Test_BatchOnboardFlow_MarkShapeForBatchAccumulatesAndDedupes()
     AppendResult report, "BatchOnboardFlow_MarkShapeForBatchAccumulatesAndDedupes", r
+
+    r = Test_BatchOnboardFlow_FieldPreviewIsShortAndSingleLine()
+    AppendResult report, "BatchOnboardFlow_FieldPreviewIsShortAndSingleLine", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -2849,6 +2852,49 @@ Private Function Test_BatchOnboardFlow_MarkShapeForBatchAccumulatesAndDedupes() 
     result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() = 0, "marking session cleared")
 
     Test_BatchOnboardFlow_MarkShapeForBatchAccumulatesAndDedupes = result
+End Function
+
+' FieldPreview is display-only (mark-time prompts), but it is the only thing
+' standing between a human and a 250-char paragraph rendered inside a modal
+' InputBox -- which is exactly what the real deck's About-text field did on
+' 2026-07-26. Pure function, so no slide/Office state needed.
+Private Function Test_BatchOnboardFlow_FieldPreviewIsShortAndSingleLine() As String
+    Dim result As String
+
+    result = result & Assert(BatchOnboardFlow.FieldPreview("") = "", _
+        "empty text previews as empty, got '" & BatchOnboardFlow.FieldPreview("") & "'")
+    result = result & Assert(BatchOnboardFlow.FieldPreview("P001") = "P001", _
+        "short text is passed through untouched, got '" & BatchOnboardFlow.FieldPreview("P001") & "'")
+
+    ' Exactly at the limit: no ellipsis (an ellipsis implies elision).
+    Dim exactly20 As String
+    exactly20 = "12345678901234567890"
+    result = result & Assert(BatchOnboardFlow.FieldPreview(exactly20) = exactly20, _
+        "text exactly at the limit is not truncated, got '" & BatchOnboardFlow.FieldPreview(exactly20) & "'")
+    result = result & Assert(BatchOnboardFlow.FieldPreview(exactly20 & "1") = exactly20 & "...", _
+        "one char over the limit truncates with an ellipsis, got '" & BatchOnboardFlow.FieldPreview(exactly20 & "1") & "'")
+
+    ' The real failure case: a multi-paragraph About-text value. TextRange.Text
+    ' returns paragraphs CR-separated; those render as literal boxes in a prompt.
+    Dim para As String
+    para = "The project develops and evaluates nanostructured magnesium oxide." & vbCr & vbCr & "Second paragraph."
+    Dim previewed As String
+    previewed = BatchOnboardFlow.FieldPreview(para)
+    result = result & Assert(InStr(previewed, vbCr) = 0, _
+        "no carriage returns survive into the preview, got '" & previewed & "'")
+    result = result & Assert(Len(previewed) <= 23, _
+        "preview stays within the limit plus its ellipsis, got " & Len(previewed) & " chars")
+    result = result & Assert(previewed = "The project develops...", _
+        "preview reads as the start of the real sentence, got '" & previewed & "'")
+
+    ' Soft line breaks (Chr 11) and leading blank paragraphs: a field whose text
+    ' opens with empty paragraphs must not spend its whole budget on whitespace.
+    Dim leading As String
+    leading = vbCr & vbCr & "  Project" & Chr(11) & "Status  "
+    result = result & Assert(BatchOnboardFlow.FieldPreview(leading) = "Project Status", _
+        "leading blank paragraphs and soft breaks collapse to single spaces, got '" & BatchOnboardFlow.FieldPreview(leading) & "'")
+
+    Test_BatchOnboardFlow_FieldPreviewIsShortAndSingleLine = result
 End Function
 
 ' Real bug found and fixed 2026-07-26 (Rohan, live-testing against his real

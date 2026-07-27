@@ -79,6 +79,16 @@ Private Const COL_TEMPLATE_VALUE As Long = 5
 Private Const COL_SAMPLE_OTHER_VALUES As Long = 6
 Private Const COL_TYPE As Long = 7
 Private Const COL_VOLATILITY As Long = 8
+' How much of a field's current text to show a human at mark time. Short on
+' purpose: this is "enough to recognise which shape I'm looking at" while the
+' slide is on screen in front of you, not an identifier. Measured against the
+' real 46-slide deck 2026-07-27: 20 chars and 30 chars separate exactly the
+' same number of fields (42/46 for About text), so a longer preview buys no
+' distinguishing power and only makes the prompt harder to read. Never used as
+' a field name, a role tag, or an instance key -- text-derived identifiers are
+' unstable under ordinary editing, which is what corrupted the real deck's
+' linkage on 2026-07-26.
+Private Const FIELD_PREVIEW_CHARS As Long = 20
 Public Type BatchOnboardPlan
     FieldCount As Long
     FieldNames As Object          ' Dictionary: fieldIndex -> String (proposed, editable)
@@ -371,6 +381,30 @@ Public Function AllValuesIdentical(values As Collection) As Boolean
     Next v
 
     AllValuesIdentical = True
+End Function
+
+' One-line, human-recognisable preview of a field's current text, for prompts
+' shown at mark time. Collapses the separators a multi-paragraph field carries
+' -- TextRange.Text returns paragraphs CR-separated and soft breaks as Chr(11),
+' both of which render as literal boxes inside an InputBox -- then truncates to
+' FIELD_PREVIEW_CHARS. Display only: never a name, tag, or key.
+Public Function FieldPreview(text As String) As String
+    Dim s As String
+    s = Replace(text, vbCr, " ")
+    s = Replace(s, vbLf, " ")
+    s = Replace(s, Chr(11), " ")
+
+    ' Collapse runs of spaces so a field whose text starts with several empty
+    ' paragraphs doesn't spend its whole preview budget on whitespace.
+    Do While InStr(s, "  ") > 0
+        s = Replace(s, "  ", " ")
+    Loop
+    s = Trim(s)
+
+    If Len(s) > FIELD_PREVIEW_CHARS Then
+        s = RTrim(Left(s, FIELD_PREVIEW_CHARS)) & "..."
+    End If
+    FieldPreview = s
 End Function
 
 ' Proposes a default field name the same way OnboardFlow.bas's
@@ -666,9 +700,8 @@ Public Sub MarkFieldForBatch()
             Dim preview As String
             preview = ""
             If leaves(k).HasTextFrame Then
-                If leaves(k).TextFrame.HasText Then preview = leaves(k).TextFrame.TextRange.Text
+                If leaves(k).TextFrame.HasText Then preview = FieldPreview(leaves(k).TextFrame.TextRange.Text)
             End If
-            If Len(preview) > 40 Then preview = Left(preview, 40) & "..."
             pickerPrompt = pickerPrompt & k & ") " & leaves(k).Name & IIf(preview <> "", " -- '" & preview & "'", "") & vbCrLf
         Next k
 
@@ -715,9 +748,12 @@ Public Sub MarkFieldForBatch()
         defaultName = SuggestBatchFieldName(shp, nextOrdinal)
     End If
 
+    ' Previewed, not shown whole: an About-text field's real value is a 250+
+    ' char paragraph, which made this prompt a wall of text (and rendered its
+    ' paragraph CRs as literal boxes) on the real deck.
     Dim currentValue As String
     If shp.HasTextFrame Then
-        If shp.TextFrame.HasText Then currentValue = shp.TextFrame.TextRange.Text
+        If shp.TextFrame.HasText Then currentValue = FieldPreview(shp.TextFrame.TextRange.Text)
     End If
 
     Dim typedName As String
