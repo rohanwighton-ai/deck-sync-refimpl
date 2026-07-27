@@ -23,6 +23,7 @@ Public Type SyncAction
     InstanceKey As String       ' no_change / in_place_correction
     ChangedFieldVerified As Object ' in_place_correction: Scripting.Dictionary fieldName -> Boolean
     ChangedFieldError As Object    ' in_place_correction: Scripting.Dictionary fieldName -> String (ErrorMessage, "" if none)
+    ChangedFieldCurrent As Object  ' in_place_correction: Scripting.Dictionary fieldName -> String, the slide's text BEFORE the write (populated in both modes; the whole point of a dry run is being able to show before/after)
     ' NOTE: was a single "ChangedFields fieldName -> InjectResult" Dictionary until
     ' 2026-07-25 -- a UDT cannot be assigned to a Variant in VBA (compile-time "Invalid
     ' use of type"), so a Dictionary can never hold an InjectResult value directly. Split
@@ -61,7 +62,15 @@ End Type
 ' shape that reader will eventually produce rather than reading a worksheet
 ' itself, mirroring sync_operations.py's own separation: it never touches a
 ' file directly either, excel_output.py reads the Sheet it operates on.
-Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collection, dataRows As Object) As SyncAction()
+' `dryRun` is threaded straight through to InjectPrimitive, which is the only
+' thing here that mutates a slide. With it set, this function is a pure read:
+' it classifies every instance exactly as a real run would, and reports the
+' in-place corrections it WOULD make (with each field's current value), without
+' making any of them. Note that "planning" writing at all is the surprising
+' part -- PlanRoutineSync calls InjectPrimitive directly rather than returning
+' actions for a caller to execute, so before this flag existed there was no way
+' to look at a routine sync without performing it.
+Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collection, dataRows As Object, Optional dryRun As Boolean = False) As SyncAction()
     Dim actions() As SyncAction
     Dim n As Long
     n = 0
@@ -133,9 +142,10 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
             Dim instanceSlide As Object
             Set instanceSlide = instances(idx)
 
-            Dim changedVerified As Object, changedError As Object
+            Dim changedVerified As Object, changedError As Object, changedCurrent As Object
             Set changedVerified = CreateObject("Scripting.Dictionary")
             Set changedError = CreateObject("Scripting.Dictionary")
+            Set changedCurrent = CreateObject("Scripting.Dictionary")
 
             Dim fieldName As Variant
             For Each fieldName In rowValues.Keys
@@ -143,7 +153,7 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                 sourceValue = rowValues(fieldName)
 
                 Dim r As InjectResult
-                r = InjectPrimitive.InjectPrimitive(instanceSlide, CStr(fieldName), sourceValue)
+                r = InjectPrimitive.InjectPrimitive(instanceSlide, CStr(fieldName), sourceValue, dryRun)
 
                 ' r.Found = False covers both "no shape carries this
                 ' field's tag" (skip -- matches resolve.py's
@@ -155,9 +165,14 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                 ' duplicate role tag is case-7 (deck_side_conflict)
                 ' adjacent territory, a non-goal per
                 ' specs/sync-operations.md. See SPIKE_NOTES_Resolve.md.
-                If r.Found And r.Written Then
+                ' A dry run never sets Written (nothing was written), so the
+                ' gate has to accept WouldChange too -- otherwise a preview
+                ' would report every instance as "no_change", which is the
+                ' most dangerous possible wrong answer for a preview to give.
+                If r.Found And (r.Written Or r.WouldChange) Then
                     changedVerified(fieldName) = r.Verified
                     changedError(fieldName) = r.ErrorMessage
+                    changedCurrent(fieldName) = r.CurrentValue
                 End If
             Next fieldName
 
@@ -168,6 +183,7 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                 actions(n).InstanceKey = key
                 Set actions(n).ChangedFieldVerified = changedVerified
                 Set actions(n).ChangedFieldError = changedError
+                Set actions(n).ChangedFieldCurrent = changedCurrent
             Else
                 actions(n).Kind = "no_change"
                 actions(n).InstanceKey = key

@@ -17,6 +17,8 @@ Public Type InjectResult
     Written As Boolean     ' False if the current value already matched (no-op)
     Verified As Boolean    ' current value re-read from the shape equals source_value
     ErrorMessage As String ' non-empty iff Found=False or Verified=False
+    WouldChange As Boolean ' the shape's text differs from sourceValue (set in BOTH modes)
+    CurrentValue As String ' the shape's text as found, before any write -- for previews
 End Type
 
 ' Locate the single shape on `sld` whose Tags("role") equals `identityTag`.
@@ -117,7 +119,14 @@ End Function
 '     persisted to the underlying OOXML part the way the Python version's
 '     re-open-the-zip-from-disk check does. Manual verification recipe
 '     below closes and reopens the file to close this gap by hand.
-Public Function InjectPrimitive(sld As Object, identityTag As String, sourceValue As String) As InjectResult
+' `dryRun` makes this a pure read: the shape is located and compared, and the
+' result reports what WOULD happen (WouldChange / CurrentValue), but nothing is
+' written. This is the primitive the whole Sync Now preview is built on -- the
+' write lives here and nowhere else, so gating it here is what makes a preview
+' provably safe rather than merely careful. Deliberately a parameter on the
+' existing function rather than a parallel "compare" function: a preview whose
+' logic can drift from the real thing is worse than no preview.
+Public Function InjectPrimitive(sld As Object, identityTag As String, sourceValue As String, Optional dryRun As Boolean = False) As InjectResult
     Dim result As InjectResult
     Dim shp As Object
 
@@ -144,10 +153,24 @@ Public Function InjectPrimitive(sld As Object, identityTag As String, sourceValu
 
     Dim currentValue As String
     currentValue = shp.TextFrame.TextRange.Text
+    result.CurrentValue = currentValue
+    result.WouldChange = (currentValue <> sourceValue)
 
-    If currentValue = sourceValue Then
+    If Not result.WouldChange Then
         result.Written = False
         result.Verified = True
+        result.ErrorMessage = ""
+        InjectPrimitive = result
+        Exit Function
+    End If
+
+    ' The one and only place this module mutates a slide -- everything above is
+    ' a read. A dry run stops here, reporting the pending change rather than
+    ' making it. Verified stays False because nothing was written, so nothing
+    ' could be verified: callers must not read it as "this write failed".
+    If dryRun Then
+        result.Written = False
+        result.Verified = False
         result.ErrorMessage = ""
         InjectPrimitive = result
         Exit Function

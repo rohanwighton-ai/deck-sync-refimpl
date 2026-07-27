@@ -135,6 +135,93 @@ Public Function RunRoutineSync(ws As Object, slideType As String, templateSld As
     RunRoutineSync = report
 End Function
 
+' Read-only twin of RunRoutineSync: says exactly what a routine sync would do
+' to this deck, and does none of it.
+'
+' A routine sync has THREE mutation sites, and a preview is only trustworthy if
+' every one of them is suppressed:
+'   1. PlanRoutineSync -> InjectPrimitive, which writes corrected field text
+'      *while planning* (surprising, but real -- see that function's header)
+'   2. this function's own new_record branch -> SlideDuplication.DuplicateAndTag
+'   3. ResequenceByRowOrder -> Slide.MoveTo
+' 1 and 3 are suppressed by their own dryRun flags; 2 simply isn't reached
+' here, because this function reports the action instead of executing it.
+'
+' Worth previewing before every real sync until Sync Now has a track record:
+' an orphaned Data row (one whose instance key matches no slide) is classified
+' new_record, so a deck whose linkage has drifted can quietly turn a sync into
+' a mass slide duplication. That is not hypothetical -- it was the live state
+' of the real deck on 2026-07-27 (43 orphaned rows against 46 slides), and
+' only the button being absent from the toolbar prevented it.
+Public Function PreviewRoutineSync(ws As Object, slideType As String) As String
+    Dim report As String
+    report = "=== PREVIEW (nothing written): " & slideType & " ===" & vbCrLf
+
+    Dim sheet As Sheet
+    sheet = ExcelOutput.ReadSheet(ws)
+
+    Dim instances() As Object
+    instances = GatherInstances(slideType)
+
+    Dim actions() As SyncAction
+    actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows, True)
+
+    Dim lo As Long, hi As Long, hasActions As Boolean
+    On Error Resume Next
+    lo = LBound(actions)
+    hi = UBound(actions)
+    hasActions = (Err.Number = 0)
+    On Error GoTo 0
+
+    Dim noChangeCount As Long, wouldCorrectCount As Long, wouldCreateCount As Long, flaggedCount As Long
+
+    If hasActions Then
+        Dim i As Long
+        For i = lo To hi
+            Select Case actions(i).Kind
+                Case "no_change"
+                    noChangeCount = noChangeCount + 1
+
+                Case "in_place_correction"
+                    wouldCorrectCount = wouldCorrectCount + 1
+                    report = report & "  would correct: " & actions(i).InstanceKey & vbCrLf
+                    Dim fieldName As Variant
+                    For Each fieldName In actions(i).ChangedFieldCurrent.Keys
+                        report = report & "      " & fieldName & ":" & vbCrLf & _
+                            "        now:  '" & BatchOnboardFlow.FieldPreview(CStr(actions(i).ChangedFieldCurrent(fieldName))) & "'" & vbCrLf
+                    Next fieldName
+
+                Case "new_record"
+                    wouldCreateCount = wouldCreateCount + 1
+                    report = report & "  WOULD CREATE A NEW SLIDE: " & actions(i).RowInstanceKey & _
+                        " -- no slide carries this row's instance key" & vbCrLf
+
+                Case "flagged"
+                    flaggedCount = flaggedCount + 1
+                    report = report & "  flagged: " & actions(i).Subject & " (" & actions(i).FlagKind & ") -- " & actions(i).Reason & vbCrLf
+            End Select
+        Next i
+    End If
+
+    report = report & "Summary: " & noChangeCount & " unchanged, " & wouldCorrectCount & " would be corrected, " & _
+        wouldCreateCount & " new slide(s) would be created, " & flaggedCount & " flagged" & vbCrLf
+
+    Dim outOfPosition As Long
+    outOfPosition = ResequenceByRowOrder(slideType, sheet.InstanceOrder, True)
+    report = report & outOfPosition & " slide(s) are not in Data-sheet row order." & vbCrLf
+
+    ' The loud one. Mass duplication is the only outcome here that is painful
+    ' to undo, so it gets called out on its own rather than left as a number
+    ' in a summary line someone skims.
+    If wouldCreateCount > 0 Then
+        report = report & vbCrLf & "WARNING: " & wouldCreateCount & " Data row(s) match no slide in this deck." & vbCrLf & _
+            "A real Sync Now would DUPLICATE the template slide once for each." & vbCrLf & _
+            "If that is not what you want, fix the linkage before syncing." & vbCrLf
+    End If
+
+    PreviewRoutineSync = report
+End Function
+
 ' ---------------------------------------------------------------------
 ' Period rollover (case 2) -- a distinct, explicitly-invoked entry point,
 ' never reachable from RunRoutineSync above (SyncOperations.
@@ -187,7 +274,14 @@ End Function
 ' defensible choice (always push to the front, or to the end) was not
 ' made; this one seemed least surprising for a deck that mixes multiple
 ' slide types.
-Public Function ResequenceByRowOrder(slideType As String, instanceOrder As Collection) As Long
+' `dryRun` counts without moving anything. The count is then "slides not
+' currently sitting at their target index", which is an honest answer to "is
+' the deck out of order, and roughly how badly" but is NOT guaranteed to equal
+' the number of MoveTo calls a real run makes: each real move shifts the
+' indices of other slides, so the two can differ. Reported as "out of position"
+' rather than "would move" for exactly that reason -- a preview that quietly
+' overstates its own precision is worse than one that admits the limit.
+Public Function ResequenceByRowOrder(slideType As String, instanceOrder As Collection, Optional dryRun As Boolean = False) As Long
     Dim freshInstances() As Object
     freshInstances = GatherInstances(slideType)
 
@@ -240,7 +334,7 @@ Public Function ResequenceByRowOrder(slideType As String, instanceOrder As Colle
             Dim targetIndex As Long
             targetIndex = prevIndex + 1
             If sld.SlideIndex <> targetIndex Then
-                sld.MoveTo targetIndex
+                If Not dryRun Then sld.MoveTo targetIndex
                 moveCount = moveCount + 1
             End If
             prevIndex = targetIndex

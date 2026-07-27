@@ -52,6 +52,9 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_InjectPrimitive_DryRunReportsWithoutWriting()
+    AppendResult report, "InjectPrimitive_DryRunReportsWithoutWriting", r
+
     r = Test_InjectPrimitive_FindsRoleTagInsideGroup()
     AppendResult report, "InjectPrimitive_FindsRoleTagInsideGroup", r
     On Error GoTo 0
@@ -79,6 +82,9 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     r = "": On Error Resume Next: Err.Clear
     r = Test_SyncOperations_Cases1And4()
     AppendResult report, "SyncOperations_Cases1And4", r
+
+    r = Test_SyncOperations_PlanRoutineSyncDryRunWritesNothing()
+    AppendResult report, "SyncOperations_PlanRoutineSyncDryRunWritesNothing", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -144,6 +150,9 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     r = "": On Error Resume Next: Err.Clear
     r = Test_RunSync_EndToEndCreatesSlidesFromFreshSheet()
     AppendResult report, "RunSync_EndToEndCreatesSlidesFromFreshSheet", r
+
+    r = Test_RunSync_PreviewReportsWithoutTouchingTheDeck()
+    AppendResult report, "RunSync_PreviewReportsWithoutTouchingTheDeck", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -647,6 +656,53 @@ Private Function Test_InjectPrimitive_FindsRoleTagInsideGroup() As String
     Test_InjectPrimitive_FindsRoleTagInsideGroup = result
 End Function
 
+' InjectPrimitive holds the only slide-mutating line in the whole sync path,
+' so its dryRun flag is what makes a preview provably safe rather than merely
+' careful. Covers the gate itself, the no-op case (which must stay a no-op in
+' both modes), and that the same call without the flag still writes.
+Private Function Test_InjectPrimitive_DryRunReportsWithoutWriting() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp.TextFrame.TextRange.Text = "Q3 Revenue"
+    shp.Tags.Add "role", "Title"
+
+    Dim dry As InjectResult
+    dry = InjectPrimitive.InjectPrimitive(sld, "Title", "Q4 Revenue", True)
+    result = result & Assert(dry.Found = True, "dry run still locates the tagged shape")
+    result = result & Assert(dry.WouldChange = True, "dry run reports that the value differs")
+    result = result & Assert(dry.Written = False, "dry run reports nothing was written")
+    result = result & Assert(dry.CurrentValue = "Q3 Revenue", _
+        "dry run reports the shape's current value, got '" & dry.CurrentValue & "'")
+    result = result & Assert(dry.ErrorMessage = "", _
+        "a suppressed write is not an error, got '" & dry.ErrorMessage & "'")
+    result = result & Assert(shp.TextFrame.TextRange.Text = "Q3 Revenue", _
+        "DRY RUN MUST NOT WRITE: shape text unchanged, got '" & shp.TextFrame.TextRange.Text & "'")
+
+    ' Already-equal is a no-op in both modes, and must not be reported as a
+    ' pending change -- otherwise a preview overstates what a sync would do.
+    Dim noop As InjectResult
+    noop = InjectPrimitive.InjectPrimitive(sld, "Title", "Q3 Revenue", True)
+    result = result & Assert(noop.WouldChange = False, "an already-matching value would not change")
+    result = result & Assert(noop.Verified = True, "an already-matching value is verified in a dry run too")
+
+    ' Same call, flag off: the write happens. Proves the flag gates the write
+    ' and not the lookup.
+    Dim wet As InjectResult
+    wet = InjectPrimitive.InjectPrimitive(sld, "Title", "Q4 Revenue", False)
+    result = result & Assert(wet.Written = True, "without the flag the write happens")
+    result = result & Assert(wet.Verified = True, "without the flag the write verifies")
+    result = result & Assert(wet.CurrentValue = "Q3 Revenue", _
+        "CurrentValue is the pre-write value even on a real write, got '" & wet.CurrentValue & "'")
+    result = result & Assert(shp.TextFrame.TextRange.Text = "Q4 Revenue", _
+        "shape text actually updated, got '" & shp.TextFrame.TextRange.Text & "'")
+
+    Test_InjectPrimitive_DryRunReportsWithoutWriting = result
+End Function
+
 ' Same-tag collision detection must still hold across nesting levels -- a
 ' shape inside a group and a top-level shape both carrying the same role
 ' tag is exactly as ambiguous as two top-level shapes (Test_InjectPrimitive_
@@ -847,6 +903,75 @@ Private Function Test_SyncOperations_Cases1And4() As String
     result = result & Assert(actions2(1).ChangedFieldVerified("Title") = True, "changed field reports Verified=True")
 
     Test_SyncOperations_Cases1And4 = result
+End Function
+
+' The load-bearing test for the Sync Now preview. PlanRoutineSync writes to
+' slides *while planning* (it calls InjectPrimitive directly), so "planned but
+' not executed" was never a safe state in this codebase -- a preview is only
+' real if the plan itself is provably inert. Asserts both halves: the dry run
+' classifies exactly as a real run would AND leaves the slide byte-identical.
+Private Function Test_SyncOperations_PlanRoutineSyncDryRunWritesNothing() As String
+    Dim result As String
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "quarterly-update"
+    sld.Tags.Add "instance_key", "rec-1"
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp.TextFrame.TextRange.Text = "Q3 Revenue"
+    shp.Tags.Add "role", "Title"
+
+    Dim slideCountBefore As Long
+    slideCountBefore = Application.ActivePresentation.Slides.count
+
+    Dim instances(1 To 1) As Object
+    Set instances(1) = sld
+    Dim order As New Collection
+    order.Add "rec-1"
+    order.Add "rec-2"   ' an orphaned row: no slide carries this key
+
+    Dim rows As Object
+    Set rows = CreateObject("Scripting.Dictionary")
+    Dim fields1 As Object
+    Set fields1 = CreateObject("Scripting.Dictionary")
+    fields1("Title") = "Q3 Revenue (revised)"
+    Set rows("rec-1") = fields1
+    Dim fields2 As Object
+    Set fields2 = CreateObject("Scripting.Dictionary")
+    fields2("Title") = "Q4 Revenue"
+    Set rows("rec-2") = fields2
+
+    Dim actions() As SyncAction
+    actions = SyncOperations.PlanRoutineSync(instances, order, rows, True)
+
+    result = result & Assert(UBound(actions) - LBound(actions) + 1 = 2, _
+        "two actions produced (one per row), got " & (UBound(actions) - LBound(actions) + 1))
+    result = result & Assert(actions(1).Kind = "in_place_correction", _
+        "a dry run still classifies a differing field as in_place_correction, got '" & actions(1).Kind & "'")
+    result = result & Assert(actions(2).Kind = "new_record", _
+        "a dry run still classifies an orphaned row as new_record, got '" & actions(2).Kind & "'")
+
+    ' The whole point.
+    result = result & Assert(shp.TextFrame.TextRange.Text = "Q3 Revenue", _
+        "DRY RUN MUST NOT WRITE: shape text unchanged, got '" & shp.TextFrame.TextRange.Text & "'")
+    result = result & Assert(Application.ActivePresentation.Slides.count = slideCountBefore, _
+        "DRY RUN MUST NOT DUPLICATE: slide count unchanged, got " & Application.ActivePresentation.Slides.count & " vs " & slideCountBefore)
+
+    ' The preview has to be able to show before/after, so the pre-write value
+    ' is carried on the action rather than only existing on the slide.
+    result = result & Assert(actions(1).ChangedFieldCurrent("Title") = "Q3 Revenue", _
+        "the field's current (pre-write) value is reported, got '" & actions(1).ChangedFieldCurrent("Title") & "'")
+
+    ' And the real run, on the same slide, still works -- proving the dry run
+    ' suppressed the write rather than the classification.
+    Dim realActions() As SyncAction
+    realActions = SyncOperations.PlanRoutineSync(instances, order, rows, False)
+    result = result & Assert(realActions(1).Kind = "in_place_correction", _
+        "the real run classifies identically, got '" & realActions(1).Kind & "'")
+    result = result & Assert(shp.TextFrame.TextRange.Text = "Q3 Revenue (revised)", _
+        "the real run does write, got '" & shp.TextFrame.TextRange.Text & "'")
+
+    Test_SyncOperations_PlanRoutineSyncDryRunWritesNothing = result
 End Function
 
 Private Function Test_SyncOperations_Case3NewRecord() As String
@@ -1375,6 +1500,94 @@ Private Function Test_RunSync_EndToEndCreatesSlidesFromFreshSheet() As String
     xl.Quit
 
     Test_RunSync_EndToEndCreatesSlidesFromFreshSheet = result
+End Function
+
+' The end-to-end proof for the preview: the SAME setup as the test above --
+' one stale row and two rows with no slide -- run through PreviewRoutineSync
+' instead. Asserts the report says what a real sync would do AND that the deck
+' is bit-for-bit untouched afterwards: no new slides, stale text still stale,
+' slide order unchanged. Deliberately mirrors the real end-to-end test rather
+' than testing the preview in isolation, so the two can be read side by side
+' and any divergence in classification shows up as a failing assertion here.
+Private Function Test_RunSync_PreviewReportsWithoutTouchingTheDeck() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim titleShp As Object
+    Set titleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    titleShp.TextFrame.TextRange.Text = "Template Title"
+    titleShp.Tags.Add "role", "Title"
+    templateSld.Tags.Add "slide_type", "preview-type"
+    templateSld.Tags.Add "instance_key", "preview-template"
+
+    Dim existingSld As Object
+    Set existingSld = NewBlankSlide()
+    Dim existingTitleShp As Object
+    Set existingTitleShp = existingSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    existingTitleShp.TextFrame.TextRange.Text = "Stale Value"
+    existingTitleShp.Tags.Add "role", "Title"
+    existingSld.Tags.Add "slide_type", "preview-type"
+    existingSld.Tags.Add "instance_key", "preview-existing"
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+
+    ws.Cells(1, 1).Value = "Instance ID"
+    ws.Cells(1, 2).Value = "Title"
+    ws.Cells(2, 1).Value = "preview-existing"
+    ws.Cells(2, 2).Value = "Corrected Value"
+    ws.Cells(3, 1).Value = "preview-orphan-1"
+    ws.Cells(3, 2).Value = "Would Be Created One"
+    ws.Cells(4, 1).Value = "preview-orphan-2"
+    ws.Cells(4, 2).Value = "Would Be Created Two"
+
+    Dim slideCountBefore As Long
+    slideCountBefore = Application.ActivePresentation.Slides.count
+    Dim existingIndexBefore As Long
+    existingIndexBefore = existingSld.SlideIndex
+
+    Dim report As String
+    report = RunSync.PreviewRoutineSync(ws, "preview-type")
+
+    ' --- the deck must be exactly as it was ---
+    result = result & Assert(Application.ActivePresentation.Slides.count = slideCountBefore, _
+        "PREVIEW MUST NOT CREATE SLIDES: count unchanged, got " & Application.ActivePresentation.Slides.count & " vs " & slideCountBefore)
+    result = result & Assert(existingTitleShp.TextFrame.TextRange.Text = "Stale Value", _
+        "PREVIEW MUST NOT WRITE: stale value still stale, got '" & existingTitleShp.TextFrame.TextRange.Text & "'")
+    result = result & Assert(existingSld.SlideIndex = existingIndexBefore, _
+        "PREVIEW MUST NOT REORDER: slide index unchanged, got " & existingSld.SlideIndex & " vs " & existingIndexBefore)
+
+    ' --- and it must still say what would happen ---
+    result = result & Assert(InStr(report, "PREVIEW (nothing written)") > 0, _
+        "report is labelled as a preview -- report: " & report)
+    result = result & Assert(InStr(report, "would correct: preview-existing") > 0, _
+        "report names the instance whose field would be corrected -- report: " & report)
+    result = result & Assert(InStr(report, "Stale Value") > 0, _
+        "report shows the field's current value so a human can see the before -- report: " & report)
+    result = result & Assert(InStr(report, "preview-orphan-1") > 0 And InStr(report, "preview-orphan-2") > 0, _
+        "report names both orphaned rows -- report: " & report)
+    ' Both halves of the warning, asserted exactly: the per-row callout and the
+    ' separate block that spells out the consequence. InStr is case-sensitive
+    ' (Option Compare Binary), so these pin the real wording rather than
+    ' matching loosely -- this is the one warning standing between a drifted
+    ' deck and a mass slide duplication, and it must not be able to go quiet
+    ' through a reword.
+    result = result & Assert(InStr(report, "WOULD CREATE A NEW SLIDE: preview-orphan-1") > 0, _
+        "report flags each orphaned row at the point it lists it -- report: " & report)
+    result = result & Assert(InStr(report, "would DUPLICATE the template slide") > 0, _
+        "report spells out the consequence in its own warning block -- report: " & report)
+    result = result & Assert(InStr(report, "2 new slide(s) would be created") > 0, _
+        "summary counts both would-be-created slides -- report: " & report)
+
+    wb.Close False
+    xl.Quit
+
+    Test_RunSync_PreviewReportsWithoutTouchingTheDeck = result
 End Function
 
 ' Case 2 (period rollover): duplicates the source instance's current slide

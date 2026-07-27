@@ -81,6 +81,61 @@ Public Sub SyncNow()
     ShowSyncResult "Sync Now", fullReport
 End Sub
 
+' Read-only twin of SyncNow: identical resolution path (same registry lookups,
+' same workbook, same worksheets), but every registered type is run through
+' RunSync.PreviewRoutineSync instead of RunRoutineSync, so the deck is never
+' touched. Deliberately shares SyncNow's structure line for line -- a preview
+' that resolves its inputs differently from the real thing can disagree with it
+' about what would happen, which defeats the point.
+Public Sub SyncPreview()
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim workbookPath As String
+    workbookPath = DeckRegistry.GetWorkbookPath(pres)
+    If workbookPath = "" Then
+        MsgBox "This deck has no paired workbook yet -- nothing to preview.", vbExclamation, "Preview Sync"
+        Exit Sub
+    End If
+
+    Dim types() As String
+    types = DeckRegistry.ListRegisteredTypes(pres)
+
+    Dim lo As Long, hi As Long, hasTypes As Boolean
+    On Error Resume Next
+    lo = LBound(types): hi = UBound(types)
+    hasTypes = (Err.Number = 0)
+    On Error GoTo 0
+
+    If Not hasTypes Then
+        MsgBox "This deck has no registered slide types yet -- nothing to preview.", vbExclamation, "Preview Sync"
+        Exit Sub
+    End If
+
+    Dim wb As Object
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
+    If wb Is Nothing Then
+        MsgBox "Could not open the paired workbook at: " & workbookPath, vbCritical, "Preview Sync"
+        Exit Sub
+    End If
+
+    Dim fullReport As String
+    Dim i As Long
+    For i = lo To hi
+        Dim templateSld As Object
+        Dim wsName As String
+        If DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
+            Dim ws As Object
+            Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
+            fullReport = fullReport & RunSync.PreviewRoutineSync(ws, types(i)) & vbCrLf
+        Else
+            fullReport = fullReport & "SKIPPED " & types(i) & ": registered type's template slide no longer resolves (was it deleted?)" & vbCrLf
+        End If
+    Next i
+
+    ShowSyncResult "Preview Sync (nothing written)", fullReport
+End Sub
+
 ' ---------------------------------------------------------------------
 ' New Period (case 2, explicit rollover) -- per-type-and-record, not
 ' global (run-sync.md Step 3). The new period's Data-sheet row must

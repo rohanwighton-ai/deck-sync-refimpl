@@ -56,6 +56,13 @@ Public Sub ShowToolbar()
 
     ' Not yet live-tested against a real deck this pass -- hidden, not
     ' deleted. See this Sub's own header.
+    '
+    ' "Preview Sync" is the read-only one: it reports exactly what Sync Now
+    ' would do and writes nothing (RunSync.PreviewRoutineSync suppresses all
+    ' three mutation sites). It is the intended way to become "fully clear it
+    ' works" about Sync Now before that button is ever enabled -- run it from
+    ' the VBE (RibbonUI.SyncPreview) once, then uncomment this line.
+    ' AddButton bar, "Preview Sync", "RibbonUI.SyncPreview", 1090, "Show exactly what Sync Now would change in this deck -- reads only, writes nothing."
     ' AddButton bar, "Sync Now", "RibbonUI.SyncNow", 1004, "Pull changes from the paired Data workbook onto every already-linked slide in this deck."
     ' AddButton bar, "New Period", "RibbonUI.NewPeriod", 297, "Duplicate an existing slide instance into a new period (e.g. next quarter), with a fresh instance key."
     ' AddButton bar, "Onboard New Slide Type", "RibbonUI.OnboardNewType", 1697, "Register a brand-new slide type from one example slide, one field at a time via prompts."
