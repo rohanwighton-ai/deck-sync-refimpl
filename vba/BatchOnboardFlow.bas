@@ -407,6 +407,22 @@ Public Function FieldPreview(text As String) As String
     FieldPreview = s
 End Function
 
+' A slide that already carries an instance_key tag is ALREADY LINKED: that key
+' is the join between it and its Data-sheet row, and re-deriving one from field
+' text is what orphaned 46 real slides from their rows on 2026-07-26. The
+' second onboarding pass on that deck marked a body-text field first, so
+' SuggestInstanceKey proposed a whole paragraph for every slide, CommitBatch
+' overwrote each correct key with it, and UpsertRow -- finding no row under the
+' new key -- appended 43 duplicate rows that nothing pointed at. Adding a field
+' to an already-onboarded type must never re-key a slide.
+'
+' Returns "" for a genuinely new slide, which still gets the normal prompt.
+Public Function ExistingInstanceKey(sld As Object) As String
+    Dim inst As SlideInstance
+    inst = Resolve.ResolveSlideInstance(sld)
+    If inst.HasInstanceKey Then ExistingInstanceKey = inst.InstanceKey
+End Function
+
 ' Proposes a default field name the same way OnboardFlow.bas's
 ' SuggestFieldName does (reuses the shape's own ph_ name if it already has
 ' one, else a positional fallback) -- kept here rather than promoting that
@@ -1613,33 +1629,56 @@ Public Function PromptBatchOnboardType() As String
     ' distinct (extra warning text) so a blind click-through is far less
     ' likely, rather than relying on the human to notice an empty textbox
     ' that otherwise looks the same as a pre-filled one.
-    Dim templateSuggestion As String
-    templateSuggestion = SuggestInstanceKey(plan, 0)
+    ' Already-linked slides keep their own key and are never prompted for --
+    ' see ExistingInstanceKey's header for the real corruption this prevents.
+    ' Reused SILENTLY rather than pre-filling the prompt: re-onboarding this
+    ' deck would otherwise mean 46 confirmation clicks, which is precisely the
+    ' friction that drove this whole batch flow. The tradeoff is that a key
+    ' cannot be CHANGED from here once set; the count is reported below so a
+    ' reuse is never invisible.
+    Dim reusedCount As Long
 
-    Dim templatePrompt As String
-    templatePrompt = "Instance key for the template slide (Slide " & templateSld.SlideIndex & ") -- required, this slide defines the type:"
-    If templateSuggestion = "" Then
-        templatePrompt = templatePrompt & vbCrLf & vbCrLf & "(No suggested value available -- type one yourself. Leaving this blank cancels the whole run.)"
-    End If
+    Dim templateExisting As String
+    templateExisting = ExistingInstanceKey(templateSld)
+    If templateExisting <> "" Then
+        confirmedKeys(0) = templateExisting
+        reusedCount = reusedCount + 1
+    Else
+        Dim templateSuggestion As String
+        templateSuggestion = SuggestInstanceKey(plan, 0)
 
-    Dim templateKey As String
-    templateKey = InputBox(templatePrompt, "Bulk Onboard Type -- Instance Key", templateSuggestion)
-    If Trim(templateKey) = "" Then
-        PromptBatchOnboardType = "Cancelled -- the template slide must have an instance key."
-        Exit Function
+        Dim templatePrompt As String
+        templatePrompt = "Instance key for the template slide (Slide " & templateSld.SlideIndex & ") -- required, this slide defines the type:"
+        If templateSuggestion = "" Then
+            templatePrompt = templatePrompt & vbCrLf & vbCrLf & "(No suggested value available -- type one yourself. Leaving this blank cancels the whole run.)"
+        End If
+
+        Dim templateKey As String
+        templateKey = InputBox(templatePrompt, "Bulk Onboard Type -- Instance Key", templateSuggestion)
+        If Trim(templateKey) = "" Then
+            PromptBatchOnboardType = "Cancelled -- the template slide must have an instance key."
+            Exit Function
+        End If
+        confirmedKeys(0) = Trim(templateKey)
     End If
-    confirmedKeys(0) = Trim(templateKey)
 
     For i = 1 To otherSlideCount
-        Dim otherSuggestion As String
-        otherSuggestion = SuggestInstanceKey(plan, i)
+        Dim otherExisting As String
+        otherExisting = ExistingInstanceKey(otherSlides(i))
+        If otherExisting <> "" Then
+            confirmedKeys(i) = otherExisting
+            reusedCount = reusedCount + 1
+        Else
+            Dim otherSuggestion As String
+            otherSuggestion = SuggestInstanceKey(plan, i)
 
-        Dim prompt As String
-        prompt = "Instance key for Slide " & otherSlides(i).SlideIndex & " (leave blank to skip this slide this pass):"
-        If otherSuggestion = "" Then
-            prompt = prompt & vbCrLf & vbCrLf & "(No suggested value available -- leaving this blank will skip this slide entirely this pass.)"
+            Dim prompt As String
+            prompt = "Instance key for Slide " & otherSlides(i).SlideIndex & " (leave blank to skip this slide this pass):"
+            If otherSuggestion = "" Then
+                prompt = prompt & vbCrLf & vbCrLf & "(No suggested value available -- leaving this blank will skip this slide entirely this pass.)"
+            End If
+            confirmedKeys(i) = InputBox(prompt, "Bulk Onboard Type -- Instance Key", otherSuggestion)
         End If
-        confirmedKeys(i) = InputBox(prompt, "Bulk Onboard Type -- Instance Key", otherSuggestion)
     Next i
 
     ' Establish (or reuse) the deck-workbook pairing.
@@ -1718,6 +1757,13 @@ Public Function PromptBatchOnboardType() As String
     report = "Linked: " & commitResult.LinkedCount & vbCrLf & _
         "Skipped (no instance key given): " & commitResult.SkippedCount & vbCrLf & _
         "FAILED verification: " & commitResult.FailedVerificationCount
+
+    ' Never leave a silent reuse invisible -- this is the difference between
+    ' "added a field to slides that keep their existing rows" and "re-keyed
+    ' the deck", and the human needs to be able to tell those apart.
+    If reusedCount > 0 Then
+        report = report & vbCrLf & "Kept existing instance key (already linked, not re-keyed): " & reusedCount
+    End If
 
     If commitResult.FailedVerificationCount > 0 Then
         Dim m As Long

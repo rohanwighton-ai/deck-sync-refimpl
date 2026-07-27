@@ -372,6 +372,9 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
 
     r = Test_BatchOnboardFlow_FieldPreviewIsShortAndSingleLine()
     AppendResult report, "BatchOnboardFlow_FieldPreviewIsShortAndSingleLine", r
+
+    r = Test_BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived()
+    AppendResult report, "BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -2895,6 +2898,52 @@ Private Function Test_BatchOnboardFlow_FieldPreviewIsShortAndSingleLine() As Str
         "leading blank paragraphs and soft breaks collapse to single spaces, got '" & BatchOnboardFlow.FieldPreview(leading) & "'")
 
     Test_BatchOnboardFlow_FieldPreviewIsShortAndSingleLine = result
+End Function
+
+' The regression test for the 2026-07-26 real-deck corruption: a second
+' onboarding pass re-derived every instance key from a body-text field and
+' overwrote 46 correct keys with paragraphs, orphaning every slide from its
+' Data-sheet row. An already-linked slide must report its own key so the flow
+' reuses it instead of prompting for (and then overwriting it with) a new one.
+Private Function Test_BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived() As String
+    Dim result As String
+
+    Dim freshSld As Object
+    Set freshSld = NewBlankSlide()
+    result = result & Assert(BatchOnboardFlow.ExistingInstanceKey(freshSld) = "", _
+        "a slide with no tags has no existing key, got '" & BatchOnboardFlow.ExistingInstanceKey(freshSld) & "'")
+
+    ' A slide carrying only a type tag is still not linked -- the instance key
+    ' is the join to the row, and it alone decides reuse.
+    freshSld.Tags.Add "slide_type", "quarterly-update"
+    result = result & Assert(BatchOnboardFlow.ExistingInstanceKey(freshSld) = "", _
+        "a type tag alone does not count as an existing key, got '" & BatchOnboardFlow.ExistingInstanceKey(freshSld) & "'")
+
+    Dim linkedSld As Object
+    Set linkedSld = NewBlankSlide()
+    linkedSld.Tags.Add "slide_type", "quarterly-update"
+    linkedSld.Tags.Add "instance_key", "3_P002"
+    result = result & Assert(BatchOnboardFlow.ExistingInstanceKey(linkedSld) = "3_P002", _
+        "an already-linked slide reports its own key, got '" & BatchOnboardFlow.ExistingInstanceKey(linkedSld) & "'")
+
+    ' The indexed-suffix form real duplicate slides carry must survive intact:
+    ' it is an ordinary key, not something to be parsed or regenerated.
+    Dim dupeSld As Object
+    Set dupeSld = NewBlankSlide()
+    dupeSld.Tags.Add "instance_key", "3_P002-2"
+    result = result & Assert(BatchOnboardFlow.ExistingInstanceKey(dupeSld) = "3_P002-2", _
+        "an indexed-suffix key round-trips unchanged, got '" & BatchOnboardFlow.ExistingInstanceKey(dupeSld) & "'")
+
+    ' A paragraph-shaped key (what the corruption actually wrote) is still a
+    ' key: reuse must not "helpfully" reject or rewrite it, or a deck already
+    ' in that state could not be re-onboarded without corrupting it further.
+    Dim paragraphSld As Object
+    Set paragraphSld = NewBlankSlide()
+    paragraphSld.Tags.Add "instance_key", "The project develops and evaluates nanostructured magnesium oxide."
+    result = result & Assert(BatchOnboardFlow.ExistingInstanceKey(paragraphSld) = "The project develops and evaluates nanostructured magnesium oxide.", _
+        "an existing key is returned verbatim whatever its shape, got '" & BatchOnboardFlow.ExistingInstanceKey(paragraphSld) & "'")
+
+    Test_BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived = result
 End Function
 
 ' Real bug found and fixed 2026-07-26 (Rohan, live-testing against his real
