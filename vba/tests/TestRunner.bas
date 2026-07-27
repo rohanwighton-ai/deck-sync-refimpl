@@ -52,6 +52,16 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_InjectPrimitive_FindsRoleTagInsideGroup()
+    AppendResult report, "InjectPrimitive_FindsRoleTagInsideGroup", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_InjectPrimitive_AmbiguousTagAcrossGroupAndTopLevelRefusesToGuess()
+    AppendResult report, "InjectPrimitive_AmbiguousTagAcrossGroupAndTopLevelRefusesToGuess", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_Matching_SiblingAmbiguityResolvedByZOrder(fixturesDir)
     AppendResult report, "Matching_SiblingAmbiguityResolvedByZOrder", r
     On Error GoTo 0
@@ -282,8 +292,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons()
-    AppendResult report, "CommandBarUI_ShowToolbarCreatesFiveWiredButtons", r
+    r = Test_CommandBarUI_ShowToolbarCreatesThreeWiredButtons()
+    AppendResult report, "CommandBarUI_ShowToolbarCreatesThreeWiredButtons", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -327,8 +337,78 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_NormalizeFieldTypeAcceptsNumberOrName()
+    AppendResult report, "BatchOnboardFlow_NormalizeFieldTypeAcceptsNumberOrName", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_NormalizeFieldVolatilityAcceptsNumberOrName()
+    AppendResult report, "BatchOnboardFlow_NormalizeFieldVolatilityAcceptsNumberOrName", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_SuggestInstanceKeyUsesFirstFieldsHarvestedValue()
+    AppendResult report, "BatchOnboardFlow_SuggestInstanceKeyUsesFirstFieldsHarvestedValue", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_FindSameLayoutSlidesGroupsByLayoutOnly()
+    AppendResult report, "BatchOnboardFlow_FindSameLayoutSlidesGroupsByLayoutOnly", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides()
     AppendResult report, "BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_BuildBatchPlanFromMarkedFieldsUsesOnlyMarkedShapes()
+    AppendResult report, "BatchOnboardFlow_BuildBatchPlanFromMarkedFieldsUsesOnlyMarkedShapes", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_MarkShapeForBatchAccumulatesAndDedupes()
+    AppendResult report, "BatchOnboardFlow_MarkShapeForBatchAccumulatesAndDedupes", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_MarkShapeForBatchAcceptsShapeInsideGroup()
+    AppendResult report, "BatchOnboardFlow_MarkShapeForBatchAcceptsShapeInsideGroup", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_MarkShapeForBatchRejectsWholeGroupSelection()
+    AppendResult report, "BatchOnboardFlow_MarkShapeForBatchRejectsWholeGroupSelection", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_MarkingSessionPropertyRoundTripsBeyond255Chars()
+    AppendResult report, "BatchOnboardFlow_MarkingSessionPropertyRoundTripsBeyond255Chars", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_RestoreMarkingSessionRecoversMarkedFields()
+    AppendResult report, "BatchOnboardFlow_RestoreMarkingSessionRecoversMarkedFields", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave()
+    AppendResult report, "BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_MarkingSessionSurvivesRealCloseAndReopen()
+    AppendResult report, "BatchOnboardFlow_MarkingSessionSurvivesRealCloseAndReopen", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_RestoreMarkingSessionFindsNothingOnWrongSlide()
+    AppendResult report, "BatchOnboardFlow_RestoreMarkingSessionFindsNothingOnWrongSlide", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_FlattenGroupLeavesReturnsAllMembers()
+    AppendResult report, "BatchOnboardFlow_FlattenGroupLeavesReturnsAllMembers", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -339,6 +419,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     r = "": On Error Resume Next: Err.Clear
     r = Test_BatchOnboardFlow_CommitBatchTagsLinksAndVerifies()
     AppendResult report, "BatchOnboardFlow_CommitBatchTagsLinksAndVerifies", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale()
+    AppendResult report, "BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale", r
     On Error GoTo 0
 
     RunAllTests = report
@@ -378,15 +463,31 @@ Private Function NewBlankSlide() As Object
     Set NewBlankSlide = sld
 End Function
 
+' Recurses into groups -- see InjectPrimitive.bas's own FindShapeByRoleTag
+' header for why a flat `sld.Shapes` loop alone misses any shape nested
+' inside a GroupShape (real bug found 2026-07-26 against Rohan's real,
+' group-heavy "card layout" deck). Kept in sync with that fix so this test
+' helper can find a role tag anywhere InjectPrimitive itself now can.
 Private Function FindShapeByRole(sld As Object, role As String) As Object
+    Set FindShapeByRole = FindShapeByRoleWalk(sld.Shapes, role)
+End Function
+
+Private Function FindShapeByRoleWalk(shapesColl As Object, role As String) As Object
     Dim shp As Object
-    For Each shp In sld.Shapes
-        If shp.Tags("role") = role Then
-            Set FindShapeByRole = shp
+    For Each shp In shapesColl
+        If shp.Type = msoGroup Then
+            Dim nested As Object
+            Set nested = FindShapeByRoleWalk(shp.GroupItems, role)
+            If Not nested Is Nothing Then
+                Set FindShapeByRoleWalk = nested
+                Exit Function
+            End If
+        ElseIf shp.Tags("role") = role Then
+            Set FindShapeByRoleWalk = shp
             Exit Function
         End If
     Next shp
-    Set FindShapeByRole = Nothing
+    Set FindShapeByRoleWalk = Nothing
 End Function
 
 ' ---------------------------------------------------------------------
@@ -487,6 +588,90 @@ Private Function Test_InjectPrimitive_AmbiguousTagRefusesToGuess() As String
     result = result & Assert(shp1.TextFrame.TextRange.Text = "a" And shp2.TextFrame.TextRange.Text = "b", "neither shape was touched")
 
     Test_InjectPrimitive_AmbiguousTagRefusesToGuess = result
+End Function
+
+' Real, confirmed bug found 2026-07-26 against Rohan's real 46-slide "card
+' layout" deck (see SPIKE_NOTES_BatchOnboardFlow.md's addendum): every
+' InjectPrimitive test above only ever used a TOP-LEVEL textbox, so none of
+' them could have caught FindShapeByRoleTag's `sld.Shapes` loop missing any
+' shape nested inside a group -- exactly the structure Rohan's real deck
+' actually uses for its fields (confirmed via the real, redacted deck
+' fixture: all 46 slides contain at least one <p:grpSp>, and most
+' text-bearing shapes on a given slide are nested inside one, not
+' top-level). Proves the fix directly: a role tag written onto a shape
+' nested one level inside a group must still be found, and the round-trip
+' verify must still pass -- this is the single smallest repro of the actual
+' production failure ("Linked: 0 / FAILED verification: 46").
+Private Function Test_InjectPrimitive_FindsRoleTagInsideGroup() As String
+    Dim result As String
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    Dim shapeA As Object, shapeB As Object
+    Set shapeA = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 100, 50)
+    shapeA.TextFrame.TextRange.Text = "hello"
+    Set shapeB = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 200, 50, 100, 50)
+    shapeB.TextFrame.TextRange.Text = "sibling"
+
+    Dim grp As Object
+    Set grp = sld.Shapes.Range(Array(shapeA.Name, shapeB.Name)).Group()
+
+    ' Tag the nested child directly -- Shape.Tags works on any shape
+    ' regardless of group nesting (this half of the mechanism was never
+    ' broken; only the subsequent lookup was).
+    Dim groupedChild As Object
+    Set groupedChild = grp.GroupItems.Item(1)
+    groupedChild.Tags.Add "role", "demo_grouped_field"
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectPrimitive(sld, "demo_grouped_field", "hello")
+    result = result & Assert(r.Found, "shape found by role tag even though it's nested inside a group")
+    result = result & Assert(Not r.Written, "no-op when value already matches (proves the SAME nested shape was found, not a coincidence)")
+    result = result & Assert(r.Verified, "verified true")
+
+    ' Also prove the write path (not just the no-op path) works through a
+    ' group -- mirrors WritesAndVerifiesOnMismatch above.
+    Dim r2 As InjectResult
+    r2 = InjectPrimitive.InjectPrimitive(sld, "demo_grouped_field", "new value")
+    result = result & Assert(r2.Found, "shape found by role tag on the write path too")
+    result = result & Assert(r2.Written, "written when value differs")
+    result = result & Assert(r2.Verified, "re-read confirms the write took")
+    result = result & Assert(groupedChild.TextFrame.TextRange.Text = "new value", "the grouped shape's text actually changed, got '" & groupedChild.TextFrame.TextRange.Text & "'")
+
+    Test_InjectPrimitive_FindsRoleTagInsideGroup = result
+End Function
+
+' Same-tag collision detection must still hold across nesting levels -- a
+' shape inside a group and a top-level shape both carrying the same role
+' tag is exactly as ambiguous as two top-level shapes (Test_InjectPrimitive_
+' AmbiguousTagRefusesToGuess above), and the recursive rewrite must not
+' accidentally scope matchCount per group level instead of across the whole
+' walk.
+Private Function Test_InjectPrimitive_AmbiguousTagAcrossGroupAndTopLevelRefusesToGuess() As String
+    Dim result As String
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    Dim topShp As Object
+    Set topShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 200, 100, 50)
+    topShp.TextFrame.TextRange.Text = "top-level"
+    topShp.Tags.Add "role", "dup_across_levels"
+
+    Dim shapeA As Object, shapeB As Object
+    Set shapeA = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 100, 50)
+    shapeA.TextFrame.TextRange.Text = "grouped"
+    Set shapeB = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 200, 50, 100, 50)
+    shapeB.TextFrame.TextRange.Text = "sibling"
+    Dim grp As Object
+    Set grp = sld.Shapes.Range(Array(shapeA.Name, shapeB.Name)).Group()
+    grp.GroupItems.Item(1).Tags.Add "role", "dup_across_levels"
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectPrimitive(sld, "dup_across_levels", "z")
+
+    result = result & Assert(Not r.Found, "a top-level/grouped same-tag collision is still refused, not silently resolved")
+
+    Test_InjectPrimitive_AmbiguousTagAcrossGroupAndTopLevelRefusesToGuess = result
 End Function
 
 ' ---------------------------------------------------------------------
@@ -2141,7 +2326,12 @@ End Function
 ' CommandBarUI
 ' ---------------------------------------------------------------------
 
-Private Function Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons() As String
+' Toolbar deliberately trimmed to 3 buttons 2026-07-26 -- Rohan: "I only
+' want to add an operation when I'm fully clear it works and I know what it
+' does." Only the actions actually live-tested against his real deck this
+' pass stay on the toolbar; the other 5 are commented out in CommandBarUI.
+' bas, not deleted, per that Sub's own header.
+Private Function Test_CommandBarUI_ShowToolbarCreatesThreeWiredButtons() As String
     Dim result As String
 
     CommandBarUI.ShowToolbar
@@ -2149,28 +2339,41 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons() As Strin
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar 'Deck Sync' exists after ShowToolbar")
-    result = result & Assert(bar.Controls.count = 6, "toolbar has 6 buttons, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 3, "toolbar has 3 buttons, got " & bar.Controls.count)
 
-    ' PowerPoint normalizes a set OnAction like "RibbonUI.SyncNow" to its own
-    ' "<PresentationName>!SyncNow" display form (module-unqualified) --
-    ' confirmed 2026-07-26 against real Office. Match on the bare Sub name
-    ' rather than the string this module actually assigns.
+    ' PowerPoint sometimes normalizes a set OnAction like "RibbonUI.SyncNow"
+    ' to its own "<PresentationName>!SyncNow" display form (module-
+    ' unqualified) -- confirmed 2026-07-26 against real Office -- but this
+    ' is NOT reliable across runs: re-confirmed 2026-07-26 (same day, same
+    ' machine, no CommandBarUI.bas/RibbonUI.bas changes) that it sometimes
+    ' leaves OnAction as the raw "Module.Sub" string instead, for reasons
+    ' that don't appear to depend on anything this project controls. Strip
+    ' BOTH a leading "<anything>!" AND a leading "<anything>." (last
+    ' occurrence of each) so the assertion matches the bare Sub name
+    ' regardless of which form Office happens to report this run -- what
+    ' actually matters (the button fires the right Sub) is unaffected
+    ' either way, only this display string varies.
     Dim expectedActions As String
-    expectedActions = "SyncNow|NewPeriod|OnboardNewType|ResolveUnmatchedFields|AdoptExistingSlides|BatchOnboardType"
+    expectedActions = "MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch"
 
     Dim i As Long
     For i = 1 To bar.Controls.count
         Dim ctrl As Object
         Set ctrl = bar.Controls.Item(i)
+        Dim afterBang As String
         Dim bangPos As Long
         bangPos = InStr(ctrl.OnAction, "!")
+        afterBang = IIf(bangPos > 0, Mid(ctrl.OnAction, bangPos + 1), ctrl.OnAction)
+        Dim dotPos As Long
+        dotPos = InStrRev(afterBang, ".")
         Dim subName As String
-        subName = IIf(bangPos > 0, Mid(ctrl.OnAction, bangPos + 1), ctrl.OnAction)
-        result = result & Assert(InStr(expectedActions, subName) > 0, "button '" & ctrl.Caption & "' OnAction '" & ctrl.OnAction & "' resolves to one of the six real action Subs")
+        subName = IIf(dotPos > 0, Mid(afterBang, dotPos + 1), afterBang)
+        result = result & Assert(InStr(expectedActions, subName) > 0, "button '" & ctrl.Caption & "' OnAction '" & ctrl.OnAction & "' resolves to one of the real action Subs")
+        result = result & Assert(Len(ctrl.TooltipText) > 0, "button '" & ctrl.Caption & "' has a non-empty tooltip explainer")
     Next i
 
     CommandBarUI.HideToolbar
-    Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons = result
+    Test_CommandBarUI_ShowToolbarCreatesThreeWiredButtons = result
 End Function
 
 Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
@@ -2182,7 +2385,7 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar still exists after calling ShowToolbar twice")
-    result = result & Assert(bar.Controls.count = 6, "still exactly 6 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 3, "still exactly 3 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarIsIdempotent = result
@@ -2376,6 +2579,103 @@ Private Function Test_BatchOnboardFlow_SuggestBatchFieldNameReusesPhNameOrFallsB
     Test_BatchOnboardFlow_SuggestBatchFieldNameReusesPhNameOrFallsBack = result
 End Function
 
+Private Function Test_BatchOnboardFlow_NormalizeFieldTypeAcceptsNumberOrName() As String
+    Dim result As String
+
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldType("1") = "text", "'1' resolves to text")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldType("Text") = "text", "'Text' resolves to text (case-insensitive)")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldType("2") = "number", "'2' resolves to number")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldType("number") = "number", "'number' resolves to number")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldType("3") = "currency", "'3' resolves to currency")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldType("Currency") = "currency", "'Currency' resolves to currency (case-insensitive)")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldType("4") = "date", "'4' resolves to date")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldType("date") = "date", "'date' resolves to date")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldType("") = "text", "blank falls back to text, never errors")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldType("gibberish") = "text", "unrecognized answer falls back to text, never errors")
+
+    Test_BatchOnboardFlow_NormalizeFieldTypeAcceptsNumberOrName = result
+End Function
+
+Private Function Test_BatchOnboardFlow_NormalizeFieldVolatilityAcceptsNumberOrName() As String
+    Dim result As String
+
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldVolatility("1") = "static", "'1' resolves to static")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldVolatility("Static") = "static", "'Static' resolves to static (case-insensitive)")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldVolatility("2") = "variable", "'2' resolves to variable")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldVolatility("variable") = "variable", "'variable' resolves to variable")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldVolatility("") = "variable", "blank falls back to variable (the safer default), never errors")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldVolatility("gibberish") = "variable", "unrecognized answer falls back to variable, never errors")
+
+    Test_BatchOnboardFlow_NormalizeFieldVolatilityAcceptsNumberOrName = result
+End Function
+
+' SuggestInstanceKey is the fix for Rohan's real friction (2026-07-26):
+' hand-typing an instance key for every slide in a batch, not the
+' instance-key concept itself. It should default each prompt to the
+' template's/each slide's own first-marked-field value (a natural per-
+' slide identifier like "Project Number" in his real deck).
+Private Function Test_BatchOnboardFlow_SuggestInstanceKeyUsesFirstFieldsHarvestedValue() As String
+    Dim result As String
+
+    Dim plan As BatchOnboardPlan
+    Set plan.HarvestedText = CreateObject("Scripting.Dictionary")
+    plan.HarvestedText("1|0") = "3_P001"
+    plan.HarvestedText("1|1") = "3_P002"
+    plan.HarvestedText("2|0") = "Development of alternative antimicrobial agents"
+
+    result = result & Assert(BatchOnboardFlow.SuggestInstanceKey(plan, 0) = "3_P001", "suggests the template's first-field value, got '" & BatchOnboardFlow.SuggestInstanceKey(plan, 0) & "'")
+    result = result & Assert(BatchOnboardFlow.SuggestInstanceKey(plan, 1) = "3_P002", "suggests slide 1's first-field value, got '" & BatchOnboardFlow.SuggestInstanceKey(plan, 1) & "'")
+    result = result & Assert(BatchOnboardFlow.SuggestInstanceKey(plan, 2) = "", "no correspondence found for slide 2 -- falls back to blank, not an error, got '" & BatchOnboardFlow.SuggestInstanceKey(plan, 2) & "'")
+
+    Test_BatchOnboardFlow_SuggestInstanceKeyUsesFirstFieldsHarvestedValue = result
+End Function
+
+' FindSameLayoutSlides is the pure logic behind auto-selecting a batch by
+' layout instead of requiring a manual multi-slide selection every time --
+' Rohan's own framing (2026-07-26): "same-layout slides auto-included, with
+' a chance to review/edit before committing."
+Private Function Test_BatchOnboardFlow_FindSameLayoutSlidesGroupsByLayoutOnly() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide() ' ppLayoutBlank
+
+    Dim sameLayout1 As Object
+    Set sameLayout1 = NewBlankSlide() ' ppLayoutBlank -- same layout as template
+
+    Dim differentLayout As Object
+    Set differentLayout = Application.ActivePresentation.Slides.Add(Application.ActivePresentation.Slides.count + 1, ppLayoutText)
+
+    Dim sameLayout2 As Object
+    Set sameLayout2 = NewBlankSlide() ' ppLayoutBlank again -- also same layout as template
+
+    Dim siblings As Collection
+    Set siblings = BatchOnboardFlow.FindSameLayoutSlides(templateSld)
+
+    ' Not an exact count: this test runs in a shared presentation that
+    ' accumulates every other test's own fixture slides across the whole
+    ' suite (most of them also ppLayoutBlank via NewBlankSlide()), so
+    ' asserting anything beyond "at least our two known siblings, by
+    ' identity" would be asserting about slides this test doesn't own.
+    result = result & Assert(siblings.count >= 2, "at least the 2 known same-layout siblings found, got " & siblings.count)
+
+    Dim foundS1 As Boolean, foundS2 As Boolean, foundDiff As Boolean, foundTemplate As Boolean
+    Dim s As Variant
+    For Each s In siblings
+        If s Is sameLayout1 Then foundS1 = True
+        If s Is sameLayout2 Then foundS2 = True
+        If s Is differentLayout Then foundDiff = True
+        If s Is templateSld Then foundTemplate = True
+    Next s
+
+    result = result & Assert(foundS1, "same-layout sibling 1 included")
+    result = result & Assert(foundS2, "same-layout sibling 2 included")
+    result = result & Assert(Not foundDiff, "different-layout slide excluded")
+    result = result & Assert(Not foundTemplate, "template itself excluded from its own siblings")
+
+    Test_BatchOnboardFlow_FindSameLayoutSlidesGroupsByLayoutOnly = result
+End Function
+
 Private Function Test_BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides() As String
     Dim result As String
 
@@ -2441,11 +2741,467 @@ Private Function Test_BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarve
     Test_BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides = result
 End Function
 
+' Proves BuildBatchPlanFromMarkedFields is click-scoped, not Discovery-
+' scoped: tShapeA exists on the template slide but is never marked, and
+' must be entirely absent from the resulting plan.
+Private Function Test_BatchOnboardFlow_BuildBatchPlanFromMarkedFieldsUsesOnlyMarkedShapes() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim tShapeA As Object, tShapeB As Object
+    Set tShapeA = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    tShapeA.TextFrame.TextRange.Text = "Not Marked"
+    Set tShapeB = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 50)
+    tShapeB.TextFrame.TextRange.Text = "Q1 2026"
+
+    Dim other1 As Object
+    Set other1 = NewBlankSlide()
+    Dim o1ShapeA As Object, o1ShapeB As Object
+    Set o1ShapeA = other1.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    o1ShapeA.TextFrame.TextRange.Text = "Not Marked"
+    Set o1ShapeB = other1.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 50)
+    o1ShapeB.TextFrame.TextRange.Text = "Q2 2026"
+
+    Dim otherSlides(1 To 1) As Object
+    Set otherSlides(1) = other1
+
+    Dim marked As Collection
+    Set marked = New Collection
+    marked.Add tShapeB
+
+    Dim markedNames As Object
+    Set markedNames = CreateObject("Scripting.Dictionary")
+    markedNames(1) = "Project Number"
+
+    Dim markedTypes As Object
+    Set markedTypes = CreateObject("Scripting.Dictionary")
+    markedTypes(1) = "number"
+
+    Dim markedVolatility As Object
+    Set markedVolatility = CreateObject("Scripting.Dictionary")
+    markedVolatility(1) = "static"
+
+    Dim matchErr As String
+    Dim plan As BatchOnboardPlan
+    plan = BatchOnboardFlow.BuildBatchPlanFromMarkedFields(templateSld, marked, markedNames, markedTypes, markedVolatility, otherSlides, matchErr)
+
+    result = result & Assert(matchErr = "", "no match error, got '" & matchErr & "'")
+    result = result & Assert(plan.FieldCount = 1, "exactly 1 field in the plan (only the marked shape), got " & plan.FieldCount)
+    result = result & Assert(plan.FieldNames(1) = "Project Number", "the human-typed name at mark time is used, not an auto-suggested one, got '" & plan.FieldNames(1) & "'")
+    result = result & Assert(plan.FieldTypes(1) = "number", "the human-declared type at mark time is used, not the default 'text', got '" & plan.FieldTypes(1) & "'")
+    result = result & Assert(plan.FieldVolatility(1) = "static", "the human-declared volatility at mark time is used, not the default 'variable', got '" & plan.FieldVolatility(1) & "'")
+    result = result & Assert(plan.HarvestedText("1|0") = "Q1 2026", "the one field's template value is the marked shape's text, got '" & plan.HarvestedText("1|0") & "'")
+    result = result & Assert(plan.HarvestedText("1|1") = "Q2 2026", "correspondence found on other1 for the marked field, got '" & plan.HarvestedText("1|1") & "'")
+
+    Test_BatchOnboardFlow_BuildBatchPlanFromMarkedFieldsUsesOnlyMarkedShapes = result
+End Function
+
+' MarkShapeForBatch is the pure-logic half of the click-one-at-a-time
+' marking flow (MarkFieldForBatch's own header explains why the MsgBox
+' confirmation half can't be automated). Proves accumulation, order
+' preservation, and re-mark de-duplication -- the three properties
+' BuildBatchPlanFromMarkedFields depends on.
+Private Function Test_BatchOnboardFlow_MarkShapeForBatchAccumulatesAndDedupes() As String
+    Dim result As String
+
+    BatchOnboardFlow.ResetMarkingSession ' clean slate regardless of prior test/session state -- MsgBox-free, unlike ClearMarkedFieldsForBatch
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shapeA As Object, shapeB As Object
+    Set shapeA = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shapeA.TextFrame.TextRange.Text = "Field A"
+    Set shapeB = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 50)
+    shapeB.TextFrame.TextRange.Text = "Field B"
+
+    Dim status1 As String
+    status1 = BatchOnboardFlow.MarkShapeForBatch(shapeA, "Project Number", "number", "static")
+    result = result & Assert(InStr(status1, "Marked field 1: 'Project Number'") > 0, "first mark reports field 1 with the given name, got '" & status1 & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() = 1, "1 field marked after first mark")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldNameForBatch(1) = "Project Number", "field 1's stored name matches, got '" & BatchOnboardFlow.MarkedFieldNameForBatch(1) & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldTypeForBatch(1) = "number", "field 1's stored type matches, got '" & BatchOnboardFlow.MarkedFieldTypeForBatch(1) & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldVolatilityForBatch(1) = "static", "field 1's stored volatility matches, got '" & BatchOnboardFlow.MarkedFieldVolatilityForBatch(1) & "'")
+
+    Dim status2 As String
+    status2 = BatchOnboardFlow.MarkShapeForBatch(shapeB, "Project Title", "text", "variable")
+    result = result & Assert(InStr(status2, "Marked field 2: 'Project Title'") > 0, "second mark reports field 2 with the given name, got '" & status2 & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() = 2, "2 fields marked after second mark")
+
+    Dim status3 As String
+    status3 = BatchOnboardFlow.MarkShapeForBatch(shapeB, "Project Title (renamed)", "date", "static") ' re-mark the same shape with a new name, type, and volatility
+    result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() = 2, "re-marking the same shape does not duplicate it, got " & BatchOnboardFlow.MarkedFieldCountForBatch())
+    result = result & Assert(BatchOnboardFlow.MarkedFieldNameForBatch(2) = "Project Title (renamed)", "re-marking the same shape renames it in place, got '" & BatchOnboardFlow.MarkedFieldNameForBatch(2) & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldTypeForBatch(2) = "date", "re-marking the same shape re-types it in place, got '" & BatchOnboardFlow.MarkedFieldTypeForBatch(2) & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldVolatilityForBatch(2) = "static", "re-marking the same shape re-hints its volatility in place, got '" & BatchOnboardFlow.MarkedFieldVolatilityForBatch(2) & "'")
+
+    Dim otherSld As Object
+    Set otherSld = NewBlankSlide()
+    Dim shapeC As Object
+    Set shapeC = otherSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shapeC.TextFrame.TextRange.Text = "Field C"
+    Dim status4 As String
+    status4 = BatchOnboardFlow.MarkShapeForBatch(shapeC, "Field C", "text", "variable") ' a shape on a different slide
+    result = result & Assert(status4 = "DIFFERENT_SLIDE", "marking a shape on a different slide returns the DIFFERENT_SLIDE sentinel for the Sub wrapper to resolve interactively, got '" & status4 & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() = 2, "the differing-slide mark did not silently alter the existing session")
+
+    BatchOnboardFlow.ResetMarkingSession
+    result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() = 0, "marking session cleared")
+
+    Test_BatchOnboardFlow_MarkShapeForBatchAccumulatesAndDedupes = result
+End Function
+
+' Real bug found and fixed 2026-07-26 (Rohan, live-testing against his real
+' deck's grouped "card" layouts: "Is it allowing me to mark selected
+' objects in groups? I think maybe no?"): MarkShapeForBatch used to reject
+' any shape inside a group outright, based on an assumption about
+' Shape.Parent that was never actually verified against real Office and
+' turned out to be wrong -- confirmed live that .Parent resolves directly
+' to the Slide even for a grouped shape. This proves a shape fetched via
+' GroupItems (mirroring what Selection.ShapeRange(1) gives after a real
+' user double-clicks into a group to select one member) is now accepted.
+Private Function Test_BatchOnboardFlow_MarkShapeForBatchAcceptsShapeInsideGroup() As String
+    Dim result As String
+
+    BatchOnboardFlow.ResetMarkingSession
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shapeA As Object, shapeB As Object
+    Set shapeA = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 100, 50)
+    shapeA.TextFrame.TextRange.Text = "Grouped Field"
+    Set shapeB = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 200, 50, 100, 50)
+    shapeB.TextFrame.TextRange.Text = "Grouped Sibling"
+
+    Dim grp As Object
+    Set grp = sld.Shapes.Range(Array(shapeA.Name, shapeB.Name)).Group()
+
+    Dim groupedChild As Object
+    Set groupedChild = grp.GroupItems.Item(1)
+
+    Dim status As String
+    status = BatchOnboardFlow.MarkShapeForBatch(groupedChild, "Grouped Field Name", "text", "variable")
+
+    result = result & Assert(InStr(status, "Could not determine") = 0, "marking a shape inside a group does not fail, got '" & status & "'")
+    result = result & Assert(InStr(status, "Marked field 1") > 0, "marking a shape inside a group succeeds and reports field 1, got '" & status & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() = 1, "1 field marked")
+
+    BatchOnboardFlow.ResetMarkingSession
+
+    Test_BatchOnboardFlow_MarkShapeForBatchAcceptsShapeInsideGroup = result
+End Function
+
+' Real bug found and fixed 2026-07-26 (Rohan: "why when I select long text
+' fields in a group is it showing current value in the message box as
+' current value: '):"): the actual cause was the whole GROUP being
+' selected (a group container's .HasTextFrame is False even when its
+' members have real text), not a text-reading bug. MarkShapeForBatch now
+' rejects a whole-group selection outright with guidance, rather than
+' silently accepting it and tagging the wrong object.
+Private Function Test_BatchOnboardFlow_MarkShapeForBatchRejectsWholeGroupSelection() As String
+    Dim result As String
+
+    BatchOnboardFlow.ResetMarkingSession
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shapeA As Object, shapeB As Object
+    Set shapeA = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 100, 50)
+    shapeA.TextFrame.TextRange.Text = "Long real text content here for the card field."
+    Set shapeB = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 200, 50, 100, 50)
+    shapeB.TextFrame.TextRange.Text = "Sibling"
+
+    Dim grp As Object
+    Set grp = sld.Shapes.Range(Array(shapeA.Name, shapeB.Name)).Group()
+
+    Dim status As String
+    status = BatchOnboardFlow.MarkShapeForBatch(grp, "Whole Group Name", "text", "variable")
+
+    result = result & Assert(InStr(status, "whole group") > 0, "whole-group selection is rejected with guidance, got '" & status & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() = 0, "nothing marked when the whole group was selected, got " & BatchOnboardFlow.MarkedFieldCountForBatch())
+
+    BatchOnboardFlow.ResetMarkingSession
+
+    Test_BatchOnboardFlow_MarkShapeForBatchRejectsWholeGroupSelection = result
+End Function
+
+' Real question 2026-07-26: Office's CustomDocumentProperties string type
+' has a documented 255-character limit -- does it actually apply/truncate
+' here, or is that stale/version-dependent? A PowerShell-side probe hit an
+' unrelated .NET COM interop crash trying to answer this directly (dynamic
+' COM dispatch failing to reflect the DocumentProperties collection type --
+' a known PowerShell quirk, not an Office one), so this is answered for
+' real here instead, via the same native-VBA path DeckRegistry.bas's own
+' CustomDocumentProperties usage already proves works. Content is
+' deliberately over 255 characters (a realistic ~10-field marking session)
+' -- if Office truncates, this assertion fails with a clear, honest diff
+' instead of silently shipping corrupted persistence.
+Private Function Test_BatchOnboardFlow_MarkingSessionPropertyRoundTripsBeyond255Chars() As String
+    Dim result As String
+
+    Dim longValue As String
+    Dim i As Long
+    For i = 1 To 10
+        If longValue <> "" Then longValue = longValue & vbCrLf
+        longValue = longValue & "TextBox " & (40 + i) & "|Field Name Number " & i & " (a realistic length)|text|variable"
+    Next i
+    result = result & Assert(Len(longValue) > 255, "test setup sanity: content is genuinely over 255 chars, got " & Len(longValue))
+
+    BatchOnboardFlow.WriteMarkingSessionProperty Application.ActivePresentation, longValue
+    Dim readBack As String
+    readBack = BatchOnboardFlow.ReadMarkingSessionProperty(Application.ActivePresentation)
+
+    result = result & Assert(readBack = longValue, "long (" & Len(longValue) & "-char) marking session round-trips through CustomDocumentProperties without truncation, got " & Len(readBack) & " chars back")
+
+    Test_BatchOnboardFlow_MarkingSessionPropertyRoundTripsBeyond255Chars = result
+End Function
+
+' SerializeMarkingSession/RestoreMarkingSession are the actual persistence
+' fix for Rohan's real friction (2026-07-26): "sick of linking every test"
+' -- re-marking every field from scratch after every add-in reload during
+' live testing. Proves a real mark -> serialize -> reset (simulating a
+' close) -> restore round trip re-finds the same live shapes by Name and
+' recovers every field's name/type/volatility.
+Private Function Test_BatchOnboardFlow_RestoreMarkingSessionRecoversMarkedFields() As String
+    Dim result As String
+
+    BatchOnboardFlow.ResetMarkingSession
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shapeA As Object, shapeB As Object
+    Set shapeA = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 100, 50)
+    shapeA.TextFrame.TextRange.Text = "Field A"
+    Set shapeB = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 100, 50)
+    shapeB.TextFrame.TextRange.Text = "Field B"
+
+    BatchOnboardFlow.MarkShapeForBatch shapeA, "Project Number", "text", "static"
+    BatchOnboardFlow.MarkShapeForBatch shapeB, "Status", "text", "variable"
+
+    Dim serialized As String
+    serialized = BatchOnboardFlow.SerializeCurrentMarkingSession()
+
+    BatchOnboardFlow.ResetMarkingSession ' simulates a close -- wipes the in-memory session, leaves only `serialized`
+    result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() = 0, "in-memory session genuinely cleared before restoring")
+
+    Dim restoreReport As String
+    restoreReport = BatchOnboardFlow.RestoreMarkingSession(serialized, sld)
+
+    result = result & Assert(InStr(restoreReport, "Restored 2 field") > 0, "restore reports 2 fields recovered, got '" & restoreReport & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() = 2, "2 fields marked after restore, got " & BatchOnboardFlow.MarkedFieldCountForBatch())
+    result = result & Assert(BatchOnboardFlow.MarkedFieldNameForBatch(1) = "Project Number", "field 1's name recovered, got '" & BatchOnboardFlow.MarkedFieldNameForBatch(1) & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldTypeForBatch(1) = "text", "field 1's type recovered, got '" & BatchOnboardFlow.MarkedFieldTypeForBatch(1) & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldVolatilityForBatch(1) = "static", "field 1's volatility recovered, got '" & BatchOnboardFlow.MarkedFieldVolatilityForBatch(1) & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldNameForBatch(2) = "Status", "field 2's name recovered, got '" & BatchOnboardFlow.MarkedFieldNameForBatch(2) & "'")
+
+    BatchOnboardFlow.ResetMarkingSession
+
+    Test_BatchOnboardFlow_RestoreMarkingSessionRecoversMarkedFields = result
+End Function
+
+' Real bug found live 2026-07-26: Rohan's actual tagging/marking work was
+' lost across a PowerPoint close despite Presentation.Saved correctly
+' flipping to False on each edit (proven separately) -- AutoSave's own
+' background/debounced save was not reliably capturing macro-driven edits.
+' SaveMarkingSessionToProperty now forces an explicit, synchronous
+' Presentation.Save instead of trusting AutoSave. Proves the happy path:
+' saving a real (test) presentation succeeds with no warning, and the
+' property genuinely round-trips afterward.
+Private Function Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave() As String
+    Dim result As String
+
+    ' The shared test presentation is never given a save path (see
+    ' run_vba_tests.ps1 -- Presentations.Add() only), and calling .Save on
+    ' a presentation with no path at all pops a real "Save As" dialog,
+    ' which would hang this automated run waiting for a click nobody's
+    ' there to give. Give it a real (throwaway) path first -- once it has
+    ' one, .Save behaves as a normal, silent, no-dialog operation for the
+    ' rest of this run too.
+    If Application.ActivePresentation.Path = "" Then
+        Application.ActivePresentation.SaveAs Environ("TEMP") & "\deck_sync_test_run_presentation.pptx"
+    End If
+
+    BatchOnboardFlow.ResetMarkingSession
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shapeA As Object
+    Set shapeA = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 100, 50)
+    shapeA.TextFrame.TextRange.Text = "Field A"
+    BatchOnboardFlow.MarkShapeForBatch shapeA, "Project Number", "text", "static"
+
+    Dim saveWarning As String
+    saveWarning = BatchOnboardFlow.SaveMarkingSessionToProperty(Application.ActivePresentation)
+
+    result = result & Assert(saveWarning = "", "no warning on a successful save, got '" & saveWarning & "'")
+
+    Dim readBack As String
+    readBack = BatchOnboardFlow.ReadMarkingSessionProperty(Application.ActivePresentation)
+    result = result & Assert(InStr(readBack, "Project Number") > 0, "the saved property genuinely contains the marked field, got '" & readBack & "'")
+
+    BatchOnboardFlow.ResetMarkingSession
+
+    Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave = result
+End Function
+
+' The test above proves the write+Save+read-back sequence within ONE
+' still-running presentation object -- it does NOT prove the write is
+' actually durable once that presentation is genuinely closed and the file
+' is reopened fresh, which is the exact failure mode Rohan actually hit
+' (marks vanishing after a real PowerPoint close/reopen, not just "read it
+' back a moment later"). VBA can't spawn a whole new PowerPoint.EXE process
+' mid-test the way the PowerShell-side investigation did (see
+' SPIKE_NOTES_BatchOnboardFlow.md's "genuine close/reopen" addendum for that
+' out-of-process proof, run via COM automation, which is outside what an
+' in-process VBA test harness can do) -- but a real Presentation.Close
+' followed by a fresh Presentations.Open of the same file on disk is the
+' strongest version of this check reachable from inside TestRunner.bas, and
+' it's a real regression guard: it would fail if a future change removed
+' the forced Save, wrote to the wrong property name, or broke the
+' serialize/restore round trip, none of which the in-session-only test
+' above can catch on its own.
+Private Function Test_BatchOnboardFlow_MarkingSessionSurvivesRealCloseAndReopen() As String
+    Dim result As String
+
+    Dim testPath As String
+    testPath = Environ("TEMP") & "\deck_sync_test_close_reopen_" & Format(Now, "hhmmss") & ".pptx"
+
+    Dim testPres As Object
+    Set testPres = Application.Presentations.Add
+    testPres.SaveAs testPath
+
+    Dim sld As Object
+    Set sld = testPres.Slides.Add(1, ppLayoutBlank)
+    Application.ActiveWindow.View.GotoSlide sld.SlideIndex
+
+    Dim shapeA As Object
+    Set shapeA = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 100, 50)
+    shapeA.Name = "CloseReopenField"
+    shapeA.TextFrame.TextRange.Text = "Field A"
+
+    BatchOnboardFlow.ResetMarkingSession
+    BatchOnboardFlow.MarkShapeForBatch shapeA, "Project Number", "text", "static"
+
+    Dim saveWarning As String
+    saveWarning = BatchOnboardFlow.SaveMarkingSessionToProperty(testPres)
+    result = result & Assert(saveWarning = "", "no warning forcing the save before closing, got '" & saveWarning & "'")
+
+    Dim writtenSerialized As String
+    writtenSerialized = BatchOnboardFlow.SerializeCurrentMarkingSession()
+
+    BatchOnboardFlow.ResetMarkingSession ' clears in-memory + the persisted property's in-memory mirror is irrelevant now -- only the file on disk matters from here
+    testPres.Close
+    Set testPres = Nothing
+
+    ' Fresh Open of the same path -- ReadOnly:=False, Untitled:=False, so
+    ' this is a genuine reopen of the real file identity, not a detached
+    ' copy (confirmed the hard way during this investigation's own
+    ' PowerShell probing: Untitled:=True silently opens a disconnected
+    ' "Presentation1" instead of the real file).
+    Dim reopened As Object
+    Set reopened = Application.Presentations.Open(testPath, False, False, False)
+
+    Dim readBack As String
+    readBack = BatchOnboardFlow.ReadMarkingSessionProperty(reopened)
+    result = result & Assert(readBack = writtenSerialized, "marking session property survives a real Close+reopen, wrote " & Len(writtenSerialized) & " chars, read back " & Len(readBack) & " chars")
+    result = result & Assert(InStr(readBack, "Project Number") > 0, "the reopened property genuinely contains the marked field, got '" & readBack & "'")
+
+    Dim restoreReport As String
+    restoreReport = BatchOnboardFlow.RestoreMarkingSession(readBack, reopened.Slides(1))
+    result = result & Assert(InStr(restoreReport, "Restored 1 field") > 0, "restoring after a real close/reopen recovers the field, got '" & restoreReport & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldNameForBatch(1) = "Project Number", "restored field name matches after real close/reopen, got '" & BatchOnboardFlow.MarkedFieldNameForBatch(1) & "'")
+
+    BatchOnboardFlow.ResetMarkingSession
+    reopened.Saved = True
+    reopened.Close
+
+    Test_BatchOnboardFlow_MarkingSessionSurvivesRealCloseAndReopen = result
+End Function
+
+' A shape marked as "different slide" and declined should NOT get saved
+' into the persisted property under the abandoned slide's identity --
+' covers the restoreReport-discard branch in MarkFieldForBatch (not
+' independently unit-testable itself, since it's inside the MsgBox-driven
+' Sub) by exercising the same underlying state transition directly:
+' RestoreMarkingSession finding nothing on a mismatched slide must leave a
+' clean, empty session rather than a half-populated one.
+Private Function Test_BatchOnboardFlow_RestoreMarkingSessionFindsNothingOnWrongSlide() As String
+    Dim result As String
+
+    BatchOnboardFlow.ResetMarkingSession
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shapeA As Object
+    Set shapeA = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 100, 50)
+    shapeA.TextFrame.TextRange.Text = "Field A"
+    BatchOnboardFlow.MarkShapeForBatch shapeA, "Project Number", "text", "static"
+
+    Dim serialized As String
+    serialized = BatchOnboardFlow.SerializeCurrentMarkingSession()
+    BatchOnboardFlow.ResetMarkingSession
+
+    Dim otherSld As Object
+    Set otherSld = NewBlankSlide() ' a genuinely different, unrelated slide -- "Project Number" shape doesn't exist here
+
+    Dim restoreReport As String
+    restoreReport = BatchOnboardFlow.RestoreMarkingSession(serialized, otherSld)
+
+    result = result & Assert(InStr(restoreReport, "Restored 0 field") > 0, "restoring against the wrong slide finds nothing, got '" & restoreReport & "'")
+    result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() = 0, "no fields marked after a mismatched restore, got " & BatchOnboardFlow.MarkedFieldCountForBatch())
+
+    BatchOnboardFlow.ResetMarkingSession
+
+    Test_BatchOnboardFlow_RestoreMarkingSessionFindsNothingOnWrongSlide = result
+End Function
+
+' Real finding 2026-07-26, live-tested against Rohan's real deck: a group
+' selected on-screen (Shape Format ribbon tab active, tight selection
+' handles around just one field) does NOT reliably mean Application.
+' Selection.ShapeRange(1) reports that individual member -- it can still
+' report the outer group. FlattenGroupLeaves is the fix's pure half: given
+' the group Application.Selection actually reports, list every real field
+' shape inside it so MarkFieldForBatch can offer a numbered pick instead of
+' guessing which one was clicked.
+Private Function Test_BatchOnboardFlow_FlattenGroupLeavesReturnsAllMembers() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shapeA As Object, shapeB As Object
+    Set shapeA = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 100, 50)
+    shapeA.TextFrame.TextRange.Text = "Leaf A"
+    Set shapeB = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 200, 50, 100, 50)
+    shapeB.TextFrame.TextRange.Text = "Leaf B"
+
+    Dim grp As Object
+    Set grp = sld.Shapes.Range(Array(shapeA.Name, shapeB.Name)).Group()
+
+    Dim leaves() As Object
+    Dim leafCount As Long
+    leafCount = BatchOnboardFlow.FlattenGroupLeaves(grp, leaves)
+
+    result = result & Assert(leafCount = 2, "2 leaf shapes found, got " & leafCount)
+
+    Dim foundA As Boolean, foundB As Boolean
+    Dim i As Long
+    For i = 1 To leafCount
+        If leaves(i) Is shapeA Then foundA = True
+        If leaves(i) Is shapeB Then foundB = True
+    Next i
+    result = result & Assert(foundA, "leaf A found by identity")
+    result = result & Assert(foundB, "leaf B found by identity")
+
+    Test_BatchOnboardFlow_FlattenGroupLeavesReturnsAllMembers = result
+End Function
+
 Private Function Test_BatchOnboardFlow_ReviewGridRoundTrip() As String
     Dim result As String
 
     Dim plan As BatchOnboardPlan
     Set plan.FieldNames = CreateObject("Scripting.Dictionary")
+    Set plan.FieldTypes = CreateObject("Scripting.Dictionary")
+    Set plan.FieldVolatility = CreateObject("Scripting.Dictionary")
     Set plan.FieldTemplateShapes = CreateObject("Scripting.Dictionary")
     Set plan.FieldSuggestIdentical = CreateObject("Scripting.Dictionary")
     Set plan.FieldInclude = CreateObject("Scripting.Dictionary")
@@ -2453,10 +3209,15 @@ Private Function Test_BatchOnboardFlow_ReviewGridRoundTrip() As String
     Set plan.HarvestedText = CreateObject("Scripting.Dictionary")
     plan.FieldCount = 2
     plan.FieldNames(1) = "ph_field1"
+    plan.FieldTypes(1) = "text"
+    plan.FieldVolatility(1) = "variable"
     plan.FieldSuggestIdentical(1) = True
     plan.FieldInclude(1) = False
     plan.HarvestedText("1|0") = "Overall Status"
+    plan.HarvestedText("1|1") = "Overall Status" ' field 1 has its own real sample too -- must not leak into field 2's cell (real bug found live 2026-07-26: samples accumulated across rows because a loop-local reset was missing)
     plan.FieldNames(2) = "ph_field2"
+    plan.FieldTypes(2) = "currency"
+    plan.FieldVolatility(2) = "static"
     plan.FieldSuggestIdentical(2) = False
     plan.FieldInclude(2) = True
     plan.HarvestedText("2|0") = "Q1 2026"
@@ -2475,18 +3236,29 @@ Private Function Test_BatchOnboardFlow_ReviewGridRoundTrip() As String
     result = result & Assert(ws.Cells(2, 4).Value = "N", "row 2 (field 1, suggested decoration) defaults Include to N, got '" & ws.Cells(2, 4).Value & "'")
     result = result & Assert(ws.Cells(3, 4).Value = "Y", "row 3 (field 2, suggested real field) defaults Include to Y, got '" & ws.Cells(3, 4).Value & "'")
     result = result & Assert(InStr(ws.Cells(3, 6).Value, "Q2 2026") > 0, "row 3's sample-other-values column includes the other slide's harvested value, got '" & ws.Cells(3, 6).Value & "'")
+    result = result & Assert(InStr(ws.Cells(3, 6).Value, "Overall Status") = 0, "row 3's sample-other-values column does NOT include field 1's own sample -- each row's samples must not accumulate across fields, got '" & ws.Cells(3, 6).Value & "'")
+    result = result & Assert(ws.Cells(3, 7).Value = "currency", "row 3 (field 2)'s Type column shows the declared type, got '" & ws.Cells(3, 7).Value & "'")
+    result = result & Assert(ws.Cells(3, 8).Value = "static", "row 3 (field 2)'s Static/Variable column shows the declared hint, got '" & ws.Cells(3, 8).Value & "'")
 
     ' Simulate a human editing the sheet: rename field 1, flip its Include
-    ' to Y (overriding the suggestion), exclude field 2.
+    ' to Y (overriding the suggestion), exclude field 2, change field 1's
+    ' type from its default "text" to "date", and flip field 1's volatility
+    ' hint from "variable" to "static".
     ws.Cells(2, 2).Value = "ph_renamed"
     ws.Cells(2, 4).Value = "y" ' lower-case, must still be read as Y
     ws.Cells(3, 4).Value = "n"
+    ws.Cells(2, 7).Value = "date"
+    ws.Cells(2, 8).Value = "static"
 
     BatchOnboardFlow.ReadReviewGrid ws, plan
 
     result = result & Assert(plan.FieldNames(1) = "ph_renamed", "renamed field name read back, got '" & plan.FieldNames(1) & "'")
     result = result & Assert(plan.FieldInclude(1), "field 1's Include flipped to True after edit (lower-case 'y' accepted)")
     result = result & Assert(Not plan.FieldInclude(2), "field 2's Include flipped to False after edit")
+    result = result & Assert(plan.FieldTypes(1) = "date", "field 1's type edit read back, got '" & plan.FieldTypes(1) & "'")
+    result = result & Assert(plan.FieldTypes(2) = "currency", "field 2's type unchanged when the grid cell wasn't touched, got '" & plan.FieldTypes(2) & "'")
+    result = result & Assert(plan.FieldVolatility(1) = "static", "field 1's volatility edit read back, got '" & plan.FieldVolatility(1) & "'")
+    result = result & Assert(plan.FieldVolatility(2) = "static", "field 2's volatility unchanged when the grid cell wasn't touched, got '" & plan.FieldVolatility(2) & "'")
 
     wb.Saved = True
     wb.Close
@@ -2562,4 +3334,134 @@ Private Function Test_BatchOnboardFlow_CommitBatchTagsLinksAndVerifies() As Stri
     xl.Quit
 
     Test_BatchOnboardFlow_CommitBatchTagsLinksAndVerifies = result
+End Function
+
+' Real production incident, 2026-07-26: Rohan ran "Bulk Onboard Type" for
+' real, for the first time at real scale, against his actual 46-slide deck.
+' Every single slide FAILED verification (Linked: 0, FailedVerification: 46)
+' -- see SPIKE_NOTES_BatchOnboardFlow.md's addendum for the full root-cause
+' account. Root cause: InjectPrimitive.bas's FindShapeByRoleTag looped over
+' `sld.Shapes` (PowerPoint's TOP-LEVEL-ONLY shape collection), which never
+' finds a role tag written onto a shape nested inside a group -- and
+' Rohan's real deck's "card" fields live inside groups. Every CommitBatch
+' test before this one (including CommitBatchTagsLinksAndVerifies directly
+' above) used only top-level, ungrouped textboxes on a 1-template-plus-1-
+' other-slide batch -- nowhere near real scale, and structurally incapable
+' of catching this bug regardless of scale, since the bug is about
+' nesting, not slide count.
+'
+' This test reproduces BOTH dimensions of the gap: (1) a template + 10
+' other slides (11 total, matching the "much bigger than any prior test
+' batch, which topped out at 2-3 slides" scale that just failed for real),
+' and (2) each slide's field set is a REALISTIC mix -- one top-level field
+' plus one field nested one level inside a group, mirroring Rohan's actual
+' "card" layout. Before the FindShapeByRoleTag fix, this test fails exactly
+' the way the real run did: LinkedCount=0, FailedVerificationCount=11 (every
+' slide fails, because the grouped field's verification always fails and
+' VerifyBatchLink fails the WHOLE slide the moment any one field fails).
+' After the fix, all 11 link and verify cleanly.
+Private Function Test_BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale() As String
+    Dim result As String
+    Const otherCount As Long = 10
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+
+    Dim tFieldA As Object
+    Set tFieldA = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 250, 200, 50)
+    tFieldA.TextFrame.TextRange.Text = "Project Number: T-000"
+
+    Dim tFieldB As Object, tSibling As Object
+    Set tFieldB = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    tFieldB.TextFrame.TextRange.Text = "Status: Active"
+    Set tSibling = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 300, 50, 200, 50)
+    tSibling.TextFrame.TextRange.Text = "Card Chrome" ' identical on every slide -- decoration, never included
+    templateSld.Shapes.Range(Array(tFieldB.Name, tSibling.Name)).Group
+
+    Dim otherSlides(1 To otherCount) As Object
+    Dim otherFieldB(1 To otherCount) As Object ' kept for post-commit assertions -- the grouped shape on each other slide
+    Dim i As Long
+    For i = 1 To otherCount
+        Dim sld As Object
+        Set sld = NewBlankSlide()
+        Set otherSlides(i) = sld
+
+        Dim oFieldA As Object
+        Set oFieldA = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 250, 200, 50)
+        oFieldA.TextFrame.TextRange.Text = "Project Number: T-0" & i
+
+        Dim oFieldB As Object, oSibling As Object
+        Set oFieldB = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+        oFieldB.TextFrame.TextRange.Text = "Status: Phase " & i
+        Set oSibling = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 300, 50, 200, 50)
+        oSibling.TextFrame.TextRange.Text = "Card Chrome"
+        sld.Shapes.Range(Array(oFieldB.Name, oSibling.Name)).Group
+        Set otherFieldB(i) = oFieldB
+    Next i
+
+    Dim plan As BatchOnboardPlan
+    plan = BatchOnboardFlow.BuildBatchPlan(templateSld, otherSlides)
+    result = result & Assert(plan.FieldCount = 3, "3 candidate fields found (fieldA, grouped fieldB, grouped sibling decoration), got " & plan.FieldCount)
+
+    ' Identify each field's index by its template value -- discovery order
+    ' isn't guaranteed, same idiom BuildBatchPlanFindsCorrespondenceAnd
+    ' HarvestsAcrossSlides already established.
+    Dim fieldAIdx As Long, fieldBIdx As Long, siblingIdx As Long
+    Dim fi As Long
+    For fi = 1 To plan.FieldCount
+        Dim tv As String
+        tv = plan.HarvestedText(CStr(fi) & "|0")
+        If tv = "Project Number: T-000" Then fieldAIdx = fi
+        If tv = "Status: Active" Then fieldBIdx = fi
+        If tv = "Card Chrome" Then siblingIdx = fi
+    Next fi
+
+    result = result & Assert(fieldAIdx > 0, "found the top-level field")
+    result = result & Assert(fieldBIdx > 0, "found the grouped field")
+    result = result & Assert(siblingIdx > 0, "found the grouped decoration sibling")
+    If fieldAIdx = 0 Or fieldBIdx = 0 Or siblingIdx = 0 Then
+        Test_BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale = result
+        Exit Function
+    End If
+
+    plan.FieldInclude(fieldAIdx) = True
+    plan.FieldInclude(fieldBIdx) = True
+    ' siblingIdx left at its suggested default (excluded -- identical everywhere)
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+    ExcelOutput.CreateSheet ws, "test-deck-id-scale"
+
+    Dim confirmedKeys As Object
+    Set confirmedKeys = CreateObject("Scripting.Dictionary")
+    confirmedKeys(0) = "scale-template"
+    For i = 1 To otherCount
+        confirmedKeys(i) = "scale-other-" & i
+    Next i
+
+    Dim commitResult As BatchCommitResult
+    commitResult = BatchOnboardFlow.CommitBatch(plan, templateSld, otherSlides, otherCount, "batch-scale-test-type", ws, confirmedKeys)
+
+    result = result & Assert(commitResult.LinkedCount = otherCount + 1, "all " & (otherCount + 1) & " slides (template + " & otherCount & " others) linked, got " & commitResult.LinkedCount)
+    result = result & Assert(commitResult.FailedVerificationCount = 0, "no verification failures -- got " & commitResult.FailedVerificationCount & " (this is exactly the real production symptom: pre-fix, this would be " & (otherCount + 1) & ", matching 'Linked: 0 / FAILED verification: 46')")
+
+    ' Directly confirm the grouped shapes themselves carry the right role
+    ' tag and final text -- not just that VerifyBatchLink's own internal
+    ' round-trip passed, in case that round-trip and this check shared a
+    ' blind spot.
+    result = result & Assert(tFieldB.Tags("role") = plan.FieldNames(fieldBIdx), "template's grouped field shape tagged with the field's role")
+    For i = 1 To otherCount
+        result = result & Assert(otherFieldB(i).Tags("role") = plan.FieldNames(fieldBIdx), "other" & i & "'s grouped field shape tagged with the same role")
+        result = result & Assert(otherFieldB(i).TextFrame.TextRange.Text = "Status: Phase " & i, "other" & i & "'s grouped field text is unchanged (harvested value re-verified against itself), got '" & otherFieldB(i).TextFrame.TextRange.Text & "'")
+    Next i
+
+    wb.Saved = True
+    wb.Close
+    xl.Quit
+
+    Test_BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale = result
 End Function

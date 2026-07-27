@@ -32,18 +32,30 @@ End Type
 ' role on a slide) and are never silently resolved by picking the first one,
 ' consistent with the source project's stated philosophy of proving links
 ' rather than assuming them.
+'
+' RECURSES into groups (delegates to the private Walk helper below) -- real,
+' confirmed bug found 2026-07-26 against Rohan's real 46-slide deck (see
+' SPIKE_NOTES_BatchOnboardFlow.md's addendum for the full account): `sld.
+' Shapes` is PowerPoint's TOP-LEVEL-ONLY shape collection -- it does NOT
+' include shapes nested inside a GroupShape's GroupItems, unlike Discovery.
+' Walk (Discovery.bas), which explicitly recurses into groups when building
+' its Candidate list. Since Rohan's real deck's "card" layout fields live
+' inside grpSp groups (confirmed structurally: every one of the real deck's
+' 46 slides contains at least one group, and most of a slide's text-bearing
+' shapes are nested inside one, not top-level), a role tag written onto a
+' grouped field via Onboarding.ConfirmFieldMatch (Shape.Tags.Add, which
+' works on any shape regardless of nesting) was being written correctly but
+' could never be found again by this function -- Found=False for every
+' grouped field, on every slide, deterministically. This is what actually
+' turned "Linked: 0 / FAILED verification: 46" into a uniform, whole-batch
+' failure rather than a handful of edge cases: the write always worked, the
+' read-back never could, for exactly the shapes this deck actually uses.
 Private Function FindShapeByRoleTag(sld As Object, identityTag As String) As Object
-    Dim shp As Object
     Dim match As Object
     Dim matchCount As Long
     matchCount = 0
 
-    For Each shp In sld.Shapes
-        If ShapeHasRoleTag(shp, identityTag) Then
-            matchCount = matchCount + 1
-            Set match = shp
-        End If
-    Next shp
+    WalkForRoleTag sld.Shapes, identityTag, match, matchCount
 
     If matchCount = 1 Then
         Set FindShapeByRoleTag = match
@@ -51,6 +63,27 @@ Private Function FindShapeByRoleTag(sld As Object, identityTag As String) As Obj
         Set FindShapeByRoleTag = Nothing
     End If
 End Function
+
+' Recursive helper -- same group-recursion shape Discovery.bas's own Walk
+' establishes (Discovery.Walk shp.GroupItems on msoGroup), kept private and
+' local to this module rather than promoted/shared, matching this project's
+' "small, focused modules" convention (InjectPrimitive.bas's own header
+' notes the same reasoning for not sharing VerifyBatchLink). ByRef match/
+' matchCount accumulate across the whole recursive walk so a same-tag
+' collision between a top-level shape and a nested one (or between two
+' shapes in different groups) is still caught, not silently missed by
+' scoping matchCount per group level.
+Private Sub WalkForRoleTag(shapesColl As Object, identityTag As String, ByRef match As Object, ByRef matchCount As Long)
+    Dim shp As Object
+    For Each shp In shapesColl
+        If shp.Type = msoGroup Then
+            WalkForRoleTag shp.GroupItems, identityTag, match, matchCount
+        ElseIf ShapeHasRoleTag(shp, identityTag) Then
+            matchCount = matchCount + 1
+            Set match = shp
+        End If
+    Next shp
+End Sub
 
 ' Shape.Tags(name) returns "" both when the tag is absent and when it is
 ' present with an empty string value -- a real VBA API quirk with no

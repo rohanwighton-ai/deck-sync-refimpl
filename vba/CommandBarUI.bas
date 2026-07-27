@@ -38,18 +38,33 @@ End Sub
 ' unclean shutdown can leave one behind, same "clean slate" posture
 ' run_vba_tests.ps1's own process-cleanup step already takes), then builds
 ' it fresh. Safe to call directly from the VBE if Auto_Open didn't fire.
+'
+' Only shows the 3 actions Rohan has actually live-tested and confirmed
+' working against his real deck as of 2026-07-26 (Mark Field for Batch,
+' Bulk Onboard Type, Clear Marked Fields) -- his own framing: "I only want
+' to add an operation when I'm fully clear it works and I know what it
+' does." The other 5 (SyncNow/NewPeriod/OnboardNewType/
+' ResolveUnmatchedFields/AdoptExistingSlides) are commented out below, not
+' deleted -- every underlying Sub still exists and is still tested by
+' TestRunner.bas, they're just not on the toolbar yet. Uncomment (or ask
+' for) one once it's actually been tried.
 Public Sub ShowToolbar()
     HideToolbar
 
     Dim bar As Object
     Set bar = Application.CommandBars.Add(Name:=TOOLBAR_NAME, Position:=1, Temporary:=True)  ' msoBarTop = 1
 
-    AddButton bar, "Sync Now", "RibbonUI.SyncNow", 1004  ' faceId: refresh-like icon
-    AddButton bar, "New Period", "RibbonUI.NewPeriod", 297  ' faceId: insert-row-like icon
-    AddButton bar, "Onboard New Slide Type", "RibbonUI.OnboardNewType", 1697  ' faceId: new-item-like icon
-    AddButton bar, "Resolve Unmatched Fields", "RibbonUI.ResolveUnmatchedFields", 594  ' faceId: find-like icon
-    AddButton bar, "Adopt Existing Slides", "AdoptFlow.AdoptExistingSlides", 1651  ' faceId: bulk-link-like icon
-    AddButton bar, "Bulk Onboard Type", "BatchOnboardFlow.BatchOnboardType", 122  ' faceId: table/grid-like icon
+    ' Not yet live-tested against a real deck this pass -- hidden, not
+    ' deleted. See this Sub's own header.
+    ' AddButton bar, "Sync Now", "RibbonUI.SyncNow", 1004, "Pull changes from the paired Data workbook onto every already-linked slide in this deck."
+    ' AddButton bar, "New Period", "RibbonUI.NewPeriod", 297, "Duplicate an existing slide instance into a new period (e.g. next quarter), with a fresh instance key."
+    ' AddButton bar, "Onboard New Slide Type", "RibbonUI.OnboardNewType", 1697, "Register a brand-new slide type from one example slide, one field at a time via prompts."
+    ' AddButton bar, "Resolve Unmatched Fields", "RibbonUI.ResolveUnmatchedFields", 594, "Manually assign a role to one selected shape that Sync Now couldn't confidently match on its own."
+    ' AddButton bar, "Adopt Existing Slides", "AdoptFlow.AdoptExistingSlides", 1651, "Link a batch of already-existing slides to their matching Data-sheet rows without duplicating anything."
+
+    AddButton bar, "Mark Field for Batch", "BatchOnboardFlow.MarkFieldForBatch", 165, "Click a field's shape first, then run this. Names and types the field, ready to include in a batch. Repeat for each field on your template slide."
+    AddButton bar, "Bulk Onboard Type", "BatchOnboardFlow.BatchOnboardType", 122, "After marking your fields, run this to auto-select matching slides, review in Excel, and link the whole batch at once."
+    AddButton bar, "Clear Marked Fields", "BatchOnboardFlow.ClearMarkedFieldsForBatch", 480, "Discard the fields you've marked so far and start over (e.g. after a misclick)."
 
     bar.Visible = True
 End Sub
@@ -60,15 +75,16 @@ Public Sub HideToolbar()
     On Error GoTo 0
 End Sub
 
-' faceId values are best-guess built-in icon indices, not verified against
-' a live toolbar render yet -- an unresolved faceId shows a blank/default
-' icon, not a load failure (same cosmetic-only risk customUI14.xml's
-' imageMso values carried, per that file's own now-superseded comment).
-Private Sub AddButton(bar As Object, caption As String, onAction As String, faceId As Long)
+' faceId values are best-guess built-in icon indices -- an unresolved
+' faceId shows a blank/default icon, not a load failure. tooltipText shows
+' on hover, so a real explanation is available without cluttering the
+' button's own visible caption.
+Private Sub AddButton(bar As Object, caption As String, onAction As String, faceId As Long, tooltipText As String)
     Dim btn As Object
     Set btn = bar.Controls.Add(1)  ' msoControlButton = 1
     btn.Caption = caption
     btn.OnAction = onAction
     btn.FaceId = faceId
     btn.Style = 2  ' msoButtonIconAndCaption
+    btn.TooltipText = tooltipText
 End Sub

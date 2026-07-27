@@ -194,6 +194,25 @@ End Function
 '
 ' `values` is a Scripting.Dictionary (fieldName -> value String), matching
 ' the shape SyncOperations.bas's `dataRows` entries already use.
+'
+' Deliberately does NOT apply real typed Excel formatting (a Date/Double
+' value + NumberFormat) even though BatchOnboardFlow.bas now captures a
+' field type at mark time -- traced 2026-07-26 that this Sheet's own values
+' feed directly back into SyncOperations.PlanRoutineSync -> InjectPrimitive,
+' which WRITES Excel's value onto the live PowerPoint slide on every
+' routine sync. A typed cell's read-back (ReadSheet's CStr(.Value)) is not
+' guaranteed to equal the exact string that was written -- a Date reads
+' back locale-formatted, a Double can drop a trailing zero -- so writing a
+' real typed value here would risk a routine sync silently rewriting a
+' slide's date/number text into a reformatted (though "equal") version the
+' human never asked for. That's a slide-content mutation, not a formatting
+' nicety, and conflicts with this project's founding invariant that nothing
+' gets silently mutated (InjectPrimitive/Verification exist specifically to
+' guard it). Every value here is always written and read back as the exact
+' harvested string, unconditionally -- the field type is still captured and
+' shown to a human (BatchOnboardFlow's Field Review grid), just not acted
+' on here. Revisit only alongside making PlanRoutineSync's own comparison
+' type-aware, not by touching this function in isolation.
 Public Sub UpsertRow(ws As Object, instanceId As String, values As Object)
     Dim rowNum As Long
     rowNum = FindOrAppendInstanceRow(ws, instanceId)

@@ -142,6 +142,18 @@ catch {
 finally {
     if ($pres) { $pres.Saved = $true; $pres.Close() }
     if ($ppt) { $ppt.Quit() }
+    # Same COM-release gotcha as the Excel pass below (see that finally
+    # block's comment) -- Quit() alone is not reliable here either,
+    # confirmed 2026-07-26 (a windowless POWERPNT.EXE survived a clean,
+    # non-erroring run until this was added).
+    if ($pres) { [System.Runtime.Interopservices.Marshal]::ReleaseComObject($pres) | Out-Null }
+    if ($ppt) { [System.Runtime.Interopservices.Marshal]::ReleaseComObject($ppt) | Out-Null }
+    $pres = $null; $ppt = $null
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    [System.GC]::Collect()
+    Start-Sleep -Milliseconds 500
+    Get-Process POWERPNT -ErrorAction SilentlyContinue | Where-Object { -not $_.MainWindowTitle } | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
 # --- Excel pass --------------------------------------------------------
@@ -165,6 +177,28 @@ catch {
 finally {
     if ($wb) { $wb.Saved = $true; $wb.Close() }
     if ($xl) { $xl.Quit() }
+    # $xl.Quit() alone reliably leaves the EXCEL.EXE process running
+    # (confirmed 2026-07-26, unrelated to the AutoSave/BatchOnboardFlow
+    # investigation that day: several sequential no-window EXCEL.EXE
+    # processes were still alive well after a completed, non-erroring test
+    # run and had to be force-killed by hand) -- releasing the RCW and
+    # forcing a GC pass, same idiom used elsewhere in this script's own
+    # PowerPoint-pass cleanup probes, actually lets the process exit.
+    if ($wb) { [System.Runtime.Interopservices.Marshal]::ReleaseComObject($wb) | Out-Null }
+    if ($xl) { [System.Runtime.Interopservices.Marshal]::ReleaseComObject($xl) | Out-Null }
+    $wb = $null; $xl = $null
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    [System.GC]::Collect()  # a single pass reliably left some RCWs alive in testing -- a second pass after WaitForPendingFinalizers cleared the rest
+    Start-Sleep -Milliseconds 500
+    # Belt-and-braces: this script's own opening section already treats a
+    # leftover EXCEL.EXE as something to self-heal from, not tolerate --
+    # if COM release still didn't let this run's own process exit, force
+    # it rather than leaving it for the *next* run to clean up. Restricted
+    # to windowless processes specifically (every zombie observed while
+    # fixing this had a blank MainWindowTitle) so a real, separate,
+    # visible Excel session a human opened during the run is never touched.
+    Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { -not $_.MainWindowTitle } | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
 # --- Report --------------------------------------------------------

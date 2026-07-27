@@ -1,5 +1,74 @@
 # Implementation Plan
 
+## Priority 27 (2026-07-26 pass): BatchOnboardFlow field selection redesigned from Discovery auto-enumeration to human click-based
+
+Live-tested Priority 26's flow against Rohan's real, unredacted `test1.pptx`
+(a 46-slide SAAFE CRC deck): Discovery-based auto-enumeration produced an
+87-row "Field Review" grid, unusable — Rohan's own framing: "very hard for a
+human to interpret ... better human led by selection then you find the
+matching value and position." Riffed three alternatives (click-one-at-a-time,
+multi-select-all-at-once, type-from-memory/content-match) before building;
+went with click-one-at-a-time.
+
+New: `MarkFieldForBatch` (toolbar button, repeatable — click a field's
+shape, run it, repeat) and `ClearMarkedFieldsForBatch` (misclick recovery),
+both wired into `CommandBarUI.bas` (toolbar now 8 buttons). New
+`BuildBatchPlanFromMarkedFields`, matching each marked `Shape` back to its
+`Candidate` by object identity (`Is`) via one `Discovery.DiscoverSlideWithShapes`
+call (no per-shape `Candidate` builder exists in `Discovery.bas`). The
+cross-slide correspondence/harvesting engine itself (`Matching.Match`-based
+propagation, classification, Excel grid) is unchanged — extracted into a
+shared private `BuildBatchPlanFromCandidates` so both the old Discovery-based
+`BuildBatchPlan` (kept, still tested, no longer used by the live ribbon flow)
+and the new marked-fields path delegate to the same tested logic. The
+interactive Sub/testable-core split (`MarkFieldForBatch` vs.
+`MarkShapeForBatch`) mirrors `ResolveFields.bas`'s own convention, needed
+here specifically because `RibbonUI.ShowSyncResult` is an unconditional
+`MsgBox` — calling it from every mark would have made the flow untestable.
+Full account and updated manual verification recipe in
+`SPIKE_NOTES_BatchOnboardFlow.md`.
+
+Two new automated tests added (`BuildBatchPlanFromMarkedFieldsUsesOnlyMarkedShapes`,
+`MarkShapeForBatchAccumulatesAndDedupes`) alongside the existing suite — not
+yet re-run against real Office this pass (PowerPoint had `test1.pptx` open
+interactively with an unresolved state, so the harness correctly declined to
+force it closed; static review of the diff is the verification done so far).
+**Needs a real-Office test run, an add-in rebuild, and a live re-test against
+`test1.pptx` before this is confirmed working, not just compiling.**
+
+**Update, same pass, after real-Office verification (71/71) and rebuild
+(`addin6.ppam`) and live re-testing against `test1.pptx`:** two further
+rounds of live-tested feedback, both built and re-verified (72/72 real-
+Office tests after both):
+1. **Mark-time field type.** Rohan: "declaring if excel should run any
+   column totals etc depending on the field type?" — agreed totals belong
+   in Excel itself (`UpsertRow`'s append-only/never-touch-other-rows
+   contract shouldn't grow a maintained totals row), but a type TAG at mark
+   time was worth adding. `MarkFieldForBatch` now also prompts for a type
+   (Text/Number/Currency/Date, `NormalizeFieldType`), shown/editable as a
+   new column in the Field Review grid. Built, then partially reverted:
+   wiring the type into `ExcelOutput.UpsertRow` as a real typed Excel
+   value+`NumberFormat` was traced to a genuine sync-correctness risk
+   (`SyncOperations.PlanRoutineSync` reads that same Data sheet and writes
+   values back onto the live slide on every routine sync; a typed cell's
+   read-back string isn't guaranteed to equal what was written — locale
+   date formatting, dropped trailing zeros — so it could cause a routine
+   sync to silently rewrite slide text into a reformatted version nobody
+   asked for). `UpsertRow` still always writes/reads the exact harvested
+   string regardless of declared type; the type stays metadata only. Full
+   account in `SPIKE_NOTES_BatchOnboardFlow.md`'s addendum.
+2. **Auto-select the batch by layout.** Rohan: "i still have to select
+   slides?" — marking fields only ever established which shapes are
+   fields, never which other slides are instances, so a second selection
+   was structurally real, but per this project's own child-deck-per-type
+   authoring decision (`DECISIONS.md`), same-layout is a safe, free signal
+   for "same type." New `FindSameLayoutSlides` (pure) + auto-select/confirm
+   wrapper in `PromptBatchOnboardType`: if no explicit multi-slide
+   selection is already active, it switches to Slide Sorter, selects the
+   template plus every same-layout sibling, and confirms via MsgBox before
+   proceeding — declining or making an explicit selection yourself still
+   works exactly as before.
+
 ## Priority 26 (2026-07-26 pass): BatchOnboardFlow.bas — Excel-grid-driven bulk onboarding, closing the real-deck usability gap
 
 Built specifically for the real, richly-designed deck (`test.pptx`, kept
