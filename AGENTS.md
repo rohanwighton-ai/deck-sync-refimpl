@@ -150,6 +150,29 @@ guidance.
   value continues to round-trip byte-identically to what VBA harvested.
   Both halves of this were hit within minutes of each other 2026-07-27.
 
+- **Reading a OneDrive-backed file through `/mnt/c` from WSL can return STALE
+  bytes while Windows/Office sees the current file.** Confirmed 2026-07-27
+  the hard way: right after a cell was written and saved by Excel, a Python
+  read of the same `.xlsx` through `/mnt/c` still reported the *previous*
+  value -- specifically the exact state the file had been in one save earlier.
+  Excel, reading the same path from the Windows side, returned the correct
+  current value. Both readers were internally correct; the bytes visible to
+  each differed. The files carry the `ReparsePoint` attribute (OneDrive Files
+  On-Demand), and the placeholder WSL reads through is not guaranteed to be
+  materialized in step with a Windows-side write.
+  **Why this is dangerous rather than merely annoying**: it fails in both
+  directions. It can invent a discrepancy that does not exist (this cost a
+  real detour hunting a "lost write" that had never been lost), and it can
+  equally hide one that does. An offline verifier is only trustworthy here as
+  a SECOND opinion -- when an offline read disagrees with what an in-Office
+  run reports, believe Office and re-read, rather than believing the file.
+  Cheap disambiguation: read the same cell back through Excel COM
+  (`$wb.Workbooks.Open(path, 0, $true)` read-only) and compare. Note the
+  session that hit this had already, unknowingly, been protected by exactly
+  that cross-check: the offline repair verification agreed with what the
+  real-Office preview and sync independently reported, which is the only
+  reason its conclusions stood up.
+
 - **`powershell.exe -File` on a `\\wsl.localhost\...` path can refuse to run
   and still exit 0.** PowerShell treats the UNC path as remote, so the
   default execution policy blocks the unsigned script -- it prints a

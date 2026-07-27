@@ -1,5 +1,77 @@
 # Implementation Plan
 
+## Priority 29 (2026-07-27 pass): Sync Now actually ran against the real deck -- three times, including a grouped field
+
+Priority 28 left "Sync Now has never been run" as the last thing between this
+and operational. It has now run, on the real 46-slide deck, and the write path
+is proven end to end rather than argued for.
+
+### The runs
+
+1. **No-op sync, no save.** 46 unchanged / 0 corrected / 0 created / 0 flagged,
+   0 resequenced, and `Presentation.Saved` still True afterwards -- PowerPoint's
+   own dirty flag confirming the sync touched nothing. Both files verified md5
+   identical afterwards. This matched the preview's prediction exactly, which is
+   the first evidence that the preview predicts the sync rather than merely
+   looking plausible.
+2. **One top-level field, with save.** Edited `Project Status` for `3_P001` in
+   the workbook (via Excel, the way a human would). Preview: `1 would be
+   corrected`, naming the instance, the field, and its current slide value.
+   Sync: `1 corrected`. Value read back off disk independently of PowerPoint --
+   the write survived `pres.Save`, which matters given this project's history of
+   AutoSave silently losing macro-driven writes.
+3. **One GROUPED field, with save.** `Project Name` on slide 1 is `TextBox 51`
+   at nesting depth 1, genuinely inside a group. Preview found and read it;
+   sync wrote it; the value survived the save; and the shape was still at
+   depth 1 afterwards, with all 46 `Project Name` shapes still `{1: 46}` -- the
+   write did not promote a field out of its group.
+
+Then both cells were restored from the pre-test backup and re-synced, and a
+two-sided verification confirmed deck and workbook back to their exact
+pre-test state (230 fields, 46 keys, group depths, every workbook cell).
+
+### Why run 3 was the one that mattered
+
+Measured on the real deck: **48 of 230 tagged fields (20%) are nested inside
+groups, including every single one of the 46 `Project Name` fields.** Before
+`b2cb016` fixed `InjectPrimitive.FindShapeByRoleTag` to recurse into
+`GroupItems`, a routine sync would have found no shape for `Project Name` on
+all 46 slides and **silently skipped every one** -- `r.Found = False` is
+treated as "no shape carries this tag, skip", so it would not even have
+errored. That fix is now confirmed through the real sync path, not only by
+unit tests.
+
+### Detail worth remembering
+
+`RunRoutineSync`'s `corrected` counter counts **instances (slides), not
+fields**. Restoring two fields on one slide reports `1 corrected`, not 2.
+
+### New tooling
+
+`vba/tools/SyncRealDeck.bas` + `sync_real_deck.ps1` -- headless twin of
+`RibbonUI.SyncNow`, for the same reason `PreviewRealDeck` exists: `SyncNow`
+ends in an unconditional `MsgBox`, which blocks automation indefinitely.
+**Unlike its two sibling diagnostics this one is NOT read-only** -- it is the
+real sync. It defaults to closing without saving (`-SaveWhenDone` to persist),
+opens the workbook read-only so any attempt to write back there fails loudly,
+and reports whether the presentation was left dirty.
+
+### Still open
+
+- The **duplicate-key guard** at commit time -- unchanged, still absent.
+- **`SuggestInstanceKey`** still text-derived for genuinely new slides; matters
+  when a second slide type gets onboarded.
+- `RibbonUI.SyncPreview`/`SyncNow` themselves (the `MsgBox` wrappers) remain
+  the only untested layer; every non-interactive thing underneath them is now
+  proven live.
+- **Persistence of a NEW-SLIDE sync is still untested** -- every live run so
+  far corrected existing slides. `new_record` -> `DuplicateAndTag` has unit
+  tests but has never run against the real deck, deliberately (it is the
+  destructive one).
+- The offline OOXML tooling is still outside the repo, and now has a known
+  failure mode of its own -- see AGENTS.md's OneDrive/`/mnt/c` stale-read
+  entry, found during this pass.
+
 ## Priority 28 (2026-07-27 pass): the real deck's linkage was silently corrupt -- found, repaired, root-caused, fixed
 
 This pass started as a status review ("is this ready to be an operational
