@@ -125,6 +125,48 @@ guidance.
   arbitrarily long time -- it only surfaces once something genuinely drives
   it cross-app, which is exactly what happened here.
 
+- **Reading slide text offline (straight from the `.pptx` OOXML) must join
+  paragraphs with CR, or it silently disagrees with VBA on every
+  multi-paragraph field.** `TextRange.Text` returns a shape's paragraphs
+  CR-separated (`vbCr`) and its soft line breaks as `Chr(11)`; the XML has
+  no separator at all -- each `<a:p>` is just another element, and the
+  obvious `''.join(all <a:t> text)` concatenates "Project Closed" and
+  "Results packaged in..." into one run-on string. Confirmed 2026-07-27:
+  an offline verifier built this way reported **49 false mismatches**
+  between a workbook and the deck it had just been generated from, all of
+  them on multi-paragraph fields, none of them real. Iterate `<a:p>`
+  elements and join their text with `\r`, mapping `<a:br/>` to `\r` too.
+  This matters well beyond verification -- any offline harvest whose output
+  is written into the Data sheet will otherwise differ from what VBA reads
+  back off the slide, and a routine sync would then rewrite every affected
+  slide with a reformatted version nobody asked for.
+
+- **Excel escapes control characters in shared strings as literal `_xHHHH_`
+  text**, so a cell holding a CR reads back from the raw XML as the 7
+  characters `_x000D_`, not as `\r`. Any offline join between a workbook
+  value and a deck value has to decode those first (or the comparison
+  fails on exactly the multi-paragraph fields that matter). Decode for
+  COMPARISON only -- write the untouched original string back, so the
+  value continues to round-trip byte-identically to what VBA harvested.
+  Both halves of this were hit within minutes of each other 2026-07-27.
+
+- **`powershell.exe -File` on a `\\wsl.localhost\...` path can refuse to run
+  and still exit 0.** PowerShell treats the UNC path as remote, so the
+  default execution policy blocks the unsigned script -- it prints a
+  `SecurityError` to stderr and exits **cleanly**. Confirmed 2026-07-27:
+  a `run_vba_tests.ps1` invocation reported success having never started
+  Office. **A green exit code from this script proves nothing; count the
+  `PASS` lines.** The fix needs no execution-policy change: copy the
+  `.ps1` alone to a Windows-native path and pass the repo back in --
+  `cp vba/tests/run_vba_tests.ps1 "$WINTMP/" && powershell.exe -NoProfile
+  -File "$(wslpath -w "$WINTMP/run_vba_tests.ps1")" -RepoRoot "$(wslpath -w .)"`
+  -- since the script already stages every `.bas` into Windows temp itself
+  (see its own header); only loading the script file crossed the boundary.
+  Related trap from the same run: piping the output through `tail -45`
+  truncated away the entire PowerPoint section, leaving a partial result
+  that looked like a complete one. Capture the full log to a file and
+  grep it.
+
 - **A hung headless run (no output, process still alive) is very often a
   VBA *compile* error, not a runtime hang** -- `On Error` cannot catch
   compile-time issues (see the Testing section's modal-dialog note below),

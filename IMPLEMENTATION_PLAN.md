@@ -1,5 +1,124 @@
 # Implementation Plan
 
+## Priority 28 (2026-07-27 pass): the real deck's linkage was silently corrupt -- found, repaired, root-caused, fixed
+
+This pass started as a status review ("is this ready to be an operational
+linked-spreadsheet producer?") and found the answer was no, for a reason
+nothing in this repo had noticed: **the live artifacts were broken.** Every
+verification this project had ever run read the deck only. The damage was in
+the workbook.
+
+### What was actually wrong
+
+Read directly out of the OOXML (no Office, ~2s on the 49MB deck):
+- `SAAFE-Projects-Data.xlsx` held **86 data rows for 46 slides**. Rows 2-44
+  were 43 correct rows keyed `3_P001`/`1_K1001`/`2_S011`...; rows 45-87 were
+  43 junk rows whose instance key was a **full paragraph of About-text**, with
+  only that one column populated.
+- All 46 `INSTANCE_KEY` tags in the deck had been overwritten with those same
+  paragraphs. The correct keys existed nowhere in the deck any more.
+- The paragraph keys were **not unique** -- 46 slides collapsed to 43 distinct
+  keys, so three pairs shared a row.
+- Net effect: every slide pointed at a junk row; all 43 good rows were
+  orphaned. `SyncOperations.PlanRoutineSync` classifies a row with no matching
+  slide as `new_record` -> `SlideDuplication.DuplicateAndTag`, so **clicking
+  "Sync Now" would have duplicated ~43 slides into the 46-slide deck.** That
+  the button was still commented out of `CommandBarUI.bas` is the only reason
+  it hadn't happened.
+
+### Root cause
+
+`SuggestInstanceKey` proposes the **first marked field's harvested text** as
+the instance key, pre-filled into an InputBox the operator OKs through. The
+second onboarding pass (adding the "About text" field to an already-onboarded
+type) marked only that body-text field, so it was field #1 and every suggestion
+was a paragraph. `CommitBatch` then wrote it over each slide's existing correct
+key, and `ExcelOutput.UpsertRow` -- finding no row under the new key -- appended
+rather than updated.
+
+The missing idea: **nothing anywhere read a slide's existing `instance_key`
+before overwriting it.** Re-onboarding an already-linked slide was treated as a
+first onboarding every time.
+
+### The repair (live files, outside this repo)
+
+Both files backed up md5-verified to
+`OneDrive/Claude/backup-20260727-pre-repair/` first. Then:
+- 46 `INSTANCE_KEY` tags rewritten to each slide's `Project number` role text,
+  which was intact on all 46 slides and made the whole repair mechanical.
+- Three project numbers legitimately cover two slides each (2&3, 5&6, 8&9 --
+  same five tagged field values; 8&9 are text-identical throughout, 2&3 and
+  5&6 differ elsewhere on the slide, so they are genuinely two slides for one
+  project). Rohan's call: **preserve them with indexed suffixes** (`3_P002-2`,
+  `2_P004-2`, `1_P006-2`) until a later pass reconciles them, giving 46 unique
+  keys. Necessary anyway: `PlanRoutineSync`'s `knownByKey(key) = i` is
+  last-wins, so two slides on one key means one is silently never synced.
+- Workbook rebuilt as 46 rows keyed to match, **taking every value from the
+  existing cells rather than re-harvesting** -- those were VBA-written, so they
+  round-trip byte-identically to what `InjectPrimitive` reads back; a
+  self-harvested value risks a whitespace mismatch that would make the first
+  sync rewrite all 46 slides.
+- Dropped the orphaned `About Field Text` column (the pre-rename version of
+  `About text`; 42 of 43 values identical, no role tag pointed at it) and the
+  216-char column-A width that had been auto-fitted to the paragraph keys.
+- `DeckReference`/`DeckSyncId` GUID and `DeckSyncType:q = 256|q` preserved.
+
+Verified 20 checks, all passing, including: only 46 of 560 pptx parts differ
+and only in the `INSTANCE_KEY` value; 230 role tags intact; keys match
+end-to-end in deck order; no orphaned rows; no unlinked slides; and all 230
+field values agree between workbook and live deck.
+
+### Code fixes this pass
+
+- `fb71fd0` -- `FieldPreview()`: mark-time prompts previewed at 20 chars
+  instead of dumping a shape's entire `TextRange.Text` (a 250+ char paragraph
+  with CRs rendering as literal boxes) into a modal InputBox. 20 is measured,
+  not guessed: 20 and 30 chars separate the same number of fields on the real
+  deck (42/46), so longer buys nothing.
+- `a7aaa05` -- `ExistingInstanceKey()`: an already-linked slide keeps its own
+  key and is never prompted for. Only genuinely new slides reach the
+  suggest-and-prompt path. Reused silently (pre-filling 46 prompts is the
+  friction this batch flow exists to remove), with the count reported so the
+  difference between "added a field, rows preserved" and "re-keyed the deck"
+  is never invisible.
+
+**89/89 real-Office tests pass** (87 at the start of this pass).
+
+### Corrections to Priority 27's record below
+
+That section was written mid-session and never updated: it reports 72/72 tests
+and an 8-button toolbar. Actual state at the end of that pass was 87/87 and a
+**3-button** toolbar (`CommandBarUI.bas` shows only Mark Field for Batch, Bulk
+Onboard Type, Clear Marked Fields; the other five are commented out pending
+live testing). Left as-written below rather than edited, since this file reads
+as a running log.
+
+### Still open after this pass
+
+- **`SuggestInstanceKey` is still text-derived** for genuinely new slides.
+  Much smaller blast radius now, but not fixed -- the real answer is nominating
+  which marked field is the key field at mark time. Do this before onboarding a
+  second slide type.
+- **No duplicate-key guard.** `CommitBatch` will still happily accept a batch
+  where two slides resolve to the same key; that is what let the 3-way
+  collision through. A refusal at commit time is cheap and was not built.
+- **The reuse wiring is untested.** It lives inside `PromptBatchOnboardType`,
+  which calls `InputBox` and cannot be driven by the harness. The decision
+  function is well covered; that a real re-onboard actually reuses wants one
+  manual run against a copy of the deck.
+- **Sync Now still has no dry-run**, and `PlanRoutineSync` performs
+  `in_place_correction` writes *during planning* -- there is no safe preview of
+  the one genuinely destructive path. This is the last thing between here and
+  operational.
+- **The offline OOXML tooling used for this repair is not in the repo.** It
+  lives in a session scratchpad: a deck reader (`Deck.slide/roles`, group-
+  recursive, CR-correct) and a two-sided verifier. Worth promoting to
+  `tools/` alongside `vba/tools/VerifyRealDeck.bas` -- it is the only check
+  this project has ever had that reads BOTH sides, which is precisely the gap
+  that let this corruption sit unnoticed. Not done, deliberately: it needs a
+  decision about whether Python tooling belongs in the shipped repo given
+  `AGENTS.md`'s "reference implementation, not production" constraint.
+
 ## Priority 27 (2026-07-26 pass): BatchOnboardFlow field selection redesigned from Discovery auto-enumeration to human click-based
 
 Live-tested Priority 26's flow against Rohan's real, unredacted `test1.pptx`
