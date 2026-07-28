@@ -89,6 +89,19 @@ Private Const COL_VOLATILITY As Long = 8
 ' unstable under ordinary editing, which is what corrupted the real deck's
 ' linkage on 2026-07-26.
 Private Const FIELD_PREVIEW_CHARS As Long = 20
+
+' How long the deck's last REAL save may go unchanged before the add-in stops
+' trusting AutoSave and saves for itself.
+'
+' 120 seconds, not 60: "Last Save Time" is stored at minute resolution, so a
+' deck saved 40 seconds ago can legitimately read as ~100 seconds old. Two
+' minutes clears that granularity, and it is still three orders of magnitude
+' below the real failure this guard exists to catch (2026-07-28: AutoSave on,
+' file on disk 2.6 HOURS stale, both marks sitting only in the open document).
+' Erring long is the cheap direction -- an unnecessary wait costs nothing,
+' an unnecessary save costs Office's own Save command (see the note in
+' SaveMarkingSessionToProperty).
+Private Const AUTOSAVE_STALE_SECONDS As Double = 120
 Public Type BatchOnboardPlan
     FieldCount As Long
     FieldNames As Object          ' Dictionary: fieldIndex -> String (proposed, editable)
@@ -128,6 +141,21 @@ Private markedSlideId As Long
 ' 2026-07-28: MarkedFieldCountForBatch still returned 1 after a full
 ' close/reopen, and the saved property read back perfectly at the same moment.
 Private markedDeckId As String
+
+' The last "Last Save Time" value this module saw, and the LOCAL clock reading
+' at the moment it saw it. Together they answer the only question that matters
+' here: "has the file actually been written since the last time we looked, and
+' if not, how long has it been?"
+'
+' Deliberately a comparison of the property against ITSELF over time, never
+' against Now. The absolute value of Last Save Time cannot safely be subtracted
+' from the local clock -- if Office ever hands it back in UTC, a machine in
+' Adelaide (UTC+9:30) would read every freshly-saved deck as 9.5 hours stale and
+' the guard below would silently degrade back into an unconditional save, which
+' is the exact bug it replaces. Equality of two readings plus a local elapsed
+' time is immune to that.
+Private lastObservedSaveStamp As Double
+Private lastObservedSaveAt As Double
 
 ' ---------------------------------------------------------------------
 ' Marking-session persistence -- survives a PowerPoint close/reopen, built
@@ -263,6 +291,85 @@ Public Function ReadMarkingSessionProperty(pres As Object) As String
     If Not prop Is Nothing Then ReadMarkingSessionProperty = CStr(prop.Value)
 End Function
 
+' Reads the deck's own "Last Save Time" -- the timestamp Office stamps when the
+' file is ACTUALLY written -- as a Double, or 0 when it cannot be read.
+'
+' This exists because Presentation.Saved cannot do this job. Saved is a dirty
+' flag, and on an AutoSave-connected cloud document it is confirmed
+' untrustworthy: it read False on 2026-07-26 immediately after a fully
+' successful, durable save, and False again on 2026-07-28 when the file
+' genuinely was 2.6 hours stale. A signal that reads the same in both the
+' healthy and the broken case cannot distinguish them -- which is precisely how
+' the previous "conditional" force-save ended up firing unconditionally on
+' every cloud deck.
+'
+' Returning 0 on failure is the deliberate "assume the worst" value: callers
+' treat an unreadable timestamp as stale, so a deck whose save state cannot be
+' established gets saved rather than trusted.
+Public Function LastSaveTimeOf(pres As Object) As Double
+    Dim raw As Variant
+
+    On Error Resume Next
+    raw = pres.BuiltInDocumentProperties("Last Save Time").Value
+    If Err.Number <> 0 Then
+        On Error GoTo 0
+        LastSaveTimeOf = 0
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    ' A never-saved deck reports this as empty rather than raising.
+    On Error Resume Next
+    LastSaveTimeOf = CDbl(CDate(raw))
+    If Err.Number <> 0 Then LastSaveTimeOf = 0
+    On Error GoTo 0
+End Function
+
+' Should the add-in save the deck itself, or leave it to AutoSave?
+'
+' Pulled out as a pure function on purpose. The bug this replaces -- a guard
+' that was permanently true and so never guarded anything -- was invisible
+' because the decision was three inline terms inside a routine that needs a
+' real cloud-hosted Presentation to exercise. As a pure function it can be
+' tested at every interesting combination without Office, PowerPoint, or a
+' OneDrive deck, which is exactly the gap the 2026-07-28 live session exposed:
+' 93 tests that verified mechanisms and none that verified this outcome.
+'
+' Three reasons to save for ourselves, in order of confidence:
+'   1. AutoSave is off -- the human owns saving and hasn't been asked to.
+'   2. The save timestamp can't be read at all (stamp = 0) -- no evidence
+'      either way, so err toward keeping the work.
+'   3. The file demonstrably hasn't been written in AUTOSAVE_STALE_SECONDS
+'      despite AutoSave claiming to be on -- AutoSave has stalled.
+' In the healthy cloud case none of these hold, this returns False, and Office
+' keeps ownership of saving along with its native Save command.
+Public Function ShouldForceSave(autoSaveOn As Boolean, lastSaveStamp As Double, secondsSinceRealSave As Double) As Boolean
+    If Not autoSaveOn Then
+        ShouldForceSave = True
+    ElseIf lastSaveStamp = 0 Then
+        ShouldForceSave = True
+    ElseIf secondsSinceRealSave > AUTOSAVE_STALE_SECONDS Then
+        ShouldForceSave = True
+    Else
+        ShouldForceSave = False
+    End If
+End Function
+
+' Human-readable form of the same timestamp, for the confirmation message.
+' Reported as the deck's own raw value rather than as "x minutes ago" on
+' purpose: an elapsed-time phrasing would need the local-clock subtraction that
+' LastSaveTimeOf's own note rules out, and the literal timestamp is a stronger
+' trust signal anyway -- the human can compare it against the clock themselves.
+Public Function LastSaveTimeTextOf(pres As Object) As String
+    Dim stamp As Double
+    stamp = LastSaveTimeOf(pres)
+    If stamp = 0 Then
+        LastSaveTimeTextOf = "unknown"
+    Else
+        LastSaveTimeTextOf = Format(CDate(stamp), "yyyy-mm-dd hh:nn")
+    End If
+End Function
+
 ' Troubleshooting utility, added 2026-07-26 -- reads the deck's own
 ' BuiltInDocumentProperties("Last Save Time") plus Saved/FullName via
 ' native VBA (callable through Application.Run from PowerShell), since
@@ -306,15 +413,17 @@ End Sub
 ' rest of this module, so the caller can surface a real problem instead of
 ' silently continuing as if it definitely worked.
 '
-' Forces an explicit, synchronous Presentation.Save rather than relying on
-' AutoSave's own background/debounced save -- confirmed live 2026-07-26
-' that AutoSave is NOT reliable enough for this: a macro-driven Tag/
-' property write correctly marks the presentation dirty (Presentation.
-' Saved flips to False immediately -- proven with a live probe script),
-' but Rohan's real tagging work was still lost across a close/reopen with
-' AutoSave on. pres.Save blocks until the save genuinely completes (or
-' errors), unlike waiting on AutoSave's own timer -- the only way to
-' actually guarantee a macro-driven change survives a close.
+' Saves for itself only when AutoSave is demonstrably not doing the job --
+' judged by the deck's real Last Save Time, not by its dirty flag. See the
+' guard below for why, and LastSaveTimeOf for why Presentation.Saved cannot
+' be used as that signal.
+'
+' Microsoft's own guidance (learn.microsoft.com, "How AutoSave impacts add-ins
+' and macros") treats AutoSave and macro-owned saving as mutually exclusive:
+' the only documented lever it offers an add-in is turning AutoSave OFF via
+' AutoSaveOn = False. There is no sanctioned idiom for forcing a save
+' underneath a live AutoSave, which is why this code watches for AutoSave
+' failing rather than trying to cooperate with it.
 Public Function SaveMarkingSessionToProperty(pres As Object) As String
     Dim serialized As String
     serialized = SerializeCurrentMarkingSession()
@@ -350,29 +459,32 @@ Public Function SaveMarkingSessionToProperty(pres As Object) As String
     autoSaveOn = pres.AutoSaveOn
     On Error GoTo 0
 
-    ' Force the save when AutoSave is off, OR when the document is STILL DIRTY
-    ' after the property write -- i.e. AutoSave is on but demonstrably has not
-    ' saved. Confirmed live 2026-07-28: AutoSaveOn = True, Saved = 0 (dirty),
-    ' and the file on disk 2.6 hours stale while both marks sat in the open
-    ' document. Trusting AutoSave unconditionally fixed the UI and broke
-    ' persistence, which is the worse failure of the two.
+    ' Decide whether AutoSave is actually keeping up, using the deck's real
+    ' save timestamp rather than its dirty flag.
     '
-    ' Conditional, not unconditional: when AutoSave has genuinely saved, this
-    ' does not fire, so Office keeps ownership of saving and its native Save
-    ' command and indicators keep working. Only when AutoSave has visibly not
-    ' done its job does the add-in step in.
+    ' The previous version of this guard tested "Not pres.Saved" and was
+    ' therefore not a guard at all: Saved reads False on an AutoSave-connected
+    ' cloud document whether or not the save succeeded (see LastSaveTimeOf), so
+    ' the condition was permanently true and every cloud deck got the forced
+    ' save the guard was written to avoid -- reintroducing the regression Rohan
+    ' reported on 2026-07-28, "the app's ability to demonstrate a clean save and
+    ' to manually save disappears."
     '
-    ' stillDirty defaults to True so that a Presentation.Saved read which fails
-    ' -- or which is untrustworthy, as it is known to be on cloud documents --
-    ' errs toward saving. Saving unnecessarily costs a moment; not saving costs
-    ' the user's work.
-    Dim stillDirty As Boolean
-    stillDirty = True
-    On Error Resume Next
-    stillDirty = Not pres.Saved
-    On Error GoTo 0
+    ' Last Save Time moves only when the file is genuinely written, so watching
+    ' it change is a real observation of AutoSave doing its job.
+    Dim stamp As Double
+    stamp = LastSaveTimeOf(pres)
+    If stamp <> lastObservedSaveStamp Then
+        ' The file has been written since we last looked -- AutoSave (or the
+        ' human) is alive. Reset the clock we measure staleness against.
+        lastObservedSaveStamp = stamp
+        lastObservedSaveAt = CDbl(Now)
+    End If
 
-    If (Not autoSaveOn) Or stillDirty Then
+    Dim secondsSinceRealSave As Double
+    secondsSinceRealSave = (CDbl(Now) - lastObservedSaveAt) * 86400#
+
+    If ShouldForceSave(autoSaveOn, stamp, secondsSinceRealSave) Then
         On Error Resume Next
         Err.Clear
         pres.Save
@@ -382,22 +494,26 @@ Public Function SaveMarkingSessionToProperty(pres As Object) As String
             Exit Function
         End If
         On Error GoTo 0
+
+        ' Re-observe after our own save, so the next mark measures staleness
+        ' from this write rather than immediately forcing another one.
+        Dim savedStamp As Double
+        savedStamp = LastSaveTimeOf(pres)
+        If savedStamp <> 0 Then lastObservedSaveStamp = savedStamp
+        lastObservedSaveAt = CDbl(Now)
     End If
 
-    ' Permanent closed-loop verification, not a one-off diagnostic. Err.Number
-    ' alone only proves the Save call didn't raise -- it doesn't prove the
-    ' property genuinely holds what was just written (and Presentation.Saved
-    ' can't be used for this either: confirmed live 2026-07-26 via repeated
-    ' PowerShell/COM probes that it reads False on an AutoSave-connected
-    ' cloud document even immediately after a fully successful, durable
-    ' save -- it is not a trustworthy signal here, see SPIKE_NOTES). Re-read
-    ' the property back through the same CustomDocumentProperties path a
-    ' fresh PowerPoint session would use, and compare against what was
-    ' written. This is exactly the check a temporary, since-deleted
-    ' diagnostic build already confirmed passes live -- made permanent here
-    ' instead of thrown away, so it's a standing regression guard and a
-    ' visible trust signal in the confirmation message, not a one-off
-    ' anecdote.
+    ' Verifies the WRITE, not the save. Worth being precise about, because an
+    ' earlier version of this comment claimed to be a "closed-loop" check on
+    ' durability and it is not: ReadMarkingSessionProperty reads the same
+    ' in-memory Presentation object that was just written, so it succeeds
+    ' whether or not a single byte reached disk. It cannot detect an unsaved
+    ' file, and it never could.
+    '
+    ' It still earns its place -- a failed or truncated property write is a
+    ' real failure mode and this catches it -- but durability is established by
+    ' the Last Save Time guard above, and the honest trust signal for the human
+    ' is the deck's own save timestamp, which the caller reports.
     Dim readBack As String
     readBack = ReadMarkingSessionProperty(pres)
     If readBack <> serialized Then
@@ -417,6 +533,58 @@ Private Function DeckIdentity(pres As Object) As String
     On Error Resume Next
     DeckIdentity = pres.FullName
     On Error GoTo 0
+End Function
+
+' Are the Shape references in the in-memory session still attached to a live
+' document?
+'
+' This is the check that catches closing and reopening THE SAME deck, which
+' the deck-identity comparison structurally cannot: DeckIdentity is the file's
+' FullName, so a reopened deck reports the identical value and the session
+' looks current when every Shape in it is dead. That is the exact scenario
+' reported on 2026-07-28 ("marks never restored on reopen"), and the deck-id
+' guard added that day only ever covered switching to a DIFFERENT deck.
+'
+' Counting cannot substitute for this. markedShapes is an ordinary VBA
+' Collection -- it survives the document perfectly well and .Count keeps
+' answering 1 long after the shape it holds has ceased to exist. Touching a
+' property is the only operation that actually asks Office whether the
+' reference is real, and a dead one raises there.
+' Public only so TestRunner can assert the dead-reference probe against real
+' Office rather than trusting that a stale Shape raises the way it's assumed to.
+Public Function MarkedShapesStillLive() As Boolean
+    MarkedShapesStillLive = False
+    If markedShapes Is Nothing Then Exit Function
+    If markedShapes.count = 0 Then Exit Function
+
+    Dim probe As String
+    On Error Resume Next
+    Err.Clear
+    probe = markedShapes(1).Name
+    MarkedShapesStillLive = (Err.Number = 0)
+    On Error GoTo 0
+End Function
+
+' Should a marking session be read back from the deck rather than reusing
+' what's in memory?
+'
+' Pure, and separated from the probing above, for the same reason
+' ShouldForceSave is: the previous version of this decision was four inline
+' terms inside a MsgBox-driven Sub that no test could reach, so a condition
+' that never fired in the most common real scenario looked fine indefinitely.
+' Every branch below is a case that has actually occurred in live use.
+Public Function NeedsSessionRestore(hasSession As Boolean, markedCount As Long, sessionDeckId As String, currentDeckId As String, shapesStillLive As Boolean) As Boolean
+    If Not hasSession Then
+        NeedsSessionRestore = True          ' nothing marked yet this add-in load
+    ElseIf markedCount = 0 Then
+        NeedsSessionRestore = True          ' session exists but is empty
+    ElseIf sessionDeckId <> currentDeckId Then
+        NeedsSessionRestore = True          ' the session belongs to a different deck
+    ElseIf Not shapesStillLive Then
+        NeedsSessionRestore = True          ' same deck, but closed and reopened -- refs are dead
+    Else
+        NeedsSessionRestore = False         ' a genuinely live session for this deck
+    End If
 End Function
 
 ' Returns the slide_type this slide ALREADY belongs to, if that differs from
@@ -766,17 +934,16 @@ Public Sub MarkFieldForBatch()
     ' the collection has never been created. Closing a presentation does not
     ' unload the add-in, so a stale session (holding dead Shape references from
     ' the closed document) survives and used to suppress the restore entirely.
-    ' Written as a nested chain on purpose: VBA does not short-circuit, so
-    ' `markedShapes Is Nothing Or markedShapes.Count = 0` would raise on Nothing.
+    ' See NeedsSessionRestore for each case, and MarkedShapesStillLive for why
+    ' liveness has to be probed rather than inferred from the count or the
+    ' deck's identity.
     Dim needRestore As Boolean
-    needRestore = False
-    If markedShapes Is Nothing Then
-        needRestore = True
-    ElseIf markedShapes.count = 0 Then
-        needRestore = True
-    ElseIf markedDeckId <> DeckIdentity(pres) Then
-        needRestore = True
-    End If
+    needRestore = NeedsSessionRestore( _
+        Not (markedShapes Is Nothing), _
+        MarkedFieldCountForBatch(), _
+        markedDeckId, _
+        DeckIdentity(pres), _
+        MarkedShapesStillLive())
 
     If needRestore Then
         Dim savedSession As String
@@ -928,12 +1095,10 @@ Public Sub MarkFieldForBatch()
         status = MarkShapeForBatch(shp, Trim(typedName), fieldType, fieldVolatility)
     End If
 
-    ' Save after every successful mark so the session is always as durable
-    ' as the deck itself -- see SaveMarkingSessionToProperty's own header
-    ' for why this is a forced, synchronous save, not AutoSave. Confirmed
-    ' live 2026-07-26 (a temporary read-back-in-the-same-macro-run
-    ' diagnostic): the write and forced save genuinely land -- an earlier-
-    ' looking failure was a stale external check, not a real bug.
+    ' Persist the session after every successful mark, so it is always as
+    ' durable as the deck itself. Whether that costs an explicit save or is
+    ' left to AutoSave is SaveMarkingSessionToProperty's decision, not this
+    ' caller's -- see its header.
     Dim saveWarning As String
     saveWarning = ""
     If InStr(status, "Marked field") > 0 Then
@@ -942,18 +1107,17 @@ Public Sub MarkFieldForBatch()
         ' State success POSITIVELY, not just failure. On an AutoSave cloud
         ' document Office's own indicators cannot be trusted (Presentation.Saved
         ' desyncs, the manual Save command is hidden), so the human has no native
-        ' way to confirm their marks are stored. The closed-loop check inside
-        ' SaveMarkingSessionToProperty already proves it -- wrote the property,
-        ' read it back, compared -- so say so, rather than leaving silence to be
-        ' interpreted as either success or nothing having happened.
+        ' way to confirm their marks are stored.
+        '
+        ' Report the deck's own last-save timestamp rather than asserting
+        ' "AutoSave will persist them". That assertion was a promise this code
+        ' could not keep -- it was printed on exactly the deck later found 2.6
+        ' hours stale. A timestamp is checkable: if it is minutes old, AutoSave
+        ' is working; if it is hours old, the human can see that for themselves
+        ' and hit Ctrl+S.
         If saveWarning = "" Then
-            Dim autoOn As Boolean
-            autoOn = False
-            On Error Resume Next
-            autoOn = pres.AutoSaveOn
-            On Error GoTo 0
-            saveWarning = "Marks stored in the deck and read back to confirm." & _
-                IIf(autoOn, " AutoSave will persist them -- no manual save needed.", " Deck saved.")
+            saveWarning = "Marks stored in the deck (write confirmed by read-back)." & vbCrLf & _
+                "Deck last saved to disk: " & BatchOnboardFlow.LastSaveTimeTextOf(pres) & "."
         End If
     End If
 
@@ -1874,14 +2038,17 @@ Public Function PromptBatchOnboardType() As String
 
     ResetMarkingSession
 
-    ' Force explicit, synchronous saves of both the deck (real role tags
-    ' just written) and the Data workbook (real harvested values just
-    ' written) -- same reasoning as SaveMarkingSessionToProperty's own
-    ' header: AutoSave's background/debounced save is not reliable enough
-    ' for macro-driven edits, confirmed live 2026-07-26 after Rohan's real
-    ' tagging work was lost across a close despite the dirty flag being set
-    ' correctly. This is the actual commit -- real linked data -- so it
-    ' matters even more here than for the marking-session bookkeeping.
+    ' Force explicit, synchronous saves of both the deck (real role tags just
+    ' written) and the Data workbook (real harvested values just written).
+    '
+    ' UNCONDITIONAL here, unlike SaveMarkingSessionToProperty's staleness-gated
+    ' save, and that difference is deliberate rather than an oversight. The
+    ' marking path runs after every single click, so a forced save there is
+    ' both frequent and cheap to defer -- worth gating, to leave Office's own
+    ' Save command working. This path runs once, on an explicit human "commit",
+    ' and writes the real linked data. Waiting up to AUTOSAVE_STALE_SECONDS to
+    ' find out whether AutoSave felt like handling it is the wrong trade for
+    ' the one write in this add-in that actually matters.
     Dim pptSaveWarning As String, xlSaveWarning As String
     pptSaveWarning = "": xlSaveWarning = ""
     On Error Resume Next

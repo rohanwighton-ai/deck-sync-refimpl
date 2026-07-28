@@ -415,6 +415,14 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     r = "": On Error Resume Next: Err.Clear
     r = Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave()
     AppendResult report, "BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave", r
+    r = Test_BatchOnboardFlow_ShouldForceSaveLeavesHealthyAutoSaveAlone()
+    AppendResult report, "BatchOnboardFlow_ShouldForceSaveLeavesHealthyAutoSaveAlone", r
+    r = Test_BatchOnboardFlow_LastSaveTimeOfReadsARealTimestamp()
+    AppendResult report, "BatchOnboardFlow_LastSaveTimeOfReadsARealTimestamp", r
+    r = Test_BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen()
+    AppendResult report, "BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen", r
+    r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
+    AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -3423,6 +3431,179 @@ Private Function Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSav
     BatchOnboardFlow.ResetMarkingSession
 
     Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave = result
+End Function
+
+' The regression guard for the bug that made the previous "conditional" save
+' unconditional. The old guard was `(Not autoSaveOn) Or (Not pres.Saved)`, and
+' Presentation.Saved reads False on an AutoSave cloud document even straight
+' after a successful save -- so the second term was permanently true and every
+' cloud deck got force-saved anyway, hiding Office's own Save command.
+'
+' The single most important assertion in this file is the healthy-cloud case:
+' AutoSave on, timestamp readable, file written recently -> DO NOT save. If
+' that ever returns True again, the guard has silently stopped guarding, which
+' is precisely the failure that shipped once and was invisible to 93 tests.
+Private Function Test_BatchOnboardFlow_ShouldForceSaveLeavesHealthyAutoSaveAlone() As String
+    Dim result As String
+
+    ' A plausible non-zero timestamp; only its non-zero-ness is meaningful.
+    Dim stamp As Double
+    stamp = CDbl(Now)
+
+    ' THE case the whole change exists for.
+    result = result & Assert(BatchOnboardFlow.ShouldForceSave(True, stamp, 5) = False, _
+        "AutoSave on and the file saved 5s ago -> leave saving to Office")
+    result = result & Assert(BatchOnboardFlow.ShouldForceSave(True, stamp, 119) = False, _
+        "AutoSave on and the file saved 119s ago -> still inside tolerance, leave it")
+
+    ' AutoSave stalled -- the 2026-07-28 failure, where the deck on disk was
+    ' 2.6 hours stale while marks sat only in the open document.
+    result = result & Assert(BatchOnboardFlow.ShouldForceSave(True, stamp, 121) = True, _
+        "AutoSave on but no real save for 121s -> AutoSave has stalled, save it ourselves")
+    result = result & Assert(BatchOnboardFlow.ShouldForceSave(True, stamp, 9360) = True, _
+        "AutoSave on but the file is 2.6 hours stale -> save it ourselves")
+
+    ' AutoSave off: the human owns saving and hasn't been asked to.
+    result = result & Assert(BatchOnboardFlow.ShouldForceSave(False, stamp, 0) = True, _
+        "AutoSave off -> always save, even if the file was just written")
+
+    ' Timestamp unreadable: no evidence either way, so keep the work.
+    result = result & Assert(BatchOnboardFlow.ShouldForceSave(True, 0, 0) = True, _
+        "unreadable save timestamp -> err toward saving rather than trusting AutoSave")
+
+    Test_BatchOnboardFlow_ShouldForceSaveLeavesHealthyAutoSaveAlone = result
+End Function
+
+' ShouldForceSave is only as good as the signal fed into it, so prove the
+' signal is real: a presentation that has genuinely been saved must report a
+' non-zero Last Save Time. If BuiltInDocumentProperties("Last Save Time") ever
+' stops being readable this way, LastSaveTimeOf returns 0, ShouldForceSave
+' returns True for everything, and the add-in quietly degrades back to the
+' unconditional save -- failing safe for the user's data, but with the UI cost
+' this whole change was made to remove. That degradation should be a visible
+' test failure, not a silent one.
+Private Function Test_BatchOnboardFlow_LastSaveTimeOfReadsARealTimestamp() As String
+    Dim result As String
+
+    Dim testPath As String
+    testPath = Environ("TEMP") & "\deck_sync_test_lastsave_" & Format(Now, "hhmmss") & ".pptx"
+
+    Dim testPres As Object
+    Set testPres = Application.Presentations.Add
+    testPres.SaveAs testPath
+
+    Dim stamp As Double
+    stamp = BatchOnboardFlow.LastSaveTimeOf(testPres)
+    result = result & Assert(stamp <> 0, "a genuinely saved presentation reports a readable Last Save Time, got " & stamp)
+
+    Dim stampText As String
+    stampText = BatchOnboardFlow.LastSaveTimeTextOf(testPres)
+    result = result & Assert(stampText <> "unknown", "the human-readable timestamp is a real value, got '" & stampText & "'")
+
+    testPres.Saved = True
+    testPres.Close
+
+    Test_BatchOnboardFlow_LastSaveTimeOfReadsARealTimestamp = result
+End Function
+
+' The case the 2026-07-28 restore fix missed.
+'
+' That fix added a deck-identity term to the restore guard, on the reasoning
+' that a stale in-memory session was suppressing the restore. True, but
+' DeckIdentity is Presentation.FullName -- so closing deck X and reopening
+' deck X reports the SAME identity, the guard stays False, and the marks still
+' do not come back. The fix only ever covered switching to a different deck;
+' the reported scenario (close and reopen the same deck) remained broken and
+' no test said so.
+'
+' Row 4 below is that scenario. It fails against the old guard.
+Private Function Test_BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen() As String
+    Dim result As String
+
+    Const SAME As String = "C:\Decks\project-status.pptx"
+    Const OTHER As String = "C:\Decks\a-different-deck.pptx"
+
+    ' 1. No session at all -- first mark since the add-in loaded.
+    result = result & Assert(BatchOnboardFlow.NeedsSessionRestore(False, 0, "", SAME, False) = True, _
+        "no session in memory -> read any saved session back")
+
+    ' 2. Session object exists but holds nothing.
+    result = result & Assert(BatchOnboardFlow.NeedsSessionRestore(True, 0, SAME, SAME, False) = True, _
+        "empty session -> read any saved session back")
+
+    ' 3. A live session belonging to a different deck.
+    result = result & Assert(BatchOnboardFlow.NeedsSessionRestore(True, 2, OTHER, SAME, True) = True, _
+        "session belongs to another deck -> restore this deck's own")
+
+    ' 4. THE REGRESSION: same deck, non-empty session, dead shape references.
+    result = result & Assert(BatchOnboardFlow.NeedsSessionRestore(True, 2, SAME, SAME, False) = True, _
+        "same deck closed and reopened (refs dead) -> restore, not 'nothing marked'")
+
+    ' 5. The one case that must NOT restore -- a genuinely live session, where
+    '    restoring would throw away marks the user just made.
+    result = result & Assert(BatchOnboardFlow.NeedsSessionRestore(True, 2, SAME, SAME, True) = False, _
+        "a live session for this deck -> keep it, do not overwrite from the file")
+
+    Test_BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen = result
+End Function
+
+' NeedsSessionRestore is only correct if `shapesStillLive` tells the truth, and
+' that rests on an empirical claim about Office: that reading .Name on a Shape
+' whose presentation has been closed raises rather than quietly returning a
+' value. Asserted from memory that is a guess, so this probes it against the
+' real thing -- mark a shape, close the deck WITHOUT resetting the session
+' (exactly what happens in use, since nothing resets on close), reopen, and
+' check what the add-in now believes.
+Private Function Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead() As String
+    Dim result As String
+
+    Dim testPath As String
+    testPath = Environ("TEMP") & "\deck_sync_test_reopen_guard_" & Format(Now, "hhmmss") & ".pptx"
+
+    Dim testPres As Object
+    Set testPres = Application.Presentations.Add
+    testPres.SaveAs testPath
+
+    Dim sld As Object
+    Set sld = testPres.Slides.Add(1, ppLayoutBlank)
+    Application.ActiveWindow.View.GotoSlide sld.SlideIndex
+
+    Dim shapeA As Object
+    Set shapeA = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 100, 50)
+    shapeA.Name = "ReopenGuardField"
+    shapeA.TextFrame.TextRange.Text = "Field A"
+
+    BatchOnboardFlow.ResetMarkingSession
+    BatchOnboardFlow.MarkShapeForBatch shapeA, "Project Number", "text", "static"
+    BatchOnboardFlow.SaveMarkingSessionToProperty testPres
+
+    result = result & Assert(BatchOnboardFlow.MarkedShapesStillLive() = True, _
+        "shape references are live while the deck is open")
+
+    ' Deliberately NO ResetMarkingSession here -- the whole point is that real
+    ' use leaves the session in memory across a close.
+    testPres.Saved = True
+    testPres.Close
+    Set testPres = Nothing
+
+    result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() > 0, _
+        "the session survives the close in memory, got " & BatchOnboardFlow.MarkedFieldCountForBatch() & " -- if this is 0, the premise of the whole guard has changed")
+    result = result & Assert(BatchOnboardFlow.MarkedShapesStillLive() = False, _
+        "after the deck closes, the held Shape references are detectably dead")
+
+    Dim reopened As Object
+    Set reopened = Application.Presentations.Open(testPath, False, False, False)
+
+    result = result & Assert(BatchOnboardFlow.MarkedShapesStillLive() = False, _
+        "reopening the same file does not resurrect the old Shape references")
+    result = result & Assert(BatchOnboardFlow.NeedsSessionRestore(True, BatchOnboardFlow.MarkedFieldCountForBatch(), reopened.FullName, reopened.FullName, BatchOnboardFlow.MarkedShapesStillLive()) = True, _
+        "so the add-in decides to restore from the file after a same-deck reopen")
+
+    BatchOnboardFlow.ResetMarkingSession
+    reopened.Saved = True
+    reopened.Close
+
+    Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead = result
 End Function
 
 ' The test above proves the write+Save+read-back sequence within ONE
