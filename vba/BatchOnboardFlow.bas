@@ -311,15 +311,46 @@ Public Function SaveMarkingSessionToProperty(pres As Object) As String
     If serialized = "" Then Exit Function
     WriteMarkingSessionProperty pres, serialized
 
+    ' DO NOT fight AutoSave. On a cloud-hosted document with AutoSave on,
+    ' PowerPoint owns saving, and calling pres.Save underneath it desyncs
+    ' Office's own save state: the manual Save command disappears, Ctrl+S
+    ' becomes a no-op, and the "Saved" indicator stops being trustworthy.
+    ' Confirmed live 2026-07-28 against a real OneDrive-hosted deck --
+    ' Rohan's report, and the reason this guard exists: "the app's ability to
+    ' demonstrate a clean save and to manually save disappears."
+    '
+    ' The forced save was originally added for data loss that this project's
+    ' own investigation (SPIKE_NOTES_BatchOnboardFlow.md, Finding 2) then
+    ' repeatedly FAILED to reproduce -- a 59MB cloud deck, property written,
+    ' .Save called, PowerPoint force-killed with zero delay, marks still came
+    ' back every time. A fix for a phantom problem was causing a real one.
+    '
+    ' Property writes are persisted by AutoSave like any other change; that a
+    ' marking session survives a genuine close/reopen on a cloud document was
+    ' directly verified the same day (37 chars, separators intact). So when
+    ' AutoSave is on, write the property and let Office save it. Force the
+    ' save only when AutoSave is genuinely off and the human owns saving.
+    '
+    ' Presentation.AutoSaveOn is read defensively: if the property does not
+    ' exist (older PowerPoint), autoSaveOn stays False and the previous
+    ' force-save behaviour applies unchanged.
+    Dim autoSaveOn As Boolean
+    autoSaveOn = False
     On Error Resume Next
-    Err.Clear
-    pres.Save
-    If Err.Number <> 0 Then
-        SaveMarkingSessionToProperty = "WARNING: could not save the deck (" & Err.Description & ") -- your marks may not survive closing PowerPoint. Save manually."
-        On Error GoTo 0
-        Exit Function
-    End If
+    autoSaveOn = pres.AutoSaveOn
     On Error GoTo 0
+
+    If Not autoSaveOn Then
+        On Error Resume Next
+        Err.Clear
+        pres.Save
+        If Err.Number <> 0 Then
+            SaveMarkingSessionToProperty = "WARNING: could not save the deck (" & Err.Description & ") -- your marks may not survive closing PowerPoint. Save manually."
+            On Error GoTo 0
+            Exit Function
+        End If
+        On Error GoTo 0
+    End If
 
     ' Permanent closed-loop verification, not a one-off diagnostic. Err.Number
     ' alone only proves the Save call didn't raise -- it doesn't prove the
@@ -826,7 +857,26 @@ Public Sub MarkFieldForBatch()
     ' looking failure was a stale external check, not a real bug.
     Dim saveWarning As String
     saveWarning = ""
-    If InStr(status, "Marked field") > 0 Then saveWarning = SaveMarkingSessionToProperty(pres)
+    If InStr(status, "Marked field") > 0 Then
+        saveWarning = SaveMarkingSessionToProperty(pres)
+
+        ' State success POSITIVELY, not just failure. On an AutoSave cloud
+        ' document Office's own indicators cannot be trusted (Presentation.Saved
+        ' desyncs, the manual Save command is hidden), so the human has no native
+        ' way to confirm their marks are stored. The closed-loop check inside
+        ' SaveMarkingSessionToProperty already proves it -- wrote the property,
+        ' read it back, compared -- so say so, rather than leaving silence to be
+        ' interpreted as either success or nothing having happened.
+        If saveWarning = "" Then
+            Dim autoOn As Boolean
+            autoOn = False
+            On Error Resume Next
+            autoOn = pres.AutoSaveOn
+            On Error GoTo 0
+            saveWarning = "Marks stored in the deck and read back to confirm." & _
+                IIf(autoOn, " AutoSave will persist them -- no manual save needed.", " Deck saved.")
+        End If
+    End If
 
     If restoreReport <> "" Then status = restoreReport & vbCrLf & vbCrLf & status
     If saveWarning <> "" Then status = status & vbCrLf & vbCrLf & saveWarning

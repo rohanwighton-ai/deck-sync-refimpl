@@ -41,8 +41,15 @@ attempt repair mid-run, it invalidates everything after it.
 6. Reopen PowerPoint → **File > Options > Add-ins > Manage: PowerPoint Add-ins > Go >
    Add New** → select `addin22.ppam`
 
-**Expect:** a **Deck Sync** toolbar appears under the **Add-ins** ribbon tab, with
-**3 buttons**: Mark Field for Batch, Bulk Onboard Type, Clear Marked Fields.
+**Expect:** under the **Add-Ins** ribbon tab, a group labelled **Custom Toolbars**
+containing **3 buttons**: Mark Field for Batch, Bulk Onboard Type, Clear Marked Fields.
+
+**The toolbar is NOT labelled "Deck Sync" in the UI** — confirmed 2026-07-28. Office
+gives legacy `CommandBars` its own generic grouping and never displays the toolbar's
+own name, so `TOOLBAR_NAME` is only ever visible to code. Judge this test on the three
+buttons being present and wired, not on finding the words "Deck Sync" anywhere. A
+genuinely branded ribbon tab is impossible for a `.ppam` (proven 2026-07-26) and would
+need a COM/VSTO add-in.
 
 **If the toolbar doesn't appear:** `Auto_Open` didn't fire. Run `CommandBarUI.ShowToolbar`
 from the VBE (Alt+F11) — if that works, the add-in loaded but the lifecycle hook
