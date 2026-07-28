@@ -419,6 +419,25 @@ Private Function DeckIdentity(pres As Object) As String
     On Error GoTo 0
 End Function
 
+' Returns the slide_type this slide ALREADY belongs to, if that differs from
+' `newType` -- otherwise "". Onboarding slides that already carry a different
+' registered type silently re-tags them, which strands the old type's entire
+' Data sheet: its rows keep existing but no slide answers to them any more, and
+' PlanRoutineSync classifies a row with no slide as new_record. One Sync Now
+' later, that is a duplicated template slide for every orphaned row.
+'
+' Found live 2026-07-28: a practice bulk-onboard re-typed all 46 slides from
+' "q" to "sandbox-test", and the very next preview reported "46 new slide(s)
+' would be created" against the untouched q worksheet. Nothing had warned at
+' onboard time. Same class as the missing duplicate-key guard.
+Public Function ConflictingSlideType(sld As Object, newType As String) As String
+    Dim inst As SlideInstance
+    inst = Resolve.ResolveSlideInstance(sld)
+    If inst.HasTypeTag Then
+        If inst.TypeTag <> newType Then ConflictingSlideType = inst.TypeTag
+    End If
+End Function
+
 Public Function SerializeCurrentMarkingSession() As String
     If markedShapes Is Nothing Then Exit Function
     If markedShapes.count = 0 Then Exit Function
@@ -1823,6 +1842,32 @@ Public Function PromptBatchOnboardType() As String
     End If
 
     DeckRegistry.RegisterType pres, slideType, templateSld, ws.Name
+
+    ' Refuse to silently strand another type's dataset -- see
+    ' ConflictingSlideType's header for what this prevents.
+    Dim cflType As String, cflCount As Long, cflIdx As Long, cflOne As String
+    cflType = "": cflCount = 0
+    cflOne = ConflictingSlideType(templateSld, slideType)
+    If cflOne <> "" Then
+        cflCount = cflCount + 1
+        cflType = cflOne
+    End If
+    For cflIdx = 1 To otherSlideCount
+        cflOne = ConflictingSlideType(otherSlides(cflIdx), slideType)
+        If cflOne <> "" Then
+            cflCount = cflCount + 1
+            If cflType = "" Then cflType = cflOne
+        End If
+    Next cflIdx
+
+    If cflCount > 0 Then
+        If MsgBox(cflCount & " of these slides already belong to slide type '" & cflType & "'." & vbCrLf & vbCrLf & _
+            "Onboarding them as '" & slideType & "' re-tags them. '" & cflType & "' keeps its rows but loses its slides, and a later Sync Now would DUPLICATE the template slide once for EVERY orphaned row." & vbCrLf & vbCrLf & _
+            "Continue anyway?", vbYesNo + vbExclamation, "Bulk Onboard Type -- Slides Already Have a Type") <> vbYes Then
+            PromptBatchOnboardType = "Cancelled -- these slides already belong to type '" & cflType & "'. Nothing changed."
+            Exit Function
+        End If
+    End If
 
     Dim commitResult As BatchCommitResult
     commitResult = CommitBatch(plan, templateSld, otherSlides, otherSlideCount, slideType, ws, confirmedKeys)

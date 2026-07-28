@@ -387,6 +387,9 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
 
     r = Test_DeckRegistry_WorkbookPathSurvivesAMovedDeck()
     AppendResult report, "DeckRegistry_WorkbookPathSurvivesAMovedDeck", r
+
+    r = Test_BatchOnboardFlow_ConflictingSlideTypeIsDetected()
+    AppendResult report, "BatchOnboardFlow_ConflictingSlideTypeIsDetected", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -3160,6 +3163,32 @@ Private Function Test_BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived()
         "an existing key is returned verbatim whatever its shape, got '" & BatchOnboardFlow.ExistingInstanceKey(paragraphSld) & "'")
 
     Test_BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived = result
+End Function
+
+' Guard against silently stranding another type's dataset. Found live
+' 2026-07-28: re-onboarding 46 already-typed slides under a new name left the
+' old type's 46 rows orphaned, and the next preview reported "46 new slide(s)
+' would be created" -- one Sync Now from mass duplication, with no warning at
+' onboard time.
+Private Function Test_BatchOnboardFlow_ConflictingSlideTypeIsDetected() As String
+    Dim result As String
+
+    Dim fresh As Object
+    Set fresh = NewBlankSlide()
+    result = result & Assert(BatchOnboardFlow.ConflictingSlideType(fresh, "quarterly") = "", _
+        "an untyped slide conflicts with nothing, got '" & BatchOnboardFlow.ConflictingSlideType(fresh, "quarterly") & "'")
+
+    Dim typed As Object
+    Set typed = NewBlankSlide()
+    typed.Tags.Add "slide_type", "q"
+    result = result & Assert(BatchOnboardFlow.ConflictingSlideType(typed, "sandbox-test") = "q", _
+        "a slide typed 'q' reports the conflict, got '" & BatchOnboardFlow.ConflictingSlideType(typed, "sandbox-test") & "'")
+
+    ' Re-onboarding the SAME type is legitimate (adding a field) and must not warn.
+    result = result & Assert(BatchOnboardFlow.ConflictingSlideType(typed, "q") = "", _
+        "re-onboarding the same type is not a conflict, got '" & BatchOnboardFlow.ConflictingSlideType(typed, "q") & "'")
+
+    Test_BatchOnboardFlow_ConflictingSlideTypeIsDetected = result
 End Function
 
 ' Portability: the stored workbook path is absolute, so a deck copied to another
