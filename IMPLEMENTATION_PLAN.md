@@ -1,5 +1,45 @@
 # Implementation Plan
 
+## Priority 30 (2026-07-28 evening): both save/restore faults CONFIRMED FIXED by live testing
+
+Rohan's original report -- "save doesn't work with AutoSave on, and AutoSave
+didn't save marks" -- was two separate faults, both now fixed and both confirmed
+by him against the real add-in on a real OneDrive-hosted deck.
+
+1. **Marks never restored on reopen** (`addin24`, confirmed working). The
+   restore guard was `If markedShapes Is Nothing`. Closing a presentation does
+   not unload the add-in, so a stale in-memory session -- holding dead Shape
+   references from the closed document -- survived and suppressed the restore
+   entirely. His marks had always been saved correctly; nothing ever read them
+   back. Now keyed on which DECK a session belongs to (`markedDeckId`, via
+   `Presentation.FullName` so cloud URLs work).
+2. **Saving not reaching disk** (`addin25`, confirmed: "last modified just
+   now"). Removing the forced `pres.Save` unconditionally fixed Office's native
+   save UI and broke persistence. Now conditional -- force only when AutoSave is
+   off OR the presentation is still dirty after the property write.
+
+**How these were found matters more than the fixes.** 93 automated tests missed
+both. The close/reopen test asserts the property round-trips -- which it always
+did -- and never asserted that `RestoreMarkingSession` then succeeds. It tested
+the mechanism, not the outcome the user cares about. Five minutes of manual
+testing found what the suite structurally could not.
+
+**Method critique, now a standing rule in claude-brain/CLAUDE.md**: the
+AutoSave/VBA-save interaction was derived empirically, one live COM probe at a
+time, on Rohan's real deck, over an evening. It is a well-known Office-dev
+problem that was never searched for. His challenge -- "surely someone else in
+the world has tried this?" -- was correct. If a standard idiom exists it should
+replace the inferred conditional-save.
+
+### Still open
+- Whether any of this works on a **work machine**: macro policy, SharePoint-
+  hosted decks, and the fact that only Rohan can build the `.ppam` at all.
+- Manual tests 10-14 (preview, Sync Now, portability, toolbar lifecycle) are
+  unrun on the current build.
+- The automated close/reopen test still does not assert that restore succeeds.
+  Fixing that test is worth more than another feature.
+
+
 ## Priority 29 (2026-07-27 pass): Sync Now actually ran against the real deck -- three times, including a grouped field
 
 Priority 28 left "Sync Now has never been run" as the last thing between this
