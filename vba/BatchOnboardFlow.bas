@@ -119,6 +119,15 @@ Private markedNames As Object ' Scripting.Dictionary: 1-based position in marked
 Private markedTypes As Object ' Scripting.Dictionary: 1-based position in markedShapes -> String ("text"|"number"|"currency"|"date")
 Private markedVolatility As Object ' Scripting.Dictionary: 1-based position in markedShapes -> String ("static"|"variable")
 Private markedSlideId As Long
+' Which DECK the in-memory session belongs to. Closing a presentation does NOT
+' unload the add-in, so module state (and its now-dead Shape references)
+' outlives the document it came from. Without this, the restore guard sees a
+' non-empty session, concludes one is already loaded, and never reads the saved
+' one back -- so a user who marks fields, closes, and reopens is told nothing
+' was marked while their marks sit intact in the file. Confirmed live
+' 2026-07-28: MarkedFieldCountForBatch still returned 1 after a full
+' close/reopen, and the saved property read back perfectly at the same moment.
+Private markedDeckId As String
 
 ' ---------------------------------------------------------------------
 ' Marking-session persistence -- survives a PowerPoint close/reopen, built
@@ -192,6 +201,7 @@ Public Function RestoreMarkingSession(serialized As String, templateSld As Objec
     Set markedTypes = CreateObject("Scripting.Dictionary")
     Set markedVolatility = CreateObject("Scripting.Dictionary")
     markedSlideId = slideId
+    markedDeckId = DeckIdentity(templateSld.Parent)
 
     Dim restoredCount As Long, missingCount As Long
     restoredCount = 0
@@ -377,6 +387,16 @@ End Function
 ' wrapping SerializeMarkingSession -- the version TestRunner.bas and
 ' SaveMarkingSessionToProperty can both call without either reaching into
 ' private module state directly. "" if nothing is currently marked.
+' Stable identity for the deck an in-memory marking session belongs to.
+' FullName works for both local paths and the cloud URLs OneDrive-hosted decks
+' report (https://d.docs.live.net/...), so it identifies a document rather than
+' assuming a filesystem.
+Private Function DeckIdentity(pres As Object) As String
+    On Error Resume Next
+    DeckIdentity = pres.FullName
+    On Error GoTo 0
+End Function
+
 Public Function SerializeCurrentMarkingSession() As String
     If markedShapes Is Nothing Then Exit Function
     If markedShapes.count = 0 Then Exit Function
@@ -593,6 +613,7 @@ Public Function MarkShapeForBatch(shp As Object, fieldName As String, fieldType 
     End If
 
     markedSlideId = thisSlideId
+    markedDeckId = DeckIdentity(shp.Parent.Parent)
 
     Dim existingIdx As Long
     existingIdx = 0
@@ -699,7 +720,24 @@ Public Sub MarkFieldForBatch()
     ' saved -- no separate mismatch-handling needed here.
     Dim restoreReport As String
     restoreReport = ""
+
+    ' Restore when there is no USABLE session for THIS deck -- not merely when
+    ' the collection has never been created. Closing a presentation does not
+    ' unload the add-in, so a stale session (holding dead Shape references from
+    ' the closed document) survives and used to suppress the restore entirely.
+    ' Written as a nested chain on purpose: VBA does not short-circuit, so
+    ' `markedShapes Is Nothing Or markedShapes.Count = 0` would raise on Nothing.
+    Dim needRestore As Boolean
+    needRestore = False
     If markedShapes Is Nothing Then
+        needRestore = True
+    ElseIf markedShapes.count = 0 Then
+        needRestore = True
+    ElseIf markedDeckId <> DeckIdentity(pres) Then
+        needRestore = True
+    End If
+
+    If needRestore Then
         Dim savedSession As String
         savedSession = ReadMarkingSessionProperty(pres)
         If Trim(savedSession) <> "" Then
@@ -897,6 +935,7 @@ Public Sub ResetMarkingSession()
     Set markedTypes = Nothing
     Set markedVolatility = Nothing
     markedSlideId = 0
+    markedDeckId = ""
     ' Also clears the persisted CustomDocumentProperty (see this module's
     ' persistence header) so a deliberate reset never silently resurrects
     ' on the next reopen. On Error Resume Next inside ClearMarkingSession

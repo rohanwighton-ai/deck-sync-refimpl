@@ -152,7 +152,16 @@ Public Function GetWorkbookPath(pres As Object) As String
     Dim beside As String
     beside = SiblingOfDeck(pres, FileNameOnly(stored))
     If beside <> "" Then
-        If FileExists(beside) Then
+        ' Dir() cannot test an http(s) URL -- it returns "" for any URL, so a
+        ' correctly-built cloud sibling would be constructed and then rejected as
+        ' non-existent, making the whole lookup useless for OneDrive/SharePoint
+        ' decks. Workbooks.Open DOES accept a URL, so hand the URL back and let
+        ' the open attempt be the real test; the caller already reports a clean
+        ' "could not open the paired workbook at: <path>" if it fails.
+        If IsUrl(beside) Then
+            GetWorkbookPath = beside
+            Exit Function
+        ElseIf FileExists(beside) Then
             GetWorkbookPath = beside
             Exit Function
         End If
@@ -166,12 +175,16 @@ End Function
 ' the common case; this is the escape hatch for the rest, so a moved workbook is
 ' never a dead end requiring re-onboarding.
 Public Sub RepointWorkbook(pres As Object, newPath As String)
-    If Not FileExists(newPath) Then
+    If Not FileExists(newPath) And Not IsUrl(newPath) Then
         Err.Raise vbObjectError + 2, "DeckRegistry.RepointWorkbook", _
             "refusing to register a workbook path that does not exist: " & newPath
     End If
     SetWorkbookPath pres, newPath
 End Sub
+
+Public Function IsUrl(path As String) As Boolean
+    IsUrl = (LCase(Left(path, 5)) = "http:" Or LCase(Left(path, 6)) = "https:")
+End Function
 
 Private Function FileExists(path As String) As Boolean
     If Trim(path) = "" Then Exit Function
@@ -202,7 +215,18 @@ Private Function SiblingOfDeck(pres As Object, fileName As String) As String
     deckDir = pres.path
     On Error GoTo 0
     If deckDir = "" Or fileName = "" Then Exit Function
-    SiblingOfDeck = deckDir & PATH_SEP & fileName
+
+    ' A OneDrive/SharePoint-hosted deck reports Path as a URL, not a filesystem
+    ' path -- confirmed live 2026-07-28: "https://d.docs.live.net/<id>/Claude/
+    ' test-sandbox". Joining that with a backslash produces a path that resolves
+    ' nowhere, so the sibling lookup would fail for exactly the cloud-hosted case
+    ' that matters most (decks on SharePoint at work). Match the separator to the
+    ' location's own convention.
+    If LCase(Left(deckDir, 5)) = "http:" Or LCase(Left(deckDir, 6)) = "https:" Then
+        SiblingOfDeck = deckDir & "/" & fileName
+    Else
+        SiblingOfDeck = deckDir & PATH_SEP & fileName
+    End If
 End Function
 
 Public Sub SetWorkbookPath(pres As Object, path As String)
