@@ -350,7 +350,29 @@ Public Function SaveMarkingSessionToProperty(pres As Object) As String
     autoSaveOn = pres.AutoSaveOn
     On Error GoTo 0
 
-    If Not autoSaveOn Then
+    ' Force the save when AutoSave is off, OR when the document is STILL DIRTY
+    ' after the property write -- i.e. AutoSave is on but demonstrably has not
+    ' saved. Confirmed live 2026-07-28: AutoSaveOn = True, Saved = 0 (dirty),
+    ' and the file on disk 2.6 hours stale while both marks sat in the open
+    ' document. Trusting AutoSave unconditionally fixed the UI and broke
+    ' persistence, which is the worse failure of the two.
+    '
+    ' Conditional, not unconditional: when AutoSave has genuinely saved, this
+    ' does not fire, so Office keeps ownership of saving and its native Save
+    ' command and indicators keep working. Only when AutoSave has visibly not
+    ' done its job does the add-in step in.
+    '
+    ' stillDirty defaults to True so that a Presentation.Saved read which fails
+    ' -- or which is untrustworthy, as it is known to be on cloud documents --
+    ' errs toward saving. Saving unnecessarily costs a moment; not saving costs
+    ' the user's work.
+    Dim stillDirty As Boolean
+    stillDirty = True
+    On Error Resume Next
+    stillDirty = Not pres.Saved
+    On Error GoTo 0
+
+    If (Not autoSaveOn) Or stillDirty Then
         On Error Resume Next
         Err.Clear
         pres.Save
