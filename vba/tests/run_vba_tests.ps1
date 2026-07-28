@@ -221,3 +221,37 @@ else {
 if (-not $env:DECK_SYNC_KEEP_STAGING) {
     Remove-Item -Path $staging -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# --- Did anything actually RUN? ------------------------------------
+#
+# A VBA compile error anywhere in the project makes Application.Run fail without
+# producing a single test result -- and until 2026-07-28 this script reported that
+# as a clean run: zero PASS lines, zero FAIL lines, exit 0. A grep for "^FAIL"
+# found nothing and the run looked green. The compile error that caused it
+# (Application.PathSeparator, an Excel-only member used in a PowerPoint-hosted
+# module) therefore reached Rohan's screen instead of this script's output.
+#
+# Silence is not success. An empty result set is the loudest possible failure --
+# it means the project did not even compile -- so it must exit non-zero.
+$allOutput = "$pptReport`n$excelReport"
+$passCount = ([regex]::Matches($allOutput, '(?m)^PASS')).Count
+$failCount = ([regex]::Matches($allOutput, '(?m)^FAIL')).Count
+
+Write-Output ""
+Write-Output "=== $passCount passed, $failCount failed ==="
+
+if ($pptError -or $excelError) {
+    Write-Output "=== DRIVER ERROR (see above) ==="
+    exit 3
+}
+if ($passCount -eq 0) {
+    Write-Output "=== NO TESTS RAN. This is a FAILURE, not a pass. ==="
+    Write-Output "Almost always a VBA compile error somewhere in the project:"
+    Write-Output "  Application.Run reports 'Sub or function not defined' for a"
+    Write-Output "  compile error anywhere, not only for a missing macro."
+    Write-Output "  Open the project and use Debug > Compile VBAProject -- its"
+    Write-Output "  dialog names the offending line directly."
+    exit 2
+}
+if ($failCount -gt 0) { exit 1 }
+exit 0

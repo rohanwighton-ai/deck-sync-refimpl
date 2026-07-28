@@ -19,6 +19,14 @@ Option Explicit
 Private Const DECK_ID_PROPERTY_NAME As String = "DeckSyncId"
 Private Const WORKBOOK_PATH_PROPERTY_NAME As String = "DeckSyncWorkbookPath"
 Private Const TYPE_PROPERTY_PREFIX As String = "DeckSyncType:"
+' Literal, NOT Application.PathSeparator: that property exists on Excel's
+' Application object, not PowerPoint's, and this module is PowerPoint-hosted --
+' using it is a hard compile error ("Method or data member not found"), confirmed
+' 2026-07-28 against real Office. Same cross-application trap AGENTS.md already
+' records for Excel's xlToLeft/xlUp constants, hit from the opposite direction.
+' This add-in is Windows-only (.ppam, PowerPoint COM), so "\" is not a portability
+' compromise.
+Private Const PATH_SEP As String = "\"
 
 ' ---------------------------------------------------------------------
 ' Pure logic -- no CustomDocumentProperties access, testable without a
@@ -115,8 +123,86 @@ Public Function GetOrCreateDeckId(pres As Object) As String
     GetOrCreateDeckId = newId
 End Function
 
+' The stored path is absolute (it is whatever the machine that onboarded the deck
+' saw), which makes a deck non-portable: copy deck + workbook to another machine --
+' a different user profile, a work PC, a SharePoint/OneDrive-for-Business sync root
+' -- and the stored path names a folder that does not exist there. Every entry point
+' then dead-ends at "Could not open the paired workbook", with no way to re-point it
+' short of re-onboarding.
+'
+' Fix applied HERE rather than at the six call sites so every caller inherits it:
+' if the stored path does not resolve, look for a file of the same name beside the
+' DECK. That is the normal arrangement (deck and its Data workbook live together and
+' get copied together), so it recovers the overwhelmingly common case automatically
+' and silently.
+'
+' Falls back to returning the stored path unchanged when neither resolves, so the
+' existing "could not open <path>" message still names something a human recognises
+' rather than a guessed path they have never seen.
 Public Function GetWorkbookPath(pres As Object) As String
-    GetWorkbookPath = ReadStringProperty(pres, WORKBOOK_PATH_PROPERTY_NAME)
+    Dim stored As String
+    stored = ReadStringProperty(pres, WORKBOOK_PATH_PROPERTY_NAME)
+    If stored = "" Then Exit Function
+
+    If FileExists(stored) Then
+        GetWorkbookPath = stored
+        Exit Function
+    End If
+
+    Dim beside As String
+    beside = SiblingOfDeck(pres, FileNameOnly(stored))
+    If beside <> "" Then
+        If FileExists(beside) Then
+            GetWorkbookPath = beside
+            Exit Function
+        End If
+    End If
+
+    GetWorkbookPath = stored
+End Function
+
+' Re-point the deck at a workbook that has genuinely moved (renamed, or filed
+' somewhere other than beside the deck). The automatic sibling lookup above covers
+' the common case; this is the escape hatch for the rest, so a moved workbook is
+' never a dead end requiring re-onboarding.
+Public Sub RepointWorkbook(pres As Object, newPath As String)
+    If Not FileExists(newPath) Then
+        Err.Raise vbObjectError + 2, "DeckRegistry.RepointWorkbook", _
+            "refusing to register a workbook path that does not exist: " & newPath
+    End If
+    SetWorkbookPath pres, newPath
+End Sub
+
+Private Function FileExists(path As String) As Boolean
+    If Trim(path) = "" Then Exit Function
+    On Error Resume Next
+    FileExists = (Dir(path) <> "")
+    On Error GoTo 0
+End Function
+
+' Bare file name from a full path. Handles both separators -- a path stored on one
+' machine and read on another is not guaranteed to use the local convention.
+Public Function FileNameOnly(path As String) As String
+    Dim i As Long, ch As String
+    FileNameOnly = path
+    For i = Len(path) To 1 Step -1
+        ch = Mid(path, i, 1)
+        If ch = "\" Or ch = "/" Then
+            FileNameOnly = Mid(path, i + 1)
+            Exit Function
+        End If
+    Next i
+End Function
+
+' `fileName` resolved against the deck's own folder. Returns "" for a presentation
+' that has never been saved (Path is empty), which is a real state during testing.
+Private Function SiblingOfDeck(pres As Object, fileName As String) As String
+    Dim deckDir As String
+    On Error Resume Next
+    deckDir = pres.path
+    On Error GoTo 0
+    If deckDir = "" Or fileName = "" Then Exit Function
+    SiblingOfDeck = deckDir & PATH_SEP & fileName
 End Function
 
 Public Sub SetWorkbookPath(pres As Object, path As String)

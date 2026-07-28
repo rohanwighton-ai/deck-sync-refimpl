@@ -190,6 +190,30 @@ guidance.
   that looked like a complete one. Capture the full log to a file and
   grep it.
 
+- **The cross-application trap runs BOTH ways, and it is not only constants:
+  `Application` itself is a different object in each host.** Already recorded
+  below for Excel's `xlToLeft`/`xlUp` failing in a PowerPoint-driven module;
+  hit from the opposite direction 2026-07-28 with
+  **`Application.PathSeparator`, which exists on Excel's Application object but
+  NOT on PowerPoint's** -- a hard compile error ("Method or data member not
+  found") in `DeckRegistry.bas`. Before reaching for any `Application.<member>`,
+  check which host that module actually runs in. This add-in is Windows-only, so
+  a literal `"\"` is the correct answer for a path separator, not a lookup.
+  Notable: this was hit within hours of re-reading this very file. The written
+  warning did not prevent it; a real compile error did.
+
+- **A test run that produces ZERO results is a FAILURE, not a pass -- and until
+  2026-07-28 `run_vba_tests.ps1` reported it as a pass.** A VBA compile error
+  anywhere in the project makes `Application.Run` fail before any test executes,
+  so the run emitted no `PASS` lines, no `FAIL` lines, and exit 0. Grepping for
+  `^FAIL` found nothing and the run looked green; the compile error reached
+  Rohan's screen instead of the script's output. The script now counts `PASS`
+  lines, prints an explicit `=== N passed, M failed ===` verdict, and exits **2**
+  when nothing ran (1 = real failures, 3 = driver error). **Never infer success
+  from the absence of failures** -- require positive evidence that tests actually
+  executed. Same false-green shape as the `powershell.exe` UNC refusal logged
+  above, which also exited 0 while doing nothing.
+
 - **A hung headless run (no output, process still alive) is very often a
   VBA *compile* error, not a runtime hang** -- `On Error` cannot catch
   compile-time issues (see the Testing section's modal-dialog note below),

@@ -384,6 +384,9 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
 
     r = Test_BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived()
     AppendResult report, "BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived", r
+
+    r = Test_DeckRegistry_WorkbookPathSurvivesAMovedDeck()
+    AppendResult report, "DeckRegistry_WorkbookPathSurvivesAMovedDeck", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -3157,6 +3160,47 @@ Private Function Test_BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived()
         "an existing key is returned verbatim whatever its shape, got '" & BatchOnboardFlow.ExistingInstanceKey(paragraphSld) & "'")
 
     Test_BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived = result
+End Function
+
+' Portability: the stored workbook path is absolute, so a deck copied to another
+' machine (different user profile, work PC, SharePoint sync root) names a folder
+' that does not exist there. GetWorkbookPath must recover by looking beside the
+' deck, which is where the Data workbook actually lives.
+Private Function Test_DeckRegistry_WorkbookPathSurvivesAMovedDeck() As String
+    Dim result As String
+
+    result = result & Assert(DeckRegistry.FileNameOnly("C:\Users\someone\OneDrive\Claude\Data.xlsx") = "Data.xlsx", _
+        "backslash path -> bare file name, got '" & DeckRegistry.FileNameOnly("C:\Users\someone\OneDrive\Claude\Data.xlsx") & "'")
+    result = result & Assert(DeckRegistry.FileNameOnly("/mnt/c/x/Data.xlsx") = "Data.xlsx", _
+        "forward-slash path -> bare file name, got '" & DeckRegistry.FileNameOnly("/mnt/c/x/Data.xlsx") & "'")
+    result = result & Assert(DeckRegistry.FileNameOnly("Data.xlsx") = "Data.xlsx", _
+        "a bare name is returned unchanged, got '" & DeckRegistry.FileNameOnly("Data.xlsx") & "'")
+
+    ' A path that resolves nowhere must come back unchanged, so the caller's error
+    ' message still names something the human recognises rather than a guess.
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+    Dim original As String
+    original = DeckRegistry.GetWorkbookPath(pres)
+
+    DeckRegistry.SetWorkbookPath pres, "Z:\definitely\not\here\Nope.xlsx"
+    result = result & Assert(DeckRegistry.GetWorkbookPath(pres) = "Z:\definitely\not\here\Nope.xlsx", _
+        "an unresolvable path is returned unchanged, got '" & DeckRegistry.GetWorkbookPath(pres) & "'")
+
+    ' RepointWorkbook must refuse a path that does not exist -- registering a bad
+    ' path is how a deck ends up silently unsyncable.
+    Dim refused As Boolean
+    On Error Resume Next
+    Err.Clear
+    DeckRegistry.RepointWorkbook pres, "Z:\also\not\here.xlsx"
+    refused = (Err.Number <> 0)
+    Err.Clear
+    On Error GoTo 0
+    result = result & Assert(refused, "RepointWorkbook refuses a non-existent path")
+
+    DeckRegistry.SetWorkbookPath pres, original
+
+    Test_DeckRegistry_WorkbookPathSurvivesAMovedDeck = result
 End Function
 
 ' Real bug found and fixed 2026-07-26 (Rohan, live-testing against his real
