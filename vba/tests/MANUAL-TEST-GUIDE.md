@@ -114,8 +114,17 @@ marking inside groups fails, the tool cannot work on this deck at all.
 3. Click **Bulk Onboard Type**
 
 **Expect:** your marks are still there — it proceeds rather than saying nothing is
-marked. Marking state persists in a document property, and this specifically checks
-the forced-save fix (AutoSave alone was losing macro-driven writes).
+marked. Marking state persists in a document property.
+
+**This is the highest-value test in the guide and it is known to have been failing.**
+On 2026-07-28 the restore guard was fixed for the wrong case: it compared the deck's
+`FullName`, so reopening *the same* deck reported an identical value, the guard never
+fired, and the marks stayed in the file while the add-in said nothing was marked. Only
+switching to a *different* deck worked. Fixed 2026-07-29 by probing whether the held
+Shape references are dead.
+
+The lesson worth keeping: this test was in the guide the whole time and would have
+caught it. A test that exists but is never run is worth exactly as much as no test.
 
 ---
 
@@ -232,7 +241,7 @@ The reason this matters: on a work PC the stored absolute path won't exist.
 1. Close everything
 2. Copy **both** sandbox files into a brand-new folder (e.g. `Documents\portability-test\`)
 3. Open the copied deck from there
-4. Run `Application.Run "RibbonUI.SyncPreview"`
+4. Click **Preview Sync** (a toolbar button as of addin28 — no longer a VBE call)
 
 **Expect:** it works — finding the workbook beside the deck rather than at the stored
 path. This is the fix that makes the tool usable at work.
@@ -251,6 +260,94 @@ the exact path in the message.
 2. Re-tick it
 
 **Expect:** toolbar returns, buttons still wired.
+
+---
+
+## 15. Four buttons, Preview Sync first (addin28 sanity check)
+
+Look at the Deck Sync toolbar.
+
+**Expect:** `Preview Sync | Mark Field for Batch | Bulk Onboard Type | Clear Marked Fields`
+
+**Three buttons means you are running addin27 or older.** Stop and check the add-in
+list rather than debugging anything downstream — every test below assumes addin28.
+
+---
+
+## 16. Office keeps its own Save command (the 2026-07-28 regression)
+
+On a **cloud-hosted** deck (OneDrive/SharePoint — this does not reproduce locally):
+
+1. Mark one field
+2. Open the **File** menu
+
+**Expect:** Office's own Save is still there and still works; the AutoSave toggle still
+reads normally.
+
+**Also expect** the confirmation to report a real timestamp: *"Deck last saved to disk:
+2026-07-29 21:14."*
+
+**Why both halves matter:** the add-in used to force a save on every mark, which took
+saving away from Office and hid its Save command. Trusting AutoSave instead fixed the UI
+and broke persistence — a deck was found 2.6 hours stale with marks only in memory. The
+add-in now saves only when the deck's real save timestamp has gone stale, so this test
+and test 5 pull in opposite directions **and both must pass**. Either one alone is easy.
+
+**If the timestamp reads hours old:** AutoSave has stalled. That is the failure this
+guard exists to catch — note it, hit Ctrl+S, and say so.
+
+---
+
+## 17. Workbook comes first, and can be browsed
+
+On a deck with **no paired workbook yet**:
+
+1. Mark a field, run **Bulk Onboard Type**, get through the Field Review grid
+
+**Expect:** you are asked for the Data workbook **before** any instance-key prompts, via
+a real **Save As dialog** — not a typed path, and not after 45 prompts.
+
+2. Cancel the dialog
+
+**Expect:** a clean "Cancelled — no workbook path given. Nothing was written." No VBA
+error, no Debug/End.
+
+**Why:** the prompt used to come *after* the key loop, so one bad path discarded 45
+hand-confirmed keys (2026-07-29). Ordering is the fix; the browser is the convenience.
+
+---
+
+## 18. A web address is refused with an explanation
+
+Only reachable if the Save As dialog is unavailable and you get the typed prompt — worth
+trying deliberately if you can:
+
+1. Paste an `https://` SharePoint URL as the workbook path
+
+**Expect:** *"That's a web address, not a file path"*, with the explanation that cloud
+decks report their own location as a URL and you want the synced folder instead. Then it
+offers to try again.
+
+**Not expected:** runtime error 52, "Bad file name or number", Debug/End. That was the
+2026-07-29 failure, and its cause was an unguarded `Dir()` inside the routine that was
+supposed to *confirm* the save had worked.
+
+---
+
+## 19. Two slides cannot share an instance key
+
+During the instance-key prompts, deliberately give a slide a key you already used.
+
+**Expect:** it refuses, names the slide already holding it, explains that both would
+point at one row in the Data sheet, and re-prompts. A blank skips the slide instead.
+
+**Why:** nothing checked this until 2026-07-29. Two slides sharing a key both resolve to
+one row — the second overwrites the first, nothing errors, and the deck quietly starts
+showing another project's numbers.
+
+Also watch the commit summary for **"duplicate instance keys ALREADY in this deck"**.
+That reports pre-existing collisions, most likely from the 2026-07-28 key re-derivation
+bug. It is a real finding about your deck, not a complaint about this run.
 
 ---
 
