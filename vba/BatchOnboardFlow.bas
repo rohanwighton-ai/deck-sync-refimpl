@@ -535,6 +535,212 @@ Private Function DeckIdentity(pres As Object) As String
     On Error GoTo 0
 End Function
 
+' Why a typed workbook path is rejected, or "" if it looks usable.
+'
+' Pure, so every rejection reason is testable without Office. Written after a
+' live run on 2026-07-29 died on a hand-typed path with VBA runtime error 52
+' ("Bad file name or number") -- raw, unhandled, Debug/End, discarding 45
+' instance keys the human had just confirmed one prompt at a time.
+'
+' The first check is the one that actually matters. A cloud-hosted deck reports
+' its own Path as an https:// URL, so copying the deck's location -- the
+' obvious move when asked where to put its data -- produces something no file
+' API can open. That deserves its own message rather than a generic "bad path",
+' because the fix (use the synced local folder instead) is not guessable from
+' the error.
+Public Function WorkbookPathProblem(candidate As String) As String
+    Dim p As String
+    p = Trim(candidate)
+
+    If p = "" Then
+        WorkbookPathProblem = "No path given."
+        Exit Function
+    End If
+
+    If LCase(Left(p, 7)) = "http://" Or LCase(Left(p, 8)) = "https://" Then
+        WorkbookPathProblem = "That's a web address, not a file path." & vbCrLf & vbCrLf & _
+            "Cloud-hosted decks report their location as an https:// URL, so copying the deck's own path gives you something Excel can't open. Use the synced folder on this PC instead -- something like C:\Users\<you>\OneDrive - <org>\...\Data.xlsx"
+        Exit Function
+    End If
+
+    ' A drive letter or a UNC share -- anything else has no folder to live in.
+    Dim rooted As Boolean
+    rooted = (Left(p, 2) = "\\")
+    If Not rooted Then
+        If Len(p) >= 3 Then
+            If Mid(p, 2, 2) = ":\" Then rooted = True
+        End If
+    End If
+    If Not rooted Then
+        WorkbookPathProblem = "That isn't a full path. It needs to start with a drive (C:\...) or a network share (\\server\...)."
+        Exit Function
+    End If
+
+    If LCase(Right(p, 5)) <> ".xlsx" And LCase(Right(p, 5)) <> ".xlsm" Then
+        WorkbookPathProblem = "The Data workbook needs to end in .xlsx"
+        Exit Function
+    End If
+
+    ' Characters Windows will not accept in a file name. The drive colon is
+    ' already past us, so any remaining colon is invalid too.
+    Dim bad As Variant, i As Long
+    bad = Array("<", ">", """", "|", "?", "*")
+    For i = LBound(bad) To UBound(bad)
+        If InStr(p, CStr(bad(i))) > 0 Then
+            WorkbookPathProblem = "That path contains a character Windows won't allow in a file name: " & CStr(bad(i))
+            Exit Function
+        End If
+    Next i
+    If InStr(3, p, ":") > 0 Then
+        WorkbookPathProblem = "That path contains a stray colon."
+        Exit Function
+    End If
+
+    WorkbookPathProblem = ""
+End Function
+
+' Asks the human where the Data workbook should live, preferring a real file
+' browser over a typed path.
+'
+' Verified 2026-07-29 against real PowerPoint rather than assumed: all four
+' FileDialog modes are available in this host (1 File Open, 2 File Save,
+' 3 Browse, 4 Browse), so the Save As browser is the normal path.
+'
+' The typed-path prompt is kept as a fallback purely because this add-in is
+' meant to travel to work machines whose Office policy is unknown. There is
+' deliberately no middle fallback: an earlier version picked a folder via
+' FileDialog(4) and asked only for the file name, which reads like defence in
+' depth and is not -- mode 4 comes off the same object as mode 2, so it is
+' unavailable in exactly the situations mode 2 is. A fallback that fails
+' whenever the thing it backs up fails is decoration.
+Private Function AskForWorkbookPath(pres As Object) As String
+    Dim suggested As String
+    suggested = "SAAFE-Projects-Data.xlsx"
+
+    ' Layer 1: a genuine Save As dialog -- no syntax in human hands at all.
+    Dim fd As Object
+    On Error Resume Next
+    Set fd = Application.FileDialog(2) ' msoFileDialogSaveAs
+    On Error GoTo 0
+    If Not fd Is Nothing Then
+        Dim picked As String
+        picked = ""
+        On Error Resume Next
+        fd.Title = "Where should this deck's Data workbook live?"
+        fd.InitialFileName = suggested
+        If fd.Show = -1 Then picked = fd.SelectedItems(1)
+        On Error GoTo 0
+        If picked <> "" Then
+            ' Some hosts return the name without the extension.
+            If LCase(Right(picked, 5)) <> ".xlsx" And LCase(Right(picked, 5)) <> ".xlsm" Then picked = picked & ".xlsx"
+            AskForWorkbookPath = picked
+            Exit Function
+        End If
+        ' Shown and cancelled is a real answer -- don't fall through to a
+        ' second prompt the human didn't ask for.
+        AskForWorkbookPath = ""
+        Exit Function
+    End If
+
+    ' Fallback: the original typed-path prompt, now with the trap named in the
+    ' prompt itself rather than discovered through a runtime error.
+    AskForWorkbookPath = InputBox( _
+        "This deck has no paired workbook yet." & vbCrLf & vbCrLf & _
+        "Enter a FULL path for the new Data workbook, e.g." & vbCrLf & _
+        "C:\Users\you\OneDrive\Claude\SAAFE-Projects-Data.xlsx" & vbCrLf & vbCrLf & _
+        "Not a web address -- an https:// link won't work here.", _
+        "Bulk Onboard Type -- Pair Workbook", suggested)
+End Function
+
+' WorkbookBridge.CreateWorkbook raises rather than returning Nothing on a bad
+' path (live, 2026-07-29: runtime error 52 straight to a Debug/End dialog).
+' Wrapping it here means a bad path is a sentence the human can act on and a
+' retry, not a dead run.
+Private Function CreateWorkbookSafely(path As String, ByRef errText As String) As Object
+    errText = ""
+    On Error Resume Next
+    Err.Clear
+    Set CreateWorkbookSafely = WorkbookBridge.CreateWorkbook(path)
+    If Err.Number <> 0 Then
+        errText = "Windows rejected that path (" & Err.Description & ")."
+        Set CreateWorkbookSafely = Nothing
+    ElseIf CreateWorkbookSafely Is Nothing Then
+        errText = "Could not create a workbook there."
+    End If
+    On Error GoTo 0
+End Function
+
+Private Function OpenWorkbookSafely(path As String, ByRef errText As String) As Object
+    errText = ""
+    On Error Resume Next
+    Err.Clear
+    Set OpenWorkbookSafely = WorkbookBridge.OpenOrGetWorkbook(path)
+    If Err.Number <> 0 Then
+        errText = "Could not open the paired workbook (" & Err.Description & ")."
+        Set OpenWorkbookSafely = Nothing
+    ElseIf OpenWorkbookSafely Is Nothing Then
+        errText = "Could not open the paired workbook at: " & path
+    End If
+    On Error GoTo 0
+End Function
+
+' Establish (or reuse) the deck-workbook pairing, re-prompting on a bad path
+' instead of dying. Returns Nothing only when the human cancels or gives up.
+Private Function ResolveDataWorkbook(pres As Object, ByRef outPath As String, ByRef cancelMsg As String) As Object
+    Set ResolveDataWorkbook = Nothing
+    cancelMsg = ""
+    outPath = ""
+
+    Dim existing As String
+    existing = DeckRegistry.GetWorkbookPath(pres)
+    If existing <> "" Then
+        Dim openErr As String
+        Dim wbExisting As Object
+        Set wbExisting = OpenWorkbookSafely(existing, openErr)
+        If wbExisting Is Nothing Then
+            cancelMsg = openErr & vbCrLf & "Paired path: " & existing
+            Exit Function
+        End If
+        outPath = existing
+        Set ResolveDataWorkbook = wbExisting
+        Exit Function
+    End If
+
+    ' Bounded, so a dialog that somehow always fails can't trap the human in a
+    ' modal loop with no way out but Task Manager.
+    Dim attempt As Long
+    For attempt = 1 To 5
+        Dim candidate As String
+        candidate = AskForWorkbookPath(pres)
+        If Trim(candidate) = "" Then
+            cancelMsg = "Cancelled -- no workbook path given. Nothing was written."
+            Exit Function
+        End If
+
+        Dim problem As String
+        problem = WorkbookPathProblem(candidate)
+        If problem = "" Then
+            Dim createErr As String
+            Dim wbNew As Object
+            Set wbNew = CreateWorkbookSafely(candidate, createErr)
+            If Not wbNew Is Nothing Then
+                DeckRegistry.SetWorkbookPath pres, candidate
+                outPath = candidate
+                Set ResolveDataWorkbook = wbNew
+                Exit Function
+            End If
+            problem = createErr
+        End If
+
+        If MsgBox(problem & vbCrLf & vbCrLf & "Try a different location?", vbYesNo + vbExclamation, "Bulk Onboard Type -- Pair Workbook") <> vbYes Then
+            cancelMsg = "Cancelled at the workbook step. Nothing was written."
+            Exit Function
+        End If
+    Next attempt
+
+    cancelMsg = "Gave up after 5 attempts at a workbook location. Nothing was written."
+End Function
+
 ' Are the Shape references in the in-memory session still attached to a live
 ' document?
 '
@@ -1904,6 +2110,27 @@ Public Function PromptBatchOnboardType() As String
     reviewWb.Saved = True
     reviewWb.Close
 
+    ' Pair the workbook BEFORE asking for a single instance key.
+    '
+    ' This used to sit after the key loop, and that ordering is what turned one
+    ' mistyped path into a genuinely expensive failure on 2026-07-29: 45 keys
+    ' confirmed one prompt at a time, then the riskiest step in the flow ran for
+    ' the first time, raised an unhandled error 52, and the End button threw all
+    ' of it away. A path browser stops that particular typo; doing the fragile
+    ' step first is what stops the whole class, because now the only thing at
+    ' risk when it fails is the click that started the run.
+    '
+    ' General rule this flow should keep following: collect cheap-to-redo input
+    ' after the steps that can fail, never before.
+    Dim workbookPath As String
+    Dim wb As Object
+    Dim pairMsg As String
+    Set wb = ResolveDataWorkbook(pres, workbookPath, pairMsg)
+    If wb Is Nothing Then
+        PromptBatchOnboardType = pairMsg
+        Exit Function
+    End If
+
     ' Instance-key prompts: template first (required), then each other
     ' slide (blank = skip, never guessed) -- same InputBox convention
     ' AdoptFlow.bas already established for exactly this decision. Each
@@ -1974,30 +2201,6 @@ Public Function PromptBatchOnboardType() As String
             confirmedKeys(i) = InputBox(prompt, "Bulk Onboard Type -- Instance Key", otherSuggestion)
         End If
     Next i
-
-    ' Establish (or reuse) the deck-workbook pairing.
-    Dim workbookPath As String
-    workbookPath = DeckRegistry.GetWorkbookPath(pres)
-    Dim wb As Object
-    If workbookPath = "" Then
-        workbookPath = InputBox("This deck has no paired workbook yet." & vbCrLf & "Enter a full path for the new Data workbook (.xlsx):", "Bulk Onboard Type -- Pair Workbook")
-        If Trim(workbookPath) = "" Then
-            PromptBatchOnboardType = "Cancelled -- no workbook path given."
-            Exit Function
-        End If
-        Set wb = WorkbookBridge.CreateWorkbook(workbookPath)
-        If wb Is Nothing Then
-            PromptBatchOnboardType = "Could not create workbook at: " & workbookPath
-            Exit Function
-        End If
-        DeckRegistry.SetWorkbookPath pres, workbookPath
-    Else
-        Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
-        If wb Is Nothing Then
-            PromptBatchOnboardType = "Could not open the paired workbook at: " & workbookPath
-            Exit Function
-        End If
-    End If
 
     Dim ws As Object
     Set ws = WorkbookBridge.GetOrAddWorksheet(wb, WorkbookBridge.SanitizeSheetName(slideType))

@@ -421,6 +421,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "BatchOnboardFlow_LastSaveTimeOfReadsARealTimestamp", r
     r = Test_BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen()
     AppendResult report, "BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen", r
+    r = Test_BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes()
+    AppendResult report, "BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -3431,6 +3433,54 @@ Private Function Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSav
     BatchOnboardFlow.ResetMarkingSession
 
     Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave = result
+End Function
+
+' Live failure 2026-07-29: a hand-typed workbook path produced VBA runtime
+' error 52, unhandled, and the resulting Debug/End dialog discarded 45 instance
+' keys that had just been confirmed one prompt at a time.
+'
+' The first assertion is the one that matters most. A cloud-hosted deck reports
+' its own Path as an https:// URL, so copying the deck's location when asked
+' where to put its data is the natural move and produces something no file API
+' can open -- a mistake that deserves its own explanation, not a generic
+' rejection.
+Private Function Test_BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes() As String
+    Dim result As String
+
+    ' The trap that actually caught a human.
+    Dim urlProblem As String
+    urlProblem = BatchOnboardFlow.WorkbookPathProblem("https://saafecrc.sharepoint.com/sites/x/Shared%20Documents/Data.xlsx")
+    result = result & Assert(urlProblem <> "", "a SharePoint URL is rejected as a workbook path")
+    result = result & Assert(InStr(urlProblem, "web address") > 0, "and the message says WHY, rather than just 'bad path', got '" & urlProblem & "'")
+
+    result = result & Assert(BatchOnboardFlow.WorkbookPathProblem("http://example.com/Data.xlsx") <> "", "http:// is rejected too")
+
+    ' Not rooted -- no folder to live in.
+    result = result & Assert(BatchOnboardFlow.WorkbookPathProblem("Data.xlsx") <> "", "a bare file name is rejected")
+    result = result & Assert(BatchOnboardFlow.WorkbookPathProblem("Documents\Data.xlsx") <> "", "a relative path is rejected")
+
+    ' Wrong extension.
+    result = result & Assert(BatchOnboardFlow.WorkbookPathProblem("C:\Temp\Data.pptx") <> "", "a non-workbook extension is rejected")
+
+    ' Characters Windows won't take.
+    result = result & Assert(BatchOnboardFlow.WorkbookPathProblem("C:\Temp\Da<ta.xlsx") <> "", "an invalid filename character is rejected")
+    result = result & Assert(BatchOnboardFlow.WorkbookPathProblem("C:\Temp\Da:ta.xlsx") <> "", "a stray colon past the drive letter is rejected")
+
+    result = result & Assert(BatchOnboardFlow.WorkbookPathProblem("") <> "", "an empty path is rejected")
+    result = result & Assert(BatchOnboardFlow.WorkbookPathProblem("   ") <> "", "a whitespace-only path is rejected")
+
+    ' The shapes that must still be ACCEPTED -- a validator that rejects
+    ' everything is as useless as one that accepts everything.
+    result = result & Assert(BatchOnboardFlow.WorkbookPathProblem("C:\Users\rohan\OneDrive\Claude\SAAFE-Projects-Data.xlsx") = "", _
+        "a normal local path is accepted")
+    result = result & Assert(BatchOnboardFlow.WorkbookPathProblem("C:\Users\rohan\OneDrive - SAAFE CRC\Data\Projects.xlsx") = "", _
+        "a synced OneDrive-for-Business folder path is accepted -- this is the RIGHT answer to the URL trap")
+    result = result & Assert(BatchOnboardFlow.WorkbookPathProblem("\\fileserver\share\Projects.xlsx") = "", _
+        "a UNC network path is accepted")
+    result = result & Assert(BatchOnboardFlow.WorkbookPathProblem("C:\Temp\Macro Data.xlsm") = "", _
+        "an .xlsm with a space in the name is accepted")
+
+    Test_BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes = result
 End Function
 
 ' The regression guard for the bug that made the previous "conditional" save
