@@ -1152,6 +1152,23 @@ Public Function MarkedFieldVolatilityForBatch(position As Long) As String
     If markedVolatility.Exists(position) Then MarkedFieldVolatilityForBatch = CStr(markedVolatility(position))
 End Function
 
+' Toolbar entry point. The real work is in MarkFieldForBatchCore; this exists only to
+' catch anything that escapes it.
+'
+' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
+' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
+' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
+' inline handler would be switched off by the first of them and read as
+' protection while providing none. Putting the handler in a separate frame
+' means nothing inside the body can turn it off, now or after a later edit.
+Public Sub MarkFieldForBatch()
+    On Error GoTo Failed
+    MarkFieldForBatchCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Mark Field for Batch", RibbonUI.UnexpectedErrorText("Mark Field for Batch", Err.Number, Err.Description, Err.Source)
+End Sub
+
 ' Click one field's shape on your template slide, then run this (toolbar
 ' button "Mark Field for Batch"). Repeats: click the next field, run again.
 ' VBA's InputBox/MsgBox are fully modal (block the whole application), so
@@ -1160,7 +1177,7 @@ End Function
 ' click, not a loop inside one macro run. Reuses ResolveFields.
 ' ValidateSingleShapeSelection unchanged (same "exactly one shape selected"
 ' requirement).
-Public Sub MarkFieldForBatch()
+Private Sub MarkFieldForBatchCore()
     Dim shp As Object
     Dim selErr As String
     selErr = ResolveFields.ValidateSingleShapeSelection(Application.ActiveWindow.Selection, shp)
@@ -1401,10 +1418,27 @@ Public Sub ResetMarkingSession()
     ClearMarkingSessionProperty Application.ActivePresentation
 End Sub
 
+' Toolbar entry point. The real work is in ClearMarkedFieldsForBatchCore; this exists only to
+' catch anything that escapes it.
+'
+' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
+' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
+' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
+' inline handler would be switched off by the first of them and read as
+' protection while providing none. Putting the handler in a separate frame
+' means nothing inside the body can turn it off, now or after a later edit.
+Public Sub ClearMarkedFieldsForBatch()
+    On Error GoTo Failed
+    ClearMarkedFieldsForBatchCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Clear Marked Fields", RibbonUI.UnexpectedErrorText("Clear Marked Fields", Err.Number, Err.Description, Err.Source)
+End Sub
+
 ' Discards the current marking session (misclick recovery) -- no confirm
 ' prompt, since re-marking is cheap and a silent no-op when nothing was
 ' marked yet is the least surprising behavior.
-Public Sub ClearMarkedFieldsForBatch()
+Private Sub ClearMarkedFieldsForBatchCore()
     ResetMarkingSession
     RibbonUI.ShowSyncResult "Clear Marked Fields", "Marked fields cleared."
 End Sub
@@ -2405,7 +2439,24 @@ Public Function PromptBatchOnboardType() As String
     PromptBatchOnboardType = report
 End Function
 
+' Toolbar entry point. The real work is in BatchOnboardTypeCore; this exists only to
+' catch anything that escapes it.
+'
+' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
+' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
+' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
+' inline handler would be switched off by the first of them and read as
+' protection while providing none. Putting the handler in a separate frame
+' means nothing inside the body can turn it off, now or after a later edit.
 Public Sub BatchOnboardType()
+    On Error GoTo Failed
+    BatchOnboardTypeCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Bulk Onboard Type", RibbonUI.UnexpectedErrorText("Bulk Onboard Type", Err.Number, Err.Description, Err.Source)
+End Sub
+
+Private Sub BatchOnboardTypeCore()
     Dim report As String
     report = PromptBatchOnboardType()
     If report <> "" Then

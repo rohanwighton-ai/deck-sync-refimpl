@@ -425,6 +425,10 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes", r
     r = Test_BatchOnboardFlow_IndexUsingInstanceKeyCatchesCollisions()
     AppendResult report, "BatchOnboardFlow_IndexUsingInstanceKeyCatchesCollisions", r
+    r = Test_RibbonUI_UnexpectedErrorTextTellsTheTruth()
+    AppendResult report, "RibbonUI_UnexpectedErrorTextTellsTheTruth", r
+    r = Test_RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero()
+    AppendResult report, "RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -3452,6 +3456,107 @@ Private Function Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSav
 
     Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave = result
 End Function
+
+' The failure message a human actually sees when an action dies unexpectedly.
+'
+' Asserting the CONTENT, not just that a string comes back, because the one
+' thing this message must not do is reassure. An error partway through a commit
+' can leave real changes in the deck and the Data sheet, so "nothing was
+' written" would be a comforting lie told at the exact moment the human most
+' needs the truth.
+Private Function Test_RibbonUI_UnexpectedErrorTextTellsTheTruth() As String
+    Dim result As String
+
+    Dim txt As String
+    txt = RibbonUI.UnexpectedErrorText("Bulk Onboard Type", 52, "Bad file name or number", "WorkbookBridge.CreateWorkbook")
+
+    result = result & Assert(InStr(txt, "Bulk Onboard Type") > 0, "names the action that failed")
+    result = result & Assert(InStr(txt, "52") > 0, "includes the error number")
+    result = result & Assert(InStr(txt, "Bad file name or number") > 0, "includes the error description")
+    result = result & Assert(InStr(txt, "WorkbookBridge.CreateWorkbook") > 0, "includes where it came from")
+    result = result & Assert(InStr(txt, "may have already changed") > 0, _
+        "WARNS that partial changes may exist -- never claims nothing was written")
+
+    ' An empty Err.Source is normal for a plain runtime error, and must not
+    ' produce a message with a blank hole in it.
+    Dim blankSource As String
+    blankSource = RibbonUI.UnexpectedErrorText("Sync Now", 9, "Subscript out of range", "")
+    result = result & Assert(InStr(blankSource, "unidentified step") > 0, _
+        "a missing Err.Source still reads as a sentence, got '" & blankSource & "'")
+
+    Test_RibbonUI_UnexpectedErrorTextTellsTheTruth = result
+End Function
+
+' Proves the wrapper pattern is load-bearing rather than decorative.
+'
+' The reason every toolbar action got a separate wrapper Sub instead of an
+' inline "On Error GoTo Failed" is a VBA rule that is easy to forget: "On Error
+' GoTo 0" DISABLES the enabled handler for the whole procedure. Every one of
+' these bodies is full of "On Error Resume Next / On Error GoTo 0" pairs, so an
+' inline handler would be switched off by the first pair and would then read as
+' protection while providing none -- the same always-true-guard shape as the
+' two faults fixed earlier today.
+'
+' This test asserts both halves against real VBA: that an inline handler really
+' is destroyed by On Error GoTo 0, and that a wrapper's handler really does
+' still catch. If VBA's behaviour were ever different, the first assertion
+' fails and the wrapper indirection can be simplified away with confidence.
+Private Function Test_RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero() As String
+    Dim result As String
+
+    result = result & Assert(InlineHandlerIsDefeated() = "escaped", _
+        "an inline handler IS destroyed by a later On Error GoTo 0 -- the reason wrappers exist")
+    result = result & Assert(WrapperHandlerCatches() = "caught", _
+        "a wrapper's handler still catches an error raised below it")
+
+    Test_RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero = result
+End Function
+
+' Mimics the naive fix: handler at the top, then an ordinary guarded probe of
+' the kind these Subs do constantly. Returns "escaped" if the error got past
+' the handler, "caught" if the handler still worked.
+Private Function InlineHandlerIsDefeated() As String
+    On Error GoTo Failed
+
+    Dim ignored As Variant
+    On Error Resume Next
+    ignored = 1 / 0            ' a routine guarded probe
+    On Error GoTo 0            ' <- this is the line that disables the handler above
+
+    Dim boom As Long
+    On Error Resume Next
+    Err.Clear
+    boom = 1 / 0               ' now unguarded: does the top handler still catch?
+    If Err.Number <> 0 Then
+        InlineHandlerIsDefeated = "escaped"
+    Else
+        InlineHandlerIsDefeated = "caught"
+    End If
+    On Error GoTo 0
+    Exit Function
+Failed:
+    InlineHandlerIsDefeated = "caught"
+End Function
+
+Private Function WrapperHandlerCatches() As String
+    On Error GoTo Failed
+    RaiseSomethingUnexpected      ' separate frame, exactly like <Action>Core
+    WrapperHandlerCatches = "notcaught"
+    Exit Function
+Failed:
+    WrapperHandlerCatches = "caught"
+End Function
+
+Private Sub RaiseSomethingUnexpected()
+    ' Guarded probes of its own first, mirroring a real Core Sub, so the test
+    ' proves they don't interfere with the CALLER's handler.
+    Dim ignored As Variant
+    On Error Resume Next
+    ignored = 1 / 0
+    On Error GoTo 0
+
+    Err.Raise vbObjectError + 99, "TestRunner.RaiseSomethingUnexpected", "simulated unexpected failure"
+End Sub
 
 ' The instance key links a slide to its row in the Data sheet, and nothing
 ' checked for collisions until now -- a gap the code itself had already named

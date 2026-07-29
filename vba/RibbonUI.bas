@@ -32,7 +32,24 @@ Option Explicit
 ' Sync Now
 ' ---------------------------------------------------------------------
 
+' Toolbar entry point. The real work is in SyncNowCore; this exists only to
+' catch anything that escapes it.
+'
+' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
+' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
+' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
+' inline handler would be switched off by the first of them and read as
+' protection while providing none. Putting the handler in a separate frame
+' means nothing inside the body can turn it off, now or after a later edit.
 Public Sub SyncNow()
+    On Error GoTo Failed
+    SyncNowCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Sync Now", RibbonUI.UnexpectedErrorText("Sync Now", Err.Number, Err.Description, Err.Source)
+End Sub
+
+Private Sub SyncNowCore()
     Dim pres As Object
     Set pres = Application.ActivePresentation
 
@@ -81,13 +98,30 @@ Public Sub SyncNow()
     ShowSyncResult "Sync Now", fullReport
 End Sub
 
+' Toolbar entry point. The real work is in SyncPreviewCore; this exists only to
+' catch anything that escapes it.
+'
+' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
+' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
+' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
+' inline handler would be switched off by the first of them and read as
+' protection while providing none. Putting the handler in a separate frame
+' means nothing inside the body can turn it off, now or after a later edit.
+Public Sub SyncPreview()
+    On Error GoTo Failed
+    SyncPreviewCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Preview Sync", RibbonUI.UnexpectedErrorText("Preview Sync", Err.Number, Err.Description, Err.Source)
+End Sub
+
 ' Read-only twin of SyncNow: identical resolution path (same registry lookups,
 ' same workbook, same worksheets), but every registered type is run through
 ' RunSync.PreviewRoutineSync instead of RunRoutineSync, so the deck is never
 ' touched. Deliberately shares SyncNow's structure line for line -- a preview
 ' that resolves its inputs differently from the real thing can disagree with it
 ' about what would happen, which defeats the point.
-Public Sub SyncPreview()
+Private Sub SyncPreviewCore()
     Dim pres As Object
     Set pres = Application.ActivePresentation
 
@@ -145,7 +179,24 @@ End Sub
 ' it does not invent new field values.
 ' ---------------------------------------------------------------------
 
+' Toolbar entry point. The real work is in NewPeriodCore; this exists only to
+' catch anything that escapes it.
+'
+' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
+' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
+' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
+' inline handler would be switched off by the first of them and read as
+' protection while providing none. Putting the handler in a separate frame
+' means nothing inside the body can turn it off, now or after a later edit.
 Public Sub NewPeriod()
+    On Error GoTo Failed
+    NewPeriodCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "New Period", RibbonUI.UnexpectedErrorText("New Period", Err.Number, Err.Description, Err.Source)
+End Sub
+
+Private Sub NewPeriodCore()
     Dim pres As Object
     Set pres = Application.ActivePresentation
 
@@ -328,7 +379,24 @@ End Function
 ' DeckRegistry is that caller now).
 ' ---------------------------------------------------------------------
 
+' Toolbar entry point. The real work is in OnboardNewTypeCore; this exists only to
+' catch anything that escapes it.
+'
+' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
+' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
+' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
+' inline handler would be switched off by the first of them and read as
+' protection while providing none. Putting the handler in a separate frame
+' means nothing inside the body can turn it off, now or after a later edit.
 Public Sub OnboardNewType()
+    On Error GoTo Failed
+    OnboardNewTypeCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Onboard New Slide Type", RibbonUI.UnexpectedErrorText("Onboard New Slide Type", Err.Number, Err.Description, Err.Source)
+End Sub
+
+Private Sub OnboardNewTypeCore()
     Dim report As String
     report = OnboardFlow.PromptOnboardNewSlideType()
     If report <> "" Then
@@ -336,7 +404,24 @@ Public Sub OnboardNewType()
     End If
 End Sub
 
+' Toolbar entry point. The real work is in ResolveUnmatchedFieldsCore; this exists only to
+' catch anything that escapes it.
+'
+' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
+' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
+' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
+' inline handler would be switched off by the first of them and read as
+' protection while providing none. Putting the handler in a separate frame
+' means nothing inside the body can turn it off, now or after a later edit.
 Public Sub ResolveUnmatchedFields()
+    On Error GoTo Failed
+    ResolveUnmatchedFieldsCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Resolve Unmatched Fields", RibbonUI.UnexpectedErrorText("Resolve Unmatched Fields", Err.Number, Err.Description, Err.Source)
+End Sub
+
+Private Sub ResolveUnmatchedFieldsCore()
     Dim pres As Object
     Set pres = Application.ActivePresentation
 
@@ -384,3 +469,32 @@ End Sub
 Public Sub ShowSyncResult(title As String, report As String)
     MsgBox report, vbInformation, title
 End Sub
+
+' What the human sees when an action dies of something nobody anticipated.
+'
+' Every toolbar action is wrapped in a handler that ends here (see any entry
+' point's own header for why a WRAPPER rather than an inline handler). Before
+' 2026-07-29 there were none at all, so an unguarded raise anywhere below a
+' button produced VBA's own Debug/End dialog -- which is not just ugly: End
+' discards whatever the run had collected, and on 2026-07-29 that meant 45
+' instance keys confirmed one prompt at a time.
+'
+' Pure, so the wording is testable without provoking a real error.
+'
+' Deliberately does NOT claim nothing was written. An error partway through a
+' commit can leave real changes in the deck and the Data sheet, and a
+' reassuring "no changes were made" would be a lie exactly when the human most
+' needs the truth. Saying "check before re-running" is less comforting and
+' actually correct.
+Public Function UnexpectedErrorText(actionName As String, errNumber As Long, errDescription As String, errSource As String) As String
+    Dim where As String
+    where = Trim(errSource)
+    If where = "" Then where = "an unidentified step"
+
+    UnexpectedErrorText = _
+        actionName & " stopped early -- something went wrong that this add-in didn't anticipate." & vbCrLf & vbCrLf & _
+        "Error " & errNumber & ": " & errDescription & vbCrLf & _
+        "Reported by: " & where & vbCrLf & vbCrLf & _
+        "IMPORTANT: this run may have already changed your deck or its Data sheet before it stopped. Check both before running it again." & vbCrLf & vbCrLf & _
+        "Nothing here needs the VBA editor -- if this keeps happening, the text above is the useful part to pass on."
+End Function

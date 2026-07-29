@@ -152,12 +152,22 @@ Public Function GetWorkbookPath(pres As Object) As String
     Dim beside As String
     beside = SiblingOfDeck(pres, FileNameOnly(stored))
     If beside <> "" Then
-        ' Dir() cannot test an http(s) URL -- it returns "" for any URL, so a
-        ' correctly-built cloud sibling would be constructed and then rejected as
-        ' non-existent, making the whole lookup useless for OneDrive/SharePoint
-        ' decks. Workbooks.Open DOES accept a URL, so hand the URL back and let
-        ' the open attempt be the real test; the caller already reports a clean
-        ' "could not open the paired workbook at: <path>" if it fails.
+        ' Dir() cannot test an http(s) URL, so a correctly-built cloud sibling
+        ' would be constructed and then rejected as non-existent, making the
+        ' whole lookup useless for OneDrive/SharePoint decks. Workbooks.Open
+        ' DOES accept a URL, so hand the URL back and let the open attempt be
+        ' the real test; the caller already reports a clean "could not open the
+        ' paired workbook at: <path>" if it fails.
+        '
+        ' Corrected 2026-07-29: this comment used to say Dir() "returns "" for
+        ' any URL". It does not -- it RAISES runtime error 52. Probed directly
+        ' against real Office: an https:// or http:// path raises 52, while a
+        ' merely non-existent local path returns "". The conclusion above is
+        ' unaffected (FileExists guards the call, so a raise still lands as
+        ' False), but the stated mechanism was wrong, and the same wrong belief
+        ' left an UNGUARDED Dir() in WorkbookBridge.CreateWorkbook that killed a
+        ' live run this day. A comment that misstates why something works is how
+        ' the next person writes the unguarded version.
         If IsUrl(beside) Then
             GetWorkbookPath = beside
             Exit Function

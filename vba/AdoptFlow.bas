@@ -262,10 +262,27 @@ Public Function PromptAdoptExistingSlides() As String
     PromptAdoptExistingSlides = report
 End Function
 
+' Toolbar entry point. The real work is in AdoptExistingSlidesCore; this exists only to
+' catch anything that escapes it.
+'
+' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
+' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
+' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
+' inline handler would be switched off by the first of them and read as
+' protection while providing none. Putting the handler in a separate frame
+' means nothing inside the body can turn it off, now or after a later edit.
+Public Sub AdoptExistingSlides()
+    On Error GoTo Failed
+    AdoptExistingSlidesCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Adopt Existing Slides", RibbonUI.UnexpectedErrorText("Adopt Existing Slides", Err.Number, Err.Description, Err.Source)
+End Sub
+
 ' Thin wrapper for CommandBarUI.bas's toolbar button -- a plain, parameterless
 ' Sub (same shape as RibbonUI.bas's four actions), reporting via the same
 ' shared ShowSyncResult rather than a bespoke dialog.
-Public Sub AdoptExistingSlides()
+Private Sub AdoptExistingSlidesCore()
     Dim report As String
     report = PromptAdoptExistingSlides()
     If report <> "" Then
