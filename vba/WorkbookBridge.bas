@@ -70,10 +70,23 @@ Public Function CreateWorkbook(path As String) As Object
     wb.SaveAs path
     On Error GoTo 0
 
-    If Dir(path) = "" Then
-        Set CreateWorkbook = Nothing
-    Else
+    ' Dir() must be guarded too, and wasn't -- this is the line that actually
+    ' raised on 2026-07-29, not the SaveAs above it. Dir() throws runtime error
+    ' 52 ("Bad file name or number") on a path it considers malformed, and an
+    ' https:// URL is exactly that. So the one call written to CONFIRM the save
+    ' worked was the one that blew the run up, while the risky-looking call it
+    ' was checking sat safely inside a handler. This function's header promised
+    ' "never raises" and was wrong for as long as it has existed.
+    Dim landed As Boolean
+    landed = False
+    On Error Resume Next
+    landed = (Dir(path) <> "")
+    On Error GoTo 0
+
+    If landed Then
         Set CreateWorkbook = wb
+    Else
+        Set CreateWorkbook = Nothing
     End If
 End Function
 

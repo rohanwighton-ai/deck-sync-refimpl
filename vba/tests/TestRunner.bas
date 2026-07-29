@@ -301,8 +301,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_CommandBarUI_ShowToolbarCreatesThreeWiredButtons()
-    AppendResult report, "CommandBarUI_ShowToolbarCreatesThreeWiredButtons", r
+    r = Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons()
+    AppendResult report, "CommandBarUI_ShowToolbarCreatesFourWiredButtons", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -2563,12 +2563,22 @@ End Function
 ' CommandBarUI
 ' ---------------------------------------------------------------------
 
-' Toolbar deliberately trimmed to 3 buttons 2026-07-26 -- Rohan: "I only
-' want to add an operation when I'm fully clear it works and I know what it
-' does." Only the actions actually live-tested against his real deck this
-' pass stay on the toolbar; the other 5 are commented out in CommandBarUI.
-' bas, not deleted, per that Sub's own header.
-Private Function Test_CommandBarUI_ShowToolbarCreatesThreeWiredButtons() As String
+' Toolbar deliberately trimmed 2026-07-26 -- Rohan: "I only want to add an
+' operation when I'm fully clear it works and I know what it does." Only
+' actions live-tested against his real deck stay on it; the rest are commented
+' out in CommandBarUI.bas, not deleted, per that Sub's own header.
+'
+' Preview Sync joined them 2026-07-29 without a prior live test, which is
+' consistent with that rule rather than an exception to it: the rule guards
+' against a half-understood button CHANGING a real deck, and Preview Sync
+' provably cannot (see Test_RunSync_PreviewReportsWithoutTouchingTheDeck).
+'
+' Asserting its presence BY NAME below, not just that four buttons exist. The
+' old version only checked each button resolved to one of the expected Subs,
+' which would still pass if Preview Sync silently vanished and another button
+' were duplicated -- a check that can't fail the way the thing it guards
+' actually breaks.
+Private Function Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons() As String
     Dim result As String
 
     CommandBarUI.ShowToolbar
@@ -2576,7 +2586,10 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesThreeWiredButtons() As Stri
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar 'Deck Sync' exists after ShowToolbar")
-    result = result & Assert(bar.Controls.count = 3, "toolbar has 3 buttons, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 4, "toolbar has 4 buttons, got " & bar.Controls.count)
+
+    Dim seenPreview As Boolean
+    seenPreview = False
 
     ' PowerPoint sometimes normalizes a set OnAction like "RibbonUI.SyncNow"
     ' to its own "<PresentationName>!SyncNow" display form (module-
@@ -2591,7 +2604,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesThreeWiredButtons() As Stri
     ' actually matters (the button fires the right Sub) is unaffected
     ' either way, only this display string varies.
     Dim expectedActions As String
-    expectedActions = "MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch"
+    expectedActions = "SyncPreview|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch"
 
     Dim i As Long
     For i = 1 To bar.Controls.count
@@ -2607,10 +2620,13 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesThreeWiredButtons() As Stri
         subName = IIf(dotPos > 0, Mid(afterBang, dotPos + 1), afterBang)
         result = result & Assert(InStr(expectedActions, subName) > 0, "button '" & ctrl.Caption & "' OnAction '" & ctrl.OnAction & "' resolves to one of the real action Subs")
         result = result & Assert(Len(ctrl.TooltipText) > 0, "button '" & ctrl.Caption & "' has a non-empty tooltip explainer")
+        If subName = "SyncPreview" Then seenPreview = True
     Next i
 
+    result = result & Assert(seenPreview, "Preview Sync is actually ON the toolbar -- the read-only action, and the safe first thing to run on an unfamiliar machine")
+
     CommandBarUI.HideToolbar
-    Test_CommandBarUI_ShowToolbarCreatesThreeWiredButtons = result
+    Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons = result
 End Function
 
 Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
@@ -2622,7 +2638,7 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar still exists after calling ShowToolbar twice")
-    result = result & Assert(bar.Controls.count = 3, "still exactly 3 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 4, "still exactly 4 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarIsIdempotent = result

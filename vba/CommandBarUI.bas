@@ -54,15 +54,25 @@ Public Sub ShowToolbar()
     Dim bar As Object
     Set bar = Application.CommandBars.Add(Name:=TOOLBAR_NAME, Position:=1, Temporary:=True)  ' msoBarTop = 1
 
-    ' Not yet live-tested against a real deck this pass -- hidden, not
-    ' deleted. See this Sub's own header.
+    ' Preview Sync is on the toolbar as of 2026-07-29, at Rohan's request, and
+    ' it is the one action where promoting it BEFORE a live test is the correct
+    ' call rather than an exception to his rule.
     '
-    ' "Preview Sync" is the read-only one: it reports exactly what Sync Now
-    ' would do and writes nothing (RunSync.PreviewRoutineSync suppresses all
-    ' three mutation sites). It is the intended way to become "fully clear it
-    ' works" about Sync Now before that button is ever enabled -- run it from
-    ' the VBE (RibbonUI.SyncPreview) once, then uncomment this line.
-    ' AddButton bar, "Preview Sync", "RibbonUI.SyncPreview", 1090, "Show exactly what Sync Now would change in this deck -- reads only, writes nothing."
+    ' The rule ("only add an operation when I'm fully clear it works") exists to
+    ' stop a half-understood button changing a real deck. Preview Sync cannot:
+    ' RunSync.PreviewRoutineSync suppresses all three mutation sites, and
+    ' Test_RunSync_PreviewReportsWithoutTouchingTheDeck asserts that directly --
+    ' no slides created, stale text still stale, order unchanged. So the risk
+    ' the rule guards against is absent here, while the cost of NOT having it is
+    ' real: without a button, the only way to run it is from the VBE, and
+    ' driving the VBE is precisely the friction that keeps it untested.
+    '
+    ' It is also the safest possible first action on an unfamiliar machine,
+    ' which is the situation it was asked for.
+    AddButton bar, "Preview Sync", "RibbonUI.SyncPreview", 1090, "Show exactly what Sync Now would change in this deck -- reads only, writes nothing."
+
+    ' Still not live-tested against a real deck -- hidden, not deleted. These
+    ' DO write, so the rule applies to them unchanged. See this Sub's header.
     ' AddButton bar, "Sync Now", "RibbonUI.SyncNow", 1004, "Pull changes from the paired Data workbook onto every already-linked slide in this deck."
     ' AddButton bar, "New Period", "RibbonUI.NewPeriod", 297, "Duplicate an existing slide instance into a new period (e.g. next quarter), with a fresh instance key."
     ' AddButton bar, "Onboard New Slide Type", "RibbonUI.OnboardNewType", 1697, "Register a brand-new slide type from one example slide, one field at a time via prompts."
