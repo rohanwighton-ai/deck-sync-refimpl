@@ -423,6 +423,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen", r
     r = Test_BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes()
     AppendResult report, "BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes", r
+    r = Test_BatchOnboardFlow_IndexUsingInstanceKeyCatchesCollisions()
+    AppendResult report, "BatchOnboardFlow_IndexUsingInstanceKeyCatchesCollisions", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -3433,6 +3435,45 @@ Private Function Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSav
     BatchOnboardFlow.ResetMarkingSession
 
     Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave = result
+End Function
+
+' The instance key links a slide to its row in the Data sheet, and nothing
+' checked for collisions until now -- a gap the code itself had already named
+' ("the missing duplicate-key guard"). Two slides sharing a key both resolve to
+' one row: the second slide's values overwrite the first's at onboard, and from
+' then on one row feeds two slides with no error anywhere. A reporting deck
+' that is confidently wrong is the worst failure this tool has available to it.
+Private Function Test_BatchOnboardFlow_IndexUsingInstanceKeyCatchesCollisions() As String
+    Dim result As String
+
+    Dim keys As Object
+    Set keys = CreateObject("Scripting.Dictionary")
+    keys(0) = "SAAFE-2.1.3"      ' template slide
+    keys(1) = "SAAFE-2.1.4"
+    keys(2) = ""                 ' skipped this pass
+
+    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "SAAFE-9.9.9") = -1, _
+        "an unused key is free")
+    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "SAAFE-2.1.4") = 1, _
+        "an exact repeat is caught, and names the slide holding it")
+    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "SAAFE-2.1.3") = 0, _
+        "a clash with the template slide is caught")
+
+    ' Near-misses. Both are typos in every realistic scenario, and accepting
+    ' either silently merges two projects' data.
+    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "saafe-2.1.4") = 1, _
+        "a case-only difference is treated as a clash")
+    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "  SAAFE-2.1.4  ") = 1, _
+        "surrounding whitespace is treated as a clash")
+
+    ' Blank means "skip this slide", so many slides can be blank at once --
+    ' if blanks collided, the second skip would be refused as a duplicate.
+    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "") = -1, _
+        "blank never clashes -- it means skip, and several slides may be skipped")
+    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "   ") = -1, _
+        "whitespace-only is blank, and still never clashes")
+
+    Test_BatchOnboardFlow_IndexUsingInstanceKeyCatchesCollisions = result
 End Function
 
 ' Live failure 2026-07-29: a hand-typed workbook path produced VBA runtime

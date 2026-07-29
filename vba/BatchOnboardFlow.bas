@@ -599,6 +599,52 @@ Public Function WorkbookPathProblem(candidate As String) As String
     WorkbookPathProblem = ""
 End Function
 
+' Which already-confirmed slide is using this instance key, or -1 if it's free.
+' Index 0 is the template slide; 1..N index into otherSlides.
+'
+' The instance key is the identity that links a slide to its row in the Data
+' sheet, and nothing checked for collisions until now (the gap was even named
+' in ConflictingSlideType's header as "the missing duplicate-key guard"). Two
+' slides given the same key both resolve to one row: at onboard the second
+' slide's harvested values overwrite the first's, and from then on one row
+' feeds two slides. Nothing errors. The deck simply starts showing numbers
+' that belong to a different project, which is the worst class of bug this
+' tool can have -- a reporting deck that is confidently wrong.
+'
+' Comparison is trimmed and case-insensitive. Two keys differing only by case
+' or trailing space are a typo in every realistic scenario, and the cost of
+' being wrong is asymmetric: refusing a deliberate case-distinct pair costs
+' one rename, while accepting an accidental one costs silently merged data.
+Public Function IndexUsingInstanceKey(confirmedKeys As Object, candidate As String) As Long
+    IndexUsingInstanceKey = -1
+
+    Dim needle As String
+    needle = LCase(Trim(candidate))
+    If needle = "" Then Exit Function ' blank means "skip this slide" -- never a clash
+
+    Dim k As Variant
+    For Each k In confirmedKeys.Keys
+        If LCase(Trim(CStr(confirmedKeys(k)))) = needle Then
+            IndexUsingInstanceKey = CLng(k)
+            Exit Function
+        End If
+    Next k
+End Function
+
+' Human-facing name for a confirmedKeys index -- 0 is the template, 1..N index
+' into otherSlides. Clash messages are useless with array indices in them; the
+' human is looking at slide numbers.
+Private Function SlideLabelForKeyIndex(idx As Long, templateSld As Object, otherSlides() As Object) As String
+    SlideLabelForKeyIndex = "another slide"
+    On Error Resume Next
+    If idx = 0 Then
+        SlideLabelForKeyIndex = "the template slide (Slide " & templateSld.SlideIndex & ")"
+    Else
+        SlideLabelForKeyIndex = "Slide " & otherSlides(idx).SlideIndex
+    End If
+    On Error GoTo 0
+End Function
+
 ' Asks the human where the Data workbook should live, preferring a real file
 ' browser over a typed path.
 '
@@ -2183,10 +2229,25 @@ Public Function PromptBatchOnboardType() As String
         confirmedKeys(0) = Trim(templateKey)
     End If
 
+    ' Keys already written into slides are reused silently, but a collision
+    ' AMONG them is reported rather than fixed here -- those keys are already in
+    ' the deck, so a clash is pre-existing damage (exactly what the 2026-07-28
+    ' re-derivation bug produced), and quietly re-prompting would hide it. The
+    ' human needs to know their deck has two slides claiming one row.
+    Dim reusedClashes As String
+    reusedClashes = ""
+
     For i = 1 To otherSlideCount
         Dim otherExisting As String
         otherExisting = ExistingInstanceKey(otherSlides(i))
         If otherExisting <> "" Then
+            Dim reusedClashIdx As Long
+            reusedClashIdx = IndexUsingInstanceKey(confirmedKeys, otherExisting)
+            If reusedClashIdx >= 0 Then
+                reusedClashes = reusedClashes & vbCrLf & "  Slide " & otherSlides(i).SlideIndex & _
+                    " and " & SlideLabelForKeyIndex(reusedClashIdx, templateSld, otherSlides) & _
+                    " both already carry the key '" & otherExisting & "'"
+            End If
             confirmedKeys(i) = otherExisting
             reusedCount = reusedCount + 1
         Else
@@ -2198,7 +2259,36 @@ Public Function PromptBatchOnboardType() As String
             If otherSuggestion = "" Then
                 prompt = prompt & vbCrLf & vbCrLf & "(No suggested value available -- leaving this blank will skip this slide entirely this pass.)"
             End If
-            confirmedKeys(i) = InputBox(prompt, "Bulk Onboard Type -- Instance Key", otherSuggestion)
+
+            ' Re-prompt on a clash rather than accepting it. Bounded, so a
+            ' human who cannot find a free key can still get out -- and the way
+            ' out is a blank, which skips the slide and leaves the deck
+            ' untouched rather than merging it onto someone else's row.
+            Dim proposed As String
+            Dim tries As Long
+            Dim thisPrompt As String
+            thisPrompt = prompt
+            For tries = 1 To 5
+                proposed = Trim(InputBox(thisPrompt, "Bulk Onboard Type -- Instance Key", otherSuggestion))
+                If proposed = "" Then Exit For ' blank = skip this slide
+
+                Dim clashIdx As Long
+                clashIdx = IndexUsingInstanceKey(confirmedKeys, proposed)
+                If clashIdx < 0 Then Exit For ' free -- take it
+
+                thisPrompt = "'" & proposed & "' is already used by " & _
+                    SlideLabelForKeyIndex(clashIdx, templateSld, otherSlides) & "." & vbCrLf & vbCrLf & _
+                    "Two slides sharing an instance key both point at the same row in the Data sheet, so one slide's numbers would quietly overwrite the other's." & vbCrLf & vbCrLf & _
+                    prompt
+                otherSuggestion = proposed
+            Next tries
+
+            ' Fell out of the loop still clashing -- refuse rather than merge.
+            If proposed <> "" Then
+                If IndexUsingInstanceKey(confirmedKeys, proposed) >= 0 Then proposed = ""
+            End If
+
+            confirmedKeys(i) = proposed
         End If
     Next i
 
@@ -2289,6 +2379,16 @@ Public Function PromptBatchOnboardType() As String
     ' the deck", and the human needs to be able to tell those apart.
     If reusedCount > 0 Then
         report = report & vbCrLf & "Kept existing instance key (already linked, not re-keyed): " & reusedCount
+    End If
+
+    ' Pre-existing duplicates among keys already written into the deck. Not
+    ' something this run caused or can safely fix, but the human is now looking
+    ' at a deck where two slides claim one row of data -- silence here would let
+    ' that sit until the numbers went wrong on a slide nobody was watching.
+    If reusedClashes <> "" Then
+        report = report & vbCrLf & vbCrLf & _
+            "WARNING -- duplicate instance keys ALREADY in this deck (not created by this run):" & reusedClashes & vbCrLf & _
+            "Each pair shares one row in the Data sheet, so one slide's values overwrite the other's. Re-key one slide of each pair."
     End If
 
     If commitResult.FailedVerificationCount > 0 Then
