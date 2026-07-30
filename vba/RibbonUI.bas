@@ -81,6 +81,19 @@ Private Sub SyncNowCore()
         Exit Sub
     End If
 
+    ' Refuse to sync out of Excel's unsaved buffer -- see WorkbookBridge.IsDirty
+    ' for the live incident. Checked BEFORE planning, not after: the plan itself
+    ' reads the sheet, so a plan built on unsaved data would already be the
+    ' thing being prevented, and the confirmation would be describing values
+    ' that exist in no file.
+    If WorkbookBridge.IsDirty(wb) Then
+        If MsgBox(WorkbookBridge.UnsavedWorkbookText(workbookPath), _
+                  vbYesNo + vbExclamation, "Sync Now") <> vbYes Then
+            Exit Sub
+        End If
+        wb.Save
+    End If
+
     ' Plan every registered type BEFORE writing any of them, so the
     ' confirmation covers the whole deck rather than the first type only.
     ' Sync Now is the one toolbar action that can change a deck at scale, and
@@ -196,6 +209,17 @@ Private Sub SyncPreviewCore()
             fullReport = fullReport & "SKIPPED " & types(i) & ": registered type's template slide no longer resolves (was it deleted?)" & vbCrLf
         End If
     Next i
+
+    ' Warns where Sync Now refuses. The preview writes nothing, so unsaved data
+    ' cannot damage the deck here -- but a preview of values that exist in no
+    ' file is still a preview of something that might never be synced, and the
+    ' whole worth of this report is that it can be trusted. Stated at the TOP:
+    ' a caveat below a long report is a caveat nobody reads.
+    If WorkbookBridge.IsDirty(wb) Then
+        fullReport = "NOTE: the Data workbook has unsaved changes, so this preview " & _
+            "reflects what is on screen in Excel, not what is in the file." & vbCrLf & _
+            "Save it before syncing." & vbCrLf & vbCrLf & fullReport
+    End If
 
     ShowSyncResult "Preview Sync (nothing written)", fullReport
 End Sub

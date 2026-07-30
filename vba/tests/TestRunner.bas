@@ -266,6 +266,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_WorkbookBridge_IsDirtyDetectsUnsavedEdits()
+    AppendResult report, "WorkbookBridge_IsDirtyDetectsUnsavedEdits", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_OnboardFlow_PlanOnboardingFindsCandidatesAndHarvestsText()
     AppendResult report, "OnboardFlow_PlanOnboardingFindsCandidatesAndHarvestsText", r
     On Error GoTo 0
@@ -1509,6 +1514,18 @@ Private Function Test_RunSync_EndToEndCreatesSlidesFromFreshSheet() As String
         Dim correctedText As String
         correctedText = IIf(correctedShp Is Nothing, "<shape not found>", correctedShp.TextFrame.TextRange.Text)
         result = result & Assert(correctedText = "Existing Value", "existing slide's stale value was corrected (case 4), got '" & correctedText & "'")
+
+        ' The REPORT, not just the deck. Until 2026-07-30 this branch printed
+        ' "corrected: <key>" and nothing else, so the record you get after a
+        ' deck changes said less than the preview you get before it. Past tense
+        ' is asserted deliberately: the write has already happened here, and the
+        ' preview's "now/new" wording would describe it as still pending.
+        result = result & Assert(InStr(report, "Title:") > 0, _
+            "the sync report names the field it changed -- report: " & report)
+        result = result & Assert(InStr(report, "was:  'Stale Value'") > 0, _
+            "the sync report records what the field held before the write -- report: " & report)
+        result = result & Assert(InStr(report, "now:  'Existing Value'") > 0, _
+            "the sync report records what it now holds -- report: " & report)
     End If
     If byKey.Exists("e2e-new-1") Then
         Dim new1Shp As Object
@@ -2385,6 +2402,61 @@ End Function
 ' ---------------------------------------------------------------------
 ' WorkbookBridge
 ' ---------------------------------------------------------------------
+
+' The guard for the 2026-07-30 live incident: the engine attaches to the
+' RUNNING Excel, so it reads the workbook as it appears on screen. A slide was
+' created from row 5 while the saved file held only rows 1-4.
+'
+' Tests the real predicate against a real workbook rather than a stub. `.Saved`
+' is the entire basis of the guard, and an assumption about a COM property is
+' exactly the kind of thing this project has been burned by asserting from
+' memory -- so it is exercised here, dirtied and cleaned, against live Excel.
+Private Function Test_WorkbookBridge_IsDirtyDetectsUnsavedEdits() As String
+    Dim result As String
+
+    ' The harness's own Excel instance, never a private one: an earlier test
+    ' called CreateObject + Quit and tore down the instance other tests were
+    ' still holding, hanging the whole run. Take a workbook, never the app.
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = WorkbookBridge.GetExcelApp()
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+
+    ' Verified against real Excel 2026-07-30, having first been asserted wrongly
+    ' from memory: a brand-new Workbooks.Add() reports Saved = TRUE. Excel's
+    ' flag means "unmodified since last write", not "exists on disk", so an
+    ' untouched new workbook is clean even though no file exists.
+    '
+    ' Harmless for the guard, and worth stating so nobody later "fixes" it:
+    ' the only workbook the guard ever sees comes from OpenOrGetWorkbook(path),
+    ' which opens an existing file, so the never-saved case cannot arise there.
+    result = result & Assert(Not WorkbookBridge.IsDirty(wb), _
+        "an untouched new workbook reads as clean -- Saved means unmodified, not on-disk")
+
+    ws.Cells(1, 1).Value = "an edit that exists only in memory"
+    result = result & Assert(WorkbookBridge.IsDirty(wb), _
+        "editing a cell makes it dirty again -- this is the exact state that " & _
+        "built a slide from a row in no file")
+
+    wb.Saved = True
+    result = result & Assert(Not WorkbookBridge.IsDirty(wb), _
+        "and it can be cleared a second time")
+
+    ' --- the wording the human actually sees ---
+    Dim msg As String
+    msg = WorkbookBridge.UnsavedWorkbookText("C:\somewhere\Data.xlsx")
+    result = result & Assert(InStr(msg, "C:\somewhere\Data.xlsx") > 0, _
+        "names the workbook, so it is actionable, got: " & msg)
+    result = result & Assert(InStr(msg, "only in Excel's memory") > 0, _
+        "explains WHY it matters rather than just refusing, got: " & msg)
+    result = result & Assert(InStr(msg, "no matching row") > 0, _
+        "names the actual consequence -- an orphaned slide, got: " & msg)
+
+    wb.Saved = True
+    wb.Close
+
+    Test_WorkbookBridge_IsDirtyDetectsUnsavedEdits = result
+End Function
 
 Private Function Test_WorkbookBridge_SanitizeSheetNameStripsInvalidCharsAndTruncates() As String
     Dim result As String

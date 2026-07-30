@@ -141,3 +141,45 @@ Public Function SanitizeSheetName(rawName As String) As String
 
     SanitizeSheetName = result
 End Function
+
+' Does this workbook have edits that exist only in Excel's memory?
+'
+' Found live 2026-07-30, and it is not a nicety. GetExcelApp attaches to the
+' RUNNING Excel instance, so the engine reads the workbook as it appears on
+' screen, saved or not. A slide was created that evening from a row that
+' existed in no file: the saved workbook held rows 1-4, the sync built a slide
+' from row 5. Close Excel without saving at that point and the deck keeps a
+' slide whose backing row is gone -- an orphan no future sync will ever update,
+' with nothing to indicate it.
+'
+' The wider damage is to trust in Preview Sync. If data can change between the
+' preview and the sync without any file changing, the preview is not a promise
+' about the next write.
+'
+' Errors are treated as dirty, not clean. A workbook that cannot be asked
+' whether it is saved is exactly the case not to assume the safe answer for.
+Public Function IsDirty(wb As Object) As Boolean
+    On Error GoTo Assume
+    IsDirty = Not wb.Saved
+    Exit Function
+Assume:
+    IsDirty = True
+End Function
+
+' What the human is asked when the paired workbook has unsaved edits. Pure, so
+' the wording is pinned by a test rather than by a live click-through.
+'
+' Offers to save rather than refusing outright: the user is mid-task with Excel
+' open in front of them, and "go and press Ctrl+S yourself" is friction with no
+' safety benefit over doing it for them. Refusing is still the outcome if they
+' decline -- syncing from a buffer is the thing being prevented, and there is
+' no third option where it happens anyway.
+Public Function UnsavedWorkbookText(workbookPath As String) As String
+    UnsavedWorkbookText = _
+        "The Data workbook has unsaved changes:" & vbCrLf & vbCrLf & _
+        "    " & workbookPath & vbCrLf & vbCrLf & _
+        "Syncing now would read values that exist only in Excel's memory, " & _
+        "not in the file. If Excel is later closed without saving, any slide " & _
+        "built from those values is left with no matching row." & vbCrLf & vbCrLf & _
+        "Save the workbook and continue?"
+End Function

@@ -97,6 +97,19 @@ Public Function RunRoutineSync(ws As Object, slideType As String, templateSld As
                     ' to execute here, just report.
                     correctedCount = correctedCount + 1
                     report = report & "  corrected: " & actions(i).InstanceKey & vbCrLf
+                    ' Field detail, same as the preview gives. Until 2026-07-30 this
+                    ' branch printed the instance key and nothing else, so the report
+                    ' you get AFTER a deck changes said less than the one you get
+                    ' before -- and the moment you most want a record of what moved is
+                    ' immediately after it moved. "was/now" rather than the preview's
+                    ' "now/new": by this point the write has happened, and a report
+                    ' that describes a completed change in the future tense is a lie.
+                    Dim doneField As Variant
+                    For Each doneField In actions(i).ChangedFieldCurrent.Keys
+                        report = report & "      " & doneField & ":" & vbCrLf & _
+                            "        was:  '" & BatchOnboardFlow.FieldPreview(CStr(actions(i).ChangedFieldCurrent(doneField))) & "'" & vbCrLf & _
+                            "        now:  '" & BatchOnboardFlow.FieldPreview(CStr(actions(i).ChangedFieldNew(doneField))) & "'" & vbCrLf
+                    Next doneField
 
                 Case "new_record"
                     Dim dr As DuplicateResult
