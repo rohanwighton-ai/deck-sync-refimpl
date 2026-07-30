@@ -100,7 +100,65 @@ reachable.
   out. A new test pins that wording, including that the capitalised warning is ABSENT
   when nothing will be created — a warning that always fires stops being read.
 
+---
+
+## THE FIRST COMPLETE SYNC — 2026-07-30 13:24, on addin29
+
+The recurring path ran end to end for the first time in the project's life:
+
+```
+=== RunRoutineSync: q ===
+  corrected: 3_P001
+Summary: 2 unchanged, 1 corrected, 0 created, 0 failed, 0 flagged
+Resequenced 0 slide(s) to match Data-sheet row order.
+```
+
+Slide 1's status field changed from `Project Closed` to `SYNC TEST 1248`, confirmed
+visually on the slide, not merely reported by the tool. All three addin29 fixes were
+exercised live in the same run: the preview showed `now:`/`new:` (C1), Sync Now was
+clickable at all (C2), and it asked before writing with `0 new slides created` (C3).
+
+**C4. The real sync's report is thinner than the preview's. (minor, unfixed)**
+`RunRoutineSync` prints `corrected: 3_P001` and stops — no field names, no before/after,
+where the preview gives all three. The moment you most want a record of what changed is
+just after it changed, and that is the one report that does not say. Same fix shape as
+C1: the data is already on the action.
+
+**Slide creation works.** Adding row 5 (`3_P004`) produced:
+
+```
+=== RunRoutineSync: q ===
+  created: 3_P004
+Summary: 3 unchanged, 0 corrected, 1 created, 0 failed, 0 flagged
+Resequenced 2 slide(s) to match Data-sheet row order.
+```
+
+A 4th slide appeared, cloned from the template, in correct row order. Resequencing also
+ran for the first time (every previous run reported 0) and put it in the right place.
+
+**C5. Sync reads Excel's UNSAVED in-memory buffer. (real, and invisible)**
+The saved workbook on disk had rows 1-4 only, `dimension A1:F4`, last written 12:51 --
+yet the 13:32 sync created a slide from row 5. `WorkbookBridge.OpenOrGetWorkbook`
+attaches to the running Excel instance, so the sync sees whatever is on screen, saved or
+not. The deck now contains a slide whose backing row exists nowhere on disk.
+
+Why this matters more than it first looks, for a tool whose whole premise is "the deck is
+fed by tracked data":
+- Close Excel without saving and the slide becomes a permanent orphan -- its instance key
+  matches no row, so no future sync will ever update it, silently.
+- A sync run mid-edit writes half-typed values into the deck.
+- Preview Sync's authority is weakened: the data can change between preview and sync
+  without any file changing, so the preview is not a promise about the next write.
+
+Suggested fix: refuse to sync a dirty workbook, offering to save it first
+(`wb.Saved = False` is the check). Reading the live buffer could be defended as a feature,
+but it must not be silent.
+
+Worth noting how it surfaced: the cycle folder was deliberately put OUTSIDE OneDrive to
+keep cloud-save behaviour out of the first cycle, which meant AutoSave was off. On a
+OneDrive-hosted workbook AutoSave would usually have hidden this. Choosing the quieter
+environment is what made the bug visible.
+
 ## Still unexercised
 
-`Sync Now`'s actual write, slide creation from a new Data-sheet row, and `New Period`.
-The cycle stopped at C2 and resumes at the same step on addin29.
+`New Period` -- also not on the toolbar.
