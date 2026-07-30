@@ -156,6 +156,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_RunSync_ConfirmSyncTextCallsOutSlideCreation()
+    AppendResult report, "RunSync_ConfirmSyncTextCallsOutSlideCreation", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched()
     AppendResult report, "RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched", r
     On Error GoTo 0
@@ -301,8 +306,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons()
-    AppendResult report, "CommandBarUI_ShowToolbarCreatesFourWiredButtons", r
+    r = Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons()
+    AppendResult report, "CommandBarUI_ShowToolbarCreatesFiveWiredButtons", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -1591,6 +1596,15 @@ Private Function Test_RunSync_PreviewReportsWithoutTouchingTheDeck() As String
         "report names the instance whose field would be corrected -- report: " & report)
     result = result & Assert(InStr(report, "Stale Value") > 0, _
         "report shows the field's current value so a human can see the before -- report: " & report)
+    ' BOTH halves, pinned to their exact rendered form. Live 2026-07-30 the
+    ' preview showed only "now:", so approving a sync meant opening Excel to
+    ' find out what you were approving. Asserting the value alone is not enough
+    ' -- "Corrected Value" could appear anywhere in the report and still leave
+    ' the before/after pairing broken, which is the thing a human reads.
+    result = result & Assert(InStr(report, "now:  'Stale Value'") > 0, _
+        "report shows the BEFORE on its own labelled line -- report: " & report)
+    result = result & Assert(InStr(report, "new:  'Corrected Value'") > 0, _
+        "report shows the AFTER -- the value that would actually be written -- report: " & report)
     result = result & Assert(InStr(report, "preview-orphan-1") > 0 And InStr(report, "preview-orphan-2") > 0, _
         "report names both orphaned rows -- report: " & report)
     ' Both halves of the warning, asserted exactly: the per-row callout and the
@@ -1610,6 +1624,49 @@ Private Function Test_RunSync_PreviewReportsWithoutTouchingTheDeck() As String
     xl.Quit
 
     Test_RunSync_PreviewReportsWithoutTouchingTheDeck = result
+End Function
+
+' The guard that replaced "Sync Now isn't on the toolbar" as the thing keeping
+' a drifted deck safe (2026-07-30). Pure text, so the wording is pinned here
+' rather than left to a live click-through nobody will repeat.
+'
+' The asymmetry is the point: corrections are cheap to undo and get a plain
+' line; slide creation is the outcome that was one click from happening to the
+' real deck on 2026-07-27, so it must be impossible to skim past.
+Private Function Test_RunSync_ConfirmSyncTextCallsOutSlideCreation() As String
+    Dim result As String
+
+    ' --- the ordinary case: corrections only ---
+    Dim plain As String
+    plain = RunSync.ConfirmSyncText(3, 0, 0)
+    result = result & Assert(InStr(plain, "3 slide(s) corrected") > 0, _
+        "states how many slides change, got: " & plain)
+    result = result & Assert(InStr(plain, "0 new slides created") > 0, _
+        "says plainly that nothing will be created, got: " & plain)
+    result = result & Assert(InStr(plain, "Proceed?") > 0, _
+        "asks, rather than announcing, got: " & plain)
+    ' Case-sensitive (Option Compare Binary): the shouty wording must not be
+    ' present when there is nothing to shout about, or it stops meaning anything.
+    result = result & Assert(InStr(plain, "NEW SLIDE(S) WILL BE CREATED") = 0, _
+        "no capitalised creation warning when nothing is created, got: " & plain)
+
+    ' --- the dangerous case ---
+    Dim loud As String
+    loud = RunSync.ConfirmSyncText(2, 43, 0)
+    result = result & Assert(InStr(loud, "43 NEW SLIDE(S) WILL BE CREATED") > 0, _
+        "slide creation is stated in capitals with its count, got: " & loud)
+    result = result & Assert(InStr(loud, "mass") > 0 And InStr(loud, "duplication") > 0, _
+        "and names the consequence, not just the number, got: " & loud)
+    result = result & Assert(InStr(loud, "Preview Sync") > 0, _
+        "points at the read-only action that would explain it, got: " & loud)
+
+    ' --- flagged is reported only when it happened ---
+    result = result & Assert(InStr(RunSync.ConfirmSyncText(1, 0, 0), "flagged") = 0, _
+        "no flagged line when nothing is flagged")
+    result = result & Assert(InStr(RunSync.ConfirmSyncText(1, 0, 5), "5 flagged") > 0, _
+        "flagged count shown when there is one")
+
+    Test_RunSync_ConfirmSyncTextCallsOutSlideCreation = result
 End Function
 
 ' Case 2 (period rollover): duplicates the source instance's current slide
@@ -2577,12 +2634,18 @@ End Function
 ' against a half-understood button CHANGING a real deck, and Preview Sync
 ' provably cannot (see Test_RunSync_PreviewReportsWithoutTouchingTheDeck).
 '
-' Asserting its presence BY NAME below, not just that four buttons exist. The
-' old version only checked each button resolved to one of the expected Subs,
-' which would still pass if Preview Sync silently vanished and another button
-' were duplicated -- a check that can't fail the way the thing it guards
-' actually breaks.
-Private Function Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons() As String
+' Sync Now joined 2026-07-30 and DOES write, so it is a real bend in the rule.
+' The first live cycle got as far as clicking it and found no button, which is
+' how an untested action stays untested forever. What replaces the rule is a
+' confirmation dialog stating what will change with slide creation in capitals
+' -- see Test_RunSync_ConfirmSyncTextCallsOutSlideCreation, which pins that
+' wording, and CommandBarUI.ShowToolbar's header for the full argument.
+'
+' Asserting both by NAME below, not just that five buttons exist. The old
+' version only checked each button resolved to one of the expected Subs, which
+' would still pass if a button silently vanished and another were duplicated --
+' a check that can't fail the way the thing it guards actually breaks.
+Private Function Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons() As String
     Dim result As String
 
     CommandBarUI.ShowToolbar
@@ -2590,10 +2653,12 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons() As Strin
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar 'Deck Sync' exists after ShowToolbar")
-    result = result & Assert(bar.Controls.count = 4, "toolbar has 4 buttons, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 5, "toolbar has 5 buttons, got " & bar.Controls.count)
 
     Dim seenPreview As Boolean
+    Dim seenSyncNow As Boolean
     seenPreview = False
+    seenSyncNow = False
 
     ' PowerPoint sometimes normalizes a set OnAction like "RibbonUI.SyncNow"
     ' to its own "<PresentationName>!SyncNow" display form (module-
@@ -2607,8 +2672,13 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons() As Strin
     ' regardless of which form Office happens to report this run -- what
     ' actually matters (the button fires the right Sub) is unaffected
     ' either way, only this display string varies.
+    ' Delimited on BOTH sides and matched with the delimiters included: a bare
+    ' InStr over the list would accept any substring of it, so a button wired to
+    ' "Sync" -- or to nothing recognisable that happens to be a fragment -- would
+    ' pass. Tightened 2026-07-30 while adding SyncNow, whose name contains
+    ' another entry's prefix.
     Dim expectedActions As String
-    expectedActions = "SyncPreview|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch"
+    expectedActions = "|SyncPreview|SyncNow|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|"
 
     Dim i As Long
     For i = 1 To bar.Controls.count
@@ -2622,15 +2692,17 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons() As Strin
         dotPos = InStrRev(afterBang, ".")
         Dim subName As String
         subName = IIf(dotPos > 0, Mid(afterBang, dotPos + 1), afterBang)
-        result = result & Assert(InStr(expectedActions, subName) > 0, "button '" & ctrl.Caption & "' OnAction '" & ctrl.OnAction & "' resolves to one of the real action Subs")
+        result = result & Assert(InStr(expectedActions, "|" & subName & "|") > 0, "button '" & ctrl.Caption & "' OnAction '" & ctrl.OnAction & "' resolves to one of the real action Subs")
         result = result & Assert(Len(ctrl.TooltipText) > 0, "button '" & ctrl.Caption & "' has a non-empty tooltip explainer")
         If subName = "SyncPreview" Then seenPreview = True
+        If subName = "SyncNow" Then seenSyncNow = True
     Next i
 
     result = result & Assert(seenPreview, "Preview Sync is actually ON the toolbar -- the read-only action, and the safe first thing to run on an unfamiliar machine")
+    result = result & Assert(seenSyncNow, "Sync Now is actually ON the toolbar -- the recurring payoff the tool exists for, and unreachable without a button")
 
     CommandBarUI.HideToolbar
-    Test_CommandBarUI_ShowToolbarCreatesFourWiredButtons = result
+    Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons = result
 End Function
 
 Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
@@ -2642,7 +2714,7 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar still exists after calling ShowToolbar twice")
-    result = result & Assert(bar.Controls.count = 4, "still exactly 4 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 5, "still exactly 5 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarIsIdempotent = result

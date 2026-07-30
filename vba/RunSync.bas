@@ -187,8 +187,13 @@ Public Function PreviewRoutineSync(ws As Object, slideType As String) As String
                     report = report & "  would correct: " & actions(i).InstanceKey & vbCrLf
                     Dim fieldName As Variant
                     For Each fieldName In actions(i).ChangedFieldCurrent.Keys
+                        ' Both halves, always. A preview that shows only "now"
+                        ' makes the human open Excel to find out what they are
+                        ' approving, which is the errand the preview exists to
+                        ' save them -- found live 2026-07-30, first real use.
                         report = report & "      " & fieldName & ":" & vbCrLf & _
-                            "        now:  '" & BatchOnboardFlow.FieldPreview(CStr(actions(i).ChangedFieldCurrent(fieldName))) & "'" & vbCrLf
+                            "        now:  '" & BatchOnboardFlow.FieldPreview(CStr(actions(i).ChangedFieldCurrent(fieldName))) & "'" & vbCrLf & _
+                            "        new:  '" & BatchOnboardFlow.FieldPreview(CStr(actions(i).ChangedFieldNew(fieldName))) & "'" & vbCrLf
                     Next fieldName
 
                 Case "new_record"
@@ -220,6 +225,82 @@ Public Function PreviewRoutineSync(ws As Object, slideType As String) As String
     End If
 
     PreviewRoutineSync = report
+End Function
+
+' The same plan the preview reports on, reduced to counts, so Sync Now can
+' confirm before it writes instead of after.
+'
+' Counts rather than the preview's report string on purpose: a caller that
+' needs to know "will this create slides?" must not have to parse prose to
+' find out. Sync Now's guard has to be exactly as reliable as the planner,
+' and a regex over a human-readable summary is not.
+'
+' dryRun:=True is load-bearing, not defensive. PlanRoutineSync's own
+' InjectPrimitive call writes corrected text *while planning* (see that
+' function's header), so counting the work without this flag would perform
+' half of it -- the confirmation would be describing changes it had already
+' made. Deliberately does NOT call ResequenceByRowOrder: that is the third
+' mutation site, and nothing here needs its number.
+Public Sub PlanCounts(ws As Object, slideType As String, ByRef unchangedCount As Long, _
+                      ByRef correctCount As Long, ByRef createCount As Long, ByRef flagCount As Long)
+    unchangedCount = 0
+    correctCount = 0
+    createCount = 0
+    flagCount = 0
+
+    Dim sheet As Sheet
+    sheet = ExcelOutput.ReadSheet(ws)
+
+    Dim instances() As Object
+    instances = GatherInstances(slideType)
+
+    Dim actions() As SyncAction
+    actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows, True)
+
+    Dim lo As Long, hi As Long
+    On Error Resume Next
+    lo = LBound(actions)
+    hi = UBound(actions)
+    If Err.Number <> 0 Then Exit Sub   ' no actions at all -- all four stay 0
+    On Error GoTo 0
+
+    Dim i As Long
+    For i = lo To hi
+        Select Case actions(i).Kind
+            Case "no_change":           unchangedCount = unchangedCount + 1
+            Case "in_place_correction": correctCount = correctCount + 1
+            Case "new_record":          createCount = createCount + 1
+            Case "flagged":             flagCount = flagCount + 1
+        End Select
+    Next i
+End Sub
+
+' The text of Sync Now's confirmation. Pure, so the wording is testable
+' without a live deck or a dialog.
+'
+' Slide creation is stated in capitals and on its own line whenever it is
+' non-zero. The 2026-07-27 near-miss (43 orphaned rows against 46 slides)
+' would have read as an unremarkable "43 created" buried in a summary; the
+' one number that is painful to undo should not look like the others.
+Public Function ConfirmSyncText(correctCount As Long, createCount As Long, flagCount As Long) As String
+    Dim s As String
+    s = "This will change the deck." & vbCrLf & vbCrLf & _
+        "    " & correctCount & " slide(s) corrected" & vbCrLf
+
+    If createCount > 0 Then
+        s = s & "    " & createCount & " NEW SLIDE(S) WILL BE CREATED" & vbCrLf & vbCrLf & _
+            "Slides get created when a Data row matches no slide in" & vbCrLf & _
+            "the deck. If the linkage has drifted, that is a mass" & vbCrLf & _
+            "duplication, not an update. Run Preview Sync first if" & vbCrLf & _
+            "you are not expecting new slides." & vbCrLf
+    Else
+        s = s & "    0 new slides created" & vbCrLf
+    End If
+
+    If flagCount > 0 Then s = s & "    " & flagCount & " flagged" & vbCrLf
+
+    s = s & vbCrLf & "Proceed?"
+    ConfirmSyncText = s
 End Function
 
 ' ---------------------------------------------------------------------

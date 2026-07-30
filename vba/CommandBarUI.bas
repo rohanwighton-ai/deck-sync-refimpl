@@ -39,15 +39,29 @@ End Sub
 ' run_vba_tests.ps1's own process-cleanup step already takes), then builds
 ' it fresh. Safe to call directly from the VBE if Auto_Open didn't fire.
 '
-' Only shows the 3 actions Rohan has actually live-tested and confirmed
-' working against his real deck as of 2026-07-26 (Mark Field for Batch,
-' Bulk Onboard Type, Clear Marked Fields) -- his own framing: "I only want
-' to add an operation when I'm fully clear it works and I know what it
-' does." The other 5 (SyncNow/NewPeriod/OnboardNewType/
-' ResolveUnmatchedFields/AdoptExistingSlides) are commented out below, not
-' deleted -- every underlying Sub still exists and is still tested by
-' TestRunner.bas, they're just not on the toolbar yet. Uncomment (or ask
-' for) one once it's actually been tried.
+' Shows the 5 actions cleared so far. Three were live-tested against the
+' real deck as of 2026-07-26 (Mark Field for Batch, Bulk Onboard Type,
+' Clear Marked Fields) -- Rohan's framing: "I only want to add an operation
+' when I'm fully clear it works and I know what it does." Preview Sync
+' followed on 2026-07-29 (it cannot write; see its own note below), and
+' Sync Now on 2026-07-30.
+'
+' Sync Now is the one that bends the rule, so it is worth being honest about
+' why. It writes, and it had never been run. But it could not BE run: the
+' first live cycle on 2026-07-30 reached the point of clicking it and found
+' no button, which is precisely how an untested action stays untested. The
+' rule's real purpose is "don't let a half-understood button change a real
+' deck", and that is now served by something better than absence -- a
+' confirmation showing exactly what will change, with slide creation called
+' out in capitals (RibbonUI.SyncNowCore / RunSync.ConfirmSyncText). Absence
+' was never a safety mechanism anyway; it just moved the risk to whenever
+' the button eventually appeared.
+'
+' The remaining 4 (NewPeriod/OnboardNewType/ResolveUnmatchedFields/
+' AdoptExistingSlides) are commented out below, not deleted -- every
+' underlying Sub still exists and is still tested by TestRunner.bas, they
+' are just not on the toolbar yet. Uncomment (or ask for) one once it has
+' actually been tried.
 Public Sub ShowToolbar()
     HideToolbar
 
@@ -71,9 +85,13 @@ Public Sub ShowToolbar()
     ' which is the situation it was asked for.
     AddButton bar, "Preview Sync", "RibbonUI.SyncPreview", 1090, "Show exactly what Sync Now would change in this deck -- reads only, writes nothing."
 
+    ' Writes, and confirms before it does -- see this Sub's header for why it
+    ' is on the toolbar despite the rule, and RunSync.ConfirmSyncText for what
+    ' the confirmation says.
+    AddButton bar, "Sync Now", "RibbonUI.SyncNow", 1004, "Pull changes from the paired Data workbook onto every already-linked slide in this deck. Shows what will change and asks before writing."
+
     ' Still not live-tested against a real deck -- hidden, not deleted. These
     ' DO write, so the rule applies to them unchanged. See this Sub's header.
-    ' AddButton bar, "Sync Now", "RibbonUI.SyncNow", 1004, "Pull changes from the paired Data workbook onto every already-linked slide in this deck."
     ' AddButton bar, "New Period", "RibbonUI.NewPeriod", 297, "Duplicate an existing slide instance into a new period (e.g. next quarter), with a fresh instance key."
     ' AddButton bar, "Onboard New Slide Type", "RibbonUI.OnboardNewType", 1697, "Register a brand-new slide type from one example slide, one field at a time via prompts."
     ' AddButton bar, "Resolve Unmatched Fields", "RibbonUI.ResolveUnmatchedFields", 594, "Manually assign a role to one selected shape that Sync Now couldn't confidently match on its own."

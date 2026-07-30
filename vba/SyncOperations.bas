@@ -24,6 +24,7 @@ Public Type SyncAction
     ChangedFieldVerified As Object ' in_place_correction: Scripting.Dictionary fieldName -> Boolean
     ChangedFieldError As Object    ' in_place_correction: Scripting.Dictionary fieldName -> String (ErrorMessage, "" if none)
     ChangedFieldCurrent As Object  ' in_place_correction: Scripting.Dictionary fieldName -> String, the slide's text BEFORE the write (populated in both modes; the whole point of a dry run is being able to show before/after)
+    ChangedFieldNew As Object      ' in_place_correction: Scripting.Dictionary fieldName -> String, the Data-sheet value that WOULD be / was written. The "after" half of the line above. Added 2026-07-30 after the first live preview reported "now: 'Project Closed'" and never said what it would become -- leaving the human to go and read Excel, which is the errand a preview exists to save. The intent was already documented here; only the implementation was missing.
     ' NOTE: was a single "ChangedFields fieldName -> InjectResult" Dictionary until
     ' 2026-07-25 -- a UDT cannot be assigned to a Variant in VBA (compile-time "Invalid
     ' use of type"), so a Dictionary can never hold an InjectResult value directly. Split
@@ -143,9 +144,11 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
             Set instanceSlide = instances(idx)
 
             Dim changedVerified As Object, changedError As Object, changedCurrent As Object
+            Dim changedNew As Object
             Set changedVerified = CreateObject("Scripting.Dictionary")
             Set changedError = CreateObject("Scripting.Dictionary")
             Set changedCurrent = CreateObject("Scripting.Dictionary")
+            Set changedNew = CreateObject("Scripting.Dictionary")
 
             Dim fieldName As Variant
             For Each fieldName In rowValues.Keys
@@ -173,6 +176,10 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                     changedVerified(fieldName) = r.Verified
                     changedError(fieldName) = r.ErrorMessage
                     changedCurrent(fieldName) = r.CurrentValue
+                    ' sourceValue, not anything read back off the slide: in a dry
+                    ' run nothing was written, so the slide cannot be asked what
+                    ' the new text is. The Data sheet is the only source for it.
+                    changedNew(fieldName) = sourceValue
                 End If
             Next fieldName
 
@@ -184,6 +191,7 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                 Set actions(n).ChangedFieldVerified = changedVerified
                 Set actions(n).ChangedFieldError = changedError
                 Set actions(n).ChangedFieldCurrent = changedCurrent
+                Set actions(n).ChangedFieldNew = changedNew
             Else
                 actions(n).Kind = "no_change"
                 actions(n).InstanceKey = key

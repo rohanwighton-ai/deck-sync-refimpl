@@ -81,8 +81,38 @@ Private Sub SyncNowCore()
         Exit Sub
     End If
 
-    Dim fullReport As String
+    ' Plan every registered type BEFORE writing any of them, so the
+    ' confirmation covers the whole deck rather than the first type only.
+    ' Sync Now is the one toolbar action that can change a deck at scale, and
+    ' until 2026-07-30 it was only kept safe by not being on the toolbar --
+    ' see RunSync.PreviewRoutineSync's header for the 43-orphaned-row
+    ' near-miss this guard exists for.
     Dim i As Long
+    Dim totCorrect As Long, totCreate As Long, totFlag As Long
+    Dim c1 As Long, c2 As Long, c3 As Long, c4 As Long
+    For i = lo To hi
+        Dim planTemplate As Object
+        Dim planWsName As String
+        If DeckRegistry.LookupType(pres, types(i), planTemplate, planWsName) Then
+            RunSync.PlanCounts WorkbookBridge.GetOrAddWorksheet(wb, planWsName), types(i), c1, c2, c3, c4
+            totCorrect = totCorrect + c2
+            totCreate = totCreate + c3
+            totFlag = totFlag + c4
+        End If
+    Next i
+
+    If totCorrect = 0 And totCreate = 0 Then
+        MsgBox "Nothing to sync -- every linked slide already matches the Data sheet.", _
+               vbInformation, "Sync Now"
+        Exit Sub
+    End If
+
+    If MsgBox(RunSync.ConfirmSyncText(totCorrect, totCreate, totFlag), _
+              vbYesNo + vbQuestion, "Sync Now") <> vbYes Then
+        Exit Sub
+    End If
+
+    Dim fullReport As String
     For i = lo To hi
         Dim templateSld As Object
         Dim wsName As String
