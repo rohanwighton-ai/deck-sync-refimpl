@@ -18,13 +18,27 @@ Option Explicit
 ' and it has a definable end state -- the template is finished when nothing
 ' project-specific on it is untagged.
 '
-' Scale of the gap on the real deck, measured 2026-07-30: type `q` tracks 5
-' fields on a slide carrying roughly 25 pieces of project data (four cash
-' figures, a % badge, start/end dates, three highlight boxes, progress
-' bullets, key events, timeline milestones, deliverables, team names). It had
-' never bitten because every existing slide was hand-authored -- inheritance
-' only happens on CREATED slides, and nothing had ever been created into that
-' deck from a real template until step 1 shipped.
+' Scale of the gap on the real deck, MEASURED by running this module against
+' it 2026-07-31: type `q` tracks 5 fields on a slide carrying **77** separate
+' text items -- 38 plausible project data, 39 fixed furniture. A visual
+' estimate the day before had put it near 25, out by a factor of three, which
+' is itself the argument for the tool existing: this is a number people guess
+' and guess low. It had never bitten because every existing slide was
+' hand-authored -- inheritance only happens on CREATED slides, and nothing had
+' ever been created into that deck from a real template until step 1 shipped.
+'
+' KNOWN LIMITATION, found on that same first live run and not yet addressed.
+' The comparison below assumes sibling slides were INDEPENDENTLY AUTHORED. In
+' a deck whose slides were produced by cloning -- which is what this tool's own
+' slide creation does -- untagged content is identical across siblings by
+' construction, so genuinely project-specific text still scores above zero and
+' the "on no other slide" verdict never fires. On the real deck it fired zero
+' times out of 77. The ordering still separates usefully (universal text ranks
+' below non-universal), so the LIST is sound; it is the headline count that
+' misleads. The likely correction is to treat "on all other slides" as chrome
+' and anything less as a candidate, rather than reserving the strong verdict
+' for zero -- deliberately not applied yet, because it should be judged against
+' a hand-authored deck as well as this one.
 '
 ' The classification signal, and why it is computable. For each untagged text
 ' on the template, count how many OTHER slides of the same type carry the
