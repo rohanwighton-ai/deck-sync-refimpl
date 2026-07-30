@@ -423,8 +423,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen", r
     r = Test_BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes()
     AppendResult report, "BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes", r
-    r = Test_BatchOnboardFlow_IndexUsingInstanceKeyCatchesCollisions()
-    AppendResult report, "BatchOnboardFlow_IndexUsingInstanceKeyCatchesCollisions", r
+    r = Test_BatchOnboardFlow_InstanceKeyGridPrefillsAndCatchesClashes()
+    AppendResult report, "BatchOnboardFlow_InstanceKeyGridPrefillsAndCatchesClashes", r
     r = Test_RibbonUI_UnexpectedErrorTextTellsTheTruth()
     AppendResult report, "RibbonUI_UnexpectedErrorTextTellsTheTruth", r
     r = Test_RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero()
@@ -3558,43 +3558,116 @@ Private Sub RaiseSomethingUnexpected()
     Err.Raise vbObjectError + 99, "TestRunner.RaiseSomethingUnexpected", "simulated unexpected failure"
 End Sub
 
-' The instance key links a slide to its row in the Data sheet, and nothing
-' checked for collisions until now -- a gap the code itself had already named
-' ("the missing duplicate-key guard"). Two slides sharing a key both resolve to
-' one row: the second slide's values overwrite the first's at onboard, and from
-' then on one row feeds two slides with no error anywhere. A reporting deck
-' that is confidently wrong is the worst failure this tool has available to it.
-Private Function Test_BatchOnboardFlow_IndexUsingInstanceKeyCatchesCollisions() As String
+' The instance-key grid, which replaced the per-slide InputBox chain on
+' 2026-07-29 ("I'd rather fix the excel and skip all this having to confirm the
+' instance key... too time consuming for organised slides").
+'
+' Tests the round trip that actually runs, not a helper beside it: write the
+' grid from real slides, tamper with the sheet the way a human would, read it
+' back, and check what the add-in concluded. The two behaviours that matter
+' most are the ones a careless implementation gets wrong -- a Skip must yield
+' NO key rather than a blank row in the Data sheet, and an edit to an
+' already-linked slide must be refused, because re-keying a linked slide is the
+' corruption the 2026-07-28 bug caused.
+Private Function Test_BatchOnboardFlow_InstanceKeyGridPrefillsAndCatchesClashes() As String
     Dim result As String
 
-    Dim keys As Object
-    Set keys = CreateObject("Scripting.Dictionary")
-    keys(0) = "SAAFE-2.1.3"      ' template slide
-    keys(1) = "SAAFE-2.1.4"
-    keys(2) = ""                 ' skipped this pass
+    BatchOnboardFlow.ResetMarkingSession
 
-    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "SAAFE-9.9.9") = -1, _
-        "an unused key is free")
-    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "SAAFE-2.1.4") = 1, _
-        "an exact repeat is caught, and names the slide holding it")
-    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "SAAFE-2.1.3") = 0, _
-        "a clash with the template slide is caught")
+    ' Template + two others. Slide 3 is deliberately a "copy" of slide 2:
+    ' identical field text, so it suggests the identical key.
+    Dim tmpl As Object, other1 As Object, other2 As Object
+    Set tmpl = NewBlankSlide()
+    Set other1 = NewBlankSlide()
+    Set other2 = NewBlankSlide()
 
-    ' Near-misses. Both are typos in every realistic scenario, and accepting
-    ' either silently merges two projects' data.
-    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "saafe-2.1.4") = 1, _
-        "a case-only difference is treated as a clash")
-    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "  SAAFE-2.1.4  ") = 1, _
-        "surrounding whitespace is treated as a clash")
+    ' Written out rather than looped over Array(): a For Each control variable
+    ' over an array must be a Variant in VBA, and getting that wrong is a
+    ' COMPILE error -- which in this harness means a modal dialog inside
+    ' PowerPoint and a run that hangs instead of failing. Cost 20 minutes to
+    ' find, because the whole suite stops, including tests that never call it.
+    tmpl.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50).Name = "KeyField"
+    other1.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50).Name = "KeyField"
+    other2.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50).Name = "KeyField"
+    tmpl.Shapes("KeyField").TextFrame.TextRange.text = "P001"
+    other1.Shapes("KeyField").TextFrame.TextRange.text = "P002"
+    other2.Shapes("KeyField").TextFrame.TextRange.text = "P002"   ' the copy
 
-    ' Blank means "skip this slide", so many slides can be blank at once --
-    ' if blanks collided, the second skip would be refused as a duplicate.
-    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "") = -1, _
-        "blank never clashes -- it means skip, and several slides may be skipped")
-    result = result & Assert(BatchOnboardFlow.IndexUsingInstanceKey(keys, "   ") = -1, _
-        "whitespace-only is blank, and still never clashes")
+    Dim others(1 To 2) As Object
+    Set others(1) = other1
+    Set others(2) = other2
 
-    Test_BatchOnboardFlow_IndexUsingInstanceKeyCatchesCollisions = result
+    Dim marked As Collection
+    Set marked = New Collection
+    marked.Add tmpl.Shapes("KeyField")
+
+    Dim markedNames As Object
+    Set markedNames = CreateObject("Scripting.Dictionary")
+    markedNames(1) = "Project Number"
+    Dim markedTypes As Object
+    Set markedTypes = CreateObject("Scripting.Dictionary")
+    markedTypes(1) = "text"
+    Dim markedVolatility As Object
+    Set markedVolatility = CreateObject("Scripting.Dictionary")
+    markedVolatility(1) = "static"
+
+    Dim matchErr As String
+    Dim plan As BatchOnboardPlan
+    plan = BatchOnboardFlow.BuildBatchPlanFromMarkedFields(tmpl, marked, markedNames, markedTypes, markedVolatility, others, matchErr)
+    result = result & Assert(matchErr = "", "plan built cleanly, got '" & matchErr & "'")
+
+    ' Reuse the harness's own Excel instance, exactly as production does.
+    ' An earlier version of this test did CreateObject + xl.Quit and hung the
+    ' whole run: Quit tore down the instance WorkbookBridge.GetExcelApp() was
+    ' still holding, and every later Excel call blocked on a dead COM object.
+    ' Tests share this process -- take a workbook, never the application.
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = WorkbookBridge.GetExcelApp()
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+
+    BatchOnboardFlow.WriteInstanceKeyGrid ws, plan, tmpl, others, 2
+
+    ' --- pre-filled, so the human reviews rather than dictates ---
+    result = result & Assert(CStr(ws.Cells(2, 4).Value) = "P001", "template row pre-filled from the slide, got '" & CStr(ws.Cells(2, 4).Value) & "'")
+    result = result & Assert(CStr(ws.Cells(3, 4).Value) = "P002", "second slide pre-filled, got '" & CStr(ws.Cells(3, 4).Value) & "'")
+    result = result & Assert(InStr(CStr(ws.Cells(2, 3).Value), "TEMPLATE") > 0, "the template row says it's the template and can't be skipped")
+    result = result & Assert(InStr(CStr(ws.Cells(4, 3).Value), "CLASH") > 0, _
+        "the copied slide is flagged as a CLASH up front, not discovered one prompt deep, got '" & CStr(ws.Cells(4, 3).Value) & "'")
+
+    ' --- reading back an unresolved clash must refuse ---
+    Dim keys As Object, reused As Long, ignored As Long
+    Dim problems As String
+    problems = BatchOnboardFlow.ReadInstanceKeyGrid(ws, 2, keys, reused, ignored)
+    result = result & Assert(problems <> "", "an unresolved duplicate is reported, not accepted")
+    result = result & Assert(InStr(problems, "same row") > 0 Or InStr(problems, "one row") > 0, _
+        "and the message explains the consequence, got '" & problems & "'")
+
+    ' --- the human marks the copy as Skip, which is the agreed handling ---
+    ws.Cells(4, 5).Value = "Y"
+    problems = BatchOnboardFlow.ReadInstanceKeyGrid(ws, 2, keys, reused, ignored)
+    result = result & Assert(problems = "", "skipping the copy resolves it, got '" & problems & "'")
+    result = result & Assert(CStr(keys(2)) = "", "a skipped slide gets NO key, so it never reaches the Data sheet, got '" & CStr(keys(2)) & "'")
+    result = result & Assert(CStr(keys(0)) = "P001" And CStr(keys(1)) = "P002", "the other two keep their keys")
+
+    ' --- case-only differences are still collisions ---
+    ws.Cells(4, 5).Value = "N"
+    ws.Cells(4, 4).Value = "p002"
+    problems = BatchOnboardFlow.ReadInstanceKeyGrid(ws, 2, keys, reused, ignored)
+    result = result & Assert(problems <> "", "a case-only difference is still a clash -- it's a typo, not an intent")
+
+    ' --- the template cannot be skipped or emptied ---
+    ws.Cells(4, 4).Value = ""
+    ws.Cells(4, 5).Value = "Y"
+    ws.Cells(2, 5).Value = "Y"
+    problems = BatchOnboardFlow.ReadInstanceKeyGrid(ws, 2, keys, reused, ignored)
+    result = result & Assert(InStr(problems, "template") > 0, "skipping the template is refused, got '" & problems & "'")
+
+    wb.Saved = True
+    wb.Close
+
+    BatchOnboardFlow.ResetMarkingSession
+    Test_BatchOnboardFlow_InstanceKeyGridPrefillsAndCatchesClashes = result
 End Function
 
 ' Live failure 2026-07-29: a hand-typed workbook path produced VBA runtime

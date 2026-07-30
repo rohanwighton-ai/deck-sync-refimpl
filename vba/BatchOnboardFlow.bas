@@ -90,6 +90,26 @@ Private Const COL_VOLATILITY As Long = 8
 ' linkage on 2026-07-26.
 Private Const FIELD_PREVIEW_CHARS As Long = 20
 
+' Instance-key review grid columns. Replaces the per-slide InputBox chain as of
+' 2026-07-29, at Rohan's request: "I'd rather fix the excel and skip all this
+' having to confirm the instance key... too time consuming for organised
+' slides."
+'
+' He is right, and the reason is specific: his slides already CARRY their
+' project numbers, so SuggestInstanceKey derives the correct key on its own and
+' the old flow then asked him to confirm, one modal box at a time, what it had
+' just read off the slide. Forty-five prompts to retype what was already known.
+'
+' Modal prompts are also irreplaceable input, which is how one bad workbook path
+' destroyed 45 hand-confirmed keys earlier the same day. A grid is editable,
+' re-openable and survivable; a chain of InputBoxes is none of those.
+Private Const COL_KEY_SLIDE As Long = 1
+Private Const COL_KEY_PREVIEW As Long = 2
+Private Const COL_KEY_STATUS As Long = 3
+Private Const COL_KEY_VALUE As Long = 4
+Private Const COL_KEY_SKIP As Long = 5
+Private Const KEY_GRID_FIRST_ROW As Long = 2
+
 ' How long the deck's last REAL save may go unchanged before the add-in stops
 ' trusting AutoSave and saves for itself.
 '
@@ -597,52 +617,6 @@ Public Function WorkbookPathProblem(candidate As String) As String
     End If
 
     WorkbookPathProblem = ""
-End Function
-
-' Which already-confirmed slide is using this instance key, or -1 if it's free.
-' Index 0 is the template slide; 1..N index into otherSlides.
-'
-' The instance key is the identity that links a slide to its row in the Data
-' sheet, and nothing checked for collisions until now (the gap was even named
-' in ConflictingSlideType's header as "the missing duplicate-key guard"). Two
-' slides given the same key both resolve to one row: at onboard the second
-' slide's harvested values overwrite the first's, and from then on one row
-' feeds two slides. Nothing errors. The deck simply starts showing numbers
-' that belong to a different project, which is the worst class of bug this
-' tool can have -- a reporting deck that is confidently wrong.
-'
-' Comparison is trimmed and case-insensitive. Two keys differing only by case
-' or trailing space are a typo in every realistic scenario, and the cost of
-' being wrong is asymmetric: refusing a deliberate case-distinct pair costs
-' one rename, while accepting an accidental one costs silently merged data.
-Public Function IndexUsingInstanceKey(confirmedKeys As Object, candidate As String) As Long
-    IndexUsingInstanceKey = -1
-
-    Dim needle As String
-    needle = LCase(Trim(candidate))
-    If needle = "" Then Exit Function ' blank means "skip this slide" -- never a clash
-
-    Dim k As Variant
-    For Each k In confirmedKeys.Keys
-        If LCase(Trim(CStr(confirmedKeys(k)))) = needle Then
-            IndexUsingInstanceKey = CLng(k)
-            Exit Function
-        End If
-    Next k
-End Function
-
-' Human-facing name for a confirmedKeys index -- 0 is the template, 1..N index
-' into otherSlides. Clash messages are useless with array indices in them; the
-' human is looking at slide numbers.
-Private Function SlideLabelForKeyIndex(idx As Long, templateSld As Object, otherSlides() As Object) As String
-    SlideLabelForKeyIndex = "another slide"
-    On Error Resume Next
-    If idx = 0 Then
-        SlideLabelForKeyIndex = "the template slide (Slide " & templateSld.SlideIndex & ")"
-    Else
-        SlideLabelForKeyIndex = "Slide " & otherSlides(idx).SlideIndex
-    End If
-    On Error GoTo 0
 End Function
 
 ' Asks the human where the Data workbook should live, preferring a real file
@@ -1797,6 +1771,203 @@ End Function
 ' ---------------------------------------------------------------------
 
 
+' Short human-recognisable description of a slide, for the key grid. Without
+' this the grid is a column of numbers and the human has to keep flipping back
+' to PowerPoint to work out which slide row 14 is.
+Public Function SlidePreviewText(sld As Object) As String
+    Dim best As String
+    best = ""
+
+    On Error Resume Next
+    Dim shp As Object
+    For Each shp In sld.Shapes
+        If best = "" Then
+            Dim t As String
+            t = ""
+            t = shp.TextFrame.TextRange.text
+            t = Trim(Replace(Replace(t, vbCr, " "), vbLf, " "))
+            If Len(t) > 3 Then best = t
+        End If
+    Next shp
+    On Error GoTo 0
+
+    If Len(best) > 60 Then best = Left(best, 57) & "..."
+    SlidePreviewText = best
+End Function
+
+' Writes the instance-key grid: one row per slide, pre-filled with the key the
+' add-in already worked out, so the human reviews rather than dictates.
+'
+' Already-linked slides are shown but must not be re-keyed here -- re-keying a
+' linked slide is exactly the corruption the 2026-07-28 bug caused. Their rows
+' are marked LINKED and any edit to them is ignored, which is reported rather
+' than done silently.
+Public Sub WriteInstanceKeyGrid(ws As Object, plan As BatchOnboardPlan, templateSld As Object, otherSlides() As Object, otherSlideCount As Long)
+    ws.Cells(1, COL_KEY_SLIDE).Value = "Slide (do not edit)"
+    ws.Cells(1, COL_KEY_PREVIEW).Value = "What's on it"
+    ws.Cells(1, COL_KEY_STATUS).Value = "Status"
+    ws.Cells(1, COL_KEY_VALUE).Value = "Instance Key (edit me)"
+    ws.Cells(1, COL_KEY_SKIP).Value = "Skip? (Y/N)"
+
+    Dim seen As Object
+    Set seen = CreateObject("Scripting.Dictionary")
+
+    Dim i As Long
+    For i = 0 To otherSlideCount
+        Dim sld As Object
+        If i = 0 Then Set sld = templateSld Else Set sld = otherSlides(i)
+
+        Dim r As Long
+        r = i + KEY_GRID_FIRST_ROW
+
+        Dim existing As String
+        existing = ExistingInstanceKey(sld)
+
+        Dim proposed As String
+        Dim status As String
+        If existing <> "" Then
+            proposed = existing
+            status = "LINKED -- keeps this key, edits ignored"
+        Else
+            proposed = SuggestInstanceKey(plan, i)
+            If Trim(proposed) = "" Then
+                status = "NEEDS A KEY -- nothing to suggest"
+            ElseIf seen.Exists(LCase(Trim(proposed))) Then
+                status = "CLASH -- same key as slide " & seen(LCase(Trim(proposed))) & ". Change it, or Skip if this is a copy."
+            Else
+                status = "ok"
+            End If
+        End If
+
+        If Trim(proposed) <> "" Then
+            If Not seen.Exists(LCase(Trim(proposed))) Then seen(LCase(Trim(proposed))) = sld.SlideIndex
+        End If
+
+        ws.Cells(r, COL_KEY_SLIDE).Value = sld.SlideIndex
+        ws.Cells(r, COL_KEY_PREVIEW).Value = SlidePreviewText(sld)
+        ws.Cells(r, COL_KEY_STATUS).Value = status & IIf(i = 0, "  (TEMPLATE -- required, cannot be skipped)", "")
+        ws.Cells(r, COL_KEY_VALUE).Value = proposed
+        ws.Cells(r, COL_KEY_SKIP).Value = "N"
+
+        ' Hidden column: what a LINKED row started with, so an ignored edit is
+        ' still detectable if the grid gets re-shown after a validation failure.
+        ws.Cells(r, COL_KEY_SKIP + 1).Value = IIf(existing <> "", existing, "")
+    Next i
+
+    ws.Columns(COL_KEY_SKIP + 1).Hidden = True
+
+    ws.Columns(COL_KEY_PREVIEW).ColumnWidth = 46
+    ws.Columns(COL_KEY_STATUS).ColumnWidth = 52
+    ws.Columns(COL_KEY_VALUE).ColumnWidth = 22
+    ws.Columns(COL_KEY_SKIP).ColumnWidth = 12
+    ws.Rows(1).Font.Bold = True
+End Sub
+
+' Reads the grid back into a slide-index -> key dictionary, and returns "" if
+' it is usable or a description of what is still wrong.
+'
+' Returning problems rather than raising, so the caller can put the human back
+' in the same sheet with the same edits intact. Losing their work to start over
+' is the failure this whole grid exists to stop.
+'
+' Why the duplicate-key check is here at all: the instance key is the identity
+' that links a slide to its row in the Data sheet, and nothing checked for
+' collisions until this grid existed (the gap was even named in
+' ConflictingSlideType's header as "the missing duplicate-key guard"). Two
+' slides given the same key both resolve to one row: at onboard the second
+' slide's harvested values overwrite the first's, and from then on one row
+' feeds two slides. Nothing errors. The deck simply starts showing numbers
+' that belong to a different project, which is the worst class of bug this
+' tool can have -- a reporting deck that is confidently wrong.
+'
+' Comparison is trimmed and case-insensitive. Two keys differing only by case
+' or trailing space are a typo in every realistic scenario, and the cost of
+' being wrong is asymmetric: refusing a deliberate case-distinct pair costs
+' one rename, while accepting an accidental one costs silently merged data.
+Public Function ReadInstanceKeyGrid(ws As Object, otherSlideCount As Long, ByRef confirmedKeys As Object, ByRef reusedCount As Long, ByRef ignoredEdits As Long) As String
+    Set confirmedKeys = CreateObject("Scripting.Dictionary")
+    reusedCount = 0
+    ignoredEdits = 0
+
+    Dim problems As String
+    problems = ""
+
+    Dim used As Object
+    Set used = CreateObject("Scripting.Dictionary")
+
+    Dim i As Long
+    For i = 0 To otherSlideCount
+        Dim r As Long
+        r = i + KEY_GRID_FIRST_ROW
+
+        Dim slideNo As String
+        slideNo = CStr(ws.Cells(r, COL_KEY_SLIDE).Value)
+
+        Dim status As String
+        status = CStr(ws.Cells(r, COL_KEY_STATUS).Value)
+
+        Dim keyVal As String
+        keyVal = Trim(CStr(ws.Cells(r, COL_KEY_VALUE).Value))
+
+        Dim skipVal As String
+        skipVal = UCase(Trim(CStr(ws.Cells(r, COL_KEY_SKIP).Value)))
+
+        ' A linked slide keeps whatever it already had, whatever the sheet says.
+        If InStr(status, "LINKED") > 0 Then
+            Dim originalKey As String
+            originalKey = OriginalKeyFromStatusRow(ws, r)
+            If keyVal <> originalKey And originalKey <> "" Then ignoredEdits = ignoredEdits + 1
+            confirmedKeys(i) = originalKey
+            reusedCount = reusedCount + 1
+            If originalKey <> "" Then used(LCase(originalKey)) = slideNo
+            GoTo ContinueRow
+        End If
+
+        If skipVal = "Y" Then
+            If i = 0 Then
+                problems = problems & vbCrLf & "  The template slide (Slide " & slideNo & ") cannot be skipped -- it defines the type."
+            Else
+                confirmedKeys(i) = ""
+            End If
+            GoTo ContinueRow
+        End If
+
+        If keyVal = "" Then
+            If i = 0 Then
+                problems = problems & vbCrLf & "  The template slide (Slide " & slideNo & ") needs an instance key."
+            Else
+                ' Blank and not marked Skip -- treat as skip, but say so, since
+                ' an empty cell is as easily an oversight as a decision.
+                confirmedKeys(i) = ""
+            End If
+            GoTo ContinueRow
+        End If
+
+        If used.Exists(LCase(keyVal)) Then
+            problems = problems & vbCrLf & "  Slide " & slideNo & " and slide " & used(LCase(keyVal)) & _
+                " both have the key '" & keyVal & "'. They would share one row in the Data sheet."
+        Else
+            used(LCase(keyVal)) = slideNo
+        End If
+
+        confirmedKeys(i) = keyVal
+
+ContinueRow:
+    Next i
+
+    ReadInstanceKeyGrid = problems
+End Function
+
+' The key a LINKED row started with. Held in a hidden 6th column when the grid
+' is written back for a re-edit, so an ignored edit can be detected on the
+' second pass too rather than only the first.
+Private Function OriginalKeyFromStatusRow(ws As Object, r As Long) As String
+    Dim v As String
+    v = Trim(CStr(ws.Cells(r, COL_KEY_SKIP + 1).Value))
+    If v = "" Then v = Trim(CStr(ws.Cells(r, COL_KEY_VALUE).Value))
+    OriginalKeyFromStatusRow = v
+End Function
+
 Public Function WriteReviewGrid(ws As Object, plan As BatchOnboardPlan, otherSlideCount As Long) As Object
     ws.Cells(1, COL_FIELD_ID).Value = "Field ID (do not edit)"
     ws.Cells(1, COL_FIELD_NAME).Value = "Field Name"
@@ -2211,120 +2382,80 @@ Public Function PromptBatchOnboardType() As String
         Exit Function
     End If
 
-    ' Instance-key prompts: template first (required), then each other
-    ' slide (blank = skip, never guessed) -- same InputBox convention
-    ' AdoptFlow.bas already established for exactly this decision. Each
-    ' prompt is pre-filled with a suggested key (see SuggestInstanceKey) so
-    ' confirming is a single OK click in the common case -- Rohan's own
-    ' feedback (2026-07-26): hand-typing every key, not the instance-key
-    ' concept itself, was the actual friction.
+    ' Instance keys via a REVIEW GRID, not a chain of InputBoxes.
+    '
+    ' Replaced 2026-07-29 on Rohan's call: "I'd rather fix the excel and skip
+    ' all this having to confirm the instance key... too time consuming for
+    ' organised slides." He is right, and the reason is specific -- his slides
+    ' already carry their project numbers, so SuggestInstanceKey derives the
+    ' correct key unaided and the old flow then asked him to confirm, one modal
+    ' box at a time, what it had just read off the slide. Forty-five prompts to
+    ' retype what was already known.
+    '
+    ' The grid is also structurally safer. Modal prompts are irreplaceable
+    ' input: earlier the same day a single bad workbook path destroyed 45
+    ' hand-confirmed keys, because there was nowhere for them to live except in
+    ' the sequence of dialogs. A sheet is editable, re-openable, and survives a
+    ' validation failure with the human's edits intact -- so a clash sends them
+    ' back to the same sheet rather than back to the beginning.
+    '
+    ' Clashes are shown all at once, in context, instead of arriving one at a
+    ' time forty prompts deep.
+    Dim keyWb As Object
+    Set keyWb = xl.Workbooks.Add()
+    Dim keyWs As Object
+    Set keyWs = keyWb.Worksheets(1)
+    keyWs.Name = "Instance Keys"
+    WriteInstanceKeyGrid keyWs, plan, templateSld, otherSlides, otherSlideCount
+    keyWb.Activate
+
     Dim confirmedKeys As Object
-    Set confirmedKeys = CreateObject("Scripting.Dictionary")
-
-    ' A blank suggestion (SuggestInstanceKey returning "") looks visually
-    ' IDENTICAL to every other prompt's pre-filled box -- real gap found
-    ' live 2026-07-26: Rohan, having learned to trust the pre-fill and just
-    ' click OK, hit a genuinely blank suggestion on the required template
-    ' prompt and silently cancelled the whole run without realizing that
-    ' one prompt was different. Making the missing-suggestion case visually
-    ' distinct (extra warning text) so a blind click-through is far less
-    ' likely, rather than relying on the human to notice an empty textbox
-    ' that otherwise looks the same as a pre-filled one.
-    ' Already-linked slides keep their own key and are never prompted for --
-    ' see ExistingInstanceKey's header for the real corruption this prevents.
-    ' Reused SILENTLY rather than pre-filling the prompt: re-onboarding this
-    ' deck would otherwise mean 46 confirmation clicks, which is precisely the
-    ' friction that drove this whole batch flow. The tradeoff is that a key
-    ' cannot be CHANGED from here once set; the count is reported below so a
-    ' reuse is never invisible.
     Dim reusedCount As Long
+    Dim ignoredEdits As Long
+    Dim keyProblems As String
+    Dim keyAttempt As Long
 
-    Dim templateExisting As String
-    templateExisting = ExistingInstanceKey(templateSld)
-    If templateExisting <> "" Then
-        confirmedKeys(0) = templateExisting
-        reusedCount = reusedCount + 1
-    Else
-        Dim templateSuggestion As String
-        templateSuggestion = SuggestInstanceKey(plan, 0)
-
-        Dim templatePrompt As String
-        templatePrompt = "Instance key for the template slide (Slide " & templateSld.SlideIndex & ") -- required, this slide defines the type:"
-        If templateSuggestion = "" Then
-            templatePrompt = templatePrompt & vbCrLf & vbCrLf & "(No suggested value available -- type one yourself. Leaving this blank cancels the whole run.)"
+    For keyAttempt = 1 To 10
+        Dim promptText As String
+        promptText = "Review the 'Instance Keys' sheet in Excel." & vbCrLf & vbCrLf & _
+            "Keys are already filled in from your slides -- you only need to fix the rows flagged in the Status column." & vbCrLf & _
+            "Put Y in the Skip column for any slide that is a working copy of another (it gets no row and is left alone)." & vbCrLf & vbCrLf & _
+            "Click Yes when you're done, No to cancel."
+        If keyProblems <> "" Then
+            promptText = "Still a problem with the Instance Keys sheet:" & vbCrLf & keyProblems & vbCrLf & vbCrLf & _
+                "Your edits are still there -- fix these rows and click Yes." & vbCrLf & vbCrLf & "Click No to cancel."
         End If
 
-        Dim templateKey As String
-        templateKey = InputBox(templatePrompt, "Bulk Onboard Type -- Instance Key", templateSuggestion)
-        If Trim(templateKey) = "" Then
-            PromptBatchOnboardType = "Cancelled -- the template slide must have an instance key."
+        If MsgBox(promptText, vbYesNo + IIf(keyProblems = "", vbQuestion, vbExclamation), "Bulk Onboard Type -- Instance Keys") <> vbYes Then
+            keyWb.Saved = True
+            keyWb.Close
+            PromptBatchOnboardType = "Cancelled at the instance-key sheet -- nothing written."
             Exit Function
         End If
-        confirmedKeys(0) = Trim(templateKey)
+
+        keyProblems = ReadInstanceKeyGrid(keyWs, otherSlideCount, confirmedKeys, reusedCount, ignoredEdits)
+        If keyProblems = "" Then Exit For
+    Next keyAttempt
+
+    If keyProblems <> "" Then
+        keyWb.Saved = True
+        keyWb.Close
+        PromptBatchOnboardType = "Gave up after repeated problems with the instance keys:" & keyProblems & vbCrLf & vbCrLf & "Nothing was written."
+        Exit Function
     End If
 
-    ' Keys already written into slides are reused silently, but a collision
-    ' AMONG them is reported rather than fixed here -- those keys are already in
-    ' the deck, so a clash is pre-existing damage (exactly what the 2026-07-28
-    ' re-derivation bug produced), and quietly re-prompting would hide it. The
-    ' human needs to know their deck has two slides claiming one row.
+    keyWb.Saved = True
+    keyWb.Close
+
+    ' Pre-existing duplicates among ALREADY-LINKED slides are reported, never
+    ' silently repaired -- those keys are in the deck already, so a clash is
+    ' damage that predates this run (exactly what the 2026-07-28 re-derivation
+    ' bug produced) and the human needs to learn about it.
     Dim reusedClashes As String
     reusedClashes = ""
-
-    For i = 1 To otherSlideCount
-        Dim otherExisting As String
-        otherExisting = ExistingInstanceKey(otherSlides(i))
-        If otherExisting <> "" Then
-            Dim reusedClashIdx As Long
-            reusedClashIdx = IndexUsingInstanceKey(confirmedKeys, otherExisting)
-            If reusedClashIdx >= 0 Then
-                reusedClashes = reusedClashes & vbCrLf & "  Slide " & otherSlides(i).SlideIndex & _
-                    " and " & SlideLabelForKeyIndex(reusedClashIdx, templateSld, otherSlides) & _
-                    " both already carry the key '" & otherExisting & "'"
-            End If
-            confirmedKeys(i) = otherExisting
-            reusedCount = reusedCount + 1
-        Else
-            Dim otherSuggestion As String
-            otherSuggestion = SuggestInstanceKey(plan, i)
-
-            Dim prompt As String
-            prompt = "Instance key for Slide " & otherSlides(i).SlideIndex & " (leave blank to skip this slide this pass):"
-            If otherSuggestion = "" Then
-                prompt = prompt & vbCrLf & vbCrLf & "(No suggested value available -- leaving this blank will skip this slide entirely this pass.)"
-            End If
-
-            ' Re-prompt on a clash rather than accepting it. Bounded, so a
-            ' human who cannot find a free key can still get out -- and the way
-            ' out is a blank, which skips the slide and leaves the deck
-            ' untouched rather than merging it onto someone else's row.
-            Dim proposed As String
-            Dim tries As Long
-            Dim thisPrompt As String
-            thisPrompt = prompt
-            For tries = 1 To 5
-                proposed = Trim(InputBox(thisPrompt, "Bulk Onboard Type -- Instance Key", otherSuggestion))
-                If proposed = "" Then Exit For ' blank = skip this slide
-
-                Dim clashIdx As Long
-                clashIdx = IndexUsingInstanceKey(confirmedKeys, proposed)
-                If clashIdx < 0 Then Exit For ' free -- take it
-
-                thisPrompt = "'" & proposed & "' is already used by " & _
-                    SlideLabelForKeyIndex(clashIdx, templateSld, otherSlides) & "." & vbCrLf & vbCrLf & _
-                    "Two slides sharing an instance key both point at the same row in the Data sheet, so one slide's numbers would quietly overwrite the other's." & vbCrLf & vbCrLf & _
-                    prompt
-                otherSuggestion = proposed
-            Next tries
-
-            ' Fell out of the loop still clashing -- refuse rather than merge.
-            If proposed <> "" Then
-                If IndexUsingInstanceKey(confirmedKeys, proposed) >= 0 Then proposed = ""
-            End If
-
-            confirmedKeys(i) = proposed
-        End If
-    Next i
+    If ignoredEdits > 0 Then
+        reusedClashes = vbCrLf & "  " & ignoredEdits & " already-linked slide(s) had their key edited on the sheet -- those edits were ignored, since re-keying a linked slide strands its existing row."
+    End If
 
     Dim ws As Object
     Set ws = WorkbookBridge.GetOrAddWorksheet(wb, WorkbookBridge.SanitizeSheetName(slideType))
