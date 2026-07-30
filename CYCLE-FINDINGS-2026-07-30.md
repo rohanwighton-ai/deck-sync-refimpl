@@ -159,6 +159,36 @@ keep cloud-save behaviour out of the first cycle, which meant AutoSave was off. 
 OneDrive-hosted workbook AutoSave would usually have hidden this. Choosing the quieter
 environment is what made the bug visible.
 
+---
+
+## Fixed in addin30 (104/104, commit `8d54832`)
+
+- **C4** — `RunRoutineSync` now prints the same field detail the preview does, in the past
+  tense (`was:` / `now:`). The end-to-end test asserted the deck was corrected but never
+  the report, which is how the gap survived.
+- **C5** — `WorkbookBridge.IsDirty` + `UnsavedWorkbookText`. Sync Now checks before
+  planning and offers to save; Preview Sync warns at the top of its report instead of
+  blocking, since it writes nothing.
+
+**Recorded while fixing C5:** `Workbooks.Add()` reports `Saved = True`. Excel's flag means
+"unmodified since last write", not "exists on disk". Asserted wrongly from memory, caught
+by the suite in one run — the same class of mistake `feedback_verify_office_automation_
+before_asserting` exists for, this time caught cheaply because it was written as a test
+against real Excel rather than as a claim.
+
 ## Still unexercised
 
-`New Period` -- also not on the toolbar.
+`New Period` — also not on the toolbar. It duplicates slides, so under the rule
+established by C2/C3 it needs a confirmation guard before it goes on, and a live cycle of
+its own. It is now the largest untested surface in the tool.
+
+## Scoreboard
+
+Six findings in one evening of real use. **None of them were logic errors**, and none were
+reachable by the test suite as it stood: they lived in wiring (C2), messages (C1, C4),
+missing guards (C3), file state (C5), and one that turned out to be correct behaviour
+misread (C6, retracted). Nine prior sessions of engine hardening produced nothing
+comparable, because each exercised a slice that had already been exercised.
+
+The lesson is not "write more tests". It is that a test can only guard what someone
+thought to guard, and using the thing is what generates that list.
