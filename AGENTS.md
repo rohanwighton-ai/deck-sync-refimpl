@@ -52,6 +52,24 @@ guidance.
   `otherSlideCandCount()`) instead of a Dictionary -- see
   `SPIKE_NOTES_BatchOnboardFlow.md`.
 
+- **VBA: a module-level `Type`/`Const` below the module's first `Sub`/`Function`
+  reports its error in a DIFFERENT module.** Declarations must all sit above the
+  first procedure. Break that and the offending module compiles quietly; the
+  failure appears as `User-defined type not defined` at whichever *other* module
+  referenced the Type — which reads as "the module didn't import" rather than
+  "the declaration is in the wrong place", and the import log says it imported
+  fine. Hit 2026-07-30 with `TemplateSlide.bas`'s `MakeTemplateResult` placed
+  after `PlaceholderFor`: cost one full ~8-minute suite run, then was identified
+  in seconds from a screenshot of the VBE dialog (which names the line). **Two
+  takeaways**: put declarations first as a matter of course, and when a run dies
+  with `Sub or function not defined` / `User-defined type not defined`, ask for
+  the VBE screenshot before grepping — the dialog already names the statement.
+  A cheap static check, worth running before any suite run that adds a module:
+  scan each `.bas` for a `^(Public |Private )?(Type|Const|Enum)\s` line
+  appearing after the first `^(Public |Private )?(Sub|Function|Property)\s`
+  (procedure-local `Const`s inside a body are legal and will show up as false
+  positives — check the indentation).
+
 - **VBA: `ReDim arr(1 To 0)` throws "Subscript out of range" (Err 9) at
   runtime** -- confirmed real via multiple clean, isolated repros against a
   genuine PowerPoint 16.0 install (2026-07-25), not a hypothetical or a

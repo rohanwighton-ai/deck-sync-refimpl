@@ -350,6 +350,302 @@ Private Sub NewPeriodCore()
     ShowSyncResult "New Period", report
 End Sub
 
+' ---------------------------------------------------------------------
+' Audit Fields -- "what on this slide is the tool not tracking?"
+' See TemplateAudit.bas for the reasoning. Read-only; the only write is
+' the audit worksheet.
+' ---------------------------------------------------------------------
+
+Public Sub AuditFields()
+    On Error GoTo Failed
+    AuditFieldsCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Audit Fields", RibbonUI.UnexpectedErrorText("Audit Fields", Err.Number, Err.Description, Err.Source)
+End Sub
+
+' Picks the subject slide by preference, and never requires a template.
+'
+' The fallback chain is the whole point (Rohan, 2026-07-30): this operation and
+' field marking must each work whatever the other has or hasn't done, because
+' decks arrive at different maturities. A deck that has never run Create
+' Template Slide still needs to know which fields it is missing -- arguably
+' more than a mature one does, since knowing the fields is what makes a
+' template worth building. So:
+'   1. the type's master template, if step 1 has been run
+'   2. otherwise the registered slide (pre-step-1 decks: a real project slide)
+'   3. otherwise the first instance of the type
+' Each is a legitimate subject; only the ranking differs.
+Private Sub AuditFieldsCore()
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim types() As String
+    types = DeckRegistry.ListRegisteredTypes(pres)
+    Dim lo As Long, hi As Long, hasTypes As Boolean
+    On Error Resume Next
+    lo = LBound(types): hi = UBound(types)
+    hasTypes = (Err.Number = 0)
+    On Error GoTo 0
+
+    If Not hasTypes Then
+        MsgBox "This deck has no registered slide types yet -- use 'Onboard New Slide Type' first.", vbExclamation, "Audit Fields"
+        Exit Sub
+    End If
+
+    Dim slideType As String
+    slideType = InputBox(BuildTypePickerPrompt(types), "Audit Fields -- Choose Type")
+    slideType = ResolveTypeAnswer(slideType, types)
+    If slideType = "" Then Exit Sub
+
+    Dim instances() As Object
+    instances = RunSync.GatherInstances(slideType)
+
+    Dim subjectSld As Object
+    Dim subjectLabel As String
+
+    Set subjectSld = TemplateSlide.FindTemplateFor(slideType)
+    If Not subjectSld Is Nothing Then
+        subjectLabel = "the master template (slide " & subjectSld.SlideIndex & ")"
+    End If
+
+    Dim wsName As String
+    If subjectSld Is Nothing Then
+        Dim registeredSld As Object
+        If DeckRegistry.LookupType(pres, slideType, registeredSld, wsName) Then
+            Set subjectSld = registeredSld
+            subjectLabel = "slide " & subjectSld.SlideIndex & " (no master template yet -- this type's registered slide)"
+        End If
+    Else
+        Dim ignoredSld As Object
+        DeckRegistry.LookupType pres, slideType, ignoredSld, wsName
+    End If
+
+    If subjectSld Is Nothing Then
+        Dim iLo As Long, iHi As Long, hasInstances As Boolean
+        On Error Resume Next
+        iLo = LBound(instances): iHi = UBound(instances)
+        hasInstances = (Err.Number = 0)
+        On Error GoTo 0
+        If hasInstances Then
+            Set subjectSld = instances(iLo)
+            subjectLabel = "slide " & subjectSld.SlideIndex & " (first slide of this type)"
+        End If
+    End If
+
+    If subjectSld Is Nothing Then
+        MsgBox "Nothing to audit -- type '" & slideType & "' has no slides in this deck.", vbExclamation, "Audit Fields"
+        Exit Sub
+    End If
+
+    ' The subject is excluded from its own comparison set. Without this, a
+    ' pre-step-1 deck audits a real project slide against a list that includes
+    ' that same slide, so every text scores at least 1 and nothing can ever
+    ' read "on no other slide" -- the verdict that carries all the signal.
+    Dim comparisons() As Object
+    comparisons = ExcludeSlide(instances, subjectSld)
+
+    Dim rowCount As Long
+    Dim trackedFields As String
+    Dim rows() As AuditRow
+    rows = TemplateAudit.BuildAudit(subjectSld, comparisons, rowCount, trackedFields)
+
+    Dim trackedCount As Long
+    trackedCount = 0
+    If trackedFields <> "" Then trackedCount = UBound(Split(trackedFields, "|")) + 1
+
+    Dim likelyDataCount As Long
+    Dim cLo As Long, cHi As Long, hasComparisons As Boolean
+    On Error Resume Next
+    cLo = LBound(comparisons): cHi = UBound(comparisons)
+    hasComparisons = (Err.Number = 0)
+    On Error GoTo 0
+    Dim comparisonCount As Long
+    If hasComparisons Then comparisonCount = cHi - cLo + 1
+
+    ' Asks TemplateAudit rather than re-implementing the prefix match. The two
+    ' were separate hand-written comparisons until 2026-07-30 and only this one
+    ' was right -- the other had the literal's length wrong by one and silently
+    ' mis-sorted the whole grid.
+    Dim i As Long
+    For i = 1 To rowCount
+        If TemplateAudit.IsLikelyProjectData(rows(i).Verdict) Then likelyDataCount = likelyDataCount + 1
+    Next i
+
+    ' Write the grid, if there is a workbook to write it to. A deck with no
+    ' paired workbook still gets the counts -- the audit reads the DECK, so
+    ' refusing outright would withhold an answer it already has.
+    Dim wroteGrid As Boolean
+    Dim workbookPath As String
+    workbookPath = DeckRegistry.GetWorkbookPath(pres)
+    If workbookPath <> "" And rowCount > 0 Then
+        Dim wb As Object
+        Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
+        If Not wb Is Nothing Then
+            Dim ws As Object
+            Set ws = WorkbookBridge.GetOrAddWorksheet(wb, TemplateAudit.AUDIT_SHEET_NAME)
+            TemplateAudit.WriteAuditGrid ws, rows, rowCount
+            wroteGrid = True
+        End If
+    End If
+
+    Dim report As String
+    report = TemplateAudit.SummaryText(slideType, subjectLabel, trackedCount, rowCount, likelyDataCount, comparisonCount)
+    If rowCount > 0 And Not wroteGrid Then
+        report = report & vbCrLf & vbCrLf & "COULD NOT WRITE THE LIST: no paired workbook was reachable, so only the counts above are available."
+    End If
+
+    ShowSyncResult "Audit Fields", report
+End Sub
+
+' `slides` minus `dropSld`, matched by SlideID rather than object identity --
+' same reasoning as AdoptFlow.ExcludeTemplateSlide, whose shape this mirrors
+' (two references to one slide are not guaranteed to compare equal).
+Public Function ExcludeSlide(slides() As Object, dropSld As Object) As Object()
+    Dim result() As Object
+    Dim n As Long
+    n = 0
+
+    Dim lo As Long, hi As Long, hasAny As Boolean
+    On Error Resume Next
+    lo = LBound(slides): hi = UBound(slides)
+    hasAny = (Err.Number = 0)
+    On Error GoTo 0
+    If Not hasAny Then
+        ExcludeSlide = result
+        Exit Function
+    End If
+
+    Dim i As Long
+    For i = lo To hi
+        If slides(i).SlideID <> dropSld.SlideID Then
+            n = n + 1
+            ReDim Preserve result(1 To n)
+            Set result(n) = slides(i)
+        End If
+    Next i
+
+    ExcludeSlide = result
+End Function
+
+' ---------------------------------------------------------------------
+' Create Template Slide -- specs/deck-compiler-concept.md progression
+' step 1. Gives a type a master template slide that is never a real
+' project, and re-points the type's registration at it, so new records
+' stop being cloned from whichever real slide happened to be onboarded
+' first. See TemplateSlide.bas's header for the hazard.
+' ---------------------------------------------------------------------
+
+' Toolbar entry point. The real work is in CreateTemplateSlideCore; this
+' exists only to catch anything that escapes it.
+'
+' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
+' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
+' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
+' inline handler would be switched off by the first of them and read as
+' protection while providing none. Putting the handler in a separate frame
+' means nothing inside the body can turn it off, now or after a later edit.
+Public Sub CreateTemplateSlide()
+    On Error GoTo Failed
+    CreateTemplateSlideCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Create Template Slide", RibbonUI.UnexpectedErrorText("Create Template Slide", Err.Number, Err.Description, Err.Source)
+End Sub
+
+Private Sub CreateTemplateSlideCore()
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim types() As String
+    types = DeckRegistry.ListRegisteredTypes(pres)
+    Dim lo As Long, hi As Long, hasTypes As Boolean
+    On Error Resume Next
+    lo = LBound(types): hi = UBound(types)
+    hasTypes = (Err.Number = 0)
+    On Error GoTo 0
+
+    If Not hasTypes Then
+        MsgBox "This deck has no registered slide types yet -- use 'Onboard New Slide Type' first.", vbExclamation, "Create Template Slide"
+        Exit Sub
+    End If
+
+    Dim slideType As String
+    slideType = InputBox(BuildTypePickerPrompt(types), "Create Template Slide -- Choose Type")
+    slideType = ResolveTypeAnswer(slideType, types)
+    If slideType = "" Then Exit Sub
+
+    ' Already has one: stop here rather than at MakeTemplateFrom's own guard,
+    ' so the message can name the existing template's slide number. Both
+    ' checks stay -- this one is for the human, that one is the invariant.
+    Dim existing As Object
+    Set existing = TemplateSlide.FindTemplateFor(slideType)
+    If Not existing Is Nothing Then
+        MsgBox "Type '" & slideType & "' already has a master template: slide " & existing.SlideIndex & "." & vbCrLf & vbCrLf & _
+               "A type must have exactly one. Nothing was changed.", vbInformation, "Create Template Slide"
+        Exit Sub
+    End If
+
+    Dim sourceSld As Object
+    Dim wsName As String
+    If Not DeckRegistry.LookupType(pres, slideType, sourceSld, wsName) Then
+        MsgBox "Type '" & slideType & "' is registered but its slide no longer resolves (was it deleted?)." & vbCrLf & _
+               "Re-onboard the type before creating its template.", vbExclamation, "Create Template Slide"
+        Exit Sub
+    End If
+
+    ' Label the source by its instance key where it has one, falling back to
+    ' the slide number -- the key is what the human recognises from the Data
+    ' sheet, and "slide 3" is meaningless once the deck is reordered.
+    Dim sourceInstance As SlideInstance
+    sourceInstance = Resolve.ResolveSlideInstance(sourceSld)
+    Dim sourceLabel As String
+    sourceLabel = "slide " & sourceSld.SlideIndex
+    If sourceInstance.HasInstanceKey Then sourceLabel = sourceInstance.InstanceKey & " (slide " & sourceSld.SlideIndex & ")"
+
+    Dim sourceRoles() As String
+    Dim sourceShapes() As Candidate
+    sourceShapes = Onboarding.BuildTemplateFieldShapes(sourceSld, sourceRoles)
+    Dim fLo As Long, fHi As Long, hasFields As Boolean
+    On Error Resume Next
+    fLo = LBound(sourceRoles): fHi = UBound(sourceRoles)
+    hasFields = (Err.Number = 0)
+    On Error GoTo 0
+    Dim fieldCount As Long
+    If hasFields Then fieldCount = fHi - fLo + 1
+
+    If MsgBox(TemplateSlide.ConfirmTemplateText(slideType, sourceLabel, fieldCount), _
+              vbYesNo + vbQuestion, "Create Template Slide") <> vbYes Then
+        Exit Sub
+    End If
+
+    Dim mr As MakeTemplateResult
+    mr = TemplateSlide.MakeTemplateFrom(sourceSld, slideType)
+
+    Dim report As String
+    If Not mr.Ok Then
+        report = "FAILED to create a template for '" & slideType & "': " & mr.Reason
+        ShowSyncResult "Create Template Slide", report
+        Exit Sub
+    End If
+
+    ' Registration is the step that actually changes behaviour -- without it
+    ' the template exists but nothing clones it, which is the quietest
+    ' possible half-finished state. Done here rather than inside
+    ' MakeTemplateFrom so that function stays testable with no registry.
+    DeckRegistry.RegisterType pres, slideType, mr.NewSlide, wsName
+
+    report = "Master template created for '" & slideType & "'." & vbCrLf & vbCrLf & _
+        "    slide " & mr.NewSlide.SlideIndex & ", hidden from the slideshow" & vbCrLf & _
+        "    " & mr.FieldCount & " field(s) set to placeholders" & vbCrLf & _
+        "    new records will now be cloned from it, not from " & sourceLabel & vbCrLf & vbCrLf & _
+        "It will not appear in Preview Sync or Sync Now reports -- a template" & vbCrLf & _
+        "is not a record, so it is neither counted nor corrected." & vbCrLf & vbCrLf & _
+        "Worth doing now: open it and clear anything the sync does not manage" & vbCrLf & _
+        "(figures, chart data, notes, untagged text) that belonged to " & sourceLabel & "."
+    ShowSyncResult "Create Template Slide", report
+End Sub
+
 Public Function BuildTypePickerPrompt(types() As String) As String
     Dim s As String
     s = "Choose a slide type (enter the number or the name):" & vbCrLf

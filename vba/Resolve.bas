@@ -33,7 +33,25 @@ Public Type SlideInstance
     TypeTag As String        ' "" / HasTypeTag=False if the slide has no slide_type tag
     HasInstanceKey As Boolean
     InstanceKey As String    ' "" / HasInstanceKey=False if the slide has no instance_key tag
+    IsTemplate As Boolean    ' the type's master template slide, not a real record -- see TEMPLATE_TAG_NAME
 End Type
+
+' The master template slide's marker, per specs/deck-compiler-concept.md's
+' progression step 1. A POSITIVE tag, deliberately, rather than inferring
+' "template" from a typed slide that has no instance_key: that state already
+' means something else entirely -- SyncOperations.PlanRoutineSync flags it as
+' case 6 (unclassified_slide) -- so overloading it would make a genuine
+' misclassification indistinguishable from a deliberate one, and no report
+' could tell a human which they were looking at. Same objection as an
+' always-true guard (zettel 20260729): a discriminator that cannot fail the
+' way the thing it guards actually breaks.
+'
+' Named in the existing slide-tag vocabulary (slide_type / instance_key /
+' period_key), NOT "slide_role" -- "role" is already the shape-level tag name
+' for a field, and reusing it one level up for an unrelated meaning is how
+' two concepts end up sharing a word in a codebase that has to explain
+' itself to whoever reads it next.
+Public Const TEMPLATE_TAG_NAME As String = "is_template"
 
 ' Reads `sld`'s slide-level identity tags. A blank Slide.Tags(name) result
 ' is indistinguishable from "tag genuinely present but empty" (the same
@@ -55,7 +73,25 @@ Public Function ResolveSlideInstance(sld As Object) As SlideInstance
     result.InstanceKey = sld.Tags("instance_key")
     result.HasInstanceKey = (result.InstanceKey <> "")
 
+    ' A present-but-empty is_template tag reads as False, same convention as
+    ' the two above. That is the safe direction on purpose: a template whose
+    ' marker got blanked falls back to being treated as an ordinary instance,
+    ' which means it gets FLAGGED loudly as unclassified rather than silently
+    ' dropped out of every sync. Failing towards noise beats failing towards
+    ' silence for a slide the whole type is cloned from.
+    result.IsTemplate = (sld.Tags(TEMPLATE_TAG_NAME) <> "")
+
     ResolveSlideInstance = result
+End Function
+
+' True when `sld` is the master template for its type -- the slide new
+' records are cloned FROM, which must never itself be treated as a record.
+' A thin wrapper over ResolveSlideInstance so callers that only need this
+' one question don't have to know the Type's shape.
+Public Function IsTemplateSlide(sld As Object) As Boolean
+    Dim instance As SlideInstance
+    instance = ResolveSlideInstance(sld)
+    IsTemplateSlide = instance.IsTemplate
 End Function
 
 ' Manual smoke-test entry point -- not a real test harness, same as every

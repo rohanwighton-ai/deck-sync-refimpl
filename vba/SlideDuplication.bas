@@ -99,6 +99,56 @@ Public Function DuplicateAndTag(sourceSld As Object, slideType As String, newIns
     newSld.Tags.Add "slide_type", slideType
     newSld.Tags.Add "instance_key", newInstanceKey
 
+    ' --- Strip the master-template marker from the COPY -------------------
+    ' Slide.Duplicate copies slide-level tags, so cloning the type's master
+    ' template hands the new record the is_template marker too. Left in
+    ' place, that new record would be excluded from every future sync by
+    ' RunSync.GatherInstances -- silently, since the exclusion exists
+    ' precisely to keep templates out of reports. The deck would then hold
+    ' two templates and one invisible project, and nothing would say so.
+    '
+    ' Guarded because whether Tags.Delete raises on an absent tag is NOT
+    ' established in this environment, and the overwhelmingly common case
+    ' (duplicating an ordinary instance, no marker present) hits exactly
+    ' that path -- see feedback_verify_office_automation_before_asserting
+    ' for why this is not asserted from memory.
+    On Error Resume Next
+    newSld.Tags.Delete Resolve.TEMPLATE_TAG_NAME
+    On Error GoTo 0
+
+    ' Postcondition, not decoration: this check CAN fail, and it is the only
+    ' thing standing between an unknown Tags.Delete behaviour and a silently
+    ' un-syncable slide. Refuse and remove, the same posture the structural
+    ' check above takes -- an untagged/mis-tagged duplicate left in the deck
+    ' is debris a human has to notice, and this particular debris is
+    ' invisible by construction.
+    If Resolve.IsTemplateSlide(newSld) Then
+        newSld.Delete
+        result.Ok = False
+        result.Reason = "could not clear the '" & Resolve.TEMPLATE_TAG_NAME & "' marker from the duplicate" & _
+            " -- refusing to create a slide that every future sync would silently skip. Malformed duplicate removed."
+        DuplicateAndTag = result
+        Exit Function
+    End If
+
+    ' --- A created record is VISIBLE -------------------------------------
+    ' Slide.Duplicate copies SlideShowTransition.Hidden too, and the master
+    ' template is deliberately hidden -- so every slide cloned from it
+    ' arrived hidden from the slideshow. Found live 2026-07-30 by Rohan
+    ' spotting two struck-through slide numbers in the thumbnail pane where
+    ' only one (the template) should have been.
+    '
+    ' Worth naming the miss, because the shape of it recurs: the is_template
+    ' TAG was guarded against exactly this inheritance, three lines up, and
+    ' the sibling PROPERTY next to it was not. Reasoning about "what does
+    ' Duplicate copy" one attribute at a time is what let it through.
+    '
+    ' Set unconditionally rather than only when the source was a template. A
+    ' new record that cannot be seen in the presented deck is a silent
+    ' failure whatever it was cloned from, and "the record I just created is
+    ' visible" is the correct postcondition for this function full stop.
+    newSld.SlideShowTransition.Hidden = msoFalse
+
     ' --- Inject fields, per partial-row handling ---------------------------
     ' The type's known field set comes from the source template's own
     ' tagged fields (already verified structurally identical to the

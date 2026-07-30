@@ -37,6 +37,111 @@ $ErrorActionPreference = "Stop"
 # Quit() blocks until you respond. That's bounded by a timeout so an
 # unattended run doesn't hang forever -- if you don't respond in time, this
 # run is skipped (exit 2) rather than forcing the issue.
+#
+# --- The husk problem, and why the discriminator changed (2026-07-30) -------
+# This suite LEAKS an Excel process on most runs: several tests do
+# CreateObject("Excel.Application") / wb.Close False / xl.Quit, and an
+# outstanding COM reference stops the process actually terminating. The
+# leftover is an empty Excel holding no workbook -- and it survives a clean
+# Quit(), so the $stillRunning check below rejected it and every SUBSEQUENT
+# run exited 2 with no output until a human killed it by hand. That cost two
+# 8-minute runs in one evening, and the note about it had already been
+# written down before it happened again.
+#
+# The obvious fix -- "force-kill windowless instances" -- does not work. The
+# same leftover process reported MainWindowTitle "Excel" at 19:56 and blank
+# at 20:12, zero workbooks throughout: window presence flips on its own and
+# is not evidence of anything.
+#
+# What does not flip is whether the instance holds a DOCUMENT. Zero documents
+# means there is nothing a human can lose, which is the only question that
+# actually matters here. So: count documents first, and force-kill only a
+# confirmed-empty instance.
+#
+# Two asymmetries make that safe, and both are load-bearing:
+#
+#   1. UNKNOWN NEVER PERMITS A KILL. Attaching or counting can fail or hang
+#      (a modal dialog blocks COM), and every such case returns -1, which
+#      falls through to the graceful path. Only a confirmed 0 kills.
+#   2. MORE THAN ONE PROCESS NEVER PERMITS A KILL. GetActiveObject attaches
+#      to whichever instance registered in the Running Object Table -- with
+#      two EXCEL.EXE running it may well be the husk, so "0 documents" would
+#      say nothing about the other one. Killing by name on that basis is
+#      precisely how you would discard the open workbook this comment block
+#      exists to protect. So the kill requires exactly one process of that
+#      name, and targets it by PID, not by name.
+#
+# Net effect: the leaked husk gets cleared automatically, a real session of
+# yours is still asked politely and still aborts the run if it will not go,
+# and anything ambiguous is treated as a real session.
+
+# Documents open in the running instance of $ProgId.
+#   0  = confirmed empty -- an automation husk, nothing to lose
+#   >0 = a real session with documents in it
+#   -1 = unknown (no instance, attach failed, or the call hung) -> treat as real
+#
+# Runs in a job for the same reason Request-GracefulQuit does: a modal dialog
+# in Office blocks COM calls indefinitely, and a pre-flight check that can
+# hang forever is worse than the problem it solves.
+function Get-OpenDocumentCount {
+    param([string]$ProgId, [int]$TimeoutSeconds = 30)
+
+    $job = Start-Job -ScriptBlock {
+        param($ProgId)
+        try {
+            $app = [System.Runtime.InteropServices.Marshal]::GetActiveObject($ProgId)
+        }
+        catch {
+            return -1
+        }
+        try {
+            if ($ProgId -eq "Excel.Application") { return [int]$app.Workbooks.Count }
+            else { return [int]$app.Presentations.Count }
+        }
+        catch {
+            return -1
+        }
+    } -ArgumentList $ProgId
+
+    $completed = Wait-Job $job -Timeout $TimeoutSeconds
+    if (-not $completed) {
+        Stop-Job $job -ErrorAction SilentlyContinue
+        Remove-Job $job -Force -ErrorAction SilentlyContinue
+        return -1
+    }
+    $result = Receive-Job $job
+    Remove-Job $job -ErrorAction SilentlyContinue
+    if ($null -eq $result) { return -1 }
+    return [int]$result
+}
+
+# Clears a confirmed-empty leftover.
+#
+# Returns NOTHING, deliberately. The first version returned $true/$false so the
+# caller could tell "handled" from "not applicable" -- but in PowerShell a
+# Write-Output inside a function is emitted onto the same pipeline as the
+# return value, so the caller's `| Out-Null` (added to discard the boolean)
+# also swallowed the "Clearing a leftover..." message. The script would then
+# force-kill a process and leave no trace of it in the output, which is the
+# single behaviour an unattended script must never have. Caught by running the
+# function for real rather than reading it, 2026-07-30.
+#
+# Since no caller ever used the boolean, dropping it removes the conflict
+# outright instead of working around it. Bare `return` exits without emitting.
+function Clear-EmptyHusk {
+    param([string]$ProgId, [string]$ProcessName)
+
+    $procs = @(Get-Process $ProcessName -ErrorAction SilentlyContinue)
+    if ($procs.Count -ne 1) { return }   # asymmetry 2: ambiguity is not a kill
+
+    $docs = Get-OpenDocumentCount -ProgId $ProgId
+    if ($docs -ne 0) { return }          # asymmetry 1: unknown (-1) is not a kill
+
+    Write-Output "=== Clearing a leftover empty $ProcessName (pid $($procs[0].Id), 0 documents open) -- an automation husk from a previous run. ==="
+    Stop-Process -Id $procs[0].Id -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}
+
 function Request-GracefulQuit {
     param([string]$ProgId, [int]$TimeoutSeconds = 180)
 
@@ -70,6 +175,13 @@ function Request-GracefulQuit {
 
 $processNameFor = @{ "PowerPoint.Application" = "POWERPNT"; "Excel.Application" = "EXCEL" }
 foreach ($progId in @("PowerPoint.Application", "Excel.Application")) {
+    # Husk first: an empty leftover cannot be cleared by Quit() (that is the
+    # whole failure), so asking politely and then rejecting it is a dead end.
+    # If this clears something, the checks below simply find nothing running.
+    # No `| Out-Null` here on purpose -- see Clear-EmptyHusk's header. Piping
+    # its output away is what would silence the record of a force-kill.
+    Clear-EmptyHusk -ProgId $progId -ProcessName $processNameFor[$progId]
+
     $outcome = Request-GracefulQuit -ProgId $progId
     if ($outcome -eq "timeout" -or $outcome -like "quit-error*") {
         Write-Output "=== SKIPPED: $progId did not close cleanly ($outcome) -- likely an unresolved save prompt or in active use. Not forcing it closed. ==="
@@ -98,7 +210,7 @@ Write-Output "RepoRoot: $RepoRoot"
 Write-Output "vbaSourceDir: $vbaSourceDir"
 Write-Output "fixturesSourceDir: $fixturesSourceDir"
 
-$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "Verification.bas", "SlideDuplication.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "tests\TestRunner.bas")
+$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "Verification.bas", "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "tests\TestRunner.bas")
 foreach ($m in $pptModules) {
     Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging
 }
@@ -121,7 +233,7 @@ try {
     $ppt.Visible = -1  # msoTrue -- visible on purpose for a first real run, see script header
     $pres = $ppt.Presentations.Add()
 
-    foreach ($m in @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas", "SlideDuplication.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "TestRunner.bas")) {
+    foreach ($m in @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas", "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "TestRunner.bas")) {
         $comp = $pres.VBProject.VBComponents.Import((Join-Path $staging $m))
         Write-Output ("Imported $m as component name: " + $comp.Name)
     }

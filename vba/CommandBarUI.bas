@@ -39,12 +39,12 @@ End Sub
 ' run_vba_tests.ps1's own process-cleanup step already takes), then builds
 ' it fresh. Safe to call directly from the VBE if Auto_Open didn't fire.
 '
-' Shows the 5 actions cleared so far. Three were live-tested against the
+' Shows the 7 actions cleared so far. Three were live-tested against the
 ' real deck as of 2026-07-26 (Mark Field for Batch, Bulk Onboard Type,
 ' Clear Marked Fields) -- Rohan's framing: "I only want to add an operation
 ' when I'm fully clear it works and I know what it does." Preview Sync
-' followed on 2026-07-29 (it cannot write; see its own note below), and
-' Sync Now on 2026-07-30.
+' followed on 2026-07-29 (it cannot write; see its own note below),
+' Sync Now on 2026-07-30, and Create Template Slide on 2026-07-30 (evening).
 '
 ' Sync Now is the one that bends the rule, so it is worth being honest about
 ' why. It writes, and it had never been run. But it could not BE run: the
@@ -62,6 +62,14 @@ End Sub
 ' underlying Sub still exists and is still tested by TestRunner.bas, they
 ' are just not on the toolbar yet. Uncomment (or ask for) one once it has
 ' actually been tried.
+'
+' New Period is a deliberate hold rather than a queue position, as of
+' 2026-07-30: DECISIONS.md's dated-row decision the same day retires it.
+' Under one dated row per period, "new period" becomes "add rows to the Data
+' sheet" and the slides arrive through the ordinary new_record path that now
+' works -- so hardening it (guard + its own live cycle) is likely work that
+' gets deleted at progression step 2. Left off the toolbar, where it is
+' harmless, instead of invested in.
 Public Sub ShowToolbar()
     HideToolbar
 
@@ -89,6 +97,25 @@ Public Sub ShowToolbar()
     ' is on the toolbar despite the rule, and RunSync.ConfirmSyncText for what
     ' the confirmation says.
     AddButton bar, "Sync Now", "RibbonUI.SyncNow", 1004, "Pull changes from the paired Data workbook onto every already-linked slide in this deck. Shows what will change and asks before writing."
+
+    ' Writes, and confirms before it does -- same shape as Sync Now, and on the
+    ' toolbar for the same reason. It is also the one action that has to be
+    ' reachable BEFORE the thing it fixes can bite: until a type has a master
+    ' template, every slide Sync Now creates is cloned from a real project's
+    ' slide and inherits whatever the sync does not manage. Leaving it off the
+    ' toolbar would leave that hazard live while the fix sat in the file
+    ' unreachable -- exactly the C2 trap (2026-07-30), where the rule "only add
+    ' what you have tried" made the central action untriable.
+    AddButton bar, "Create Template Slide", "RibbonUI.CreateTemplateSlide", 26, "One-off per slide type: adds a hidden master template slide with placeholder fields, so new slides stop being cloned from a real project's slide. Asks before writing."
+
+    ' Reads the deck and writes nothing to it -- the only write is a dedicated
+    ' 'Template Audit' worksheet. Same basis as Preview Sync for going on the
+    ' toolbar before a live test: the risk the rule guards against (a
+    ' half-understood button changing a real deck) is absent, and without a
+    ' button the only way to run it is the VBE, which is the friction that
+    ' keeps things untested. Works on any deck at any maturity -- it does NOT
+    ' require a master template to exist (see RibbonUI.AuditFieldsCore).
+    AddButton bar, "Audit Fields", "RibbonUI.AuditFields", 1000, "Lists everything on a slide of this type that the tool is NOT tracking as a field, ranked by how likely it is to be project data. Writes a checklist to a 'Template Audit' sheet; never changes the deck."
 
     ' Still not live-tested against a real deck -- hidden, not deleted. These
     ' DO write, so the rule applies to them unchanged. See this Sub's header.

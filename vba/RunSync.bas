@@ -23,8 +23,23 @@ Option Explicit
 ' ---------------------------------------------------------------------
 
 ' Every slide in the active presentation whose slide_type tag matches
-' `slideType`, in current deck order. Possibly unallocated if none exist
-' yet (a genuinely empty type, e.g. before its first onboarding).
+' `slideType`, in current deck order, EXCLUDING the type's master template
+' slide. Possibly unallocated if none exist yet (a genuinely empty type,
+' e.g. before its first onboarding).
+'
+' The template exclusion lives here, at the one choke point, rather than at
+' each of the five call sites below -- and excluding it here is what makes
+' the whole of step 1 hold, because every consequence a template slide would
+' otherwise have flows through this one function:
+'   - PlanRoutineSync never sees it, so it is never reported as case 6
+'     (unclassified_slide -- which is exactly what an untagged keyless typed
+'     slide IS today, and would be noise on every single sync)
+'   - ...nor corrected, nor counted in any summary the human reads
+'   - ResequenceByRowOrder never sees it, so row order never moves it
+'     (it happened to survive resequencing already, because anchorIndex only
+'     tracks keyed slides -- but that was accidental, not asserted)
+' Adding a sixth call site therefore inherits the exclusion for free, which
+' is the point.
 Public Function GatherInstances(slideType As String) As Object()
     Dim results() As Object
     Dim n As Long
@@ -34,7 +49,7 @@ Public Function GatherInstances(slideType As String) As Object()
     For Each sld In Application.ActivePresentation.Slides
         Dim resolved As SlideInstance
         resolved = Resolve.ResolveSlideInstance(sld)
-        If resolved.HasTypeTag And resolved.TypeTag = slideType Then
+        If resolved.HasTypeTag And resolved.TypeTag = slideType And Not resolved.IsTemplate Then
             n = n + 1
             ReDim Preserve results(1 To n)
             Set results(n) = sld

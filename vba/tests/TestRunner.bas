@@ -143,6 +143,51 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_TemplateSlide_MakeTemplateProducesKeylessMarkedCopy()
+    AppendResult report, "TemplateSlide_MakeTemplateProducesKeylessMarkedCopy", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_TemplateSlide_ExcludedFromGatherAndNeverFlagged()
+    AppendResult report, "TemplateSlide_ExcludedFromGatherAndNeverFlagged", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_TemplateSlide_DuplicateStripsTheTemplateMarker()
+    AppendResult report, "TemplateSlide_DuplicateStripsTheTemplateMarker", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_TemplateSlide_RefusesToTemplateATemplate()
+    AppendResult report, "TemplateSlide_RefusesToTemplateATemplate", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_TemplateSlide_ConfirmTextStatesTheConsequences()
+    AppendResult report, "TemplateSlide_ConfirmTextStatesTheConsequences", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_TemplateAudit_ClassifyBoundaries()
+    AppendResult report, "TemplateAudit_ClassifyBoundaries", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_TemplateAudit_SeparatesChromeFromProjectData()
+    AppendResult report, "TemplateAudit_SeparatesChromeFromProjectData", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_TemplateAudit_NoComparisonSlidesStillLists()
+    AppendResult report, "TemplateAudit_NoComparisonSlidesStillLists", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_TemplateAudit_RewriteLeavesNoStaleRows(stagingDir)
+    AppendResult report, "TemplateAudit_RewriteLeavesNoStaleRows", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_RunSync_GatherInstancesFiltersByType()
     AppendResult report, "RunSync_GatherInstancesFiltersByType", r
     On Error GoTo 0
@@ -1389,6 +1434,490 @@ Private Function Test_SlideDuplication_PartialRowStillCreatesSlideButFlagsMissin
     End If
 
     Test_SlideDuplication_PartialRowStillCreatesSlideButFlagsMissing = result
+End Function
+
+' ---------------------------------------------------------------------
+' TemplateSlide -- progression step 1 of specs/deck-compiler-concept.md
+' ---------------------------------------------------------------------
+
+' Helper: a minimal already-onboarded instance of `slideType`, two tagged
+' fields carrying values that read as one specific project's real data --
+' so a test can tell "inherited from the source project" apart from
+' "replaced with a placeholder", which is the entire point of step 1.
+Private Function NewOnboardedSlide(slideType As String, instanceKey As String) As Object
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    Dim titleShp As Object, statusShp As Object
+    Set titleShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    titleShp.TextFrame.TextRange.Text = "Real Project Name"
+    titleShp.Tags.Add "role", "Title"
+    Set statusShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 50)
+    statusShp.TextFrame.TextRange.Text = "In Progress"
+    statusShp.Tags.Add "role", "Status"
+
+    sld.Tags.Add "slide_type", slideType
+    sld.Tags.Add "instance_key", instanceKey
+
+    Set NewOnboardedSlide = sld
+End Function
+
+' The core of step 1: the copy is typed, marked, KEYLESS, placeholdered and
+' hidden -- and the slide it came from is untouched.
+'
+' The source-untouched assertions are not padding. MakeTemplateFrom's whole
+' safety story is "it only ever writes to the copy it just made", and the
+' source here is standing in for a real slide a human authored.
+Private Function Test_TemplateSlide_MakeTemplateProducesKeylessMarkedCopy() As String
+    Dim result As String
+
+    Dim sourceSld As Object
+    Set sourceSld = NewOnboardedSlide("tmpl-type-1", "rec-real-1")
+
+    Dim mr As MakeTemplateResult
+    mr = TemplateSlide.MakeTemplateFrom(sourceSld, "tmpl-type-1")
+
+    result = result & Assert(mr.Ok, "MakeTemplateFrom succeeded, reason='" & mr.Reason & "'")
+    If Not mr.Ok Then
+        Test_TemplateSlide_MakeTemplateProducesKeylessMarkedCopy = result
+        Exit Function
+    End If
+
+    Dim tmpl As SlideInstance
+    tmpl = Resolve.ResolveSlideInstance(mr.NewSlide)
+    result = result & Assert(tmpl.IsTemplate, "the copy is marked is_template")
+    result = result & Assert(Not tmpl.HasInstanceKey, "the copy has NO instance_key -- it must never match a Data row, got '" & tmpl.InstanceKey & "'")
+    result = result & Assert(tmpl.TypeTag = "tmpl-type-1", "the copy keeps its slide_type, got '" & tmpl.TypeTag & "'")
+    result = result & Assert(mr.NewSlide.SlideShowTransition.Hidden = msoTrue, "the copy is hidden from the slideshow")
+    result = result & Assert(mr.FieldCount = 2, "both fields reported as placeholdered, got " & mr.FieldCount)
+
+    ' Placeholders, asserted by their rendered text rather than by count --
+    ' a count of 2 would pass while both fields still read "Real Project
+    ' Name", which is the defect this whole operation exists to prevent.
+    Dim tmplTitle As Object, tmplStatus As Object
+    Set tmplTitle = FindShapeByRole(mr.NewSlide, "Title")
+    Set tmplStatus = FindShapeByRole(mr.NewSlide, "Status")
+    result = result & Assert(Not tmplTitle Is Nothing, "Title field present on the template")
+    result = result & Assert(Not tmplStatus Is Nothing, "Status field present on the template")
+    If Not tmplTitle Is Nothing Then
+        result = result & Assert(tmplTitle.TextFrame.TextRange.Text = "<<Title>>", "Title reads as a placeholder, got '" & tmplTitle.TextFrame.TextRange.Text & "'")
+    End If
+    If Not tmplStatus Is Nothing Then
+        result = result & Assert(tmplStatus.TextFrame.TextRange.Text = "<<Status>>", "Status reads as a placeholder, got '" & tmplStatus.TextFrame.TextRange.Text & "'")
+    End If
+
+    ' Source slide: completely unchanged.
+    Dim src As SlideInstance
+    src = Resolve.ResolveSlideInstance(sourceSld)
+    result = result & Assert(src.InstanceKey = "rec-real-1", "source keeps its instance_key, got '" & src.InstanceKey & "'")
+    result = result & Assert(Not src.IsTemplate, "source did NOT become a template itself")
+    result = result & Assert(sourceSld.SlideShowTransition.Hidden <> msoTrue, "source was not hidden")
+    Dim srcTitle As Object
+    Set srcTitle = FindShapeByRole(sourceSld, "Title")
+    If Not srcTitle Is Nothing Then
+        result = result & Assert(srcTitle.TextFrame.TextRange.Text = "Real Project Name", "source field text untouched, got '" & srcTitle.TextFrame.TextRange.Text & "'")
+    End If
+
+    Test_TemplateSlide_MakeTemplateProducesKeylessMarkedCopy = result
+End Function
+
+' The load-bearing exclusion. Every consequence of a template slide flows
+' through GatherInstances, so this asserts both halves at once: the template
+' is not gathered, AND the plan built from that gather contains no "flagged"
+' action for it.
+'
+' The second half is the one that matters in use. A typed keyless slide is
+' precisely case 6 (unclassified_slide), so before the exclusion existed a
+' template would have appeared as a flagged problem on every single sync --
+' permanent noise, in the report a human is meant to read for real problems.
+Private Function Test_TemplateSlide_ExcludedFromGatherAndNeverFlagged() As String
+    Dim result As String
+
+    Dim instSld As Object
+    Set instSld = NewOnboardedSlide("tmpl-type-2", "rec-real-2")
+
+    Dim mr As MakeTemplateResult
+    mr = TemplateSlide.MakeTemplateFrom(instSld, "tmpl-type-2")
+    result = result & Assert(mr.Ok, "template created for the gather test, reason='" & mr.Reason & "'")
+    If Not mr.Ok Then
+        Test_TemplateSlide_ExcludedFromGatherAndNeverFlagged = result
+        Exit Function
+    End If
+
+    Dim gathered() As Object
+    gathered = RunSync.GatherInstances("tmpl-type-2")
+
+    Dim lo As Long, hi As Long, hasAny As Boolean
+    On Error Resume Next
+    lo = LBound(gathered): hi = UBound(gathered)
+    hasAny = (Err.Number = 0)
+    On Error GoTo 0
+
+    result = result & Assert(hasAny, "the real instance is still gathered")
+    If hasAny Then
+        result = result & Assert(hi - lo + 1 = 1, "exactly 1 instance gathered (the template is excluded), got " & (hi - lo + 1))
+        Dim seenTemplate As Boolean
+        Dim i As Long
+        For i = lo To hi
+            If Resolve.IsTemplateSlide(gathered(i)) Then seenTemplate = True
+        Next i
+        result = result & Assert(Not seenTemplate, "no gathered instance is a template slide")
+    End If
+
+    ' FindTemplateFor still sees it -- the template exists, it is just not a record.
+    Dim found As Object
+    Set found = TemplateSlide.FindTemplateFor("tmpl-type-2")
+    result = result & Assert(Not found Is Nothing, "FindTemplateFor locates the template even though the gather excludes it")
+
+    ' And nothing about it reaches the human's report.
+    Dim order As New Collection
+    order.Add "rec-real-2"
+    Dim rows As Object
+    Set rows = CreateObject("Scripting.Dictionary")
+    Dim rowVals As Object
+    Set rowVals = CreateObject("Scripting.Dictionary")
+    rowVals("Title") = "Real Project Name"
+    rowVals("Status") = "In Progress"
+    Set rows("rec-real-2") = rowVals
+
+    Dim actions() As SyncAction
+    actions = SyncOperations.PlanRoutineSync(gathered, order, rows, True)
+
+    Dim aLo As Long, aHi As Long, hasActions As Boolean
+    On Error Resume Next
+    aLo = LBound(actions): aHi = UBound(actions)
+    hasActions = (Err.Number = 0)
+    On Error GoTo 0
+
+    Dim flaggedCount As Long
+    If hasActions Then
+        Dim a As Long
+        For a = aLo To aHi
+            If actions(a).Kind = "flagged" Then flaggedCount = flaggedCount + 1
+        Next a
+    End If
+    result = result & Assert(flaggedCount = 0, "the template produces NO flagged action -- it would otherwise be case-6 noise on every sync, got " & flaggedCount)
+
+    Test_TemplateSlide_ExcludedFromGatherAndNeverFlagged = result
+End Function
+
+' Cloning the template must produce a NORMAL record, not a second template.
+'
+' This is the one failure in step 1 that is invisible by construction: an
+' inherited is_template marker would make the new slide skip every future
+' sync, and it skips them silently, because the exclusion exists precisely
+' to keep templates out of reports. Nothing would say the project had gone
+' missing.
+Private Function Test_TemplateSlide_DuplicateStripsTheTemplateMarker() As String
+    Dim result As String
+
+    Dim seedSld As Object
+    Set seedSld = NewOnboardedSlide("tmpl-type-3", "rec-real-3")
+
+    Dim mr As MakeTemplateResult
+    mr = TemplateSlide.MakeTemplateFrom(seedSld, "tmpl-type-3")
+    result = result & Assert(mr.Ok, "template created for the duplication test, reason='" & mr.Reason & "'")
+    If Not mr.Ok Then
+        Test_TemplateSlide_DuplicateStripsTheTemplateMarker = result
+        Exit Function
+    End If
+
+    Dim values As Object
+    Set values = CreateObject("Scripting.Dictionary")
+    values("Title") = "Brand New Project"
+    values("Status") = "Not Started"
+
+    Dim noInstances() As Object
+
+    Dim dr As DuplicateResult
+    dr = SlideDuplication.DuplicateAndTag(mr.NewSlide, "tmpl-type-3", "rec-created-3", values, noInstances)
+
+    result = result & Assert(dr.Ok, "DuplicateAndTag succeeded off a template, reason='" & dr.Reason & "'")
+    If Not dr.Ok Then
+        Test_TemplateSlide_DuplicateStripsTheTemplateMarker = result
+        Exit Function
+    End If
+
+    Dim created As SlideInstance
+    created = Resolve.ResolveSlideInstance(dr.NewSlide)
+    result = result & Assert(Not created.IsTemplate, "the created slide is NOT a template -- the marker was stripped from the copy")
+    result = result & Assert(created.InstanceKey = "rec-created-3", "the created slide carries its own instance_key, got '" & created.InstanceKey & "'")
+
+    ' The template is hidden, and Slide.Duplicate copies that too -- so a
+    ' record cloned from it arrived hidden from the slideshow. Found live
+    ' 2026-07-30 (two struck-through slide numbers where one was expected),
+    ' AFTER this test had already passed asserting only the tag. The tag and
+    ' the hidden flag are inherited by the same mechanism; only one of them
+    ' was being checked.
+    result = result & Assert(dr.NewSlide.SlideShowTransition.Hidden = msoFalse, "the created slide is VISIBLE -- it must not inherit the template's hidden flag")
+    result = result & Assert(mr.NewSlide.SlideShowTransition.Hidden = msoTrue, "...while the template itself stays hidden")
+
+    ' The real test of "not a template": the sync can see it.
+    Dim gathered() As Object
+    gathered = RunSync.GatherInstances("tmpl-type-3")
+    Dim gLo As Long, gHi As Long, hasAny As Boolean
+    On Error Resume Next
+    gLo = LBound(gathered): gHi = UBound(gathered)
+    hasAny = (Err.Number = 0)
+    On Error GoTo 0
+    result = result & Assert(hasAny, "gather found something after creating a record off the template")
+    If hasAny Then
+        Dim seenCreated As Boolean
+        Dim i As Long
+        For i = gLo To gHi
+            If Resolve.ResolveSlideInstance(gathered(i)).InstanceKey = "rec-created-3" Then seenCreated = True
+        Next i
+        result = result & Assert(seenCreated, "the created slide IS gathered by future syncs -- not silently skipped")
+    End If
+
+    ' Placeholders replaced, not inherited.
+    Dim newTitle As Object
+    Set newTitle = FindShapeByRole(dr.NewSlide, "Title")
+    If Not newTitle Is Nothing Then
+        result = result & Assert(newTitle.TextFrame.TextRange.Text = "Brand New Project", "the row's value overwrote the placeholder, got '" & newTitle.TextFrame.TextRange.Text & "'")
+    End If
+
+    Test_TemplateSlide_DuplicateStripsTheTemplateMarker = result
+End Function
+
+' A type must have exactly one template. Two would have no defined
+' behaviour at all -- DeckRegistry.LookupType returns whichever SlideID was
+' registered last, so which slide gets cloned would depend on click order.
+Private Function Test_TemplateSlide_RefusesToTemplateATemplate() As String
+    Dim result As String
+
+    Dim seedSld As Object
+    Set seedSld = NewOnboardedSlide("tmpl-type-4", "rec-real-4")
+
+    Dim firstTmpl As MakeTemplateResult
+    firstTmpl = TemplateSlide.MakeTemplateFrom(seedSld, "tmpl-type-4")
+    result = result & Assert(firstTmpl.Ok, "first template created, reason='" & firstTmpl.Reason & "'")
+    If Not firstTmpl.Ok Then
+        Test_TemplateSlide_RefusesToTemplateATemplate = result
+        Exit Function
+    End If
+
+    Dim slidesBefore As Long
+    slidesBefore = Application.ActivePresentation.Slides.count
+
+    Dim secondTmpl As MakeTemplateResult
+    secondTmpl = TemplateSlide.MakeTemplateFrom(firstTmpl.NewSlide, "tmpl-type-4")
+
+    result = result & Assert(Not secondTmpl.Ok, "refuses to make a template out of a template")
+    result = result & Assert(Application.ActivePresentation.Slides.count = slidesBefore, "no slide left behind by the refusal, got " & Application.ActivePresentation.Slides.count & " vs expected " & slidesBefore)
+    result = result & Assert(InStr(secondTmpl.Reason, "already a master template") > 0, "the refusal says why, got '" & secondTmpl.Reason & "'")
+
+    ' And refuses across types too -- one type's template must not be built
+    ' out of another type's slide.
+    Dim otherSld As Object
+    Set otherSld = NewOnboardedSlide("tmpl-type-5", "rec-real-5")
+    Dim mismatched As MakeTemplateResult
+    mismatched = TemplateSlide.MakeTemplateFrom(otherSld, "tmpl-type-4")
+    result = result & Assert(Not mismatched.Ok, "refuses to build type-4's template out of a type-5 slide")
+
+    Test_TemplateSlide_RefusesToTemplateATemplate = result
+End Function
+
+' The confirmation wording IS the guard for this action (it writes, and it
+' re-points what Sync Now clones), so it gets pinned rather than
+' hand-checked -- same reason RunSync.ConfirmSyncText's wording is asserted.
+' Re-registration is the consequence a user is least likely to predict from
+' the button's name, so that is the phrase held in place.
+Private Function Test_TemplateSlide_ConfirmTextStatesTheConsequences() As String
+    Dim result As String
+
+    Dim s As String
+    s = TemplateSlide.ConfirmTemplateText("quarterly-update", "3_P001 (slide 3)", 4)
+
+    result = result & Assert(InStr(s, "quarterly-update") > 0, "confirmation names the type")
+    result = result & Assert(InStr(s, "3_P001 (slide 3)") > 0, "confirmation names the slide being copied")
+    result = result & Assert(InStr(s, "4 field(s)") > 0, "confirmation states how many fields get placeholdered")
+    result = result & Assert(InStr(s, "RE-REGISTERED") > 0, "confirmation states that the type is re-pointed -- the least predictable consequence")
+    result = result & Assert(InStr(s, "is NOT touched") > 0, "confirmation states the source slide is left alone")
+    result = result & Assert(InStr(s, "Proceed?") > 0, "confirmation actually asks")
+
+    result = result & Assert(TemplateSlide.PlaceholderFor("Status") = "<<Status>>", "PlaceholderFor wraps the role name, got '" & TemplateSlide.PlaceholderFor("Status") & "'")
+
+    Test_TemplateSlide_ConfirmTextStatesTheConsequences = result
+End Function
+
+' ---------------------------------------------------------------------
+' TemplateAudit -- "what on this slide is the tool not tracking?"
+' ---------------------------------------------------------------------
+
+' The classification boundaries, including the one that carries all the
+' signal (seenOn = 0) and the one that must NOT pretend to know
+' (instanceCount = 0).
+Private Function Test_TemplateAudit_ClassifyBoundaries() As String
+    Dim result As String
+
+    result = result & Assert(InStr(TemplateAudit.Classify(0, 0), "UNKNOWN") > 0, "no comparison slides -> UNKNOWN, not a guess. got '" & TemplateAudit.Classify(0, 0) & "'")
+    result = result & Assert(InStr(TemplateAudit.Classify(0, 3), "LIKELY PROJECT DATA") > 0, "on none of 3 -> likely project data, got '" & TemplateAudit.Classify(0, 3) & "'")
+    result = result & Assert(InStr(TemplateAudit.Classify(3, 3), "chrome") > 0, "on all 3 -> chrome, got '" & TemplateAudit.Classify(3, 3) & "'")
+    result = result & Assert(InStr(TemplateAudit.Classify(1, 3), "CHECK") > 0, "on 1 of 3 -> CHECK, got '" & TemplateAudit.Classify(1, 3) & "'")
+
+    ' The middle case must stay visible rather than being rounded into one of
+    ' the confident verdicts -- that rounding is what would make the report
+    ' look decisive while being wrong.
+    result = result & Assert(InStr(TemplateAudit.Classify(1, 3), "1 of 3") > 0, "CHECK states the actual proportion, got '" & TemplateAudit.Classify(1, 3) & "'")
+
+    ' The recogniser the ordering and the counting both depend on. Pinned
+    ' directly because a prefix match that silently never fires is invisible --
+    ' it mis-sorts the grid and reports zero, and neither looks like a bug.
+    result = result & Assert(TemplateAudit.IsLikelyProjectData(TemplateAudit.Classify(0, 3)), "IsLikelyProjectData recognises its OWN output for the seenOn=0 case")
+    result = result & Assert(Not TemplateAudit.IsLikelyProjectData(TemplateAudit.Classify(3, 3)), "IsLikelyProjectData rejects the chrome verdict")
+    result = result & Assert(Not TemplateAudit.IsLikelyProjectData(TemplateAudit.Classify(0, 0)), "IsLikelyProjectData rejects the UNKNOWN verdict")
+
+    ' seenOn = 0 with instanceCount = 0 must NOT read as "on no other slide" --
+    ' both are zero and only the second one means anything.
+    result = result & Assert(InStr(TemplateAudit.Classify(0, 0), "LIKELY") = 0, "zero comparisons is not the same as 'on no other slide'")
+
+    Test_TemplateAudit_ClassifyBoundaries = result
+End Function
+
+' The audit over real slides: tracked fields are excluded, untracked text is
+' listed, and the cross-slide comparison actually separates chrome from data.
+'
+' Deliberately does NOT use a template as the subject. The audit must work on
+' any slide of the type regardless of whether Create Template Slide has ever
+' been run (Rohan's requirement, 2026-07-30) -- so the test exercises the case
+' that proves the independence, not the convenient one.
+Private Function Test_TemplateAudit_SeparatesChromeFromProjectData() As String
+    Dim result As String
+
+    ' Subject: one tagged field, one piece of shared furniture, one value
+    ' unique to this slide.
+    Dim subjectSld As Object
+    Set subjectSld = NewBlankSlide()
+    Dim fieldShp As Object, chromeShp As Object, dataShp As Object
+    Set fieldShp = subjectSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    fieldShp.TextFrame.TextRange.Text = "<<Project Name>>"
+    fieldShp.Tags.Add "role", "Project Name"
+    Set chromeShp = subjectSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 120, 200, 50)
+    chromeShp.TextFrame.TextRange.Text = "STRATEGIC ALIGNMENT"
+    Set dataShp = subjectSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 190, 200, 50)
+    dataShp.TextFrame.TextRange.Text = "~$280K"
+
+    ' Two sibling slides carrying the same furniture and different figures.
+    ' The trailing space on one is deliberate: hand-authored decks differ by
+    ' whitespace constantly, and if normalisation failed, the furniture would
+    ' be reported as project data on almost every row of a real audit.
+    Dim otherA As Object, otherB As Object
+    Set otherA = NewBlankSlide()
+    Dim a1 As Object, a2 As Object
+    Set a1 = otherA.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 120, 200, 50)
+    a1.TextFrame.TextRange.Text = "STRATEGIC ALIGNMENT "
+    Set a2 = otherA.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 190, 200, 50)
+    a2.TextFrame.TextRange.Text = "~$999K"
+
+    Set otherB = NewBlankSlide()
+    Dim b1 As Object, b2 As Object
+    Set b1 = otherB.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 120, 200, 50)
+    b1.TextFrame.TextRange.Text = "strategic alignment"
+    Set b2 = otherB.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 190, 200, 50)
+    b2.TextFrame.TextRange.Text = "~$111K"
+
+    Dim comparisons(1 To 2) As Object
+    Set comparisons(1) = otherA
+    Set comparisons(2) = otherB
+
+    Dim rowCount As Long
+    Dim trackedFields As String
+    Dim rows() As AuditRow
+    rows = TemplateAudit.BuildAudit(subjectSld, comparisons, rowCount, trackedFields)
+
+    result = result & Assert(trackedFields = "Project Name", "the tagged field is reported as tracked, not audited. got '" & trackedFields & "'")
+    result = result & Assert(rowCount = 2, "exactly the 2 untracked text items are listed, got " & rowCount)
+
+    If rowCount <> 2 Then
+        Test_TemplateAudit_SeparatesChromeFromProjectData = result
+        Exit Function
+    End If
+
+    ' Actionable first: the project-data row must sort above the chrome row,
+    ' because a 60-row grid in document order is a wall rather than a worklist.
+    result = result & Assert(rows(1).Text = "~$280K", "the likely-project-data row sorts FIRST, got '" & rows(1).Text & "'")
+    result = result & Assert(InStr(rows(1).Verdict, "LIKELY PROJECT DATA") > 0, "the unique figure reads as project data, got '" & rows(1).Verdict & "'")
+    result = result & Assert(rows(1).SeenOn = 0, "the unique figure is on 0 other slides, got " & rows(1).SeenOn)
+
+    result = result & Assert(InStr(rows(2).Text, "STRATEGIC ALIGNMENT") > 0, "the shared heading is the second row, got '" & rows(2).Text & "'")
+    result = result & Assert(InStr(rows(2).Verdict, "chrome") > 0, "the shared heading reads as chrome DESPITE differing whitespace and case, got '" & rows(2).Verdict & "'")
+    result = result & Assert(rows(2).SeenOn = 2, "the shared heading is found on both other slides, got " & rows(2).SeenOn)
+
+    Test_TemplateAudit_SeparatesChromeFromProjectData = result
+End Function
+
+' With nothing to compare against, every verdict must be UNKNOWN and the
+' summary must say so loudly -- a grid of UNKNOWNs with no explanation reads
+' as a broken tool rather than an honest one.
+Private Function Test_TemplateAudit_NoComparisonSlidesStillLists() As String
+    Dim result As String
+
+    Dim onlySld As Object
+    Set onlySld = NewBlankSlide()
+    Dim shp As Object
+    Set shp = onlySld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp.TextFrame.TextRange.Text = "Some untracked text"
+
+    Dim noComparisons() As Object ' deliberately unallocated
+
+    Dim rowCount As Long
+    Dim trackedFields As String
+    Dim rows() As AuditRow
+    rows = TemplateAudit.BuildAudit(onlySld, noComparisons, rowCount, trackedFields)
+
+    result = result & Assert(rowCount = 1, "the item is still listed with no comparison available, got " & rowCount)
+    If rowCount = 1 Then
+        result = result & Assert(InStr(rows(1).Verdict, "UNKNOWN") > 0, "verdict is UNKNOWN, not a guess. got '" & rows(1).Verdict & "'")
+    End If
+
+    Dim s As String
+    s = TemplateAudit.SummaryText("q", "slide 1", 0, 1, 0, 0)
+    result = result & Assert(InStr(s, "no other slides to compare") > 0, "summary explains why every guess is UNKNOWN")
+
+    ' And the opposite case must NOT carry that warning -- a caveat that always
+    ' fires is one nobody reads.
+    Dim s2 As String
+    s2 = TemplateAudit.SummaryText("q", "slide 1", 5, 3, 1, 4)
+    result = result & Assert(InStr(s2, "no other slides to compare") = 0, "the UNKNOWN caveat is ABSENT when comparisons exist")
+    result = result & Assert(InStr(s2, "REPLACES that sheet") > 0, "summary warns that a re-run discards typed decisions")
+
+    Test_TemplateAudit_NoComparisonSlidesStillLists = result
+End Function
+
+' Re-running must not leave a previous run's surplus rows below the new ones.
+' Stale rows are indistinguishable from current findings, so the audit would
+' get less trustworthy the more of the work you had done -- the worst possible
+' direction for a progress tool.
+Private Function Test_TemplateAudit_RewriteLeavesNoStaleRows(stagingDir As String) As String
+    Dim result As String
+
+    Dim xl As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Dim wb As Object
+    Set wb = xl.Workbooks.Add
+    Dim ws As Object
+    Set ws = wb.Worksheets(1)
+
+    Dim many(1 To 3) As AuditRow
+    many(1).ShapeName = "A": many(1).Text = "first": many(1).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    many(2).ShapeName = "B": many(2).Text = "second": many(2).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    many(3).ShapeName = "C": many(3).Text = "third": many(3).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    TemplateAudit.WriteAuditGrid ws, many, 3
+
+    Dim few(1 To 1) As AuditRow
+    few(1).ShapeName = "A": few(1).Text = "first": few(1).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    TemplateAudit.WriteAuditGrid ws, few, 1
+
+    result = result & Assert(ws.Cells(2, 1).Value = "A", "the surviving row is still written, got '" & CStr(ws.Cells(2, 1).Value) & "'")
+    result = result & Assert(Trim(CStr(ws.Cells(3, 1).Value & "")) = "", "row 3 from the longer run is GONE, got '" & CStr(ws.Cells(3, 1).Value & "") & "'")
+    result = result & Assert(Trim(CStr(ws.Cells(4, 1).Value & "")) = "", "row 4 from the longer run is GONE, got '" & CStr(ws.Cells(4, 1).Value & "") & "'")
+
+    wb.Close False
+    xl.Quit
+
+    Test_TemplateAudit_RewriteLeavesNoStaleRows = result
 End Function
 
 ' ---------------------------------------------------------------------
@@ -2713,7 +3242,12 @@ End Function
 ' -- see Test_RunSync_ConfirmSyncTextCallsOutSlideCreation, which pins that
 ' wording, and CommandBarUI.ShowToolbar's header for the full argument.
 '
-' Asserting both by NAME below, not just that five buttons exist. The old
+' Create Template Slide joined 2026-07-30 (evening) and also writes. Same
+' argument as Sync Now, plus one specific to it: the hazard it fixes is live
+' for as long as it is unreachable, because until a type has a master template
+' every slide Sync Now creates is cloned from a real project's slide.
+'
+' Asserting each by NAME below, not just that six buttons exist. The old
 ' version only checked each button resolved to one of the expected Subs, which
 ' would still pass if a button silently vanished and another were duplicated --
 ' a check that can't fail the way the thing it guards actually breaks.
@@ -2725,12 +3259,16 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons() As Strin
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar 'Deck Sync' exists after ShowToolbar")
-    result = result & Assert(bar.Controls.count = 5, "toolbar has 5 buttons, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 7, "toolbar has 7 buttons, got " & bar.Controls.count)
 
     Dim seenPreview As Boolean
     Dim seenSyncNow As Boolean
+    Dim seenCreateTemplate As Boolean
+    Dim seenAuditFields As Boolean
     seenPreview = False
     seenSyncNow = False
+    seenCreateTemplate = False
+    seenAuditFields = False
 
     ' PowerPoint sometimes normalizes a set OnAction like "RibbonUI.SyncNow"
     ' to its own "<PresentationName>!SyncNow" display form (module-
@@ -2750,7 +3288,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons() As Strin
     ' pass. Tightened 2026-07-30 while adding SyncNow, whose name contains
     ' another entry's prefix.
     Dim expectedActions As String
-    expectedActions = "|SyncPreview|SyncNow|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|"
+    expectedActions = "|SyncPreview|SyncNow|CreateTemplateSlide|AuditFields|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|"
 
     Dim i As Long
     For i = 1 To bar.Controls.count
@@ -2768,10 +3306,14 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons() As Strin
         result = result & Assert(Len(ctrl.TooltipText) > 0, "button '" & ctrl.Caption & "' has a non-empty tooltip explainer")
         If subName = "SyncPreview" Then seenPreview = True
         If subName = "SyncNow" Then seenSyncNow = True
+        If subName = "CreateTemplateSlide" Then seenCreateTemplate = True
+        If subName = "AuditFields" Then seenAuditFields = True
     Next i
 
     result = result & Assert(seenPreview, "Preview Sync is actually ON the toolbar -- the read-only action, and the safe first thing to run on an unfamiliar machine")
     result = result & Assert(seenSyncNow, "Sync Now is actually ON the toolbar -- the recurring payoff the tool exists for, and unreachable without a button")
+    result = result & Assert(seenCreateTemplate, "Create Template Slide is actually ON the toolbar -- the fix for cloning new slides off a real project, useless while unreachable")
+    result = result & Assert(seenAuditFields, "Audit Fields is actually ON the toolbar -- read-only, and the thing that tells you which fields the type is still missing")
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons = result
@@ -2786,7 +3328,7 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar still exists after calling ShowToolbar twice")
-    result = result & Assert(bar.Controls.count = 5, "still exactly 5 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 7, "still exactly 7 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarIsIdempotent = result

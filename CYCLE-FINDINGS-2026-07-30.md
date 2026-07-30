@@ -192,3 +192,137 @@ comparable, because each exercised a slice that had already been exercised.
 
 The lesson is not "write more tests". It is that a test can only guard what someone
 thought to guard, and using the thing is what generates that list.
+
+---
+
+# Progression step 1 — master template slide (same evening, 19:45–19:56)
+
+Built and live-cycled immediately after the above, on the same rig. `addin31`, 109/109.
+
+## What it does
+
+Each slide type gets one **master template slide** that is never a real project: tagged
+`is_template`, deliberately keyless, fields set to `<<placeholders>>`, hidden from the
+slideshow, parked last, and registered as what the type clones from.
+
+The hazard closed: `DeckSyncType:q` was `256|q` — SlideID 256, i.e. **slide 1, the real
+project `3_P001`**. Every slide the tool created was a clone of that real project, so
+everything the sync does not manage (figures, chart data, notes, untagged text) arrived on
+the new slide belonging to P001 and *looking correct*. Correct tagged fields are what made
+it plausible, which is the worst shape a reporting-tool defect can take.
+
+## The live cycle — 6 checks passed, 1 finding (found by looking, not by the checks)
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Toolbar | 6 buttons, `Create Template Slide` present |
+| 2 | Baseline Preview Sync | `4 unchanged, 0 corrected, 0 new, 0 flagged` |
+| 3 | Create Template Slide → `q` | confirmation named `3_P001 (slide 1)`, `5 field(s)`, `'q' RE-REGISTERED`; created slide 5, hidden, placeholders written |
+| 4 | Preview Sync with the template in the deck | **byte-identical to check 2** — template not counted, not flagged, not out of order |
+| 5 | New row `3_P005` → Sync Now | `1 NEW SLIDE(S) WILL BE CREATED` guard fired; `created: 3_P005`, `1 created, 0 failed, 0 flagged`, `Resequenced 1 slide(s)` |
+| 6 | Preview Sync after the create | `5 unchanged, 0 corrected, 0 new, 0 flagged` |
+
+**Check 4 is what step 1 exists to make true.** A typed keyless slide is exactly case 6
+(`unclassified_slide`), so without the exclusion the template would have been reported as a
+flagged problem on every sync forever — permanent noise in the report a human reads for real
+problems. The exclusion lives at one choke point (`RunSync.GatherInstances`), so planning,
+correcting, counting and resequencing all inherit it.
+
+**Check 6 is the one that could have failed silently.** `Slide.Duplicate` copies slide-level
+tags, so the clone could have inherited `is_template` — and an inherited marker makes the new
+slide invisible to every future sync, silently, *because the exclusion exists to keep
+templates out of reports*. The symptom would have been check 6 reading `4 unchanged, 1 would
+be created`, offering to create `3_P005` again forever. `5 unchanged` is the proof the strip
+worked on a real deck, not just in the suite.
+
+## Emergent, and it worked
+
+`Resequenced 1 slide(s)` on check 5 was not planned. The new slide is born immediately after
+the template (Duplicate's placement), gets packed back into row order at position 5, and
+pushes the template to 6. So parking the template last is **self-maintaining** — it re-parks
+itself after every create, with nothing managing it. That was the reason for choosing "last"
+over "first" (`ResequenceByRowOrder` packs from the lowest keyed index, so a template among
+the instances gets shuffled arbitrarily), and the mechanism turned out to be load-bearing in
+the good direction.
+
+## S1. Every created slide was HIDDEN. (real defect, fixed)
+
+`Slide.Duplicate` copies `SlideShowTransition.Hidden` as well as the slide-level tags. The
+master template is deliberately hidden, so **every record cloned from it arrived hidden from
+the slideshow** — a brand-new project silently absent from the presented deck, with nothing
+in any report saying so.
+
+All six checks above passed with this defect live. It was found by Rohan looking at the
+thumbnail pane and asking why *two* slide numbers were struck through when only the template
+should have been.
+
+**The shape of the miss is the useful part.** `DuplicateAndTag` already guarded the
+`is_template` TAG against exactly this inheritance — with a postcondition that deletes the
+slide rather than trust `Tags.Delete` — and the sibling PROPERTY three lines away was not
+considered at all. Reasoning about "what does `Duplicate` copy" one attribute at a time is
+what let it through; the question that would have caught it is "what else does it copy?"
+
+Fixed by setting `newSld.SlideShowTransition.Hidden = msoFalse` unconditionally in
+`DuplicateAndTag` — not conditionally on the source being a template, because an invisible
+new record is a silent failure whatever it was cloned from. The test that covered this path
+already existed and passed: it asserted the tag was stripped and never looked at the hidden
+flag. It now pins both, plus that the template itself stays hidden.
+
+## Why the "designed out up front" claim held only partly
+
+The previous cycle found six defects in fifteen minutes; this one found one. The reduction is
+real and the reason is not luck — the six findings had already told us where this class of
+code fails, and each of those classes was designed out up front rather than discovered:
+
+| Last cycle's failure class | Designed out this time |
+|---|---|
+| wiring (C2 — no button) | button added in the same commit as the action |
+| messages (C1, C4 — report didn't say what changed) | result message states slide number, field count, and the re-registration |
+| missing guards (C3 — wrote without asking) | `ConfirmTemplateText` written first, and pinned by a test |
+| file state (C5 — read Excel's unsaved buffer) | inherited; fired correctly during check 5 |
+
+But S1 is a **fifth** class that list did not contain: **inherited state on a copy.** It is
+not wiring, not a message, not a missing guard, not file state — it is an attribute of an
+object that `Duplicate` carries across and nobody enumerated. And notice it was introduced
+*by* step 1: before there was a hidden template there was nothing to inherit hiddenness from.
+So the honest reading is narrower than "we designed the failures out". We designed out the
+four classes we had already been shown, and the new feature brought a new class with it.
+
+That is worth holding onto, because it predicts the same thing for step 2: a `period` column
+means rows a sync must *not* touch, which is a new class of "invisible by design" state — the
+same family as a hidden slide and an excluded template, and the family where failures are
+silent by construction.
+
+One thing did work as intended, though: `DuplicateAndTag` and `MakeTemplateFrom` both verify
+their own identity writes and **refuse, deleting the slide**, rather than trusting
+`Tags.Delete`'s behaviour — which was not established on this build. Those guards can
+genuinely fail, which is the whole point (zettel
+`20260729-an-always-true-guard-is-worse-than-no-guard`). They just guarded the tag and not
+its neighbour.
+
+## Process finding — cost one full suite run
+
+**A module-level VBA `Type` below the module's first `Function` reports its error in a
+DIFFERENT module.** `MakeTemplateResult` was declared after `PlaceholderFor` in
+`TemplateSlide.bas`; the module imported without complaint (the import log said
+`Imported TemplateSlide.bas as component name: TemplateSlide`) and the failure surfaced as
+`User-defined type not defined` at `TestRunner.bas`, which reads as "the module didn't
+import". Cost one ~8-minute run. **Rohan's screenshot of the VBE dialog named the statement
+in seconds** — second time in two days that the screen settled an opaque Office failure
+faster than any diagnostic. Recorded in `AGENTS.md`, including the cheap static check
+(scan each `.bas` for a module-level `Type`/`Const`/`Enum` after the first procedure) and
+the reminder to run `Debug > Compile VBAProject` before a suite run that adds a module.
+
+## Honest scope limit
+
+Step 1 does **not** clean the template. It copies P001 once, blanks the five *tagged*
+fields, and stops. P001's untagged content is still on the template and still rides onto
+every created slide. What changed is that it now sits on **one hidden slide, cleanable by
+hand, once** — instead of being invisibly inherited by every slide the tool ever creates.
+That manual clean-out is outstanding on the cycle deck; the result message says so.
+
+## Next
+
+Progression step 2: `period` column + deck-declares-its-period (`DECISIONS.md` 2026-07-30,
+dated-row model). Step 4 still blocked on the VBA-vs-Office-JS fork — do not start it
+without deciding.
