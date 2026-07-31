@@ -1,5 +1,11 @@
 # Deck Sync — current workplan
 
+> **PAUSED 31 July 2026 by direction of the Research Manager.** Neither lane starts new
+> work until both sides are clear on the whole system, including the compiler. V3 and V7
+> completed before the pause arrived; V4, V5 and V6 are stopped. See
+> `specs/Excel_Control_Layer_Round7.md`, `..._Protocol1.md` and the rundown in
+> `..._Round8.md`.
+
 **Updated:** 31 July 2026, after round 5 of the Excel Control Layer exchange.
 Supersedes the workplan in `specs/excel-control-layer-round4.md` §6, which is now history.
 
