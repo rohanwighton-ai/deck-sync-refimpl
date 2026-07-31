@@ -1,4 +1,41 @@
-# Implementation Plan
+# Implementation Plan — HISTORICAL
+
+> **SUPERSEDED 2026-07-31. Do not read this as the current plan.**
+>
+> **Current plan and status: [`WORKPLAN.md`](WORKPLAN.md).**
+> **The design it now serves: [`specs/EXCHANGE-INDEX.md`](specs/EXCHANGE-INDEX.md).**
+>
+> This file is the Priority 1–30 build log, running to 2026-07-28. It is an accurate record
+> of how the engine was built and *why each decision was made at the time*, and it is worth
+> reading for that. It is not a description of how the tool works now.
+>
+> **What changed after it stopped being maintained**, so a reader can tell which parts are
+> stale rather than assuming:
+>
+> - **The Data sheet format changed from wide to long.** One row per instance with a column
+>   per field became one row per `Quarter × EntityCode × FieldID` (`Register.bas`). Every
+>   description of the Data sheet below is the old shape. The wide reader still exists and
+>   still works for unmigrated decks.
+> - **Slide creation left the sync path.** A Data row with no matching slide no longer causes
+>   one to be created during a sync; that is now `RunSync.CreateMissingSlides`, invoked
+>   deliberately. Passages below describing `new_record` executing inside `RunRoutineSync`
+>   describe removed behaviour.
+> - **Field identity was renamed.** `role` tag values moved from human-readable names
+>   (`Project Status`) to register FieldIDs (`PROJECT_STATUS`).
+> - **A master template slide exists** per slide type, tagged `is_template` and excluded from
+>   every sync. Nothing below anticipates it.
+> - **An approval gate (R13) is required and not yet built** — a human must see every
+>   replacement before it lands. Nothing below accounts for it.
+>
+> Kept rather than deleted because the reasoning is the value: it records what was tried,
+> what failed against real Office, and why each guard exists. Several traps documented here
+> are still live and still cost time when forgotten — see `AGENTS.md` for the current list.
+>
+> Filed historical after it was noticed that it was the largest file in the repo, three days
+> stale, and would reasonably be taken as current by anyone opening the project. That is the
+> same failure as a spec documenting a tag no code reads.
+
+---
 
 ## Priority 30 (2026-07-28 evening): both save/restore faults CONFIRMED FIXED by live testing
 
