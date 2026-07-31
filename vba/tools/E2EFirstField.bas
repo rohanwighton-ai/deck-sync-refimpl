@@ -58,6 +58,61 @@ Public Function PingE(deckPath As String, registerPath As String, period As Stri
     PingE = "pongE"
 End Function
 
+' Dumps every managed field's value AS POWERPOINT READS IT, TSV, one row per
+' EntityCode x FieldID. Real line breaks are encoded as the register delimiter.
+'
+' Exists because the register was first built by parsing the .pptx XML in
+' Python -- a reimplementation of how PowerPoint reads text, which disagreed
+' with the object model on nearly every field and produced a register that
+' "corrected" 46 values to themselves. The only trustworthy source for what a
+' slide currently says is the object model that will later be asked to compare
+' against it.
+Public Function DumpFieldValues(deckPath As String) As String
+    Dim pres As Object
+    Set pres = Application.Presentations.Open(deckPath, msoTrue, msoFalse, msoTrue)
+    pres.Windows(1).Activate
+
+    Dim out As String
+    Dim sld As Object
+    For Each sld In pres.Slides
+        Dim inst As SlideInstance
+        inst = Resolve.ResolveSlideInstance(sld)
+        If inst.HasInstanceKey And Not inst.IsTemplate Then
+            DumpShapes sld.Shapes, inst.InstanceKey, out
+        End If
+    Next sld
+
+    pres.Saved = msoTrue
+    pres.Close
+    DumpFieldValues = out
+End Function
+
+Private Sub DumpShapes(shapesColl As Object, key As String, ByRef out As String)
+    Dim shp As Object
+    For Each shp In shapesColl
+        If shp.Type = msoGroup Then
+            DumpShapes shp.GroupItems, key, out
+        Else
+            Dim role As String
+            role = shp.Tags("role")
+            If role <> "" Then
+                Dim txt As String
+                txt = ""
+                On Error Resume Next
+                txt = shp.TextFrame.TextRange.Text
+                On Error GoTo 0
+                ' vbCr is PowerPoint's paragraph separator; vbLf appears inside
+                ' some runs. Both become the register delimiter so the value is
+                ' single-line in Excel, per R6.
+                txt = Replace(txt, vbCrLf, "||")
+                txt = Replace(txt, vbCr, "||")
+                txt = Replace(txt, vbLf, "||")
+                out = out & key & vbTab & role & vbTab & txt & vbCrLf
+            End If
+        End If
+    Next shp
+End Sub
+
 Public Function RunE2E(deckPath As String, registerPath As String, period As String) As String
     Dim r As String
 
