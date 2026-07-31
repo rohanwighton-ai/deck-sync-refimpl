@@ -168,6 +168,16 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_TagMigration_RenamesIncludingTemplateAndGroups()
+    AppendResult report, "TagMigration_RenamesIncludingTemplateAndGroups", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_TagMigration_MatchesValueCaseInsensitively()
+    AppendResult report, "TagMigration_MatchesValueCaseInsensitively", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_IdentityCheck_FindsClonedKeys()
     AppendResult report, "IdentityCheck_FindsClonedKeys", r
     On Error GoTo 0
@@ -1749,6 +1759,130 @@ Private Function Test_TemplateSlide_ConfirmTextStatesTheConsequences() As String
     result = result & Assert(TemplateSlide.PlaceholderFor("Status") = "<<Status>>", "PlaceholderFor wraps the role name, got '" & TemplateSlide.PlaceholderFor("Status") & "'")
 
     Test_TemplateSlide_ConfirmTextStatesTheConsequences = result
+End Function
+
+' ---------------------------------------------------------------------
+' TagMigration -- V1, the FieldID rename
+' ---------------------------------------------------------------------
+
+' The migration end to end, including the two things most likely to be got
+' wrong: nested shapes, and the master template.
+Private Function Test_TagMigration_RenamesIncludingTemplateAndGroups() As String
+    Dim result As String
+
+    ' A normal instance with one top-level field and one nested inside a group.
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "mig-type-1"
+    sld.Tags.Add "instance_key", "MIG-001"
+
+    Dim topShp As Object
+    Set topShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    topShp.TextFrame.TextRange.Text = "status"
+    topShp.Tags.Add "role", "Project Status"
+
+    Dim a As Object, b As Object
+    Set a = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 120, 40)
+    a.TextFrame.TextRange.Text = "name"
+    a.Tags.Add "role", "Project Name"
+    Set b = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 200, 120, 40)
+    b.TextFrame.TextRange.Text = "decoration"
+
+    Dim grp As Object
+    Set grp = sld.Shapes.Range(Array(a.Name, b.Name)).Group
+
+    ' An unmapped field, which must survive untouched.
+    Dim strayShp As Object
+    Set strayShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 260, 200, 40)
+    strayShp.TextFrame.TextRange.Text = "stray"
+    strayShp.Tags.Add "role", "Not In The Map"
+
+    ' The master template -- the case a GatherInstances-based walk would miss.
+    Dim mr As MakeTemplateResult
+    mr = TemplateSlide.MakeTemplateFrom(sld, "mig-type-1")
+    result = result & Assert(mr.Ok, "template created for the migration test, reason='" & mr.Reason & "'")
+
+    Dim fromV(1 To 2) As String
+    Dim toV(1 To 2) As String
+    fromV(1) = "Project Status": toV(1) = "PROJECT_STATUS"
+    fromV(2) = "Project Name":   toV(2) = "PROJECT_NAME"
+
+    ' --- dry run must write nothing ---------------------------------------
+    Dim dry As MigrationReport
+    dry = TagMigration.MigrateRoleTags(fromV, toV, True)
+    result = result & Assert(dry.Renamed = 4, "dry run counts all 4 mapped shapes (2 fields x instance + template), got " & dry.Renamed)
+    result = result & Assert(topShp.Tags("role") = "Project Status", "DRY RUN WROTE NOTHING -- tag still reads '" & topShp.Tags("role") & "'")
+
+    ' --- real run ----------------------------------------------------------
+    Dim live As MigrationReport
+    live = TagMigration.MigrateRoleTags(fromV, toV, False)
+
+    result = result & Assert(topShp.Tags("role") = "PROJECT_STATUS", "top-level field renamed, got '" & topShp.Tags("role") & "'")
+    result = result & Assert(a.Tags("role") = "PROJECT_NAME", "field NESTED IN A GROUP renamed -- a flat walk would have missed it, got '" & a.Tags("role") & "'")
+    result = result & Assert(strayShp.Tags("role") = "Not In The Map", "unmapped field left untouched, got '" & strayShp.Tags("role") & "'")
+    result = result & Assert(live.Unmapped >= 1, "the unmapped field is reported, got " & live.Unmapped)
+
+    ' The template must have been migrated too. If it were skipped, every slide
+    ' created from it afterwards would carry the OLD names back into the deck.
+    Dim tmplShp As Object
+    Set tmplShp = FindShapeByRole(mr.NewSlide, "PROJECT_STATUS")
+    result = result & Assert(Not tmplShp Is Nothing, "THE MASTER TEMPLATE was migrated too -- otherwise every future created slide reintroduces the old names")
+
+    ' --- idempotence: a second run changes nothing and says so -------------
+    Dim again As MigrationReport
+    again = TagMigration.MigrateRoleTags(fromV, toV, False)
+    result = result & Assert(again.Renamed = 0, "re-running renames nothing, got " & again.Renamed)
+    result = result & Assert(again.AlreadyDone = 4, "re-run reports 4 already-correct rather than 4 unmapped, got " & again.AlreadyDone)
+
+    ' --- rollback: the same operation, map reversed ------------------------
+    Dim back As MigrationReport
+    back = TagMigration.MigrateRoleTags(toV, fromV, False)
+    result = result & Assert(topShp.Tags("role") = "Project Status", "ROLLBACK restored the original value, got '" & topShp.Tags("role") & "'")
+    result = result & Assert(a.Tags("role") = "Project Name", "rollback reached the grouped shape too, got '" & a.Tags("role") & "'")
+
+    Test_TagMigration_RenamesIncludingTemplateAndGroups = result
+End Function
+
+' Case-insensitive matching on the tag VALUE. These are human-typed names, and
+' a migration that silently skips a shape over a capital letter leaves a
+' half-renamed deck that nothing reports as wrong.
+Private Function Test_TagMigration_MatchesValueCaseInsensitively() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp.TextFrame.TextRange.Text = "x"
+    shp.Tags.Add "role", "project status"     ' lower case in the deck
+
+    Dim fromV(1 To 1) As String
+    Dim toV(1 To 1) As String
+    fromV(1) = "Project Status"               ' title case in the map
+    toV(1) = "PROJECT_STATUS"
+
+    Dim r As MigrationReport
+    r = TagMigration.MigrateRoleTags(fromV, toV, False)
+
+    result = result & Assert(shp.Tags("role") = "PROJECT_STATUS", "matched despite differing case, got '" & shp.Tags("role") & "'")
+
+    ' Asserts THIS shape was not reported unmapped, not that nothing was.
+    ' MigrateRoleTags walks every slide in the presentation by design -- it has
+    ' to, or it would skip the master template -- and the test presentation is
+    ' shared, so by this point it carries dozens of role tags left by other
+    ' tests. A global "Unmapped = 0" is therefore asserting something the
+    ' function never promised, and it failed for exactly that reason on first
+    ' run (59 unmapped, all of them other tests' fixtures).
+    result = result & Assert(InStr(r.UnmappedDetail, "project status") = 0, "the case-differing tag was NOT treated as unmapped -- detail: " & r.UnmappedDetail)
+    result = result & Assert(r.Renamed >= 1, "at least this one shape was renamed, got " & r.Renamed)
+
+    ' And the summary must distinguish a preview from a write, since the whole
+    ' safety story is that the caller asks for the write explicitly.
+    result = result & Assert(InStr(TagMigration.MigrationSummary(r, True), "nothing written") > 0, "preview summary says nothing was written")
+    result = result & Assert(InStr(TagMigration.MigrationSummary(r, False), "MIGRATION APPLIED") > 0, "applied summary says so")
+    result = result & Assert(InStr(TagMigration.MigrationSummary(r, False), "roll back") > 0, "applied summary tells the reader how to reverse it")
+
+    Test_TagMigration_MatchesValueCaseInsensitively = result
 End Function
 
 ' ---------------------------------------------------------------------
