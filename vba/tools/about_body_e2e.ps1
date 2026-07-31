@@ -43,6 +43,27 @@ $modules = @(
 foreach ($m in $modules) { Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging }
 Copy-Item (Join-Path $vbaSourceDir "tools\E2EAboutBody.bas") -Destination $staging
 
+function Invoke-ForceCompile {
+    param($App)
+    # Compile the project at a KNOWN POINT instead of discovering it is
+    # uncompiled at the first Application.Run, where the failure arrives as
+    # "Sub or function not defined" naming the wrong thing. Documented route is
+    # the VBE's own Debug > Compile VBAProject control; the window must be
+    # visible and Execute returns nothing, so never trust it -- judge by whether
+    # the real call afterwards resolves.
+    try {
+        $vbe = $App.VBE
+        $wasVisible = $vbe.MainWindow.Visible
+        $vbe.MainWindow.Visible = $true
+        $ctl = $vbe.CommandBars.Item("Menu Bar").Controls.Item("Debug").Controls.Item("Compile VBAProject")
+        if ($null -eq $ctl) { return "compile control not found" }
+        if (-not $ctl.Enabled) { $vbe.MainWindow.Visible = $wasVisible; return "already compiled" }
+        $ctl.Execute()
+        $vbe.MainWindow.Visible = $wasVisible
+        return "compile executed"
+    } catch { return ("compile FAILED: " + $_.Exception.Message) }
+}
+
 $ppt = $null
 try {
     $ppt = New-Object -ComObject PowerPoint.Application
@@ -52,8 +73,17 @@ try {
         $scratch.VBProject.VBComponents.Import((Join-Path $staging $m)) | Out-Null
     }
 
-    $probe = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,@([string]"E2EAboutBody.PingAB"))
-    Write-Output "probe: $probe"
+    # Was a warm-up probe (E2EAboutBody.PingAB) until 2026-07-31. The probe
+    # existed to work around "Application.Run cannot see a function that
+    # declares cross-module Public UDTs unless an earlier Run touched them".
+    # That trap did NOT reproduce when tested directly: DumpFieldValues resolved
+    # with no probe and no compile. All three "Sub or function not defined"
+    # failures found today had ordinary causes (a module missing from the
+    # driver's import list, a reserved word, a rename that missed a return
+    # line), so the probes look like a workaround for a misattributed symptom.
+    # Compiling at a known point is kept because it is cheap and turns a
+    # would-be runtime mystery into a compile error where it belongs.
+    Write-Output ("compile: " + (Invoke-ForceCompile -App $ppt))
 
     if ($Mode -eq "reseed") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,

@@ -32,11 +32,6 @@ Option Explicit
 '
 ' This probe declares the two UDTs this module's real functions use, so calling
 ' it first makes them resolvable.
-Public Function PingR13() As String
-    Dim q As ReviewQueueSet
-    Dim it As ReviewItem
-    PingR13 = "pongR13"
-End Function
 
 Private Function OpenRegisterSheet(registerPath As String, period As String, _
                                    ByRef xl As Object, ByRef wb As Object, _

@@ -30,12 +30,6 @@ Option Explicit
 ' Application.Run UDT warm-up probe -- see E2EFirstField's Ping ladder. In a
 ' freshly Imported project a Public Function only resolves once the cross-module
 ' Public UDTs it declares have been touched by an earlier Application.Run.
-Public Function PingAB() As String
-    Dim mig As MigrationReport
-    Dim reg As RegisterRead
-    Dim inst As SlideInstance
-    PingAB = "pongAB"
-End Function
 
 Private Function FindByRole(shapesColl As Object, role As String) As Object
     Dim shp As Object

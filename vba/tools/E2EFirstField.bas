@@ -22,41 +22,17 @@ Option Explicit
 ' creates 0, and fails 0. Any other number is a finding.
 ' Isolation probe: if this is callable and E2EFirstField is not, the fault is
 ' in that function's signature rather than in the module or the call mechanism.
-Public Function Ping() As String
-    Ping = "pong"
-End Function
 
 ' Second probe: three required String args, same shape as the real function's
 ' signature. Isolates "3 string arguments" from "this function specifically".
-Public Function Ping3(a As String, b As String, c As String) As String
-    Ping3 = "pong3:" & a & "|" & b & "|" & c
-End Function
 
 ' --- Bisection probes: same 3-String-arg / String-return signature as RunE2E,
 ' each adding one more UDT-typed local Dim (declared, never assigned/used).
 ' Goal: find which local UDT declaration (if any) makes the enclosing
 ' Public Function invisible to Application.Run.
-Public Function PingB(deckPath As String, registerPath As String, period As String) As String
-    Dim mig As MigrationReport
-    PingB = "pongB"
-End Function
 
-Public Function PingC(deckPath As String, registerPath As String, period As String) As String
-    Dim reg As RegisterRead
-    PingC = "pongC"
-End Function
 
-Public Function PingD(deckPath As String, registerPath As String, period As String) As String
-    Dim inst As SlideInstance
-    PingD = "pongD"
-End Function
 
-Public Function PingE(deckPath As String, registerPath As String, period As String) As String
-    Dim mig As MigrationReport
-    Dim reg As RegisterRead
-    Dim inst As SlideInstance
-    PingE = "pongE"
-End Function
 
 ' Dumps every managed field's value AS POWERPOINT READS IT, TSV, one row per
 ' EntityCode x FieldID. Real line breaks are encoded as the register delimiter.

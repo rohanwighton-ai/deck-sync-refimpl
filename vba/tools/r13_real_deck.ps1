@@ -53,6 +53,27 @@ $modules = @(
 foreach ($m in $modules) { Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging }
 Copy-Item (Join-Path $vbaSourceDir "tools\R13RealDeck.bas") -Destination $staging
 
+function Invoke-ForceCompile {
+    param($App)
+    # Compile the project at a KNOWN POINT instead of discovering it is
+    # uncompiled at the first Application.Run, where the failure arrives as
+    # "Sub or function not defined" naming the wrong thing. Documented route is
+    # the VBE's own Debug > Compile VBAProject control; the window must be
+    # visible and Execute returns nothing, so never trust it -- judge by whether
+    # the real call afterwards resolves.
+    try {
+        $vbe = $App.VBE
+        $wasVisible = $vbe.MainWindow.Visible
+        $vbe.MainWindow.Visible = $true
+        $ctl = $vbe.CommandBars.Item("Menu Bar").Controls.Item("Debug").Controls.Item("Compile VBAProject")
+        if ($null -eq $ctl) { return "compile control not found" }
+        if (-not $ctl.Enabled) { $vbe.MainWindow.Visible = $wasVisible; return "already compiled" }
+        $ctl.Execute()
+        $vbe.MainWindow.Visible = $wasVisible
+        return "compile executed"
+    } catch { return ("compile FAILED: " + $_.Exception.Message) }
+}
+
 $ppt = $null
 try {
     $ppt = New-Object -ComObject PowerPoint.Application
@@ -62,13 +83,7 @@ try {
         $scratch.VBProject.VBComponents.Import((Join-Path $staging $m)) | Out-Null
     }
 
-    # Warm-up probe FIRST -- see R13RealDeck.PingR13. In a freshly Imported
-    # project a Public Function is only reachable via Application.Run once the
-    # cross-module Public UDTs it declares have been touched by an earlier
-    # Application.Run in the same session. Skipping this fails as "Sub or
-    # function not defined", which reads as a compile error in the new code.
-    $probe = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,@([string]"R13RealDeck.PingR13"))
-    Write-Output "probe: $probe"
+    Write-Output ("compile: " + (Invoke-ForceCompile -App $ppt))
 
     if ($Phase -eq "review") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
