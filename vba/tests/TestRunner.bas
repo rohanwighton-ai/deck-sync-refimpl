@@ -228,6 +228,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_FieldSpec_GuidanceDrivesThePrompt()
+    AppendResult report, "FieldSpec_GuidanceDrivesThePrompt", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_PlaceholderCheck_FindsRecordsNotTheTemplate()
     AppendResult report, "PlaceholderCheck_FindsRecordsNotTheTemplate", r
     On Error GoTo 0
@@ -2412,6 +2417,56 @@ Private Function Test_WorkbookBridge_IndexExplainsEachSheet() As String
         "and says read C, type F, tick G -- got '" & d & "'")
 
     Test_WorkbookBridge_IndexExplainsEachSheet = result
+End Function
+
+Private Function Test_FieldSpec_GuidanceDrivesThePrompt() As String
+    Dim result As String
+
+    ' A field WITHOUT a spec row must still draft -- blocking on paperwork would
+    ' stop the work -- but the prompt must SAY it is running unguided, because
+    ' generic output and specific output look equally plausible.
+    Dim none As FieldGuidance
+    none.FieldId = "NEW_FIELD"
+    Dim p1 As String
+    p1 = FieldSpec.PromptFrom(none)
+    result = result & Assert(InStr(p1, "NEW_FIELD") > 0, "the generic prompt still names the field")
+    result = result & Assert(InStr(p1, "no Field Spec row exists") > 0, _
+        "and SAYS it is generic -- an unguided draft must not look guided")
+    result = result & Assert(InStr(p1, "sole source of truth") > 0, "the no-invention rule survives into the fallback")
+
+    ' A field WITH a row must carry its own guidance, not a template.
+    Dim g As FieldGuidance
+    g.Found = True
+    g.FieldId = "KEY_EVENTS_BODY"
+    g.Purpose = "What actually happened this quarter."
+    g.Voice = "Factual and dated."
+    g.Length = "One event per line."
+    g.OwnJob = "Did it HAPPEN in this period?"
+    g.DoNot = "Restate what the project is."
+    Dim p2 As String
+    p2 = FieldSpec.PromptFrom(g)
+    result = result & Assert(InStr(p2, "no Field Spec row exists") = 0, "a specified field is not flagged generic")
+    Dim v As Variant
+    For Each v In Array("What actually happened", "Factual and dated", "One event per line", _
+                        "Did it HAPPEN", "Restate what the project is")
+        result = result & Assert(InStr(p2, CStr(v)) > 0, "the prompt carries '" & v & "'")
+    Next v
+
+    ' The two fields must get MATERIALLY different instructions -- that is the
+    ' entire reason this exists. A generic prompt told ABOUT_BODY and
+    ' KEY_EVENTS_BODY the same thing, and they want nearly opposite things.
+    Dim a As FieldGuidance
+    a.Found = True: a.FieldId = "ABOUT_BODY"
+    a.Purpose = "A neutral description of what the project is and does."
+    a.DoNot = "Describe this quarter's activity."
+    result = result & Assert(FieldSpec.PromptFrom(a) <> p2, _
+        "two fields with different specs get different prompts")
+    result = result & Assert(InStr(FieldSpec.PromptFrom(a), "Describe this quarter's activity") > 0, _
+        "ABOUT_BODY is told NOT to describe the quarter")
+    result = result & Assert(InStr(p2, "What actually happened this quarter") > 0, _
+        "while KEY_EVENTS_BODY is told to do exactly that")
+
+    Test_FieldSpec_GuidanceDrivesThePrompt = result
 End Function
 
 Private Function Test_PlaceholderCheck_FindsRecordsNotTheTemplate() As String

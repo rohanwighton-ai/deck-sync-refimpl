@@ -46,7 +46,7 @@ $modules = @(
     "Discovery.bas","InjectPrimitive.bas","Matching.bas","Resolve.bas",
     "SyncOperations.bas","Onboarding.bas","ExcelOutput.bas","Verification.bas",
     "SlideDuplication.bas","TemplateSlide.bas","TemplateAudit.bas","IdentityCheck.bas",
-    "TagMigration.bas","Register.bas","PlaceholderCheck.bas","RunSync.bas","ReviewQueue.bas","Drafting.bas",
+    "TagMigration.bas","Register.bas","PlaceholderCheck.bas","RunSync.bas","ReviewQueue.bas","Drafting.bas","FieldSpec.bas",
     "DeckAdoption.bas","ResolveFields.bas","DeckRegistry.bas","WorkbookBridge.bas",
     "OnboardFlow.bas","RibbonUI.bas","AdoptFlow.bas","BatchOnboardFlow.bas","CommandBarUI.bas"
 )
@@ -55,23 +55,35 @@ Copy-Item (Join-Path $vbaSourceDir "tools\E2EField.bas") -Destination $staging
 
 function Invoke-ForceCompile {
     param($App)
-    # Compile the project at a KNOWN POINT instead of discovering it is
-    # uncompiled at the first Application.Run, where the failure arrives as
-    # "Sub or function not defined" naming the wrong thing. Documented route is
-    # the VBE's own Debug > Compile VBAProject control; the window must be
-    # visible and Execute returns nothing, so never trust it -- judge by whether
-    # the real call afterwards resolves.
+    # OPTIONAL, and it must never cost more than it saves.
+    #
+    # It was added to turn a would-be runtime mystery into a compile error at a
+    # known point. On 2026-08-01 it became the mystery: touching
+    # $App.VBE.MainWindow threw "The property 'Visible' cannot be found", and
+    # PowerPoint then rejected every subsequent call (RPC_E_CALL_REJECTED) --
+    # with no stale Office process anywhere. The suite, which does NOT compile,
+    # ran 135 tests clean at the same time.
+    #
+    # So: reach for the VBE once, abandon the whole idea on any error, and do
+    # not touch it again. The warm-up trap this was hedging against did not
+    # reproduce when tested directly, so skipping the compile costs nothing
+    # known -- while wedging the app costs the run.
     try {
         $vbe = $App.VBE
-        $wasVisible = $vbe.MainWindow.Visible
-        $vbe.MainWindow.Visible = $true
+        if ($null -eq $vbe) { return "compile skipped (no VBE)" }
+        $win = $vbe.MainWindow
+        if ($null -eq $win) { return "compile skipped (no VBE window)" }
+        $wasVisible = $win.Visible
+        $win.Visible = $true
         $ctl = $vbe.CommandBars.Item("Menu Bar").Controls.Item("Debug").Controls.Item("Compile VBAProject")
-        if ($null -eq $ctl) { return "compile control not found" }
-        if (-not $ctl.Enabled) { $vbe.MainWindow.Visible = $wasVisible; return "already compiled" }
+        if ($null -eq $ctl) { $win.Visible = $wasVisible; return "compile control not found" }
+        if (-not $ctl.Enabled) { $win.Visible = $wasVisible; return "already compiled" }
         $ctl.Execute()
-        $vbe.MainWindow.Visible = $wasVisible
+        $win.Visible = $wasVisible
         return "compile executed"
-    } catch { return ("compile FAILED: " + $_.Exception.Message) }
+    } catch {
+        return "compile SKIPPED (VBE unreachable: " + $_.Exception.Message + ")"
+    }
 }
 
 $ppt = $null

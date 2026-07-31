@@ -205,6 +205,9 @@ Public Function DescribeSheet(sheetName As String) As String
     ElseIf sheetName = "Sync Log" Then
         DescribeSheet = "What was written to slides, and when. Written as it happens, so a run " & _
             "that dies halfway still leaves a record."
+    ElseIf sheetName = "Field Spec" Then
+        DescribeSheet = "How each field should be WRITTEN -- purpose, voice, length, and what " & _
+            "not to do. Edit this to change the instructions the AI is given. Yours, not the tool's."
     ElseIf sheetName = "Register" Then
         DescribeSheet = "THE RECORD. One row per project, field and quarter, with its text and " & _
             "whether a human approved it. Everything else in this workbook feeds it or reads it."
@@ -222,6 +225,8 @@ Public Function LifespanOf(sheetName As String) As String
         LifespanOf = "One per run, then consumed"
     ElseIf sheetName = "Sync Log" Then
         LifespanOf = "Append-only history"
+    ElseIf sheetName = "Field Spec" Then
+        LifespanOf = "PERMANENT -- edit it freely"
     Else
         LifespanOf = "unknown"
     End If

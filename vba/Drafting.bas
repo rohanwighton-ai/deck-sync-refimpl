@@ -72,26 +72,13 @@ Public Function DraftSheetNameFor(fieldId As String) As String
     DraftSheetNameFor = WorkbookBridge.SanitizeSheetName("TPL_" & fieldId)
 End Function
 
-' The instruction block that goes above the sheet, for whoever or whatever
-' drafts. Pure, so its wording is testable without a workbook.
-'
-' Transcribed from the field package's own prompt rather than reworded: it
-' encodes decisions made by the people who own the content, and paraphrasing
-' those would quietly change them.
+' Superseded by FieldSpec.PromptFrom, which builds the prompt from the field's
+' own row in the workbook rather than from a generic template baked into code.
+' Kept as the fallback wording only; callers pass a FieldGuidance.
 Public Function DraftingPromptFor(fieldId As String) As String
-    Dim s As String
-    s = "Read the workbook and the existing text in column C." & vbCrLf & vbCrLf & _
-        "Write an updated version of " & fieldId & " for each project into column F ONLY." & vbCrLf & _
-        "Leave every other column untouched." & vbCrLf & vbCrLf & _
-        "Column C is the standard, not a draft to improve on. Stay close to it in" & vbCrLf & _
-        "length and in voice. If the text in column C already does its job, say so" & vbCrLf & _
-        "and leave the row blank." & vbCrLf & vbCrLf & _
-        "The workbook is the sole source of truth. Do not introduce facts, figures," & vbCrLf & _
-        "organisations or outcomes that are not in it. Where something needed is" & vbCrLf & _
-        "missing or ambiguous, say so in column E and ask -- do not infer or fill" & vbCrLf & _
-        "the gap." & vbCrLf & vbCrLf & _
-        "Taciturn voice. No promotional language, no hedging, no padding."
-    DraftingPromptFor = s
+    Dim g As FieldGuidance
+    g.FieldId = fieldId
+    DraftingPromptFor = FieldSpec.PromptFrom(g)
 End Function
 
 ' Builds (or rebuilds) a field's drafting sheet from the register.
@@ -107,7 +94,8 @@ End Function
 ' the way the modal prompts it replaces were. Approvals ARE cleared, because an
 ' approval is against a specific pairing of exemplar and draft, and a rebuild may
 ' have changed the exemplar.
-Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String) As String
+Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String, _
+                                   Optional guidance As Variant) As String
     Dim keptDraft As Object, keptNotes As Object
     Set keptDraft = CreateObject("Scripting.Dictionary")
     Set keptNotes = CreateObject("Scripting.Dictionary")
@@ -206,9 +194,20 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' The AI prompt, on the sheet rather than in a console window that closes.
     ' Placed to the RIGHT of the grid so it is available to copy without
     ' pushing the instructions a person needs off the top of the screen.
-    ws.Cells(DRAFT_INTRO_ROW, COL_D_APPROVED + 2).Value = "PROMPT TO GIVE COPILOT (copy this cell)"
     ws.Cells(DRAFT_INTRO_ROW, COL_D_APPROVED + 2).Font.Bold = True
-    ws.Cells(2, COL_D_APPROVED + 2).Value = "'" & DraftingPromptFor(fieldId)
+    ' The prompt comes from the field's OWN spec row when there is one. A field
+    ' with no row still drafts -- on generic guidance that says so -- because
+    ' blocking the work until somebody writes a style guide would be paperwork
+    ' standing in front of delivery.
+    Dim g As FieldGuidance
+    If IsObject(guidance) Then
+        g = FieldSpec.LookupGuidance(guidance, fieldId)
+    Else
+        g.FieldId = fieldId
+    End If
+    ws.Cells(2, COL_D_APPROVED + 2).Value = "'" & FieldSpec.PromptFrom(g)
+    ws.Cells(DRAFT_INTRO_ROW, COL_D_APPROVED + 2).Value = _
+        "PROMPT TO GIVE COPILOT (copy this cell)" & IIf(g.Found, "", "  --  GENERIC, no Field Spec row")
     ws.Columns(COL_D_APPROVED + 2).ColumnWidth = 70
     ws.Cells(2, COL_D_APPROVED + 2).WrapText = True
 

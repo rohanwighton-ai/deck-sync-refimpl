@@ -664,12 +664,18 @@ Public Function BuildDraftSheet(registerPath As String, period As String, fieldI
 
     ' Refresh the index every time a sheet is added, so the workbook never
     ' accumulates tabs it cannot explain.
+    Dim specWs As Object
+    Set specWs = WorkbookBridge.GetOrAddWorksheet(wb, FieldSpec.SPEC_SHEET_NAME)
+    Dim specNote As String
+    specNote = FieldSpec.WriteSpecSheet(specWs)
+
     WorkbookBridge.WriteWorkbookIndex wb
 
     Dim r As String
-    r = Drafting.WriteDraftingSheet(ws, reg.Data, fieldId) & vbCrLf & vbCrLf & _
+    r = specNote & vbCrLf & _
+        Drafting.WriteDraftingSheet(ws, reg.Data, fieldId, specWs) & vbCrLf & vbCrLf & _
         "--- prompt to paste above the sheet ---" & vbCrLf & _
-        Drafting.DraftingPromptFor(fieldId) & vbCrLf
+        FieldSpec.PromptFrom(FieldSpec.LookupGuidance(specWs, fieldId)) & vbCrLf
 
     wb.Save
     wb.Close False

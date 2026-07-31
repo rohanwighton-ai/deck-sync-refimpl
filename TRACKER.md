@@ -50,6 +50,17 @@ these were ticked by watching a slide change, not by a test passing.
 
 If an item can't be checked by looking at something, it's written wrong — rewrite it.
 
+## Unverified right now
+
+`FieldSpec` (per-field drafting guidance) is proven by 135 unit tests — the prompt it
+builds, the fallback when a field has no row, and that two fields get materially different
+instructions. What has NOT been watched happening is the wiring: that `WriteDraftingSheet`
+receives the spec sheet and writes the new prompt into the cell.
+
+PowerPoint stopped responding to COM before that could be demonstrated (no stale process, no
+dialog — the environment, after several hundred Office launches). **First thing next session:
+rebuild a drafting sheet and read the prompt cell.** Until then treat the wiring as untested.
+
 ## Not on this list, deliberately
 
 The other 38 fields. The GUID key redesign. R13's full review subsystem (built, parked).
