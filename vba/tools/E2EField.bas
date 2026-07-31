@@ -700,12 +700,46 @@ Public Function SetPeriod(deckPath As String, newPeriod As String) As String
 
     Dim old As String
     old = DeckRegistry.GetDeckPeriod(pres)
+
     Dim r As String
     r = DeckRegistry.AdvancePeriodText(old, newPeriod) & vbCrLf & vbCrLf
 
+    ' Where the deck was opened from and whether it is writable. Kept rather
+    ' than removed after the debugging that added it: a save reporting success
+    ' on a READ-ONLY presentation is the failure mode that cost most of this,
+    ' and "ReadOnly: 0" in the output is how the next person rules it out in a
+    ' second instead of an hour.
+    r = r & "  opened:   " & pres.fullName & vbCrLf & _
+            "  ReadOnly: " & pres.ReadOnly & vbCrLf
+
     DeckRegistry.SetDeckPeriod pres, newPeriod
+    On Error Resume Next
     pres.Save
-    r = r & "Deck period is now: " & DeckRegistry.GetDeckPeriod(pres) & vbCrLf
+    If Err.Number <> 0 Then r = r & "  *** Save RAISED: " & Err.Number & " " & Err.Description & vbCrLf
+    On Error GoTo 0
     pres.Close
+
+    ' VERIFY BY REOPENING. The first version read the value back in the SAME
+    ' session and reported "Deck period is now: X" -- which proves the write
+    ' happened and says nothing whatever about the save. It reported success
+    ' while the file on disk still held the previous period, and the next run
+    ' silently used the old quarter. Exactly the shape of every other failure
+    ' this session: something looked like it worked and had not.
+    Dim check As Object
+    Set check = Application.Presentations.Open(deckPath, msoTrue, msoFalse, msoTrue)
+    Dim onDisk As String
+    onDisk = DeckRegistry.GetDeckPeriod(check)
+    check.Close
+
+    If StrComp(onDisk, newPeriod, vbTextCompare) = 0 Then
+        r = r & "Deck period is now: " & onDisk & "  (verified by reopening the file)" & vbCrLf
+    Else
+        r = r & "*** DID NOT PERSIST ***" & vbCrLf & _
+            "    asked for: " & newPeriod & vbCrLf & _
+            "    on disk:   " & IIf(onDisk = "", "<nothing>", onDisk) & vbCrLf & _
+            "The write and the save both reported success. Do not trust the next" & vbCrLf & _
+            "run's period until this is resolved." & vbCrLf
+    End If
+
     SetPeriod = r
 End Function

@@ -100,12 +100,31 @@ Private Sub WriteStringProperty(pres As Object, propertyName As String, value As
     Set prop = pres.CustomDocumentProperties(propertyName)
     On Error GoTo 0
 
-    If prop Is Nothing Then
-        pres.CustomDocumentProperties.Add Name:=propertyName, _
-            LinkToContent:=False, Type:=msoPropertyTypeString, Value:=value
-    Else
-        prop.Value = value
+    ' DELETE AND RE-ADD, never assign to an existing property.
+    '
+    ' Measured 2026-07-31 against real PowerPoint: `prop.Value = value` on an
+    ' EXISTING custom document property reports success, survives a read-back in
+    ' the same session, survives Save reporting success -- and the old value is
+    ' still on disk when the file is reopened. Adding a property that does not
+    ' yet exist persists correctly, which is why this went unnoticed: every
+    ' first write worked, and only updates were lost.
+    '
+    ' The failure is silent in the worst way. A deck rolled forward to a new
+    ' quarter kept the old one, every subsequent run read the old quarter from
+    ' the deck and believed it, and the tool would have synced last quarter's
+    ' content while reporting the new period back to whoever asked.
+    '
+    ' Affects every setting stored this way -- the workbook path and the deck id
+    ' as much as the period. Any deck ever re-pointed at a different workbook
+    ' was at risk of silently keeping the old path.
+    If Not prop Is Nothing Then
+        On Error Resume Next
+        pres.CustomDocumentProperties(propertyName).Delete
+        On Error GoTo 0
     End If
+
+    pres.CustomDocumentProperties.Add Name:=propertyName, _
+        LinkToContent:=False, Type:=msoPropertyTypeString, Value:=value
 End Sub
 
 ' Reads DeckSyncId, generating and persisting one via Scriptlet.TypeLib's

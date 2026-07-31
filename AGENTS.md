@@ -52,6 +52,28 @@ guidance.
   `otherSlideCandCount()`) instead of a Dictionary -- see
   `SPIKE_NOTES_BatchOnboardFlow.md`.
 
+- **OPEN BUG (2026-07-31): writing a PowerPoint CustomDocumentProperty often
+  does not persist, and reporting success proves nothing.** `pres.Save` returns
+  cleanly, `pres.Saved` flips to True, and reading the property back in the same
+  session returns the NEW value -- while the file on disk still holds the old
+  one. Confirmed by reading `docProps/custom.xml` out of the .pptx directly.
+  Observed sequence: PROBE-Q9 -> FY26Q4 failed, FY26Q4 -> FY27Q1 SUCCEEDED,
+  FY27Q1 -> FY26Q4 failed, -> FY27Q2 failed, -> FY26Q4 failed. Not value-
+  specific, not obviously timing-specific; the one success is the anomaly. A
+  property that does not yet EXIST does persist when Added -- which is why this
+  hid for so long: every first write worked and only updates were lost.
+  **Two things make it survivable rather than dangerous.** `E2EField.SetPeriod`
+  now closes, reopens and compares, and prints `*** DID NOT PERSIST ***` rather
+  than claiming success. And `vba/tools/read_deck_props.py` reads the property
+  straight out of the zip with no Office involved -- **that is the authoritative
+  check**, because an in-process reopen can be served from PowerPoint's cache
+  and is untrustworthy in BOTH directions.
+  **Do not trust any deck-stored setting** (period, workbook path, deck id)
+  after an update until this is resolved. Verify with the offline reader.
+  Untried next steps: `SaveAs` to the same path instead of `Save`; writing the
+  property with the presentation's window hidden; checking whether a second
+  PowerPoint instance holds a lock.
+
 - **The "Application.Run cannot see a function that declares cross-module Public
   UDTs" trap DID NOT REPRODUCE when tested directly (2026-07-31), and the
   warm-up probes built around it are deleted.** `E2EFirstField.DumpFieldValues`
