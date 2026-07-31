@@ -52,6 +52,29 @@ guidance.
   `otherSlideCandCount()`) instead of a Dictionary -- see
   `SPIKE_NOTES_BatchOnboardFlow.md`.
 
+- **The "Application.Run cannot see a function that declares cross-module Public
+  UDTs" trap DID NOT REPRODUCE when tested directly (2026-07-31), and the
+  warm-up probes built around it are deleted.** `E2EFirstField.DumpFieldValues`
+  had been recorded as uncallable all day for this reason. Run against a freshly
+  imported project with NO probes and NO compile, it resolved first try and
+  dumped 230 rows (5 fields x 46 entities). The A/B was run failure-first on
+  purpose: proving something works after a fix means nothing unless the failure
+  was demonstrated before it.
+  Treat the original diagnosis as unproven. Every "Sub or function not defined"
+  found today had an ordinary cause -- a module in the driver's staging list but
+  missing from its import list, a VBA reserved word used as a variable name, a
+  rename that updated a Function's declaration but not its return line. All
+  three surface as that same message naming the WRONG thing, usually the entry
+  point rather than the fault, which is exactly how a boring cause gets
+  attributed to an exotic one.
+  **What replaced the probes:** an explicit compile after import, via the VBE's
+  documented `Debug > Compile VBAProject` control. The VBE main window must be
+  `Visible` for it to execute, and `Execute` returns NOTHING -- it cannot report
+  success, and the item is disabled when the project is already compiled. Never
+  trust its return; judge by whether the real call afterwards resolves. Kept not
+  because the trap was real, but because compiling at a known point turns a
+  would-be runtime mystery into a compile error where it belongs.
+
 - **Three consecutive headless runs were lost to COMPILE errors on 2026-07-31**,
   each ~8 minutes, each presenting as a hang with no output rather than a
   message: a module missing from the driver's import list, a VBA reserved word
