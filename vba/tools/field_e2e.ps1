@@ -1,4 +1,4 @@
-# Driver for E2EAboutBody.bas -- FIELD 2 end to end on the deck COPY.
+# Driver for E2EField.bas -- take ONE field end to end on the deck COPY.
 #
 #   -Mode dryrun  (default)  lists every ABOUT_BODY change with before/after,
 #                            writes nothing. This is the R13 gate.
@@ -12,7 +12,9 @@ param(
     [string]$DeckPath = "C:\Users\rohan\deck-sync-e2e\e2e-deck.pptx",
     [string]$RegisterPath = "C:\Users\rohan\deck-sync-e2e\register.xlsx",
     [string]$Period = "FY26Q4",
-    [ValidateSet("migrate","dryrun","apply","reseed")][string]$Mode = "dryrun",
+    [ValidateSet("migrate","dryrun","apply","reseed","verifyharvest","deleteentities")][string]$Mode = "dryrun",
+    [string]$FieldId = "ABOUT_BODY",
+    [string]$TsvPath = "C:\Users\rohan\deck-sync-e2e\field_values.tsv",
     [string]$Entities = "",
     [string]$RepoRoot = $(Split-Path -Parent (Split-Path -Parent $PSScriptRoot)),
     [string]$OutFile = (Join-Path $env:TEMP "about_body_e2e_report.txt")
@@ -41,7 +43,7 @@ $modules = @(
     "OnboardFlow.bas","RibbonUI.bas","AdoptFlow.bas","BatchOnboardFlow.bas","CommandBarUI.bas"
 )
 foreach ($m in $modules) { Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging }
-Copy-Item (Join-Path $vbaSourceDir "tools\E2EAboutBody.bas") -Destination $staging
+Copy-Item (Join-Path $vbaSourceDir "tools\E2EField.bas") -Destination $staging
 
 function Invoke-ForceCompile {
     param($App)
@@ -69,7 +71,7 @@ try {
     $ppt = New-Object -ComObject PowerPoint.Application
     $ppt.Visible = -1
     $scratch = $ppt.Presentations.Add()
-    foreach ($m in ($modules + "E2EAboutBody.bas")) {
+    foreach ($m in ($modules + "E2EField.bas")) {
         $scratch.VBProject.VBComponents.Import((Join-Path $staging $m)) | Out-Null
     }
 
@@ -87,10 +89,16 @@ try {
 
     if ($Mode -eq "reseed") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
-            @([string]"E2EAboutBody.ReseedFromSlides",[string]$DeckPath,[string]$RegisterPath,[string]$Period,[string]$Entities))
+            @([string]"E2EField.ReseedFromSlides",[string]$DeckPath,[string]$RegisterPath,[string]$Period,[string]$Entities,[string]$FieldId))
+    } elseif ($Mode -eq "deleteentities") {
+        $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
+            @([string]"E2EField.DeleteEntities",[string]$DeckPath,[string]$RegisterPath,[string]$Entities))
+    } elseif ($Mode -eq "verifyharvest") {
+        $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
+            @([string]"E2EField.VerifyHarvest",[string]$DeckPath,[string]$TsvPath,[string]$FieldId))
     } else {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
-            @([string]"E2EAboutBody.RunAboutBody",[string]$DeckPath,[string]$RegisterPath,[string]$Period,[string]$Mode))
+            @([string]"E2EField.RunField",[string]$DeckPath,[string]$RegisterPath,[string]$Period,[string]$Mode,[string]$FieldId))
     }
 
     Set-Content -Path $OutFile -Value $report

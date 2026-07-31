@@ -1,7 +1,13 @@
-Attribute VB_Name = "E2EAboutBody"
+Attribute VB_Name = "E2EField"
 Option Explicit
 
-' FIELD 2: ABOUT_BODY, taken end to end on a copy of the real 46-slide deck.
+' ONE FIELD, taken end to end on a copy of the real 46-slide deck.
+'
+' Generalised from E2EAboutBody on 2026-07-31 once TWO fields had been through
+' it -- a parameter added after the second case, not an abstraction guessed at
+' before the first. The field name was hardcoded while only ABOUT_BODY existed,
+' which was correct then and became misleading the moment KEY_EVENTS_BODY needed
+' the same treatment.
 '
 ' Deliberately modelled line for line on E2EFirstField, which is the only path
 ' that has ever actually delivered a field. Same order, same verification style,
@@ -59,8 +65,8 @@ End Function
 ' NOT FOUND and zero changes -- an honest report of a deck that is not ready,
 ' but useless as a preview of what apply would do. Measured on this rig
 ' 2026-07-31: renamed 230, already 0.
-Public Function RunAboutBody(deckPath As String, registerPath As String, _
-                             period As String, mode As String) As String
+Public Function RunField(deckPath As String, registerPath As String, _
+                         period As String, mode As String, fieldId As String) As String
     Dim r As String
     Dim doWrite As Boolean, doMigrate As Boolean
     doWrite = (LCase(Trim(mode)) = "apply")
@@ -85,7 +91,7 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
     fromV(1) = "Project Status": toV(1) = "PROJECT_STATUS"
     fromV(2) = "Project Name":   toV(2) = "PROJECT_NAME"
     fromV(3) = "Project number": toV(3) = "PROJECT_CODE"
-    fromV(4) = "About text":     toV(4) = "ABOUT_BODY"
+    fromV(4) = "About text":     toV(4) = fieldId
     fromV(5) = "events text":    toV(5) = "KEY_EVENTS_BODY"
 
     Dim mig As MigrationReport
@@ -98,7 +104,7 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
 
     If doMigrate Then
         pres.Save
-        RunAboutBody = r & "Tags migrated and deck SAVED. No slide text was changed." & vbCrLf & _
+        RunField = r & "Tags migrated and deck SAVED. No slide text was changed." & vbCrLf & _
             "Re-run with -Mode dryrun to preview ABOUT_BODY." & vbCrLf
         Exit Function
     End If
@@ -120,7 +126,7 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
     If reg.MissingColumns <> "" Or reg.Accepted = 0 Then
         wb.Close False: xl.Quit
         pres.Saved = msoTrue: pres.Close
-        RunAboutBody = r & "STOPPED: nothing usable read from the register."
+        RunField = r & "STOPPED: nothing usable read from the register."
         Exit Function
     End If
 
@@ -148,14 +154,14 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
     For Each k In reg.Data.Rows.Keys
         If Not keyToSlide.Exists(CStr(k)) Then
             nNoSlide = nNoSlide + 1
-        ElseIf Not reg.Data.Rows(k).Exists("ABOUT_BODY") Then
+        ElseIf Not reg.Data.Rows(k).Exists(fieldId) Then
             nNotInRegister = nNotInRegister + 1
         Else
             Dim want As String
-            want = CStr(reg.Data.Rows(k)("ABOUT_BODY"))
+            want = CStr(reg.Data.Rows(k)(fieldId))
 
             Dim shp As Object
-            Set shp = FindByRole(keyToSlide(CStr(k)).Shapes, "ABOUT_BODY")
+            Set shp = FindByRole(keyToSlide(CStr(k)).Shapes, fieldId)
             If shp Is Nothing Then
                 nNotFound = nNotFound + 1
             Else
@@ -169,7 +175,7 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
                 ' and not here. A preview that resolves its inputs differently
                 ' from the real thing is worse than no preview.
                 Dim probe As InjectResult
-                probe = InjectPrimitive.InjectPrimitive(keyToSlide(CStr(k)), "ABOUT_BODY", want, True)
+                probe = InjectPrimitive.InjectPrimitive(keyToSlide(CStr(k)), fieldId, want, True)
 
                 Dim wantSlideForm As String
                 wantSlideForm = Replace(want, "||", Chr(13))
@@ -222,7 +228,7 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
         End If
     Next k
 
-    r = r & "--- ABOUT_BODY, what is actually there ---" & vbCrLf & _
+    r = r & "--- " & fieldId & ", what is actually there ---" & vbCrLf & _
         "  shape found on slide:  " & nFound & vbCrLf & _
         "  SHAPE NOT FOUND:       " & nNotFound & vbCrLf & _
         "  already correct:       " & nSame & vbCrLf & _
@@ -237,7 +243,7 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
     If Not doWrite Then
         wb.Close False: xl.Quit
         pres.Saved = msoTrue: pres.Close
-        RunAboutBody = r & "DRY RUN -- nothing was written to the deck." & vbCrLf
+        RunField = r & "DRY RUN -- nothing was written to the deck." & vbCrLf
         Exit Function
     End If
 
@@ -245,10 +251,10 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
     Dim wrote As Long, failed As Long
     For Each k In reg.Data.Rows.Keys
         If keyToSlide.Exists(CStr(k)) Then
-            If reg.Data.Rows(k).Exists("ABOUT_BODY") Then
+            If reg.Data.Rows(k).Exists(fieldId) Then
                 Dim res As InjectResult
-                res = InjectPrimitive.InjectPrimitive(keyToSlide(CStr(k)), "ABOUT_BODY", _
-                        CStr(reg.Data.Rows(k)("ABOUT_BODY")), False)
+                res = InjectPrimitive.InjectPrimitive(keyToSlide(CStr(k)), fieldId, _
+                        CStr(reg.Data.Rows(k)(fieldId)), False)
                 If res.Found And res.Written Then
                     If res.Verified Then wrote = wrote + 1 Else failed = failed + 1
                 End If
@@ -268,8 +274,13 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
     For Each k In reg.Data.Rows.Keys
         If keyToSlide.Exists(CStr(k)) Then
             Dim vshp As Object
-            Set vshp = FindByRole(keyToSlide(CStr(k)).Shapes, "ABOUT_BODY")
-            If Not vshp Is Nothing Then
+            Set vshp = FindByRole(keyToSlide(CStr(k)).Shapes, fieldId)
+            ' Guarded on Exists FIRST. Scripting.Dictionary ADDS a key when you
+            ' read a missing one, returning Empty -- so an entity with no
+            ' approved row for THIS field would silently compare the slide
+            ' against "" and be counted a mismatch. Harmless with one field in
+            ' the register; wrong the moment there are three, which is now.
+            If Not vshp Is Nothing And reg.Data.Rows(k).Exists(fieldId) Then
                 ' THROUGH InjectPrimitive, not a hand-rolled comparison.
                 '
                 ' This block previously did `slideText = Replace(value,"||",CR)`
@@ -282,8 +293,8 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
                 ' second opinion, it is a second implementation -- and when they
                 ' disagree neither number means anything. Ask the writer.
                 Dim vprobe As InjectResult
-                vprobe = InjectPrimitive.InjectPrimitive(keyToSlide(CStr(k)), "ABOUT_BODY", _
-                            CStr(reg.Data.Rows(k)("ABOUT_BODY")), True)
+                vprobe = InjectPrimitive.InjectPrimitive(keyToSlide(CStr(k)), fieldId, _
+                            CStr(reg.Data.Rows(k)(fieldId)), True)
                 If vprobe.Found And Not vprobe.WouldChange Then vMatch = vMatch + 1 Else vMiss = vMiss + 1
             End If
         End If
@@ -296,7 +307,7 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
     pres.Save
     r = r & vbCrLf & "Deck saved." & vbCrLf
 
-    RunAboutBody = r
+    RunField = r
 End Function
 
 ' Repair named register rows FROM the slide, correctly encoded.
@@ -316,7 +327,7 @@ End Function
 ' Every real line break becomes "||", which is the register's own convention
 ' (R6) and the inverse of what InjectPrimitive does on the way in.
 Public Function ReseedFromSlides(deckPath As String, registerPath As String, _
-                                 period As String, entityList As String) As String
+                                 period As String, entityList As String, fieldId As String) As String
     Dim r As String
 
     Dim pres As Object
@@ -374,10 +385,10 @@ Public Function ReseedFromSlides(deckPath As String, registerPath As String, _
     Do While Trim(CStr(ws.Cells(rowN, cEntity).Value)) <> ""
         Dim ent As String
         ent = Trim(CStr(ws.Cells(rowN, cEntity).Value))
-        If wanted.Exists(ent) And Trim(CStr(ws.Cells(rowN, cField).Value)) = "ABOUT_BODY" Then
+        If wanted.Exists(ent) And Trim(CStr(ws.Cells(rowN, cField).Value)) = fieldId Then
             If keyToSlide.Exists(ent) Then
                 Dim shp As Object
-                Set shp = FindByRole(keyToSlide(ent).Shapes, "ABOUT_BODY")
+                Set shp = FindByRole(keyToSlide(ent).Shapes, fieldId)
                 If shp Is Nothing Then
                     skipped = skipped + 1
                 Else
@@ -407,4 +418,215 @@ Public Function ReseedFromSlides(deckPath As String, registerPath As String, _
     r = r & vbCrLf & "reseeded: " & fixed & "   skipped: " & skipped & vbCrLf & _
         "Register updated. Deck was opened READ-ONLY and not changed." & vbCrLf
     ReseedFromSlides = r
+End Function
+
+' Does the harvest round-trip? Reads the TSV that DumpFieldValues produced and
+' asks the INJECTOR whether writing each value back would change anything.
+'
+' This settles the open "||" question directly instead of inferring it. The
+' harvest encodes every real line break as "||"; InjectPrimitive converts every
+' "||" back to one break. If those two are exact inverses, replaying the harvest
+' is a no-op on all 46 slides. If they are not, this says so on the field where
+' it matters most -- KEY_EVENTS_BODY is multi-line on 46 of 46, median 5
+' paragraphs, so a one-character asymmetry shows up everywhere.
+'
+' Deliberately reads the TSV and NOT the register: this is a question about
+' harvest fidelity, not about approval, and routing it through Status would
+' conflate the two things that were just separated.
+Public Function VerifyHarvest(deckPath As String, tsvPath As String, fieldId As String) As String
+    Dim r As String
+
+    Dim pres As Object
+    Set pres = Application.Presentations.Open(deckPath, msoTrue, msoFalse, msoTrue)
+    pres.Windows(1).Activate
+
+    Dim keyToSlide As Object
+    Set keyToSlide = CreateObject("Scripting.Dictionary")
+    Dim sld As Object
+    For Each sld In pres.Slides
+        Dim inst As SlideInstance
+        inst = Resolve.ResolveSlideInstance(sld)
+        If inst.HasInstanceKey And Not inst.IsTemplate Then Set keyToSlide(inst.InstanceKey) = sld
+    Next sld
+
+    ' ADODB.Stream, not FileSystemObject. FSO's OpenTextFile only offers ASCII,
+    ' system-default or UTF-16 -- there is no UTF-8 option. The TSV is UTF-8
+    ' with a BOM (written by PowerShell), so reading it as UTF-16 returned zero
+    ' usable rows: every line came back as mojibake and no FieldID matched.
+    '
+    ' It reported "rows in TSV: 0", which is the only reason this was obvious
+    ' rather than silent -- the same count printed without that line would have
+    ' read as "nothing differs, all clean".
+    Dim stream As Object
+    Set stream = CreateObject("ADODB.Stream")
+    stream.Type = 2          ' adTypeText
+    stream.Charset = "UTF-8"
+    stream.Open
+    stream.LoadFromFile tsvPath
+
+    Dim nRows As Long, nNoSlide As Long, nNotFound As Long, nSame As Long, nDiffer As Long
+    Dim detail As String
+
+    Do While Not stream.EOS
+        Dim line As String
+        line = stream.ReadText(-2)      ' adReadLine
+        Dim parts() As String
+        parts = Split(line, vbTab)
+        If UBound(parts) >= 2 Then
+            If Trim(parts(1)) = fieldId Then
+                nRows = nRows + 1
+                Dim ent As String
+                ent = Trim(parts(0))
+                If Not keyToSlide.Exists(ent) Then
+                    nNoSlide = nNoSlide + 1
+                Else
+                    Dim probe As InjectResult
+                    probe = InjectPrimitive.InjectPrimitive(keyToSlide(ent), fieldId, parts(2), True)
+                    If Not probe.Found Then
+                        nNotFound = nNotFound + 1
+                    ElseIf probe.WouldChange Then
+                        nDiffer = nDiffer + 1
+                        Dim breaksSlide As Long, breaksValue As Long
+                        breaksSlide = Len(probe.CurrentValue) - Len(Replace(probe.CurrentValue, Chr(13), ""))
+                        breaksValue = (Len(parts(2)) - Len(Replace(parts(2), "||", ""))) / 2
+                        detail = detail & "  " & ent & "  slideLen=" & Len(probe.CurrentValue) & _
+                            " breaksOnSlide=" & breaksSlide & " ||inValue=" & breaksValue & vbCrLf
+                    Else
+                        nSame = nSame + 1
+                    End If
+                End If
+            End If
+        End If
+    Loop
+    stream.Close
+
+    r = "--- harvest round-trip: " & fieldId & " ---" & vbCrLf & _
+        "  rows in TSV:        " & nRows & vbCrLf & _
+        "  no slide:           " & nNoSlide & vbCrLf & _
+        "  shape not found:    " & nNotFound & vbCrLf & _
+        "  ROUND-TRIPS EXACTLY:" & nSame & vbCrLf & _
+        "  WOULD CHANGE:       " & nDiffer & vbCrLf
+    If nDiffer > 0 Then r = r & vbCrLf & detail
+
+    pres.Saved = msoTrue
+    pres.Close
+    VerifyHarvest = r
+End Function
+
+' Delete named entities: their slides AND their register rows, in one pass.
+'
+' Both halves together on purpose. Deleting the slides alone would leave orphan
+' register rows, which the planner classifies as new_record -- and a large
+' new_record count is the exact signal that means "this deck's linkage has
+' drifted", so it would look like a fault rather than a tidy-up. Deleting the
+' rows alone would leave slides nothing can address.
+'
+' RM ruling: 3_P002-2, 2_P004-2, 1_P006-2 are duplicates and go. They are also
+' the only instances of the overloaded key syntax -- "project number plus a
+' disambiguator" sharing one namespace with real project numbers -- so removing
+' them narrows the identity problem while the GUID redesign is still pending.
+'
+' REFUSES rather than does less than asked: an entity named here but not found
+' stops the whole operation. Silently deleting two of three requested slides and
+' reporting success is how a deck ends up in a state nobody predicted.
+Public Function DeleteEntities(deckPath As String, registerPath As String, entityList As String) As String
+    Dim r As String
+
+    Dim wanted As Object
+    Set wanted = CreateObject("Scripting.Dictionary")
+    Dim parts() As String
+    parts = Split(entityList, ",")
+    Dim pi As Long
+    For pi = LBound(parts) To UBound(parts)
+        If Trim(parts(pi)) <> "" Then wanted(Trim(parts(pi))) = True
+    Next pi
+
+    Dim pres As Object
+    Set pres = Application.Presentations.Open(deckPath, msoFalse, msoFalse, msoTrue)
+    pres.Windows(1).Activate
+
+    r = "Deleting " & wanted.count & " entity(ies)." & vbCrLf & _
+        "Slides before: " & pres.Slides.count & vbCrLf & vbCrLf
+
+    ' Locate first, delete second. Deleting while enumerating renumbers the
+    ' collection underneath the loop.
+    Dim targets As Collection
+    Set targets = New Collection
+    Dim found As Object
+    Set found = CreateObject("Scripting.Dictionary")
+
+    Dim sld As Object
+    For Each sld In pres.Slides
+        Dim inst As SlideInstance
+        inst = Resolve.ResolveSlideInstance(sld)
+        If inst.HasInstanceKey Then
+            If wanted.Exists(inst.InstanceKey) And Not inst.IsTemplate Then
+                targets.Add sld
+                found(inst.InstanceKey) = True
+            End If
+        End If
+    Next sld
+
+    Dim missing As String
+    Dim k As Variant
+    For Each k In wanted.Keys
+        If Not found.Exists(k) Then missing = missing & " " & k
+    Next k
+
+    If missing <> "" Then
+        pres.Saved = msoTrue
+        pres.Close
+        DeleteEntities = r & "REFUSED: no slide found for:" & missing & vbCrLf & _
+            "Nothing was deleted. Check the keys before re-running."
+        Exit Function
+    End If
+
+    Dim i As Long
+    For i = targets.count To 1 Step -1
+        r = r & "  deleted slide for " & Resolve.ResolveSlideInstance(targets(i)).InstanceKey & vbCrLf
+        targets(i).Delete
+    Next i
+
+    r = r & "Slides after: " & pres.Slides.count & vbCrLf & vbCrLf
+
+    ' Register rows for those entities, every field.
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Open(registerPath)
+    Set ws = wb.Worksheets(1)
+
+    Dim cEntity As Long, c As Long
+    For c = 1 To 20
+        If Trim(CStr(ws.Cells(1, c).Value)) = "EntityCode" Then cEntity = c
+    Next c
+
+    Dim removed As Long
+    If cEntity = 0 Then
+        r = r & "WARNING: could not locate EntityCode column -- register NOT changed." & vbCrLf
+    Else
+        ' Bottom-up, for the same reason as the slides.
+        Dim lastRow As Long
+        lastRow = 2
+        Do While Trim(CStr(ws.Cells(lastRow, cEntity).Value)) <> ""
+            lastRow = lastRow + 1
+        Loop
+        Dim rowN As Long
+        For rowN = lastRow - 1 To 2 Step -1
+            If wanted.Exists(Trim(CStr(ws.Cells(rowN, cEntity).Value))) Then
+                ws.Rows(rowN).Delete
+                removed = removed + 1
+            End If
+        Next rowN
+        wb.Save
+    End If
+    wb.Close False
+    xl.Quit
+
+    r = r & "Register rows removed: " & removed & vbCrLf
+
+    pres.Save
+    r = r & "Deck saved." & vbCrLf
+    DeleteEntities = r
 End Function
