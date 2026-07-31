@@ -94,6 +94,31 @@ Private Sub SyncNowCore()
         wb.Save
     End If
 
+    ' R9: duplicate identity tags, checked BEFORE planning and before any
+    ' write. Placed here rather than inside the planner because the planner
+    ' cannot report it usefully -- to PlanRoutineSync two slides sharing a key
+    ' simply means one of them matches the row and the other does not exist,
+    ' which is indistinguishable from a normal unmatched slide. The condition
+    ' is only visible by looking across instances, which is what this does.
+    '
+    ' Warns rather than refuses: a duplicate key is a data-entry mistake in the
+    ' deck, not a corruption, and the sync will still do something sensible to
+    ' one of the two slides. Refusing outright would block a whole quarter's
+    ' reporting over a fixable typo. But the consequence is stated plainly and
+    ' the default is to stop.
+    Dim dupType As Long
+    For dupType = lo To hi
+        Dim dupReport As DuplicateKeyReport
+        dupReport = IdentityCheck.FindDuplicateKeys(types(dupType))
+        If dupReport.HasDuplicates Then
+            If MsgBox(IdentityCheck.DuplicateKeyWarningText(types(dupType), dupReport) & _
+                      vbCrLf & vbCrLf & "Continue anyway?", _
+                      vbYesNo + vbExclamation + vbDefaultButton2, "Sync Now") <> vbYes Then
+                Exit Sub
+            End If
+        End If
+    Next dupType
+
     ' Plan every registered type BEFORE writing any of them, so the
     ' confirmation covers the whole deck rather than the first type only.
     ' Sync Now is the one toolbar action that can change a deck at scale, and

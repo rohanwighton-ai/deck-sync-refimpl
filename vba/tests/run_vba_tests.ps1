@@ -210,7 +210,7 @@ Write-Output "RepoRoot: $RepoRoot"
 Write-Output "vbaSourceDir: $vbaSourceDir"
 Write-Output "fixturesSourceDir: $fixturesSourceDir"
 
-$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "Verification.bas", "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "tests\TestRunner.bas")
+$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "Verification.bas", "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "tests\TestRunner.bas")
 foreach ($m in $pptModules) {
     Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging
 }
@@ -233,7 +233,7 @@ try {
     $ppt.Visible = -1  # msoTrue -- visible on purpose for a first real run, see script header
     $pres = $ppt.Presentations.Add()
 
-    foreach ($m in @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas", "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "TestRunner.bas")) {
+    foreach ($m in @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas", "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "TestRunner.bas")) {
         $comp = $pres.VBProject.VBComponents.Import((Join-Path $staging $m))
         Write-Output ("Imported $m as component name: " + $comp.Name)
     }

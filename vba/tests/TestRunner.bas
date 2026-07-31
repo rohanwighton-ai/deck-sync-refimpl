@@ -168,6 +168,16 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_IdentityCheck_FindsClonedKeys()
+    AppendResult report, "IdentityCheck_FindsClonedKeys", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_IdentityCheck_IgnoresTheTemplate()
+    AppendResult report, "IdentityCheck_IgnoresTheTemplate", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_TemplateAudit_ClassifyBoundaries()
     AppendResult report, "TemplateAudit_ClassifyBoundaries", r
     On Error GoTo 0
@@ -1739,6 +1749,70 @@ Private Function Test_TemplateSlide_ConfirmTextStatesTheConsequences() As String
     result = result & Assert(TemplateSlide.PlaceholderFor("Status") = "<<Status>>", "PlaceholderFor wraps the role name, got '" & TemplateSlide.PlaceholderFor("Status") & "'")
 
     Test_TemplateSlide_ConfirmTextStatesTheConsequences = result
+End Function
+
+' ---------------------------------------------------------------------
+' IdentityCheck -- R9 / D5, duplicate identity tags
+' ---------------------------------------------------------------------
+
+' The condition R9 exists for, reproduced the way it actually occurs: by
+' duplicating a slide. Probed against real Office 2026-07-31 -- identity tags
+' clone on Slide.Duplicate and on paste into another deck, exactly as shape
+' names do, which is why the check is needed at all.
+Private Function Test_IdentityCheck_FindsClonedKeys() As String
+    Dim result As String
+
+    Dim a As Object
+    Set a = NewOnboardedSlide("idchk-type-1", "P004")
+    Dim b As Object
+    Set b = NewOnboardedSlide("idchk-type-1", "P005")
+
+    Dim clean As DuplicateKeyReport
+    clean = IdentityCheck.FindDuplicateKeys("idchk-type-1")
+    result = result & Assert(Not clean.HasDuplicates, "two distinct keys report no duplicates")
+    result = result & Assert(IdentityCheck.DuplicateKeyWarningText("idchk-type-1", clean) = "", "no warning text when there is nothing to warn about")
+
+    ' Duplicate one of them -- the real-world cause, not a synthetic tag write.
+    Dim dupColl As Object
+    Set dupColl = a.Duplicate()
+
+    Dim dirty As DuplicateKeyReport
+    dirty = IdentityCheck.FindDuplicateKeys("idchk-type-1")
+    result = result & Assert(dirty.HasDuplicates, "duplicating a slide is DETECTED as a duplicate key")
+    result = result & Assert(dirty.Count = 1, "exactly one key is duplicated, got " & dirty.Count)
+    result = result & Assert(InStr(dirty.Detail, "P004") > 0, "the report names the offending key, got '" & dirty.Detail & "'")
+    result = result & Assert(InStr(dirty.Detail, ",") > 0, "the report names BOTH slides, not just that a clash exists -- got '" & dirty.Detail & "'")
+
+    ' The warning must state the consequence, not just the fact. "Two slides
+    ' share a key" means nothing to someone who has not read the matching spec.
+    Dim warn As String
+    warn = IdentityCheck.DuplicateKeyWarningText("idchk-type-1", dirty)
+    result = result & Assert(InStr(warn, "only ONE") > 0, "warning states that only one slide gets updated")
+    result = result & Assert(InStr(warn, "not defined") > 0, "warning admits WHICH one is undefined rather than implying an order")
+    result = result & Assert(InStr(warn, "copied") > 0, "warning names the likely cause so it is actionable")
+
+    dupColl(1).Delete
+    Test_IdentityCheck_FindsClonedKeys = result
+End Function
+
+' The template must never be counted as a competing claim. It is deliberately
+' keyless, and it is excluded by GatherInstances -- but that exclusion is the
+' thing this depends on, so it is asserted here rather than assumed.
+Private Function Test_IdentityCheck_IgnoresTheTemplate() As String
+    Dim result As String
+
+    Dim seed As Object
+    Set seed = NewOnboardedSlide("idchk-type-2", "P010")
+
+    Dim mr As MakeTemplateResult
+    mr = TemplateSlide.MakeTemplateFrom(seed, "idchk-type-2")
+    result = result & Assert(mr.Ok, "template created for the identity test, reason='" & mr.Reason & "'")
+
+    Dim rep As DuplicateKeyReport
+    rep = IdentityCheck.FindDuplicateKeys("idchk-type-2")
+    result = result & Assert(Not rep.HasDuplicates, "a template alongside its source is NOT a duplicate key -- it is keyless by design")
+
+    Test_IdentityCheck_IgnoresTheTemplate = result
 End Function
 
 ' ---------------------------------------------------------------------

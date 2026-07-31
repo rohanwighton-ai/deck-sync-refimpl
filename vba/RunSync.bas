@@ -185,6 +185,17 @@ Public Function PreviewRoutineSync(ws As Object, slideType As String) As String
     Dim report As String
     report = "=== PREVIEW (nothing written): " & slideType & " ===" & vbCrLf
 
+    ' R9: duplicate identity tags, at the TOP of the report rather than the
+    ' bottom. The preview's job is to tell a human what a sync would do, and if
+    ' two slides share a key the honest answer is "one of these, and it is not
+    ' defined which" -- which invalidates every count below it. Burying that
+    ' under the summary would let someone read the counts and act on them.
+    Dim dupReport As DuplicateKeyReport
+    dupReport = IdentityCheck.FindDuplicateKeys(slideType)
+    If dupReport.HasDuplicates Then
+        report = report & IdentityCheck.DuplicateKeyWarningText(slideType, dupReport) & vbCrLf & vbCrLf
+    End If
+
     Dim sheet As Sheet
     sheet = ExcelOutput.ReadSheet(ws)
 

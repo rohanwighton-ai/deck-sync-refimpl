@@ -260,11 +260,15 @@ subsequent operation that touches tags in bulk — including V1.
 row, template worksheet, register row, injection, verified on a slide — before anything is
 generalised.
 
-Suggested first field: **`Project Status`**. Short, its value is visibly different per
+**First field: `Project Status`. Decided.** Short, its value is visibly different per
 project, it is already tagged and syncing today, and it appears on the slide header where a
 wrong value is obvious rather than buried in prose. `PROGRESS_BODY` is the more valuable
 field but it is long prose with a character-count target, which makes it a poor choice for
-proving a pipeline.
+proving a pipeline — prove the pipeline on something where "did it work" is answerable at a
+glance, then run the hard field through the proven path.
+
+So E2's mapping table needs `Project Status` → its target FieldID **first**; the other four
+can follow.
 
 ---
 
