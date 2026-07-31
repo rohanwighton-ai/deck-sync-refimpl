@@ -1,11 +1,24 @@
 # Deck Sync — current workplan
 
-> **UPDATE 31 July, midday.** The pause was lifted for the field-setup work (their
-> round 10) and E1–E5 moved into this lane. Rounds 8–11 are done. Current state: four
-> modules built, `PROJECT_STATUS` mid-flight as the first field end to end, blocked on a
-> VBA macro-visibility bug being bisected. **Fields taken end to end: ONE — `PROJECT_STATUS`, on the real 46-slide deck, 19 corrected as predicted, 46/46 verified by re-reading the deck.**
+> **STATUS, 31 July 2026 (evening).** Rounds 8–13 done. **Fields taken end to end: FIVE**
+> — `PROJECT_STATUS`, `ABOUT_BODY`, `KEY_EVENTS_BODY`, `PROJECT_NAME`, `PROJECT_CODE` — all
+> on a copy of the real deck, each shown at a gate as a before-and-after, written, and
+> verified by re-reading the deck.
 >
-> Original pause note follows.
+> **The drafting loop is closed.** Text drafted into `TPL_ABOUT_BODY`, ticked, published as
+> `Approved`, gated, applied, verified on a slide. **Batch apply proven** — three rows in one
+> pass, each landing on its own slide, confirmed by an independent harvest.
+>
+> **The honest measure is still not the field count.** The register is seeded from the deck,
+> so nobody has been saved any work yet. That flips when Rohan drafts content he actually
+> needed written. See `PHASE1.md` — a three-hour budget whose exit test is one sentence from
+> him, not a number.
+>
+> Suite 133 passing. `specs/sync-flow-rules.md` F1–F12 governs the flow.
+>
+> Original pause note follows, kept for the record.
+>
+Original pause note follows.
 >
 > **PAUSED 31 July 2026 by direction of the Research Manager.** Neither lane starts new
 > work until both sides are clear on the whole system, including the compiler. V3 and V7
