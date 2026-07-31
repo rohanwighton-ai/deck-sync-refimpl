@@ -98,7 +98,29 @@ End Type
 '
 ' `deckPeriod` comes from the deck's own custom property (D4: the deck declares
 ' its own period), not from an operator prompt.
+' The same read, WITHOUT the Status filter.
+'
+' The drafting sheet needs every entity's current value as an exemplar,
+' including the Seed rows -- which the ordinary read deliberately excludes,
+' because Seed is not writable. Those are different questions: "may this reach a
+' slide" (Status) and "what does this currently say" (the exemplar). Filtering
+' the drafting surface by Status would hand a drafter a blank page for exactly
+' the fields nobody has written yet, which is every field before its first
+' drafting round.
+'
+' Kept as a separate entry point rather than a flag on ReadRegister so that no
+' sync path can reach it by passing the wrong argument. Nothing that writes to a
+' slide calls this.
+Public Function ReadRegisterAllStatuses(ws As Object, deckPeriod As String, slideType As String) As RegisterRead
+    ReadRegisterAllStatuses = ReadRegisterCore(ws, deckPeriod, slideType, True)
+End Function
+
 Public Function ReadRegister(ws As Object, deckPeriod As String, slideType As String) As RegisterRead
+    ReadRegister = ReadRegisterCore(ws, deckPeriod, slideType, False)
+End Function
+
+Private Function ReadRegisterCore(ws As Object, deckPeriod As String, slideType As String, _
+                                  ignoreStatus As Boolean) As RegisterRead
     Dim result As RegisterRead
 
     Set result.Data.Rows = CreateObject("Scripting.Dictionary")
@@ -134,7 +156,7 @@ Public Function ReadRegister(ws As Object, deckPeriod As String, slideType As St
     If cStatus = 0 Then result.MissingColumns = result.MissingColumns & COL_STATUS & " "
     If result.MissingColumns <> "" Then
         result.MissingColumns = Trim(result.MissingColumns)
-        ReadRegister = result
+        ReadRegisterCore = result
         Exit Function
     End If
 
@@ -170,7 +192,7 @@ Public Function ReadRegister(ws As Object, deckPeriod As String, slideType As St
             ' counts sum to RowsSeen and a human can read them as a funnel.
             If cSlideType > 0 And rowType <> "" And StrComp(rowType, slideType, vbTextCompare) <> 0 Then
                 result.RejectedType = result.RejectedType + 1
-            ElseIf StrComp(Trim(CStr(ws.Cells(r, cStatus).Value)), STATUS_APPROVED, vbTextCompare) <> 0 Then
+            ElseIf Not ignoreStatus And StrComp(Trim(CStr(ws.Cells(r, cStatus).Value)), STATUS_APPROVED, vbTextCompare) <> 0 Then
                 result.RejectedStatus = result.RejectedStatus + 1
                 ' WHICH kind of not-approved. "12 rows are seed values" and
                 ' "12 rows have a status nobody recognises" are the same number
@@ -228,7 +250,7 @@ Public Function ReadRegister(ws As Object, deckPeriod As String, slideType As St
         result.PeriodsPresent = result.PeriodsPresent & IIf(result.PeriodsPresent = "", "", ", ") & k
     Next k
 
-    ReadRegister = result
+    ReadRegisterCore = result
 End Function
 
 ' The line a human needs when a read comes back empty.

@@ -203,6 +203,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_Drafting_OnlyTickedNonEmptyDraftsPublish()
+    AppendResult report, "Drafting_OnlyTickedNonEmptyDraftsPublish", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_PlaceholderCheck_FindsRecordsNotTheTemplate()
     AppendResult report, "PlaceholderCheck_FindsRecordsNotTheTemplate", r
     On Error GoTo 0
@@ -2146,6 +2151,62 @@ Private Function Test_Register_SeedIsNotApproved() As String
     wb.Close False
     xl.Quit
     Test_Register_SeedIsNotApproved = result
+End Function
+
+Private Function Test_Drafting_OnlyTickedNonEmptyDraftsPublish() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, dws As Object, rws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set dws = wb.Worksheets(1)
+    Set rws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+
+    ' A minimal register: four entities, one field, all Seed.
+    rws.Cells(1, 1).Value = "EntityCode": rws.Cells(1, 2).Value = "FieldID"
+    rws.Cells(1, 3).Value = "Value":      rws.Cells(1, 4).Value = "Status"
+    Dim i As Long
+    For i = 1 To 4
+        rws.Cells(i + 1, 1).Value = "P00" & i
+        rws.Cells(i + 1, 2).Value = "ABOUT_BODY"
+        rws.Cells(i + 1, 3).Value = "old " & i
+        rws.Cells(i + 1, 4).Value = "Seed"
+    Next i
+
+    ' The drafting sheet, covering every combination that decides publication.
+    dws.Cells(1, 1).Value = "EntityCode"
+    dws.Cells(2, Drafting.COL_D_ENTITY).Value = "P001": dws.Cells(2, Drafting.COL_D_DRAFT).Value = "new one":  dws.Cells(2, Drafting.COL_D_APPROVED).Value = "Y"
+    dws.Cells(3, Drafting.COL_D_ENTITY).Value = "P002": dws.Cells(3, Drafting.COL_D_DRAFT).Value = "new two":  dws.Cells(3, Drafting.COL_D_APPROVED).Value = ""
+    dws.Cells(4, Drafting.COL_D_ENTITY).Value = "P003": dws.Cells(4, Drafting.COL_D_DRAFT).Value = "":         dws.Cells(4, Drafting.COL_D_APPROVED).Value = "Y"
+    dws.Cells(5, Drafting.COL_D_ENTITY).Value = "P004": dws.Cells(5, Drafting.COL_D_DRAFT).Value = "a" & vbCr & "b": dws.Cells(5, Drafting.COL_D_APPROVED).Value = "Y"
+
+    Dim rep As String
+    rep = Drafting.PublishDrafts(dws, rws, "ABOUT_BODY", False)
+
+    ' A DRAFT ALONE IS NOT CONSENT and A TICK ALONE IS NOT CONTENT.
+    result = result & Assert(rws.Cells(2, 4).Value = "Approved", "ticked + drafted publishes and becomes Approved, got '" & rws.Cells(2, 4).Value & "'")
+    result = result & Assert(rws.Cells(2, 3).Value = "new one", "the drafted text is what lands, got '" & rws.Cells(2, 3).Value & "'")
+    result = result & Assert(rws.Cells(3, 4).Value = "Seed", "DRAFTED BUT NOT TICKED stays Seed -- a draft is not an approval, got '" & rws.Cells(3, 4).Value & "'")
+    result = result & Assert(rws.Cells(3, 3).Value = "old 2", "an unticked row's value is untouched, got '" & rws.Cells(3, 3).Value & "'")
+    result = result & Assert(rws.Cells(4, 4).Value = "Seed", "TICKED BUT EMPTY publishes nothing -- a tick against no draft is a mis-click, got '" & rws.Cells(4, 4).Value & "'")
+    result = result & Assert(InStr(rep, "ticked but the draft is empty") > 0, "the empty-but-ticked row is REPORTED, not silently dropped")
+
+    ' Line breaks become the register delimiter, the exact inverse of what
+    ' InjectPrimitive does on the way out.
+    result = result & Assert(rws.Cells(5, 3).Value = "a||b", "a real line break is stored as the || delimiter, got '" & rws.Cells(5, 3).Value & "'")
+    result = result & Assert(InStr(rws.Cells(5, 3).Value, vbCr) = 0, "no carriage return survives into the register")
+
+    ' Only Approved is ever written here, and only for ticked rows.
+    Dim approvedCount As Long
+    For i = 2 To 5
+        If rws.Cells(i, 4).Value = "Approved" Then approvedCount = approvedCount + 1
+    Next i
+    result = result & Assert(approvedCount = 2, "exactly the two ticked-and-drafted rows became Approved, got " & approvedCount)
+
+    wb.Close False
+    xl.Quit
+    Test_Drafting_OnlyTickedNonEmptyDraftsPublish = result
 End Function
 
 Private Function Test_PlaceholderCheck_FindsRecordsNotTheTemplate() As String

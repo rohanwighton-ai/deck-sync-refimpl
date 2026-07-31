@@ -630,3 +630,48 @@ Public Function DeleteEntities(deckPath As String, registerPath As String, entit
     r = r & "Deck saved." & vbCrLf
     DeleteEntities = r
 End Function
+
+' Drafting entry points. Workbook-only -- no deck is opened, because drafting is
+' work you should be able to do on a laptop with no deck in front of you.
+Public Function BuildDraftSheet(registerPath As String, period As String, fieldId As String) As String
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Open(registerPath)
+
+    Dim reg As RegisterRead
+    reg = Register.ReadRegisterAllStatuses(wb.Worksheets(1), period, "q")
+
+    Dim ws As Object
+    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, Drafting.DraftSheetNameFor(fieldId))
+
+    Dim r As String
+    r = Drafting.WriteDraftingSheet(ws, reg.Data, fieldId) & vbCrLf & vbCrLf & _
+        "--- prompt to paste above the sheet ---" & vbCrLf & _
+        Drafting.DraftingPromptFor(fieldId) & vbCrLf
+
+    wb.Save
+    wb.Close False
+    xl.Quit
+    BuildDraftSheet = r
+End Function
+
+Public Function PublishDraftSheet(registerPath As String, fieldId As String, mode As String) As String
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Open(registerPath)
+
+    Dim ws As Object
+    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, Drafting.DraftSheetNameFor(fieldId))
+
+    Dim r As String
+    r = Drafting.PublishDrafts(ws, wb.Worksheets(1), fieldId, (LCase(Trim(mode)) <> "apply"))
+
+    wb.Save
+    wb.Close False
+    xl.Quit
+    PublishDraftSheet = r
+End Function
