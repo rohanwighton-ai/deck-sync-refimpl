@@ -29,18 +29,53 @@ Option Explicit
 ' Upgrading the display mechanism later only touches this one function.
 
 ' ---------------------------------------------------------------------
-' Sync Now
+' R13: the sync flow. Rules in specs/sync-flow-rules.md (F1-F10).
 ' ---------------------------------------------------------------------
-
-' Toolbar entry point. The real work is in SyncNowCore; this exists only to
-' catch anything that escapes it.
 '
-' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
-' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
-' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
-' inline handler would be switched off by the first of them and read as
-' protection while providing none. Putting the handler in a separate frame
-' means nothing inside the body can turn it off, now or after a later edit.
+' Three entry points, one write path:
+'   Sync Now         -- confirms the uniform batches, applies them, hands the
+'                       remainder to the review sheet
+'   Review Changes   -- builds the sheet for everything, writes nothing
+'   Apply Approved   -- writes what was ticked on the sheet
+'
+' What changed on 2026-07-31: `Sync Now` used to plan every type, show a
+' count-based confirmation ("19 slide(s) corrected -- Proceed?") and write the
+' lot. That answered "how many will change?" and never "is this change to this
+' slide right?", which is exactly what R13 forbids -- and the first real run
+' took that path and moved 19 slides with nobody seeing a before-and-after.
+'
+' It is not a count any more. It shows every transformation in full, and it
+' cannot reach a slide with anything a human has not seen.
+'
+' Carried over unchanged, because R13 supersedes none of it: the unsaved-
+' workbook refusal and the R9 duplicate-key warning, both now in
+' ResolveSyncContext / ReviewChangesCore where planning happens.
+
+' Sync Now, restored 2026-07-31 and batch-aware.
+'
+' It was briefly removed earlier the same day, on my reasoning that its
+' confirmation showed a count and R13 demands a before-and-after. Rohan
+' corrected it: R13.2 makes a verified uniform batch ONE decision, so a whole
+' change set that collapses into a few uniform transformations can be approved
+' in a dialog that shows all of them -- that is a complete before-and-after, not
+' a count. See ReviewQueue's fast-path header.
+'
+' A second correction from him followed: the run does NOT have to be
+' all-or-nothing. Applying the uniform part and deferring the rest is fully
+' compliant -- the batched changes are still shown before writing, and the
+' individual ones still go to the worksheet. So (F5):
+'
+'   - uniform batches present, few enough to read
+'       -> show them all, one confirmation, apply just those
+'   - individual changes remain afterwards
+'       -> rebuild, write the review sheet, open it (F6)
+'   - nothing batchable, or too many batches
+'       -> the worksheet handles the whole run
+'
+' Every path goes through the same queue, revalidation and backup as Apply
+' Approved. This is a different REVIEW SURFACE for changes that fit one, not a
+' different write path -- there is still exactly one place that writes a field
+' to a slide (F7).
 Public Sub SyncNow()
     On Error GoTo Failed
     SyncNowCore
@@ -53,10 +88,193 @@ Private Sub SyncNowCore()
     Dim pres As Object
     Set pres = Application.ActivePresentation
 
+    Dim wb As Object
+    Dim types() As String
+    Dim lo As Long, hi As Long
+    If Not ResolveSyncContext("Sync Now", pres, wb, types, lo, hi) Then Exit Sub
+
+    ' Build every type's queue first, so the decision covers the whole deck
+    ' rather than the first type only -- the same reason SyncNowCore used to
+    ' plan all types before confirming.
+    Dim combined As ReviewQueueSet
+    combined.SlideType = "(all types)"
+    combined.RunStamp = ReviewQueue.MakeRunStamp()
+
+    Dim i As Long
+    For i = lo To hi
+        Dim templateSld As Object
+        Dim wsName As String
+        If DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
+            Dim sheet As Sheet
+            sheet = ExcelOutput.ReadSheet(WorkbookBridge.GetOrAddWorksheet(wb, wsName))
+
+            Dim q As ReviewQueueSet
+            q = ReviewQueue.BuildQueue(sheet, types(i))
+            Dim n As Long
+            For n = 1 To q.Count
+                combined.Count = combined.Count + 1
+                ReDim Preserve combined.Items(1 To combined.Count)
+                combined.Items(combined.Count) = q.Items(n)
+                ' Labels are per-type; prefix so two types' batches cannot
+                ' collide into one apparent decision in the combined view.
+                If combined.Items(combined.Count).BatchLabel <> "" Then
+                    combined.Items(combined.Count).BatchLabel = types(i) & ":" & q.Items(n).BatchLabel
+                End If
+            Next n
+        End If
+    Next i
+
+    If combined.Count = 0 Then
+        MsgBox ReviewQueue.FastPathRefusalText(combined), vbInformation, "Sync Now"
+        Exit Sub
+    End If
+
+    ' F3/F4/F5: the change set picks the surface, and a run may use both. Nothing
+    ' batchable (or too many batches to read) means the worksheet handles the
+    ' whole run; otherwise the uniform part is confirmed here and the remainder
+    ' is handed on.
+    Dim fullReport As String
+    If Not ReviewQueue.HasBatchableWork(combined) Then
+        MsgBox ReviewQueue.FastPathRefusalText(combined), vbExclamation, "Sync Now"
+        ReviewChangesCore False
+        Exit Sub
+    End If
+
+    If MsgBox(ReviewQueue.ConfirmBatchText(combined), vbYesNo + vbQuestion, "Sync Now") <> vbYes Then
+        Exit Sub
+    End If
+
+    ' Approved -- run it through the ordinary machinery rather than a shortcut.
+    ' The grid is still written and still consumed, so a fast-path run leaves
+    ' exactly the same audit trail as a reviewed one (F7).
+    Dim logWs As Object
+    Set logWs = WorkbookBridge.GetOrAddWorksheet(wb, "Sync Log")
+
+    For i = lo To hi
+        Dim tmplSld As Object
+        Dim dataWsName As String
+        If DeckRegistry.LookupType(pres, types(i), tmplSld, dataWsName) Then
+            Dim dataSheet As Sheet
+            dataSheet = ExcelOutput.ReadSheet(WorkbookBridge.GetOrAddWorksheet(wb, dataWsName))
+
+            Dim tq As ReviewQueueSet
+            tq = ReviewQueue.BuildQueue(dataSheet, types(i))
+
+            ' ONLY the batched rows. The individual ones stay unapproved here and
+            ' are picked up by the rebuild below -- this is the whole of F5.
+            ReviewQueue.ApproveBatchedOnly tq
+
+            Dim reviewWs As Object
+            Set reviewWs = WorkbookBridge.GetOrAddWorksheet(wb, ReviewQueue.ReviewSheetNameFor(types(i)))
+            ReviewQueue.WriteQueueSheet reviewWs, tq
+
+            fullReport = fullReport & ReviewQueue.ApplyApproved(dataSheet, types(i), reviewWs, logWs) & vbCrLf
+        End If
+    Next i
+
+    ShowSyncResult "Sync Now", fullReport
+
+    ' F6: REBUILD before showing what is left. The worksheet has to describe the
+    ' deck as it is AFTER those writes -- a queue built beforehand would show a
+    ' human a "before" that this same click has already invalidated. Rebuilding
+    ' also drops the rows just applied for free, since they now match.
+    If ReviewQueue.IndividualCount(combined) > 0 Then
+        ReviewChangesCore False
+    End If
+    Exit Sub
+
+End Sub
+
+' The resolution every sync-family action needs, in one place: paired workbook,
+' registered types, and the unsaved-workbook refusal.
+'
+' Factored out while restoring Sync Now, because there were then four copies of
+' it drifting apart. Returns False when the caller should simply stop -- it has
+' already told the human why.
+Private Function ResolveSyncContext(title As String, pres As Object, ByRef wb As Object, _
+                                    ByRef types() As String, ByRef lo As Long, ByRef hi As Long) As Boolean
     Dim workbookPath As String
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath = "" Then
-        MsgBox "This deck has no paired workbook yet -- use 'Onboard New Slide Type' first.", vbExclamation, "Sync Now"
+        MsgBox "This deck has no paired workbook yet -- use 'Onboard New Slide Type' first.", vbExclamation, title
+        Exit Function
+    End If
+
+    types = DeckRegistry.ListRegisteredTypes(pres)
+
+    Dim hasTypes As Boolean
+    On Error Resume Next
+    lo = LBound(types): hi = UBound(types)
+    hasTypes = (Err.Number = 0)
+    On Error GoTo 0
+
+    If Not hasTypes Then
+        MsgBox "This deck has no registered slide types yet -- use 'Onboard New Slide Type' first.", vbExclamation, title
+        Exit Function
+    End If
+
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
+    If wb Is Nothing Then
+        MsgBox "Could not open the paired workbook at: " & workbookPath, vbCritical, title
+        Exit Function
+    End If
+
+    If WorkbookBridge.IsDirty(wb) Then
+        If MsgBox(WorkbookBridge.UnsavedWorkbookText(workbookPath), _
+                  vbYesNo + vbExclamation, title) <> vbYes Then
+            Exit Function
+        End If
+        wb.Save
+    End If
+
+    ResolveSyncContext = True
+End Function
+
+' Toolbar entry point. The real work is in ReviewChangesCore; this exists only
+' to catch anything that escapes it.
+'
+' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
+' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
+' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
+' inline handler would be switched off by the first of them and read as
+' protection while providing none. Putting the handler in a separate frame
+' means nothing inside the body can turn it off, now or after a later edit.
+Public Sub ReviewChanges()
+    On Error GoTo Failed
+    ReviewChangesCore False
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Review Changes", RibbonUI.UnexpectedErrorText("Review Changes", Err.Number, Err.Description, Err.Source)
+End Sub
+
+' The loosened setting (Round 13 §0.1). Builds the identical queue, then ticks
+' every row.
+'
+' A SEPARATE BUTTON rather than a checkbox on the one above, deliberately. The
+' RM's ruling permits wholesale approval only while the work runs on a carved
+' copy, and the risk R13.2 names is that bulk approval "teaches the operator to
+' click through". A distinct button someone presses by name keeps that a
+' decision taken each time and visible in the report -- and makes tightening the
+' deletion of one procedure rather than the unpicking of a flag.
+Public Sub ReviewChangesApproveAll()
+    On Error GoTo Failed
+    ReviewChangesCore True
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Review Changes (approve all)", RibbonUI.UnexpectedErrorText("Review Changes (approve all)", Err.Number, Err.Description, Err.Source)
+End Sub
+
+Private Sub ReviewChangesCore(approveAll As Boolean)
+    Dim title As String
+    title = IIf(approveAll, "Review Changes (approve all)", "Review Changes")
+
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim workbookPath As String
+    workbookPath = DeckRegistry.GetWorkbookPath(pres)
+    If workbookPath = "" Then
+        MsgBox "This deck has no paired workbook yet -- use 'Onboard New Slide Type' first.", vbExclamation, title
         Exit Sub
     End If
 
@@ -70,42 +288,34 @@ Private Sub SyncNowCore()
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet -- use 'Onboard New Slide Type' first.", vbExclamation, "Sync Now"
+        MsgBox "This deck has no registered slide types yet -- use 'Onboard New Slide Type' first.", vbExclamation, title
         Exit Sub
     End If
 
     Dim wb As Object
     Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
     If wb Is Nothing Then
-        MsgBox "Could not open the paired workbook at: " & workbookPath, vbCritical, "Sync Now"
+        MsgBox "Could not open the paired workbook at: " & workbookPath, vbCritical, title
         Exit Sub
     End If
 
-    ' Refuse to sync out of Excel's unsaved buffer -- see WorkbookBridge.IsDirty
-    ' for the live incident. Checked BEFORE planning, not after: the plan itself
-    ' reads the sheet, so a plan built on unsaved data would already be the
-    ' thing being prevented, and the confirmation would be describing values
-    ' that exist in no file.
+    ' Refuse to build a queue out of Excel's unsaved buffer -- see
+    ' WorkbookBridge.IsDirty for the live incident. Checked BEFORE planning, not
+    ' after: the plan reads the sheet, so a queue built on unsaved data would
+    ' show a human before-and-afters whose "after" exists in no file, and they
+    ' would be approving values that could still change before Apply runs.
     If WorkbookBridge.IsDirty(wb) Then
         If MsgBox(WorkbookBridge.UnsavedWorkbookText(workbookPath), _
-                  vbYesNo + vbExclamation, "Sync Now") <> vbYes Then
+                  vbYesNo + vbExclamation, title) <> vbYes Then
             Exit Sub
         End If
         wb.Save
     End If
 
-    ' R9: duplicate identity tags, checked BEFORE planning and before any
-    ' write. Placed here rather than inside the planner because the planner
-    ' cannot report it usefully -- to PlanRoutineSync two slides sharing a key
-    ' simply means one of them matches the row and the other does not exist,
-    ' which is indistinguishable from a normal unmatched slide. The condition
-    ' is only visible by looking across instances, which is what this does.
-    '
-    ' Warns rather than refuses: a duplicate key is a data-entry mistake in the
-    ' deck, not a corruption, and the sync will still do something sensible to
-    ' one of the two slides. Refusing outright would block a whole quarter's
-    ' reporting over a fixable typo. But the consequence is stated plainly and
-    ' the default is to stop.
+    ' R9: duplicate identity tags, checked BEFORE planning. Kept from
+    ' SyncNowCore unchanged -- the planner cannot report this usefully, because
+    ' to PlanRoutineSync two slides sharing a key is indistinguishable from one
+    ' matched slide and one unmatched one. It is only visible across instances.
     Dim dupType As Long
     For dupType = lo To hi
         Dim dupReport As DuplicateKeyReport
@@ -113,57 +323,152 @@ Private Sub SyncNowCore()
         If dupReport.HasDuplicates Then
             If MsgBox(IdentityCheck.DuplicateKeyWarningText(types(dupType), dupReport) & _
                       vbCrLf & vbCrLf & "Continue anyway?", _
-                      vbYesNo + vbExclamation + vbDefaultButton2, "Sync Now") <> vbYes Then
+                      vbYesNo + vbExclamation + vbDefaultButton2, title) <> vbYes Then
                 Exit Sub
             End If
         End If
     Next dupType
 
-    ' Plan every registered type BEFORE writing any of them, so the
-    ' confirmation covers the whole deck rather than the first type only.
-    ' Sync Now is the one toolbar action that can change a deck at scale, and
-    ' until 2026-07-30 it was only kept safe by not being on the toolbar --
-    ' see RunSync.PreviewRoutineSync's header for the 43-orphaned-row
-    ' near-miss this guard exists for.
-    Dim i As Long
-    Dim totCorrect As Long, totCreate As Long, totFlag As Long
-    Dim c1 As Long, c2 As Long, c3 As Long, c4 As Long
-    For i = lo To hi
-        Dim planTemplate As Object
-        Dim planWsName As String
-        If DeckRegistry.LookupType(pres, types(i), planTemplate, planWsName) Then
-            RunSync.PlanCounts WorkbookBridge.GetOrAddWorksheet(wb, planWsName), types(i), c1, c2, c3, c4
-            totCorrect = totCorrect + c2
-            totCreate = totCreate + c3
-            totFlag = totFlag + c4
-        End If
-    Next i
-
-    If totCorrect = 0 And totCreate = 0 Then
-        MsgBox "Nothing to sync -- every linked slide already matches the Data sheet.", _
-               vbInformation, "Sync Now"
-        Exit Sub
-    End If
-
-    If MsgBox(RunSync.ConfirmSyncText(totCorrect, totCreate, totFlag), _
-              vbYesNo + vbQuestion, "Sync Now") <> vbYes Then
-        Exit Sub
-    End If
-
     Dim fullReport As String
+    Dim totalQueued As Long
+    Dim firstSheet As Object
+
+    Dim i As Long
     For i = lo To hi
         Dim templateSld As Object
         Dim wsName As String
         If DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
             Dim ws As Object
             Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
-            fullReport = fullReport & RunSync.RunRoutineSync(ws, types(i), templateSld) & vbCrLf
+
+            Dim sheet As Sheet
+            sheet = ExcelOutput.ReadSheet(ws)
+
+            Dim q As ReviewQueueSet
+            q = ReviewQueue.BuildQueue(sheet, types(i))
+            totalQueued = totalQueued + q.Count
+
+            Dim reviewWs As Object
+            Set reviewWs = WorkbookBridge.GetOrAddWorksheet(wb, ReviewQueue.ReviewSheetNameFor(types(i)))
+            ReviewQueue.WriteQueueSheet reviewWs, q
+            If approveAll Then ReviewQueue.ApproveAllInSheet reviewWs
+            If firstSheet Is Nothing Then Set firstSheet = reviewWs
+
+            fullReport = fullReport & "=== " & types(i) & " ===" & vbCrLf & _
+                ReviewQueue.QueueSummaryText(q) & vbCrLf
         Else
             fullReport = fullReport & "SKIPPED " & types(i) & ": registered type's template slide no longer resolves (was it deleted?)" & vbCrLf
         End If
     Next i
 
-    ShowSyncResult "Sync Now", fullReport
+    If approveAll And totalQueued > 0 Then
+        fullReport = "APPROVE-ALL: every queued change has been ticked without" & vbCrLf & _
+            "individual review. Permitted on a scratch copy only." & vbCrLf & vbCrLf & fullReport
+    End If
+
+    ' Bring the review sheet to the front. Leaving the human to go and find it
+    ' is how a review becomes optional in practice while remaining mandatory on
+    ' paper -- the same distinction R13 is about.
+    If Not firstSheet Is Nothing And totalQueued > 0 Then
+        On Error Resume Next
+        firstSheet.Activate
+        wb.Activate
+        On Error GoTo 0
+    End If
+
+    ShowSyncResult title & " (nothing written)", fullReport
+End Sub
+
+' Toolbar entry point. The real work is in ApplyApprovedCore; this exists only
+' to catch anything that escapes it. Same separate-frame reasoning as above.
+Public Sub ApplyApprovedChanges()
+    On Error GoTo Failed
+    ApplyApprovedCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Apply Approved", RibbonUI.UnexpectedErrorText("Apply Approved", Err.Number, Err.Description, Err.Source)
+End Sub
+
+' The only path in this add-in that writes a field value to a slide as part of a
+' sync. Everything it writes was ticked by a human and revalidated against the
+' live slide immediately before the write.
+Private Sub ApplyApprovedCore()
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim workbookPath As String
+    workbookPath = DeckRegistry.GetWorkbookPath(pres)
+    If workbookPath = "" Then
+        MsgBox "This deck has no paired workbook yet -- nothing to apply.", vbExclamation, "Apply Approved"
+        Exit Sub
+    End If
+
+    Dim types() As String
+    types = DeckRegistry.ListRegisteredTypes(pres)
+
+    Dim lo As Long, hi As Long, hasTypes As Boolean
+    On Error Resume Next
+    lo = LBound(types): hi = UBound(types)
+    hasTypes = (Err.Number = 0)
+    On Error GoTo 0
+
+    If Not hasTypes Then
+        MsgBox "This deck has no registered slide types yet -- nothing to apply.", vbExclamation, "Apply Approved"
+        Exit Sub
+    End If
+
+    Dim wb As Object
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
+    If wb Is Nothing Then
+        MsgBox "Could not open the paired workbook at: " & workbookPath, vbCritical, "Apply Approved"
+        Exit Sub
+    End If
+
+    ' The ticks live in the workbook, so an unsaved workbook means the
+    ' approvals being read are on screen and not in any file. Same refusal as
+    ' the review step, for the same reason.
+    If WorkbookBridge.IsDirty(wb) Then
+        If MsgBox(WorkbookBridge.UnsavedWorkbookText(workbookPath), _
+                  vbYesNo + vbExclamation, "Apply Approved") <> vbYes Then
+            Exit Sub
+        End If
+        wb.Save
+    End If
+
+    Dim logWs As Object
+    Set logWs = WorkbookBridge.GetOrAddWorksheet(wb, "Sync Log")
+
+    Dim fullReport As String
+    Dim i As Long
+    For i = lo To hi
+        Dim templateSld As Object
+        Dim wsName As String
+        If DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
+            Dim reviewName As String
+            reviewName = ReviewQueue.ReviewSheetNameFor(types(i))
+
+            If Not WorkbookBridge.WorksheetExists(wb, reviewName) Then
+                fullReport = fullReport & "=== " & types(i) & " ===" & vbCrLf & _
+                    "No review has been built for this type. Run 'Review Changes' first." & vbCrLf & vbCrLf
+            Else
+                Dim ws As Object
+                Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
+
+                Dim sheet As Sheet
+                sheet = ExcelOutput.ReadSheet(ws)
+
+                Dim reviewWs As Object
+                Set reviewWs = WorkbookBridge.GetOrAddWorksheet(wb, reviewName)
+
+                fullReport = fullReport & _
+                    ReviewQueue.ApplyApproved(sheet, types(i), reviewWs, logWs) & vbCrLf
+            End If
+        Else
+            fullReport = fullReport & "SKIPPED " & types(i) & ": registered type's template slide no longer resolves (was it deleted?)" & vbCrLf
+        End If
+    Next i
+
+    ShowSyncResult "Apply Approved", fullReport
 End Sub
 
 ' Toolbar entry point. The real work is in SyncPreviewCore; this exists only to

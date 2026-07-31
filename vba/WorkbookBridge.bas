@@ -115,6 +115,24 @@ Public Function GetOrAddWorksheet(wb As Object, sheetName As String) As Object
     Set GetOrAddWorksheet = ws
 End Function
 
+' Does `wb` already have a sheet by this name -- asked without creating one.
+'
+' GetOrAddWorksheet is the wrong tool for "is there a review to apply?": its Add
+' half would answer the question by making the answer yes, leaving a blank sheet
+' behind and reporting an empty queue as though a real review had come back with
+' nothing ticked. Those two outcomes need to stay distinguishable, because one
+' means "you approved nothing" and the other means "you never reviewed".
+Public Function WorksheetExists(wb As Object, sheetName As String) As Boolean
+    Dim ws As Object
+    For Each ws In wb.Worksheets
+        If ws.Name = sheetName Then
+            WorksheetExists = True
+            Exit Function
+        End If
+    Next ws
+    WorksheetExists = False
+End Function
+
 ' Excel sheet names: max 31 chars, cannot contain \ / ? * [ ] : -- and
 ' cannot be blank. `slideType` is a free-form string with no such
 ' guarantee, so this is the one genuinely new piece of logic in this

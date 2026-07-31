@@ -91,12 +91,34 @@ Public Sub ShowToolbar()
     '
     ' It is also the safest possible first action on an unfamiliar machine,
     ' which is the situation it was asked for.
-    AddButton bar, "Preview Sync", "RibbonUI.SyncPreview", 1090, "Show exactly what Sync Now would change in this deck -- reads only, writes nothing."
+    AddButton bar, "Preview Sync", "RibbonUI.SyncPreview", 1090, "Show everything the paired workbook would change in this deck -- reads only, writes nothing."
 
-    ' Writes, and confirms before it does -- see this Sub's header for why it
-    ' is on the toolbar despite the rule, and RunSync.ConfirmSyncText for what
-    ' the confirmation says.
-    AddButton bar, "Sync Now", "RibbonUI.SyncNow", 1004, "Pull changes from the paired Data workbook onto every already-linked slide in this deck. Shows what will change and asks before writing."
+    ' R13, 2026-07-31. Sync Now survives, but it can no longer write anything a
+    ' human has not seen. It was briefly deleted earlier the same day on the
+    ' reasoning that its old count-based confirmation could not satisfy R13;
+    ' Rohan corrected that -- R13.2 makes a verified uniform batch ONE decision,
+    ' so a change set that collapses into a few uniform transformations can
+    ' honestly be shown and approved in a dialog. It refuses to the review sheet
+    ' the moment anything needs reading individually.
+    '
+    ' None of the three below bends the "only add an operation when I'm fully
+    ' clear it works" rule. Review Changes cannot write to the deck at all -- it
+    ' builds a worksheet. Sync Now and Apply Approved write, but only what a
+    ' human approved, only after revalidating each change against the live
+    ' slide, and only after taking a backup.
+    ' Batch-aware: shows every uniform transformation in full and applies them on
+    ' one confirmation, or refuses to the review sheet when anything needs
+    ' reading individually. See RibbonUI.SyncNowCore.
+    AddButton bar, "Sync Now", "RibbonUI.SyncNow", 1004, "Apply the workbook's changes. If every change is the same transformation repeated, it shows them and asks once; if anything needs reading one at a time, it sends you to the review sheet instead."
+
+    AddButton bar, "Review Changes", "RibbonUI.ReviewChanges", 1090, "Build the list of every change the workbook would make to this deck, as a 'Sync Review' sheet showing current vs proposed per slide. Writes nothing to the deck."
+
+    ' The loosened setting (Round 13 SS0.1) -- permitted on a scratch copy only,
+    ' and a separate button precisely so that using it is a decision taken each
+    ' time rather than a default. Delete this one line to enforce full R13.
+    AddButton bar, "Review + Approve All", "RibbonUI.ReviewChangesApproveAll", 463, "SCRATCH COPIES ONLY: builds the same review sheet and ticks every row without individual review. Still writes nothing until you run Apply Approved."
+
+    AddButton bar, "Apply Approved", "RibbonUI.ApplyApprovedChanges", 3, "Write the changes you ticked in the 'Sync Review' sheet onto the slides. Takes a backup first, re-checks each change against the slide, and skips anything that has moved since you approved it."
 
     ' Writes, and confirms before it does -- same shape as Sync Now, and on the
     ' toolbar for the same reason. It is also the one action that has to be
