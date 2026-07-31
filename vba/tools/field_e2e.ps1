@@ -16,10 +16,17 @@ param(
     [string]$FieldId = "ABOUT_BODY",
     [string]$TsvPath = "C:\Users\rohan\deck-sync-e2e\field_values.tsv",
     [string]$Entities = "",
+    # Publishing writes with -Write. It briefly reused $ApproveAll, which is a
+    # parameter of the OTHER driver and was never declared here -- so it was
+    # undefined, and PowerShell evaluated it as false rather than erroring,
+    # which made every publish run silently preview. Set-StrictMode below turns
+    # that class of mistake into a failure instead of a wrong answer.
+    [switch]$Write,
     [string]$RepoRoot = $(Split-Path -Parent (Split-Path -Parent $PSScriptRoot)),
     [string]$OutFile = (Join-Path $env:TEMP "about_body_e2e_report.txt")
 )
 
+Set-StrictMode -Version Latest   # an undefined variable must ERROR, not read as false
 $ErrorActionPreference = "Stop"
 
 foreach ($progId in @("PowerPoint.Application","Excel.Application")) {
@@ -95,7 +102,7 @@ try {
             @([string]"E2EField.BuildDraftSheet",[string]$RegisterPath,[string]$Period,[string]$FieldId))
     } elseif ($Mode -eq "publish" -or $Mode -eq "publishapply") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
-            @([string]"E2EField.PublishDraftSheet",[string]$RegisterPath,[string]$FieldId,[string]$ApproveAll))
+            @([string]"E2EField.PublishDraftSheet",[string]$RegisterPath,[string]$FieldId,[string]$(if ($Write) { "apply" } else { "preview" })))
     } elseif ($Mode -eq "deleteentities") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
             @([string]"E2EField.DeleteEntities",[string]$DeckPath,[string]$RegisterPath,[string]$Entities))
