@@ -201,3 +201,28 @@ draft and a typo alike, and useless about all three. `RejectedSeed` / `RejectedD
 `RejectedUnknownStatus` are reported separately because they are three different situations
 wearing one number — the same failure as F1's ambiguous zero, in the status column.
 
+---
+
+## Known gap: `Chrome` is a human decision with no machine cross-check
+
+`TemplateAudit` writes a worksheet column asking a person to decide `field / chrome / drop`
+for each untracked text item. Nothing consults that decision afterwards. A shape triaged
+`chrome` can be marked as a live field by `BatchOnboardFlow.MarkShapeForBatch` later, and
+the two mechanisms never meet.
+
+**Deliberately not "fixed" with a guard**, because the guard could not fire. The audit's
+answers live only in a worksheet a human filled in; nothing writes a decision back onto the
+shape. A check consulting a marker that nothing sets would read as protection and provide
+none — the failure this document is full of examples of, and the last thing to add while
+documenting it.
+
+**The real fix, when it is worth doing:** the audit gains an accept step that tags each
+shape with its decision, and `MarkShapeForBatch` refuses — or at least warns — on a shape
+tagged `chrome`. That makes the decision durable and queryable instead of a row in a sheet
+someone once filled in.
+
+**Until then this is the one taxonomy in the system whose enforcement is entirely human**,
+and it is worth knowing which one that is. Risk is currently low: onboarding is manual and
+slow, and the person marking a shape is the same person who triaged it, usually in the same
+sitting. It rises the moment onboarding is done by someone else, or long after the audit.
+

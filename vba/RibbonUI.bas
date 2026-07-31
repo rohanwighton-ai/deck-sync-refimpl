@@ -182,18 +182,39 @@ Private Sub SyncNowCore()
             Set reviewWs = WorkbookBridge.GetOrAddWorksheet(wb, ReviewQueue.ReviewSheetNameFor(types(i)))
             ReviewQueue.WriteQueueSheet reviewWs, tq
 
+            ' APPLY AND REBUILD ARE COUPLED PER TYPE, inside the loop.
+            '
+            ' They used to be apply-per-type in the loop and rebuild-once after
+            ' it. ApplyApproved marks the sheet CONSUMED, so a COM error on
+            ' type 2 jumped to the outer handler and skipped the rebuild for
+            ' type 1 as well -- leaving type 1's slides already written, its
+            ' review sheet stamped Consumed, and its individual prose rows
+            ' behind a refusal ("already been applied") with nothing telling the
+            ' human that Review Changes needed re-running to resurface them.
+            '
+            ' F6 says the rebuild is not optional. That only holds if it cannot
+            ' be skipped by something happening to a different type.
             fullReport = fullReport & ReviewQueue.ApplyApproved(dataSheet, types(i), reviewWs, logWs) & vbCrLf
+
+            Dim afterQ As ReviewQueueSet
+            afterQ = ReviewQueue.BuildQueue(dataSheet, types(i))
+            ReviewQueue.WriteQueueSheet reviewWs, afterQ
+            If afterQ.Count > 0 Then
+                fullReport = fullReport & "  " & afterQ.Count & " change(s) still pending for " & _
+                    types(i) & " -- see its review sheet." & vbCrLf
+            End If
         End If
     Next i
 
     ShowSyncResult "Sync Now", fullReport
 
-    ' F6: REBUILD before showing what is left. The worksheet has to describe the
-    ' deck as it is AFTER those writes -- a queue built beforehand would show a
-    ' human a "before" that this same click has already invalidated. Rebuilding
-    ' also drops the rows just applied for free, since they now match.
+    ' The per-type rebuild above has already refreshed every sheet, so the
+    ' remaining job is only to put the human in front of one when there is
+    ' something left to read.
     If ReviewQueue.IndividualCount(combined) > 0 Then
-        ReviewChangesCore False
+        MsgBox ReviewQueue.IndividualCount(combined) & " change(s) still need reading one at a time." & vbCrLf & _
+               "Their review sheet(s) have been refreshed to match the deck as it is now.", _
+               vbInformation, "Sync Now"
     End If
     Exit Sub
 

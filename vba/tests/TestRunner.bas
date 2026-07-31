@@ -208,6 +208,16 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_Register_BlankTypeAndCadenceCollision()
+    AppendResult report, "Register_BlankTypeAndCadenceCollision", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_RunSync_CreateMissingRefusesWhileSlidesAreUnclassified()
+    AppendResult report, "RunSync_CreateMissingRefusesWhileSlidesAreUnclassified", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_PlaceholderCheck_FindsRecordsNotTheTemplate()
     AppendResult report, "PlaceholderCheck_FindsRecordsNotTheTemplate", r
     On Error GoTo 0
@@ -2207,6 +2217,126 @@ Private Function Test_Drafting_OnlyTickedNonEmptyDraftsPublish() As String
     wb.Close False
     xl.Quit
     Test_Drafting_OnlyTickedNonEmptyDraftsPublish = result
+End Function
+
+Private Function Test_Register_BlankTypeAndCadenceCollision() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+
+    ws.Cells(1, 1).Value = "Quarter":   ws.Cells(1, 2).Value = "EntityCode"
+    ws.Cells(1, 3).Value = "SlideType": ws.Cells(1, 4).Value = "FieldID"
+    ws.Cells(1, 5).Value = "Value":     ws.Cells(1, 6).Value = "Status"
+
+    ' A BLANK SlideType must match NOTHING. It used to match everything.
+    ws.Cells(2, 1).Value = "ALL": ws.Cells(2, 2).Value = "P001": ws.Cells(2, 3).Value = ""
+    ws.Cells(2, 4).Value = "ABOUT_BODY": ws.Cells(2, 5).Value = "blank type": ws.Cells(2, 6).Value = "Approved"
+
+    ' CADENCE COLLISION, ALL first then the period row -- the period row wins.
+    ws.Cells(3, 1).Value = "ALL": ws.Cells(3, 2).Value = "P002": ws.Cells(3, 3).Value = "q"
+    ws.Cells(3, 4).Value = "ABOUT_BODY": ws.Cells(3, 5).Value = "static value": ws.Cells(3, 6).Value = "Approved"
+    ws.Cells(4, 1).Value = "FY26Q4": ws.Cells(4, 2).Value = "P002": ws.Cells(4, 3).Value = "q"
+    ws.Cells(4, 4).Value = "ABOUT_BODY": ws.Cells(4, 5).Value = "period value": ws.Cells(4, 6).Value = "Approved"
+
+    ' The SAME collision in the OPPOSITE row order. Precedence must not depend
+    ' on which row sits lower in the sheet -- that was the whole defect.
+    ws.Cells(5, 1).Value = "FY26Q4": ws.Cells(5, 2).Value = "P003": ws.Cells(5, 3).Value = "q"
+    ws.Cells(5, 4).Value = "ABOUT_BODY": ws.Cells(5, 5).Value = "period value": ws.Cells(5, 6).Value = "Approved"
+    ws.Cells(6, 1).Value = "ALL": ws.Cells(6, 2).Value = "P003": ws.Cells(6, 3).Value = "q"
+    ws.Cells(6, 4).Value = "ABOUT_BODY": ws.Cells(6, 5).Value = "static value": ws.Cells(6, 6).Value = "Approved"
+
+    Dim r As RegisterRead
+    r = Register.ReadRegister(ws, "FY26Q4", "q")
+
+    result = result & Assert(Not r.Data.Rows.Exists("P001"), "a BLANK SlideType matches nothing -- it used to match every deck")
+    result = result & Assert(r.RejectedBlankType = 1, "the blank-type row is counted, got " & r.RejectedBlankType)
+
+    result = result & Assert(r.Data.Rows("P002")("ABOUT_BODY") = "period value", _
+        "period row beats ALL when it comes second, got '" & r.Data.Rows("P002")("ABOUT_BODY") & "'")
+    result = result & Assert(r.Data.Rows("P003")("ABOUT_BODY") = "period value", _
+        "period row beats ALL when it comes FIRST too -- precedence is declared, not row order, got '" & r.Data.Rows("P003")("ABOUT_BODY") & "'")
+    result = result & Assert(r.CadenceCollisions = 2, "both collisions counted, got " & r.CadenceCollisions)
+
+    Dim diag As String
+    diag = Register.ReadDiagnostic(r, "FY26Q4")
+    result = result & Assert(InStr(diag, "BLANK SlideType") > 0, "the blank type is reported, not silently dropped")
+    result = result & Assert(InStr(diag, "TWO cadences") > 0, "the cadence clash is reported even though precedence resolved it")
+
+    wb.Close False
+    xl.Quit
+    Test_Register_BlankTypeAndCadenceCollision = result
+End Function
+
+Private Function Test_RunSync_CreateMissingRefusesWhileSlidesAreUnclassified() As String
+    Dim result As String
+
+    ' The MECE case: a slide keeps its slide_type tag but has lost its
+    ' instance_key. It is reported `flagged`, AND the register row for the
+    ' entity it used to be is reported `new_record`. Creating slides in that
+    ' state duplicates the template for an entity that already has a slide.
+    ' Two args, not four -- the helper builds its own Title/Status shapes.
+    Dim keyed As Object
+    Set keyed = NewOnboardedSlide("cm-type", "CM001")
+
+    Dim orphan As Object
+    Set orphan = NewBlankSlide()
+    orphan.Tags.Add "slide_type", "cm-type"      ' typed, but NO instance_key
+
+    Dim sheet As Sheet
+    Set sheet.Rows = CreateObject("Scripting.Dictionary")
+    Set sheet.Fields = New Collection
+    Set sheet.InstanceOrder = New Collection
+    Dim vals As Object
+    Set vals = CreateObject("Scripting.Dictionary")
+    vals("Title") = "Real Project Name"
+    Set sheet.Rows("CM001") = vals
+    sheet.InstanceOrder.Add "CM001"
+    Dim vals2 As Object
+    Set vals2 = CreateObject("Scripting.Dictionary")
+    vals2("Title") = "orphaned"
+    Set sheet.Rows("CM002") = vals2
+    sheet.InstanceOrder.Add "CM002"
+
+    Dim before As Long
+    before = Application.ActivePresentation.Slides.count
+
+    Dim rep As String
+    rep = RunSync.CreateMissingSlides(sheet, "cm-type", keyed, False)
+
+    result = result & Assert(InStr(rep, "REFUSED") > 0, "it REFUSES while a slide of this type is unclassified")
+    result = result & Assert(InStr(rep, "two slides claiming one project") > 0, "the refusal explains the consequence, not just the rule")
+    result = result & Assert(Application.ActivePresentation.Slides.count = before, _
+        "and NOTHING was created -- the refusal is a control, not a warning, got " & Application.ActivePresentation.Slides.count & " vs " & before)
+
+    ' Prove the test would FAIL if the guard were removed: with no unclassified
+    ' slide present, the same call must go ahead and create. A refusal test that
+    ' cannot show the non-refusing case proves only that the function returns a
+    ' string.
+    orphan.Delete
+    Dim before2 As Long
+    before2 = Application.ActivePresentation.Slides.count
+    Dim rep2 As String
+    rep2 = RunSync.CreateMissingSlides(sheet, "cm-type", keyed, False)
+    result = result & Assert(InStr(rep2, "REFUSED") = 0, "with no unclassified slide it does NOT refuse")
+    result = result & Assert(Application.ActivePresentation.Slides.count = before2 + 1, _
+        "and it DOES create the missing slide, got " & Application.ActivePresentation.Slides.count & " vs " & before2)
+
+    ' clean up whatever the second call created
+    Dim extra As Object
+    For Each extra In Application.ActivePresentation.Slides
+        Dim ei As SlideInstance
+        ei = Resolve.ResolveSlideInstance(extra)
+        If ei.HasInstanceKey Then
+            If ei.InstanceKey = "CM002" Then extra.Delete
+        End If
+    Next extra
+
+    keyed.Delete
+    Test_RunSync_CreateMissingRefusesWhileSlidesAreUnclassified = result
 End Function
 
 Private Function Test_PlaceholderCheck_FindsRecordsNotTheTemplate() As String

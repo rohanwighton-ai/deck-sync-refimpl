@@ -218,6 +218,46 @@ Public Function CreateMissingSlides(sheet As Sheet, slideType As String, templat
     hasActions = (Err.Number = 0)
     On Error GoTo 0
 
+    ' REFUSE WHILE ANY SLIDE OF THIS TYPE IS UNCLASSIFIED.
+    '
+    ' The two classifications are not mutually exclusive, and this is the
+    ' operation where that bites. A slide that keeps its slide_type tag but
+    ' loses its instance_key is reported `flagged` -- AND the register row for
+    ' the entity it should represent is reported `new_record`, because nothing
+    ' claims that key any more. One broken slide, two categories.
+    '
+    ' Create Missing Slides is the documented remedy for new_record. Run in that
+    ' state it duplicates the template into a SECOND slide for the entity while
+    ' the original sits there untagged -- two slides silently claiming one
+    ' project, and the remedy is what created the duplicate. Found by a MECE
+    ' audit 2026-07-31; present in the Python reference implementation too, so
+    ' it is original design rather than a port slip.
+    '
+    ' Refusing rather than warning: unlike a duplicate key, which is a fixable
+    ' typo that should not block a quarter, this operation is the ONLY thing
+    ' that adds slides in bulk, and the wrong answer is unrecoverable by the
+    ' tool itself. The flagged slide almost certainly IS the entity about to be
+    ' duplicated -- re-tagging it is the correct fix and costs one action.
+    Dim flaggedCount As Long
+    If hasActions Then
+        Dim fi As Long
+        For fi = lo To hi
+            If actions(fi).Kind = "flagged" Then flaggedCount = flaggedCount + 1
+        Next fi
+    End If
+
+    If flaggedCount > 0 Then
+        report = report & vbCrLf & _
+            "REFUSED: " & flaggedCount & " slide(s) of this type are UNCLASSIFIED." & vbCrLf & vbCrLf & _
+            "A slide that has lost its instance key is reported both as flagged AND" & vbCrLf & _
+            "as a missing slide for the entity it used to be. Creating slides now" & vbCrLf & _
+            "would duplicate the template for entities that ALREADY HAVE a slide," & vbCrLf & _
+            "leaving two slides claiming one project." & vbCrLf & vbCrLf & _
+            "Re-tag the flagged slide(s) first, then run this again." & vbCrLf
+        CreateMissingSlides = report
+        Exit Function
+    End If
+
     Dim createdCount As Long, failedCount As Long
     If hasActions Then
         Dim i As Long

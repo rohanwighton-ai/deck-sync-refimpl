@@ -86,6 +86,8 @@ Public Type RegisterRead
     RejectedUnknownStatus As Long  ' ...of which: not a recognised status at all -- a typo
     RejectedPeriod As Long     ' dropped because Quarter matched neither the deck period nor ALL
     RejectedType As Long       ' dropped because SlideType is a different type
+    RejectedBlankType As Long  ' dropped because SlideType was BLANK -- see the walk below
+    CadenceCollisions As Long  ' same EntityCode+FieldID supplied at two cadences
     Accepted As Long
     AcceptedPeriod As Long     ' accepted because Quarter matched the DECK PERIOD
     AcceptedStatic As Long     ' accepted because Quarter = ALL -- these match ANY period
@@ -167,6 +169,11 @@ Private Function ReadRegisterCore(ws As Object, deckPeriod As String, slideType 
     Dim seenFields As Object
     Set seenFields = CreateObject("Scripting.Dictionary")
 
+    ' entity+field -> True when the value currently held came from a
+    ' period-specific row. Drives the precedence rule below.
+    Dim cadenceSeen As Object
+    Set cadenceSeen = CreateObject("Scripting.Dictionary")
+
     Dim r As Long
     For r = 2 To lastRow
         Dim entity As String, fieldId As String
@@ -190,7 +197,21 @@ Private Function ReadRegisterCore(ws As Object, deckPeriod As String, slideType 
             ' Filter order matters for the diagnostics, not for the result:
             ' each row is attributed to the FIRST reason it was dropped, so the
             ' counts sum to RowsSeen and a human can read them as a funnel.
-            If cSlideType > 0 And rowType <> "" And StrComp(rowType, slideType, vbTextCompare) <> 0 Then
+            ' A BLANK SlideType IS REJECTED, NOT TREATED AS A WILDCARD.
+            '
+            ' It used to fall through -- `rowType <> ""` made the whole
+            ' condition False -- so an empty cell matched EVERY type that read
+            ' the register. Under the RM's "one workbook, many decks" ruling
+            ' that is one Delete keystroke away from injecting one entity's
+            ' value into an unrelated slide type's sync.
+            '
+            ' The inconsistency is what made it wrong rather than merely loose:
+            ' an unrecognised Status is a loud, reported refusal, while an unset
+            ' SlideType was a silent match-everything. Two unknowns in one
+            ' register resolving in opposite directions. Both now fail closed.
+            If cSlideType > 0 And rowType = "" Then
+                result.RejectedBlankType = result.RejectedBlankType + 1
+            ElseIf cSlideType > 0 And StrComp(rowType, slideType, vbTextCompare) <> 0 Then
                 result.RejectedType = result.RejectedType + 1
             ElseIf Not ignoreStatus And StrComp(Trim(CStr(ws.Cells(r, cStatus).Value)), STATUS_APPROVED, vbTextCompare) <> 0 Then
                 result.RejectedStatus = result.RejectedStatus + 1
@@ -235,7 +256,56 @@ Private Function ReadRegisterCore(ws As Object, deckPeriod As String, slideType 
                     result.Data.InstanceOrder.Add entity
                 End If
 
-                result.Data.Rows(entity)(fieldId) = CStr(ws.Cells(r, cValue).Value)
+                ' CADENCE PRECEDENCE IS DECLARED, NOT LEFT TO ROW ORDER.
+                '
+                ' Nothing stops the register carrying BOTH a Quarter = ALL row
+                ' and a period row for one EntityCode+FieldID. Both pass every
+                ' filter above, so the value that reached the sync used to be
+                ' simply whichever sat lower in the sheet -- a silent race
+                ' decided by physical row position, in a module that otherwise
+                ' goes out of its way to name every ambiguity it meets.
+                '
+                ' The rule: THE PERIOD-SPECIFIC ROW WINS. A row written for this
+                ' quarter is a more specific statement than one written for every
+                ' quarter, and it is the one a human edited most recently on
+                ' purpose. An ALL row can no longer overwrite a period row it
+                ' happens to follow.
+                '
+                ' Either way the clash is COUNTED, because two rows disagreeing
+                ' about one field is a data error worth surfacing even when the
+                ' precedence rule resolves it correctly.
+                Dim isStaticRow As Boolean
+                isStaticRow = (StrComp(q, QUARTER_ALL, vbTextCompare) = 0)
+
+                Dim cadenceKey As String
+                cadenceKey = entity & Chr(1) & fieldId
+
+                If cadenceSeen.Exists(cadenceKey) Then
+                    result.CadenceCollisions = result.CadenceCollisions + 1
+                    ' Already have a value. Only a period row may displace it,
+                    ' and only if what is there came from an ALL row.
+                    ' Keep what is there when the INCOMING row is ALL (never
+                    ' displaces), or when the INCUMBENT is already
+                    ' period-specific (first period row wins).
+                    '
+                    ' This read `Or Not CBool(...)` at first, which inverted the
+                    ' incumbent test: a period row arriving after an ALL row --
+                    ' the exact case the rule exists for -- was kept out. The
+                    ' opposite row order passed anyway, because an incoming ALL
+                    ' never displaces regardless, so a test asserting only one
+                    ' order would have called this correct.
+                    If isStaticRow Or CBool(cadenceSeen(cadenceKey)) Then
+                        ' incoming is ALL, or the incumbent is already
+                        ' period-specific -- keep what is there
+                    Else
+                        result.Data.Rows(entity)(fieldId) = CStr(ws.Cells(r, cValue).Value)
+                        cadenceSeen(cadenceKey) = True
+                    End If
+                Else
+                    result.Data.Rows(entity)(fieldId) = CStr(ws.Cells(r, cValue).Value)
+                    ' True means "this value came from a period-specific row"
+                    cadenceSeen(cadenceKey) = Not isStaticRow
+                End If
 
                 If Not seenFields.Exists(fieldId) Then
                     seenFields(fieldId) = True
@@ -293,6 +363,16 @@ Public Function ReadDiagnostic(r As RegisterRead, deckPeriod As String) As Strin
     ' the sentence inside the AcceptedPeriod > 0 arm only, so a register whose
     ' accepted rows were all entity-static reported the seed count as a number
     ' in a list and never said what it meant. Caught by its own test.
+    If r.RejectedBlankType > 0 Then
+        warn = warn & "WARNING: " & r.RejectedBlankType & " row(s) have a BLANK SlideType and were skipped." & vbCrLf & _
+            "A blank type used to match every deck; it now matches none." & vbCrLf & vbCrLf
+    End If
+    If r.CadenceCollisions > 0 Then
+        warn = warn & "WARNING: " & r.CadenceCollisions & " field(s) are supplied at TWO cadences" & vbCrLf & _
+            "(both Quarter = " & QUARTER_ALL & " and a period). The period row wins." & vbCrLf & _
+            "Two rows disagreeing about one field is a data error -- fix the register." & vbCrLf & vbCrLf
+    End If
+
     Dim held As String
     If r.RejectedSeed > 0 Then
         held = r.RejectedSeed & " seed row(s) held back -- seeding is not approving." & vbCrLf
