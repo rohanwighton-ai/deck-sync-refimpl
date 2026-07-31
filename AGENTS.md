@@ -52,7 +52,28 @@ guidance.
   `otherSlideCandCount()`) instead of a Dictionary -- see
   `SPIKE_NOTES_BatchOnboardFlow.md`.
 
-- **OPEN BUG (2026-07-31): writing a PowerPoint CustomDocumentProperty often
+- **ONE WRITER ON THE RIG AT A TIME. Delegating an Office task means not doing
+  it yourself.** 2026-08-01: a Fable agent was put on the property-persistence
+  bug, and the main agent then ran the same experiments concurrently -- same
+  49MB deck at `deck-sync-e2e\e2e-deck.pptx`, same uncommitted working tree,
+  and repeated `Stop-Process -Force` on POWERPNT/EXCEL between its own runs.
+  Those kills landed on the agent's live Office session. It reported
+  "unexplained crashes" and only diagnosed the cause by sweeping for stray
+  PowerPoint processes and finding a second `wsl.exe` parent. It was reading the
+  main agent's half-finished edits to `E2EField.bas` off the shared filesystem
+  at the same time.
+  **Why this is worse here than in ordinary parallel work:** the shared state is
+  not just the repo. It is a single external file that Office holds open, plus a
+  global process namespace where "kill all PowerPoint" cannot be scoped to one
+  caller. Two agents cannot both own that.
+  **The rule:** one active writer on `deck-sync-e2e/` at a time. If a second
+  session genuinely needs to run, give it its own rig copy AND accept that
+  process kills are still global -- so in practice, wait. Results obtained while
+  another actor was writing the same rig should be treated as unreliable
+  regardless of what they say; several of that night's confusing measurements
+  are now suspect for exactly this reason.
+
+- **RESOLVED 2026-08-01, was an open bug: writing a PowerPoint CustomDocumentProperty often
   does not persist, and reporting success proves nothing.** `pres.Save` returns
   cleanly, `pres.Saved` flips to True, and reading the property back in the same
   session returns the NEW value -- while the file on disk still holds the old
