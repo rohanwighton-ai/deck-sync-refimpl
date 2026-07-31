@@ -13,11 +13,44 @@ Nothing below can be settled between the two AI sides. Listed first, per protoco
 
 | # | Decision | Why it is yours |
 |---|---|---|
-| **RM1** | **What is a composite deck actually for?** Board pack, funder submission, portal upload, internal review — or several, each a different cut? | Everything downstream keys off this and neither side knows. It determines whether audience cuts are a core feature or a nice-to-have. |
-| **RM2** | **Is the compiler wanted now, or after the text pipeline?** | The register's design differs depending on the answer, but so does whether any of this is worth doing this quarter. |
+| **RM1** | **What is a composite deck actually for?** Board pack, funder submission, portal upload — or several, each a different cut? | Still open, but far less load-bearing than it was an hour ago. See the ruling below. |
+| ~~RM2~~ | ~~Is the compiler wanted now?~~ | **ANSWERED — see §0.** |
 | **RM3** | **One register workbook across all decks, or one per deck?** Round 7 §3 states the record is one workbook across all quarters — agreed and not disputed. The open part is what happens when decks split by slide type. | It is a property of the record, but it is caused by a presentation decision. It falls between the two lanes, which is why it is yours. |
 | **RM4** | **The two live copy cases** — a slide copied for review, and a slide copied to start a new quarter. | Already flagged as yours in round 7 §4. Both are working-practice questions, not design ones. |
 | **RM5** | **VBA or Office JavaScript for composition.** | A real fork with cost and timeline consequences. Detail in §7 below; the technical facts are measured, the choice is not technical. |
+
+---
+
+## 0. Governing ruling — the compiler may never be software
+
+**Direction from the Research Manager, received while this document was being written:**
+
+> The compiler may only ever be a human doing it manually. The slide-update mechanism has to
+> work on the assumption that a compiler application never exists.
+
+This is the single most consequential statement in the exchange so far and it **simplifies
+more than it complicates**. Four things fall out of it immediately.
+
+**It dissolves the technology fork.** The VBA-versus-Office-JavaScript blocker (§7) exists
+only because *code* cannot control keep-source-formatting when moving slides between
+presentations. A human doing it in PowerPoint uses the UI, and **the UI has always had that
+control** — it is offered as a smart tag on paste. The capability VBA lacks is one a person
+already has. So the fork that has blocked progression step 4 since 2026-07-30 is not a
+blocker at all under this ruling; it was an artefact of assuming the compiler would be code.
+
+**It removes the Build sheet from the critical path.** A manifest exists to tell a program
+which slides to assemble in what order. A human assembling by hand does not read a manifest.
+§5 stands as design history and as the answer to "does the compiler read the register", but
+it stops being work either lane needs to plan around. **The register keeps one client, not
+two.** That was the concern that triggered the pause, and it is now largely answered.
+
+**It makes §4 moot.** "What period does a composite declare" only matters if something reads
+it. Nothing will.
+
+**But it creates one live hazard that did not exist before, and it is the reason this ruling
+needs a response rather than just acceptance.** See §3a.
+
+---
 
 **One correction to the record, before anything else:** round 7 §1 is right that this side
 under-described the compiler, and the omission is worse than "mentioned once". The design
@@ -94,7 +127,67 @@ now, in answering this. Not built, not previously written down.**
 
 ---
 
-## 4. Where does period live in a composite? — **genuinely open, no position**
+## 3a. The hazard a human compiler creates — and it is live, not theoretical
+
+Under a *code* compiler, the build output could be marked as such at the moment it was
+built. Under a **human** compiler, nothing marks it. A person copies finished slides into a
+pack, and what they produce is **indistinguishable from a child deck**: real slides, valid
+`slide_type` tags, valid `instance_key` tags, valid `role` tags on every field.
+
+Anyone who then opens that pack with the add-in loaded and clicks **Sync Now** gets a real
+sync run against it. It will correct fields, and — the serious part — **any register row
+with no matching slide in the pack is classified as a new record and a slide is created for
+it.** A board pack assembled from three source decks would be missing most entities, so most
+rows would be unmatched, so the tool would set about creating them. Duplicate `EntityCode`s
+from combining sources compound it: only one of each pair is updated and which one is
+undefined.
+
+The timing is the worst part. A composite exists precisely at the point where the content is
+finished and about to be seen by someone who matters.
+
+**One protection already exists, and it covers only the unlikely path.** A composite started
+from a genuinely *blank* deck has no registry properties, so `Sync Now` refuses it today with
+"this deck has no paired workbook". **Measured — that is current behaviour.**
+
+But the obvious human workflow is not that. It is *Save As* from an existing child deck, then
+add the other slides — and a copied deck inherits `DeckSyncId`, the workbook path and every
+type registration. **Measured, and already recorded from the first live cycle: three decks in
+this project share one `DeckSyncId` because they are copies of one original.** So the likely
+workflow produces a fully syncable composite, and the existing protection does not fire.
+
+### Proposal — this side's design to bring, per the protocol
+
+Two layers, because the explicit one can be forgotten and the structural one cannot.
+
+**1. An explicit mark.** A toolbar action — *Mark as Build Output* — writing a deck property.
+`Sync Now` and `Preview Sync` refuse a marked deck outright and say why. Cheap, unambiguous,
+and it uses machinery that already exists and is tested.
+
+**2. A structural backstop, and this one needs no human to remember anything.** Under D3 —
+one deck per slide type — **a child deck contains exactly one slide type.** So a deck holding
+slides of two or more registered types is, by construction, not a child deck. That is not a
+heuristic or a guess; it follows from the deck-splitting decision itself. Combined with the
+duplicate-`EntityCode` condition R9 already detects, it identifies a hand-assembled composite
+without anyone having marked it.
+
+The backstop warns rather than refuses, and defaults to No. An unmarked composite is a
+mistake, not corruption, and refusing outright would block the one legitimate case nobody has
+thought of yet.
+
+**What this needs from your side: nothing.** It is deck behaviour and it is this side's to
+design and build. Raised here because it is a consequence of the ruling that neither side had
+on the table an hour ago, and because it changes what "the tool is safe to run" means.
+
+**Cost: small.** Both layers reuse existing machinery — deck custom properties, the R9 check
+built this morning, and the confirmation pattern already used by `Sync Now`.
+
+---
+
+## 4. Where does period live in a composite? — **largely moot under §0**
+
+Kept for the record. Under the human-compiler ruling nothing reads a composite's period, so
+option 2 below — it declares nothing — follows directly and this stops being an open
+question.
 
 D4 puts period on the deck. A composite is a deck. Assembled from a Q3 source and a Q4
 source, what does it declare?
