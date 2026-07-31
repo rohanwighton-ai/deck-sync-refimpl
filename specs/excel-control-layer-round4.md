@@ -1,11 +1,37 @@
-# Excel Control Layer — round 4: answers, two amendments, and the workplan
+# Excel Control Layer — round 4
 
 **In reply to:** `Excel_Control_Layer_Confirmation.md`, 31 July 2026
-**From:** the PowerPoint / VBA side, against commit `452f952`
+**From:** the PowerPoint / VBA side
+**Contains:** answers to Q5–Q12, two amendments, the sequencing call, the workplan,
+and the full field inventory as Appendix A. Single file — nothing else to read alongside it.
 
-D1–D12 accepted as settled except where §2 amends them. Everything in §1 was measured
-today against real Office rather than reasoned — including two things I would otherwise
-have asserted and got wrong.
+---
+
+## What I need back — read this first
+
+Four things, in priority order. Only the first has to come back as *content*.
+
+**1. The E2 mapping table. This is a deliverable, not a question.**
+Five rows: current tag value → target FieldID. `Project Status` first — it is the field
+chosen to go end to end (§6). Confirming that a mapping table *should exist* does not
+unblock anything; V1, the rename migration, does not start without the actual rows.
+
+**2. Amendment B — static fields must be UNTAGGED** (§2). This one has a downstream cost if
+it is skipped: it changes what the Field Spec sheet's static-vs-quarterly column *does*, so
+it is needed before E3 is authored, not after.
+
+**3. Amendment A — D6's publication gate has no mechanism behind it** (§2). Needs a
+decision; blocks nothing today.
+
+**4. Confirm the sequencing in §5.** Rename-first only works if E2 is scheduled early rather
+than in dump order.
+
+**What "finished" looks like:** the table, a yes or a push-back on each amendment, and
+sequencing confirmed. No new questions are needed. If this comes back with fresh design
+questions instead of E2, that is the signal the exchange has stopped converging — at which
+point we should stop writing documents and take the one field through end to end, which is
+what §5 of the original spec says to do and it applies to this conversation as much as to
+the code.
 
 ---
 
@@ -226,7 +252,7 @@ handover, not a blocker.
 
 | # | Task | Input | Output |
 |---|---|---|---|
-| E1 | Triage the 77 items: field / chrome / drop | `Q5_field_inventory_dump.md` | decided list |
+| E1 | Triage the 77 items: field / chrome / drop | **Appendix A** (below) | decided list |
 | E2 | **Author the mapping table** — 5 current tags → target FieldIDs | E1's naming decisions | 5-row table → hand to VBA lane |
 | E3 | Author the Field Spec sheet from E1 | E1 | one row per FieldID, incl. static-vs-quarterly |
 | E4 | Build the register as a ListObject, long format | E3 | `Quarter, EntityCode, SlideID, FieldID, FieldType, Value, CharCount, Status, UpdatedDate` |
@@ -286,3 +312,130 @@ slides, which is the wrong way round for confidence.
 
 **The number that should drive scheduling is 5 of ~43, not 113 of 113** — agreed, and worth
 repeating because it is the honest measure of how far along this is.
+
+
+---
+
+# Appendix A — Q5, the full field inventory
+
+Source: `Audit Fields` run against the real cycle deck, 31 July 2026.
+Subject slide: the master template (a copy of 3_P001). Compared against 5 sibling slides.
+
+## A. Fields the tool manages today (tagged)
+
+| Current tag (`role`) | Notes |
+|---|---|
+| `Project Name` | live tag, in use, sync-managed |
+| `Project number` | live tag, in use, sync-managed |
+| `Project Status` | live tag, in use, sync-managed |
+| `About text` | live tag, in use, sync-managed |
+| `events text` | live tag, in use, sync-managed |
+
+**5 managed fields.** These are the tags that R8's rename migration would touch.
+
+## B. Untracked text items (no tag)
+
+`Seen on` = how many of the 5 sibling slides carry identical text.
+5/5 means universal across siblings — almost certainly fixed furniture.
+Anything below 5/5 varies between slides and is a field candidate.
+
+**Read the banding with the caveat in §C.**
+
+| # | Seen on | Band | Shape | Inside group | Text |
+|---|---|---|---|---|---|
+| 1 | 3 of 5 | CANDIDATE | `Text 110` | Group 50 | Industry partner (withheld) |
+| 2 | 3 of 5 | CANDIDATE | `Text 112` | Group 54 | University of South Australia (UniSA) |
+| 3 | 3 of 5 | CANDIDATE | `TextBox 206` |  | Last reported quarter update – Q1F26 _x000D_Work has shifted to consolidation of outputs, … |
+| 4 | 3 of 5 | CANDIDATE | `Text 4` | Group 55 | an industry partner (withdrawn) · UniSA · Animal health / Livestock · TRL 3–5 |
+| 5 | 3 of 5 | CANDIDATE | `Text 6` |  | 80% |
+| 6 | 3 of 5 | CANDIDATE | `Text 12` |  | Successful commercialisation of MgO-based treatments would give Australian producers a fir… |
+| 7 | 3 of 5 | CANDIDATE | `Shape 16` |  | ~$280K |
+| 8 | 3 of 5 | CANDIDATE | `Shape 16` |  | ~$280K |
+| 9 | 3 of 5 | CANDIDATE | `Shape 16` |  | ~$1.4M |
+| 10 | 3 of 5 | CANDIDATE | `Shape 16` |  | ~$1.9M |
+| 11 | 3 of 5 | CANDIDATE | `Text 212a` | Group 211 | 30 Oct 2023 |
+| 12 | 3 of 5 | CANDIDATE | `Text 216a` | Group 211 | 30 Sep 2026 |
+| 13 | 3 of 5 | CANDIDATE | `Text 219a` | Group 211 | 90% |
+| 14 | 3 of 5 | CANDIDATE | `Shape 229` |  | 3_P001 Timeline |
+| 15 | 3 of 5 | CANDIDATE | `Text 11` | Group 154 | Project initiated |
+| 16 | 3 of 5 | CANDIDATE | `Text 12` | Group 154 | Oct 2023 |
+| 17 | 3 of 5 | CANDIDATE | `Text 16` | Group 154 | Scope & framework defined |
+| 18 | 3 of 5 | CANDIDATE | `Text 20` | Group 154 | Method development |
+| 19 | 3 of 5 | CANDIDATE | `Text 21` | Group 154 | Pre-trial package complete  formulation pe… |
+| 20 | 3 of 5 | CANDIDATE | `Text 24` | Group 154 | Validation phase |
+| 21 | 3 of 5 | CANDIDATE | `Text 25` | Group 154 | Stable delivery system established  formul… |
+| 22 | 3 of 5 | CANDIDATE | `Text 28` | Group 154 | Deployment |
+| 23 | 3 of 5 | CANDIDATE | `Text 29` | Group 154 | First in vivo proof  S. aureus wound infec… |
+| 24 | 3 of 5 | CANDIDATE | `Text 33` | Group 154 | Reports / tools delivered |
+| 25 | 3 of 5 | CANDIDATE | `Text 36` | Group 154 | Project end |
+| 26 | 3 of 5 | CANDIDATE | `Text 37` | Group 154 | Sep 2026 |
+| 27 | 3 of 5 | CANDIDATE | `TextBox 118` | Group 154 | Project closed 2026 |
+| 28 | 3 of 5 | CANDIDATE | `TextBox 170` |  | Deliverables Include:_x000D_Journal Article – Silver doped magnesium hydroxide particles h… |
+| 29 | 3 of 5 | CANDIDATE | `Text 33` |  | Intensive livestock systems require effective alternatives to antibiotics for managing ski… |
+| 30 | 3 of 5 | CANDIDATE | `Text 39` | Group 252 | Found lead compounds that were much more effective than standard materials (Q1F25)) |
+| 31 | 3 of 5 | CANDIDATE | `Text 39` | Group 266 | Lead candidates were safe for skin cells at working doses (>80% viability) (Q1F26) |
+| 32 | 3 of 5 | CANDIDATE | `Text 39` | Group 270 | Silver‑enhanced compounds helped stop biofilm formation (Q1F26). |
+| 33 | 3 of 5 | CANDIDATE | `Text 11` | Group 274 | Project initiated_x000D_Oct 2023 |
+| 34 | 3 of 5 | CANDIDATE | `Text 19` | Group 274 | Method exploration_x000D_Pre-trial package complete |
+| 35 | 3 of 5 | CANDIDATE | `Text 23` | Group 274 | Validation_x000D_Stable delivery system established |
+| 36 | 3 of 5 | CANDIDATE | `Text 28` | Group 274 | First in vivo proof S . aureus |
+| 37 | 3 of 5 | CANDIDATE | `Text 32` | Group 274 | Project end_x000D_Sep 2026 |
+| 38 | 3 of 5 | CANDIDATE | `TextBox 278` |  | Project closed 2026 |
+| 39 | 5 of 5 | CHROME | `Text 31` |  | ABOUT |
+| 40 | 5 of 5 | CHROME | `Text 107` | Group 48 | CI / PI |
+| 41 | 5 of 5 | CHROME | `Text 108` | Group 48 | Lead researcher (name withheld) |
+| 42 | 5 of 5 | CHROME | `Text 109` | Group 50 | Industry |
+| 43 | 5 of 5 | CHROME | `Text 111` | Group 54 | University |
+| 44 | 5 of 5 | CHROME | `Text 11` |  | STRATEGIC ALIGNMENT |
+| 45 | 5 of 5 | CHROME | `Text 211a` | Group 211 | Start |
+| 46 | 5 of 5 | CHROME | `Text 213a` | Group 211 | End |
+| 47 | 5 of 5 | CHROME | `Text 218a` | Group 211 | Time elapsed |
+| 48 | 5 of 5 | CHROME | `Text 6` |  | months |
+| 49 | 5 of 5 | CHROME | `Text 15` | Group 154 | System design complete |
+| 50 | 5 of 5 | CHROME | `Text 32` | Group 154 | Final outputs |
+| 51 | 5 of 5 | CHROME | `Text 10` | Group 154 | ▶ |
+| 52 | 5 of 5 | CHROME | `Text 14` | Group 154 | 6 |
+| 53 | 5 of 5 | CHROME | `Text 18` | Group 154 | 12 |
+| 54 | 5 of 5 | CHROME | `Text 23` | Group 154 | 24 |
+| 55 | 5 of 5 | CHROME | `Text 27` | Group 154 | 36 |
+| 56 | 5 of 5 | CHROME | `Text 31` | Group 154 | 48 |
+| 57 | 5 of 5 | CHROME | `Text 35` | Group 154 | ★ |
+| 58 | 5 of 5 | CHROME | `Text 35` |  | PROJECT PROGRESS |
+| 59 | 5 of 5 | CHROME | `Text 35` |  | PROJECT DELIVERABLES |
+| 60 | 5 of 5 | CHROME | `Text 35` |  | KEY PROJECT EVENTS AND STATUS |
+| 61 | 5 of 5 | CHROME | `Text 35` |  | PROJECT TEAM |
+| 62 | 5 of 5 | CHROME | `Text 31` |  | PROBLEM |
+| 63 | 5 of 5 | CHROME | `Rectangle 132` |  | SAAFE Cash $ AUD |
+| 64 | 5 of 5 | CHROME | `Rectangle 126` |  | Industry Cash $ AUD |
+| 65 | 5 of 5 | CHROME | `Rectangle 135` |  | In-Kind $ AUD |
+| 66 | 5 of 5 | CHROME | `Rectangle 136` |  | Total Project Value $ AUD |
+| 67 | 5 of 5 | CHROME | `Shape 229` |  | Project Highlights |
+| 68 | 5 of 5 | CHROME | `Text 15` | Group 274 | System Design Complete |
+| 69 | 5 of 5 | CHROME | `Text 191` | Group 274 | ▶ |
+| 70 | 5 of 5 | CHROME | `Text 194` | Group 274 | 6 |
+| 71 | 5 of 5 | CHROME | `Text 207` | Group 274 | 36 |
+| 72 | 5 of 5 | CHROME | `Text 211` | Group 274 | ★ |
+| 73 | 5 of 5 | CHROME | `Text 203` | Group 274 | 9 |
+| 74 | 5 of 5 | CHROME | `Text 207` | Group 274 | 24 |
+| 75 | 5 of 5 | CHROME | `Text 199` | Group 274 | 12 |
+| 76 | 5 of 5 | CHROME | `Text 207` | Group 274 | 48 |
+| 77 | 5 of 5 | CHROME | `Text 28` | Group 274 | Final outputs |
+
+**77 untracked items — 38 candidates, 39 probable chrome.**
+Total text items on the slide: 82. Managed: 5 (6%).
+
+## C. Caveat on the banding — read this before using it
+
+The band is a heuristic and it is weakened on THIS deck specifically. It compares each
+text against sibling slides and assumes those were independently authored. Four of the
+six slides here were produced by CLONING (the tool's own slide creation, plus the master
+template itself), so their untagged content is identical by construction. Genuinely
+project-specific text therefore still scores above zero, and the strongest verdict
+("on no other slide") fired **zero times out of 77**.
+
+Practical consequence: **treat 5/5 as chrome and anything below 5/5 as a candidate.**
+Do not read the absence of a 0/5 row as meaning there is no project data here — there
+plainly is (`~$280K`, `30 Oct 2023`, `90%`, the timeline milestones).
+
+The judgement column is deliberately left to the Excel side. The audit's job is to make
+sure nothing is missed, not to decide what is tracked.
