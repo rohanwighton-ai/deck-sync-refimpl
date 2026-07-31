@@ -75,6 +75,18 @@ guidance.
   because the trap was real, but because compiling at a known point turns a
   would-be runtime mystery into a compile error where it belongs.
 
+- **VBA's `IIf` evaluates BOTH branches, always.** It is a function call, not a
+  short-circuiting operator, so `IIf(cond, F(x), -1)` calls `F(x)` even when
+  `cond` is False. Hit 2026-07-31 with
+  `IIf(dpos <= Len(s), AscW(Mid(s, dpos, 1)), -1)`, written specifically to
+  avoid `AscW("")`: the guard was False exactly when it mattered, `AscW` was
+  called anyway, and run-time error 5 followed. Headless that is a modal dialog
+  and a hung run with no output.
+  **This is the always-true-guard failure in a new costume** -- a conditional
+  that reads as protection and provides none. Use a real `If ... Then` whenever
+  the non-taken branch would error; reserve `IIf` for choosing between two
+  values that are both already safe to compute.
+
 - **Three consecutive headless runs were lost to COMPILE errors on 2026-07-31**,
   each ~8 minutes, each presenting as a hang with no output rather than a
   message: a module missing from the driver's import list, a VBA reserved word
