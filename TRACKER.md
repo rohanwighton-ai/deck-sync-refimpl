@@ -30,9 +30,12 @@ Not a field count. Not a test count.
       operation is made reliable by `set_deck_period.py` — write, verify offline, retry,
       fail loudly. Never verify in-process: it shares PowerPoint's cache with the writer.*
 
-- [ ] **8. Rohan says the sheet is usable** — or says exactly why it isn't.
-      *Done when: the four checkboxes in `MANUAL-TEST-DRAFTING-LOOP.md` Step 1 are answered.*
-      *Blocks everything below. Five minutes. Nobody else can do it.*
+- [x] **8. Rohan says the sheet is usable** — or says exactly why it isn't.
+      *Answered 2026-08-01 ~04:55, on the sheet built at 04:18. All four Step 1 checkboxes
+      ticked: the job is clear at a glance, column C readable without widening, F/G obvious,
+      and yes he would work down all 43 rows. His words: **"not perfect but ok for test."***
+      *"Not perfect" is unspecified and NOT yet a defect list — if item 9 turns up what
+      bothered him, capture it then rather than guessing at it now.*
 
 - [ ] **9. Rohan drafts a real quarter's content** — text he actually needed written, not test
       edits. *Done when: 10 projects drafted, ticked, applied on the e2e copy.*
@@ -50,16 +53,68 @@ these were ticked by watching a slide change, not by a test passing.
 
 If an item can't be checked by looking at something, it's written wrong — rewrite it.
 
-## Unverified right now
+## Broken right now — `FieldSpec` wiring (was filed as "unverified")
 
-`FieldSpec` (per-field drafting guidance) is proven by 135 unit tests — the prompt it
-builds, the fallback when a field has no row, and that two fields get materially different
-instructions. What has NOT been watched happening is the wiring: that `WriteDraftingSheet`
-receives the spec sheet and writes the new prompt into the cell.
+**Resolved 2026-08-01 05:00: the wiring was not unverified, it was broken. It has never
+executed once.**
 
-PowerPoint stopped responding to COM before that could be demonstrated (no stale process, no
-dialog — the environment, after several hundred Office launches). **First thing next session:
-rebuild a drafting sheet and read the prompt cell.** Until then treat the wiring as untested.
+`Drafting.WriteDraftingSheet` holds `guidance` as `Variant` (it is `Optional`) and passed it
+straight into `FieldSpec.LookupGuidance(ws As Object, ...)`, which is **ByRef**. VBA will not
+coerce `Variant -> Object` across a ByRef boundary. `Compile error: ByRef argument type
+mismatch`. The whole VBA project therefore failed to compile, the modal error box made
+PowerPoint deaf to COM, and every driver run died on `RPC_E_CALL_REJECTED`.
+
+**The 135 unit tests could not have caught this.** They call `LookupGuidance` directly with
+an already-typed `Object`. The defect exists only at the single cross-module call site — the
+exact seam a unit test does not cross. *Passing tests were the reason this looked safe.*
+
+Two things the previous version of this note got wrong, worth remembering:
+- **"no dialog"** — a window scan run *between* driver attempts came back clean, because the
+  dialog only exists while the macro is being invoked. Absence of evidence, sampled at the
+  wrong moment.
+- **"the environment, after several hundred Office launches"** — blamed the machine for a
+  one-line type error in our own source. The Office-is-flaky prior was available and wrong.
+
+Both were settled in seconds by Rohan screenshotting the actual error box, after four tool
+calls of remote diagnosis had produced a wrong theory.
+
+**FIXED AND WATCHED WORKING, 2026-08-01 05:20.** `Drafting.bas:202` assigns to a typed
+`Object` local first, leaving `FieldSpec`'s public signature and its 135 tests untouched.
+`compile executed`, 43 rows written, and `I1` carries **no** `--  GENERIC, no Field Spec row`
+suffix — read back off the closed file, not from the console. The `FieldSpec` wiring has now
+executed. `I2` is not a discriminator and was never treated as one: a plausible field-specific
+prompt is produced either way. The `I1` suffix is.
+
+---
+
+## The bug the compile error was hiding — register found by tab position
+
+Fixing the compile bought a *worse* symptom: `0 row(s) written`, down from 43, reported as a
+clean run.
+
+`E2EField.bas` read the register as `wb.Worksheets(1)` in five places.
+`WorkbookBridge.WriteWorkbookIndex` ends with `ws.Move Before:=wb.Worksheets(1)` — the
+`START HERE` sheet puts itself at the front on purpose. So every register read had been
+returning the **instructions tab**. No matching columns, no rows, no error, because an empty
+register is a legal state.
+
+It survived because the 04:18 run wrote its 43 rows *before* the index sheet was inserted,
+and the `FieldSpec` compile error then blocked every run that would have exposed it. Two
+defects, each hiding the other.
+
+Fixed via `WorkbookBridge.RegisterSheet(wb)` — by name, and it **raises** on a missing
+register rather than returning `Nothing`, because "reportable as zero rows" is what let this
+live. All five `E2EField.bas` sites converted; 43 rows confirmed back.
+
+**Still unconverted, same defect, not in the item 9/10 path:** `E2EFirstField.bas:129`,
+`VerifyRealDeck.bas:36`, `R13RealDeck.bas:45`. All three open the register workbook and will
+read `START HERE`. Left alone deliberately — `R13` is parked and the other two are not on the
+route to finished. Fix before ever trusting them again. (`BatchOnboardFlow` and the
+`R13RealDeck` `gwb` sites index into *different*, single-sheet workbooks and are fine.)
+
+**The lesson, which the codebase already knew:** `E2EField.bas` carries the comment
+*"Columns by header name, never by position"* directly beneath a line selecting the **sheet**
+by position. The rule was understood one level down and never lifted one level up.
 
 ## Not on this list, deliberately
 

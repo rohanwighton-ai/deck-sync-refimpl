@@ -200,8 +200,15 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' blocking the work until somebody writes a style guide would be paperwork
     ' standing in front of delivery.
     Dim g As FieldGuidance
+    ' guidance arrives As Variant (it is Optional); LookupGuidance takes As Object
+    ' ByRef, and VBA will not coerce Variant -> Object across a ByRef boundary --
+    ' it is a COMPILE error, not a runtime one, so the unit tests could never see
+    ' it: they call LookupGuidance directly with an already-typed Object.
+    ' Hand it a typed local instead.
+    Dim guidanceWs As Object
     If IsObject(guidance) Then
-        g = FieldSpec.LookupGuidance(guidance, fieldId)
+        Set guidanceWs = guidance
+        g = FieldSpec.LookupGuidance(guidanceWs, fieldId)
     Else
         g.FieldId = fieldId
     End If

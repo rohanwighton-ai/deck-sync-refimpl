@@ -4,6 +4,39 @@ Option Explicit
 ' The sheet that explains the workbook. First tab, so it is what you land on.
 Public Const INDEX_SHEET_NAME As String = "START HERE"
 
+Public Const REGISTER_SHEET_NAME As String = "Register"
+
+' THE REGISTER IS FOUND BY NAME, NEVER BY TAB POSITION.
+'
+' WriteWorkbookIndex ends with `ws.Move Before:=wb.Worksheets(1)` -- the index
+' sheet deliberately puts itself at the front. The moment that shipped, every
+' `wb.Worksheets(1)` in the codebase silently started returning the START HERE
+' instructions sheet instead of the register.
+'
+' It failed silently because an empty register is a LEGAL state: no matching
+' columns, no rows, no error. Callers reported "0 row(s) written" as a clean
+' run. The drafting sheet went from 43 rows to 0 and nothing anywhere said why.
+'
+' E2EField.bas already carried the comment "Columns by header name, never by
+' position" -- directly beneath a line picking the SHEET by position. The rule
+' was known one level down and never applied one level up.
+'
+' Found 2026-08-01, after the FieldSpec compile error had hidden it for a day.
+' Raises rather than returning Nothing: a workbook with no register is broken,
+' and that must not be reportable as zero rows.
+Public Function RegisterSheet(wb As Object) As Object
+    Dim sh As Object
+    For Each sh In wb.Worksheets
+        If StrComp(sh.Name, REGISTER_SHEET_NAME, vbTextCompare) = 0 Then
+            Set RegisterSheet = sh
+            Exit Function
+        End If
+    Next sh
+    Err.Raise vbObjectError + 513, "WorkbookBridge.RegisterSheet", _
+        "No sheet named '" & REGISTER_SHEET_NAME & "' in this workbook. " & _
+        "The register is located by name, not by tab position."
+End Function
+
 ' Small shared primitive both RibbonUI.bas (Sync Now) and OnboardFlow.bas
 ' (Onboard New Slide Type, which establishes the pairing in the first
 ' place) need: given a workbook path, get a live Workbook object -- reusing

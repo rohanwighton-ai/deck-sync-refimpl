@@ -133,7 +133,7 @@ Public Function RunField(deckPath As String, registerPath As String, _
     Set wb = xl.Workbooks.Open(registerPath, 0, True)
 
     Dim reg As RegisterRead
-    reg = Register.ReadRegister(wb.Worksheets(1), period, "q")
+    reg = Register.ReadRegister(WorkbookBridge.RegisterSheet(wb), period, "q")
     r = r & "--- register ---" & vbCrLf & _
         "  rows seen: " & reg.RowsSeen & "   accepted: " & reg.Accepted & vbCrLf & _
         "  missing columns: '" & reg.MissingColumns & "'" & vbCrLf & _
@@ -375,7 +375,7 @@ Public Function ReseedFromSlides(deckPath As String, registerPath As String, _
     xl.Visible = False
     xl.DisplayAlerts = False
     Set wb = xl.Workbooks.Open(registerPath)      ' read-WRITE: this repairs it
-    Set ws = wb.Worksheets(1)
+    Set ws = WorkbookBridge.RegisterSheet(wb)
 
     ' Columns by header name, never by position.
     Dim cEntity As Long, cField As Long, cValue As Long
@@ -611,7 +611,7 @@ Public Function DeleteEntities(deckPath As String, registerPath As String, entit
     xl.Visible = False
     xl.DisplayAlerts = False
     Set wb = xl.Workbooks.Open(registerPath)
-    Set ws = wb.Worksheets(1)
+    Set ws = WorkbookBridge.RegisterSheet(wb)
 
     Dim cEntity As Long, c As Long
     For c = 1 To 20
@@ -657,7 +657,7 @@ Public Function BuildDraftSheet(registerPath As String, period As String, fieldI
     Set wb = xl.Workbooks.Open(registerPath)
 
     Dim reg As RegisterRead
-    reg = Register.ReadRegisterAllStatuses(wb.Worksheets(1), period, "q")
+    reg = Register.ReadRegisterAllStatuses(WorkbookBridge.RegisterSheet(wb), period, "q")
 
     Dim ws As Object
     Set ws = WorkbookBridge.GetOrAddWorksheet(wb, Drafting.DraftSheetNameFor(fieldId))
@@ -694,7 +694,7 @@ Public Function PublishDraftSheet(registerPath As String, fieldId As String, mod
     Set ws = WorkbookBridge.GetOrAddWorksheet(wb, Drafting.DraftSheetNameFor(fieldId))
 
     Dim r As String
-    r = Drafting.PublishDrafts(ws, wb.Worksheets(1), fieldId, (LCase(Trim(mode)) <> "apply"))
+    r = Drafting.PublishDrafts(ws, WorkbookBridge.RegisterSheet(wb), fieldId, (LCase(Trim(mode)) <> "apply"))
 
     wb.Save
     wb.Close False
