@@ -13,9 +13,9 @@ raised no new questions. What follows is build work against settled decisions.
 | | Task | State |
 |---|---|---|
 | **V2** | R9 duplicate identity-tag check | ✅ **done**, 115/115, pushed |
-| **V1** | FieldID rename migration | 🔨 **built, in test** — then dry-run on a copy, then the rig |
-| **V3** | Long-format `ExcelOutput` rewrite | ⬜ next, and the largest |
-| **V4** | `Quarter` / `Status` filtering | ⬜ after V3 |
+| **V1** | FieldID rename migration | ✅ built, 120/120 — **not run on the real deck**, blocked on the EntityCode ruling (round 6 §1) |
+| **V3** | Long-format register reader | ✅ **done**, 120/120 — `Register.bas` |
+| **V4** | Wire the register reader into the sync + period property | ⬜ **next** — V3 built the reader, V4 connects it |
 | **V5** | `\|\|` → line break | ⬜ **promoted — see below** |
 | **V6** | Empty `Value` is a validation failure | ⬜ after V3 |
 | **V7** | Placeholder-count deck property | ⬜ new, from Amendment A |

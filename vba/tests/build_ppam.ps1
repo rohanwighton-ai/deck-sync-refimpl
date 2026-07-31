@@ -55,7 +55,7 @@ $vbaSourceDir = Join-Path $RepoRoot "vba"
 $productionModules = @(
     "Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas",
     "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas",
-    "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas",
+    "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "Register.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas",
     "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas",
     "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas"
 )

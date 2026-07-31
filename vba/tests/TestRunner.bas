@@ -168,6 +168,21 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_Register_FiltersByStatusPeriodAndType()
+    AppendResult report, "Register_FiltersByStatusPeriodAndType", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_Register_MistypedPeriodIsDistinguishable()
+    AppendResult report, "Register_MistypedPeriodIsDistinguishable", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_Register_MissingStatusColumnRefuses()
+    AppendResult report, "Register_MissingStatusColumnRefuses", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_TagMigration_RenamesIncludingTemplateAndGroups()
     AppendResult report, "TagMigration_RenamesIncludingTemplateAndGroups", r
     On Error GoTo 0
@@ -1759,6 +1774,153 @@ Private Function Test_TemplateSlide_ConfirmTextStatesTheConsequences() As String
     result = result & Assert(TemplateSlide.PlaceholderFor("Status") = "<<Status>>", "PlaceholderFor wraps the role name, got '" & TemplateSlide.PlaceholderFor("Status") & "'")
 
     Test_TemplateSlide_ConfirmTextStatesTheConsequences = result
+End Function
+
+' ---------------------------------------------------------------------
+' Register -- V3, the long-format reader
+' ---------------------------------------------------------------------
+
+' Builds a long-format register in a real worksheet and returns it.
+' Columns deliberately NOT in the E4 order -- the reader locates them by header
+' name, and a test that lays them out in the documented order proves nothing
+' about that.
+Private Function SeedRegister(ws As Object) As Object
+    ws.Cells(1, 1).Value = "Status"
+    ws.Cells(1, 2).Value = "FieldID"
+    ws.Cells(1, 3).Value = "Quarter"
+    ws.Cells(1, 4).Value = "Value"
+    ws.Cells(1, 5).Value = "SlideType"
+    ws.Cells(1, 6).Value = "EntityCode"
+
+    Dim d As Variant
+    ' Status | FieldID | Quarter | Value | SlideType | EntityCode
+    d = Array( _
+        Array("Approved", "PROJECT_STATUS", "Q4 FY26", "In Progress", "q", "P001"), _
+        Array("Approved", "PROJECT_NAME", "ALL", "Alpha Project", "q", "P001"), _
+        Array("Approved", "PROJECT_STATUS", "Q3 FY26", "Old Status", "q", "P001"), _
+        Array("Draft", "PROJECT_STATUS", "Q4 FY26", "Not Yet Signed Off", "q", "P002"), _
+        Array("Approved", "PROJECT_STATUS", "Q4 FY26", "Closed", "q", "P002"), _
+        Array("Approved", "PROJECT_STATUS", "Q4 FY26", "Wrong Type", "milestone", "P003"), _
+        Array("", "", "", "", "", ""))
+
+    Dim i As Long, j As Long
+    For i = 0 To UBound(d)
+        For j = 0 To 5
+            ws.Cells(i + 2, j + 1).Value = d(i)(j)
+        Next j
+    Next i
+End Function
+
+' The four filters, and the entity-static ALL sentinel, in one pass.
+Private Function Test_Register_FiltersByStatusPeriodAndType() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+    SeedRegister ws
+
+    Dim r As RegisterRead
+    r = Register.ReadRegister(ws, "Q4 FY26", "q")
+
+    result = result & Assert(r.MissingColumns = "", "all required columns located BY NAME despite non-standard order, missing: '" & r.MissingColumns & "'")
+    result = result & Assert(r.RowsSeen = 6, "blank spacer row not counted as a row, got " & r.RowsSeen)
+    result = result & Assert(r.RejectedType = 1, "one row dropped for wrong SlideType, got " & r.RejectedType)
+    result = result & Assert(r.RejectedStatus = 1, "one Draft row dropped, got " & r.RejectedStatus)
+    result = result & Assert(r.RejectedPeriod = 1, "one prior-quarter row dropped, got " & r.RejectedPeriod)
+    result = result & Assert(r.Accepted = 3, "three rows accepted, got " & r.Accepted)
+
+    ' The funnel must account for every row, or the diagnostics mislead.
+    result = result & Assert(r.RejectedType + r.RejectedStatus + r.RejectedPeriod + r.Accepted = r.RowsSeen, _
+        "rejection counts + accepted = rows seen (the counts are a funnel, not overlapping tallies)")
+
+    ' The entity-static case: Quarter = ALL carries into this period.
+    result = result & Assert(r.Data.Rows.Exists("P001"), "P001 present")
+    If r.Data.Rows.Exists("P001") Then
+        result = result & Assert(r.Data.Rows("P001")("PROJECT_STATUS") = "In Progress", "quarterly value is THIS quarter's, got '" & r.Data.Rows("P001")("PROJECT_STATUS") & "'")
+        result = result & Assert(r.Data.Rows("P001")("PROJECT_NAME") = "Alpha Project", "Quarter=ALL row carried forward, got '" & r.Data.Rows("P001")("PROJECT_NAME") & "'")
+    End If
+
+    ' The Draft row must not leak P002's unapproved value; its Approved row wins.
+    If r.Data.Rows.Exists("P002") Then
+        result = result & Assert(r.Data.Rows("P002")("PROJECT_STATUS") = "Closed", "the Approved row was used, not the Draft one, got '" & r.Data.Rows("P002")("PROJECT_STATUS") & "'")
+    End If
+
+    result = result & Assert(Not r.Data.Rows.Exists("P003"), "the wrong-slide-type entity is absent entirely")
+
+    wb.Close False
+    xl.Quit
+    Test_Register_FiltersByStatusPeriodAndType = result
+End Function
+
+' The trap this module was shaped around: a mistyped period returns zero rows,
+' which by row count alone is identical to an empty quarter. One of those is a
+' typo and the tool must say so.
+Private Function Test_Register_MistypedPeriodIsDistinguishable() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+    SeedRegister ws
+
+    Dim r As RegisterRead
+    r = Register.ReadRegister(ws, "Q4FY26", "q")     ' missing space -- a plausible typo
+
+    ' NOT "accepts nothing" -- that was the first version of this assertion and
+    ' it failed, correctly. Quarter = ALL rows match ANY period, so a mistyped
+    ' period still accepts the entity-static ones. The real failure is therefore
+    ' a PARTIAL sync that looks successful, not an empty one that looks like a
+    ' quiet quarter. The design was changed to match; this is the assertion that
+    ' found it.
+    result = result & Assert(r.AcceptedPeriod = 0, "no PERIOD-specific rows accepted, got " & r.AcceptedPeriod)
+    result = result & Assert(r.AcceptedStatic > 0, "entity-static rows DID still match -- which is exactly why 'Accepted > 0' is the wrong test, got " & r.AcceptedStatic)
+
+    Dim msg As String
+    msg = Register.ReadDiagnostic(r, "Q4FY26")
+    result = result & Assert(InStr(msg, "NO ROWS") > 0, "the diagnostic leads with the fact")
+    result = result & Assert(InStr(msg, "partial") > 0, "it warns that a sync would still write the static fields -- a partial update that reads as success")
+    result = result & Assert(InStr(msg, "Q4 FY26") > 0, "it NAMES the periods actually present -- which is what turns a silent no-op into an obvious typo")
+    result = result & Assert(InStr(msg, "spelling mismatch") > 0, "it says outright that this is probably a mismatch, not an empty quarter")
+
+    ' And the happy path must NOT carry that warning -- a caveat that always
+    ' fires is one nobody reads.
+    Dim ok As RegisterRead
+    ok = Register.ReadRegister(ws, "Q4 FY26", "q")
+    result = result & Assert(InStr(Register.ReadDiagnostic(ok, "Q4 FY26"), "NO ROWS") = 0, "the warning is ABSENT when rows matched")
+
+    wb.Close False
+    xl.Quit
+    Test_Register_MistypedPeriodIsDistinguishable = result
+End Function
+
+' A register missing Status must refuse, not default to "everything is
+' approved" -- that would publish drafts, which is the worst available failure.
+Private Function Test_Register_MissingStatusColumnRefuses() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+    SeedRegister ws
+    ws.Cells(1, 1).Value = "NotStatus"      ' break the Status header
+
+    Dim r As RegisterRead
+    r = Register.ReadRegister(ws, "Q4 FY26", "q")
+
+    result = result & Assert(InStr(r.MissingColumns, "Status") > 0, "the missing column is named, got '" & r.MissingColumns & "'")
+    result = result & Assert(r.Accepted = 0, "NOTHING was read -- it did not fall back to treating rows as approved, got " & r.Accepted)
+    result = result & Assert(InStr(Register.ReadDiagnostic(r, "Q4 FY26"), "missing required column") > 0, "the diagnostic explains it")
+
+    wb.Close False
+    xl.Quit
+    Test_Register_MissingStatusColumnRefuses = result
 End Function
 
 ' ---------------------------------------------------------------------
