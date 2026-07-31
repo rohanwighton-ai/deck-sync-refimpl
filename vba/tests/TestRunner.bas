@@ -168,6 +168,36 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_ReviewQueue_HashDistinguishesEveryField()
+    AppendResult report, "ReviewQueue_HashDistinguishesEveryField", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ReviewQueue_ProseNeverBatchesEvenWhenUniform()
+    AppendResult report, "ReviewQueue_ProseNeverBatchesEvenWhenUniform", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ReviewQueue_UniformControlledGroupIsOneDecision()
+    AppendResult report, "ReviewQueue_UniformControlledGroupIsOneDecision", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ReviewQueue_FastPathAppliesUniformPartOnly()
+    AppendResult report, "ReviewQueue_FastPathAppliesUniformPartOnly", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ReviewQueue_ApprovalIsAffirmativeAndBatchWide()
+    AppendResult report, "ReviewQueue_ApprovalIsAffirmativeAndBatchWide", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_InjectPrimitive_TrailingBreaksAreNotADifference()
+    AppendResult report, "InjectPrimitive_TrailingBreaksAreNotADifference", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_PlaceholderCheck_FindsRecordsNotTheTemplate()
     AppendResult report, "PlaceholderCheck_FindsRecordsNotTheTemplate", r
     On Error GoTo 0
@@ -401,8 +431,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons()
-    AppendResult report, "CommandBarUI_ShowToolbarCreatesFiveWiredButtons", r
+    r = Test_CommandBarUI_ShowToolbarCreatesWiredButtons()
+    AppendResult report, "CommandBarUI_ShowToolbarCreatesWiredButtons", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -1793,6 +1823,251 @@ End Function
 ' Detection: a real record still showing scaffolding is found; the master
 ' template is NOT, because its fields are supposed to read <<...>> forever and
 ' counting them would mean the marker could never reach zero.
+' ---------------------------------------------------------------------
+' R13 -- ReviewQueue
+' ---------------------------------------------------------------------
+
+' Builds a queue item without needing a deck. Every R13 rule below is a
+' property of the change SET, not of Office, so these run as pure logic.
+Private Sub AddQItem(ByRef q As ReviewQueueSet, entityKey As String, fieldId As String, _
+                     currentValue As String, proposedValue As String)
+    q.Count = q.Count + 1
+    ReDim Preserve q.Items(1 To q.Count)
+    q.Items(q.Count).EntityKey = entityKey
+    q.Items(q.Count).FieldID = fieldId
+    q.Items(q.Count).CurrentValue = currentValue
+    q.Items(q.Count).ProposedValue = proposedValue
+    q.Items(q.Count).ChangeHash = ReviewQueue.ChangeHash(entityKey, fieldId, currentValue, proposedValue)
+    q.Items(q.Count).BatchLabel = ""
+    q.Items(q.Count).Approved = False
+End Sub
+
+Private Function Test_ReviewQueue_HashDistinguishesEveryField() As String
+    Dim result As String
+
+    Dim base As String
+    base = ReviewQueue.ChangeHash("3_P001", "PROJECT_STATUS", "In progress", "In Progress")
+
+    result = result & Assert(base = ReviewQueue.ChangeHash("3_P001", "PROJECT_STATUS", "In progress", "In Progress"), _
+        "the same change hashes the same twice -- an approval must survive being re-derived")
+
+    ' All four inputs must matter. If any did not, an approval for one row could
+    ' silently authorise a write to a different one.
+    result = result & Assert(base <> ReviewQueue.ChangeHash("3_P002", "PROJECT_STATUS", "In progress", "In Progress"), "entity key changes the hash")
+    result = result & Assert(base <> ReviewQueue.ChangeHash("3_P001", "ABOUT_BODY", "In progress", "In Progress"), "field id changes the hash")
+    result = result & Assert(base <> ReviewQueue.ChangeHash("3_P001", "PROJECT_STATUS", "In Progress", "In Progress"), "the CURRENT value changes the hash -- this is what catches a hand edit made after approval")
+    result = result & Assert(base <> ReviewQueue.ChangeHash("3_P001", "PROJECT_STATUS", "In progress", "Closed"), "the PROPOSED value changes the hash -- this is what catches a register edit made after approval")
+
+    ' The separator must not be forgeable out of field content.
+    result = result & Assert(ReviewQueue.ChangeHash("a", "b", "c", "d") <> ReviewQueue.ChangeHash("a", "b", "c|d", ""), _
+        "content containing the visible delimiter cannot collide with a different row")
+
+    Test_ReviewQueue_HashDistinguishesEveryField = result
+End Function
+
+Private Function Test_ReviewQueue_ProseNeverBatchesEvenWhenUniform() As String
+    Dim result As String
+
+    ' THE CASE THAT MEASUREMENT ALONE CANNOT CATCH. Four projects whose ABOUT
+    ' text is currently identical and would be rewritten identically. By
+    ' uniformity this is a perfect batch of 4; by R13.2 prose may never be
+    ' batched, so kind has to be able to veto the measurement.
+    Dim q As ReviewQueueSet
+    AddQItem q, "3_P001", "ABOUT_BODY", "Placeholder text.", "A study of AMR in soil."
+    AddQItem q, "3_P002", "ABOUT_BODY", "Placeholder text.", "A study of AMR in soil."
+    AddQItem q, "3_P003", "ABOUT_BODY", "Placeholder text.", "A study of AMR in soil."
+    AddQItem q, "3_P004", "ABOUT_BODY", "Placeholder text.", "A study of AMR in soil."
+    ReviewQueue.AssignBatches q
+
+    result = result & Assert(ReviewQueue.ContentKindOf("ABOUT_BODY") = ReviewQueue.KIND_PROSE, _
+        "an unlisted field defaults to Prose -- absence of a label is never permission to batch")
+
+    Dim i As Long
+    Dim anyLabelled As Boolean
+    For i = 1 To q.Count
+        If q.Items(i).BatchLabel <> "" Then anyLabelled = True
+    Next i
+    result = result & Assert(Not anyLabelled, "four IDENTICAL prose changes still batch into nothing -- R13.2's 'no, never'")
+    result = result & Assert(ReviewQueue.IndividualCount(q) = 4, "all four remain individual decisions, got " & ReviewQueue.IndividualCount(q))
+    result = result & Assert(Not ReviewQueue.HasBatchableWork(q), "a prose-only change set can never take the one-dialog fast path")
+
+    Test_ReviewQueue_ProseNeverBatchesEvenWhenUniform = result
+End Function
+
+Private Function Test_ReviewQueue_UniformControlledGroupIsOneDecision() As String
+    Dim result As String
+
+    ' The real 2026-07-31 shape: three slides sharing one transformation, one
+    ' slide with a different current value, one lone change of its own.
+    Dim q As ReviewQueueSet
+    AddQItem q, "3_P001", "PROJECT_STATUS", "In progress", "In Progress"
+    AddQItem q, "3_P002", "PROJECT_STATUS", "In progress", "In Progress"
+    AddQItem q, "3_P003", "PROJECT_STATUS", "In progress", "In Progress"
+    AddQItem q, "3_P004", "PROJECT_STATUS", "Complete", "Closed"
+    AddQItem q, "3_P005", "PROJECT_NAME", "Old Name", "New Name"
+    ReviewQueue.AssignBatches q
+
+    result = result & Assert(q.Items(1).BatchLabel <> "", "the uniform trio is batched")
+    result = result & Assert(q.Items(1).BatchLabel = q.Items(2).BatchLabel And q.Items(2).BatchLabel = q.Items(3).BatchLabel, _
+        "all three share ONE label -- one transformation, one decision")
+    result = result & Assert(q.Items(4).BatchLabel = "", _
+        "a controlled field with a DIFFERENT transformation is not swept into the batch")
+    result = result & Assert(q.Items(5).BatchLabel = "", _
+        "a lone change is never labelled a batch -- a 'batch of one' is an individual review wearing a different word")
+    result = result & Assert(ReviewQueue.DistinctBatchCount(q) = 1, "exactly one batch, got " & ReviewQueue.DistinctBatchCount(q))
+    result = result & Assert(ReviewQueue.IndividualCount(q) = 2, "two individual decisions remain, got " & ReviewQueue.IndividualCount(q))
+
+    ' Presented as R13.2 requires: the transformation, the count, the entities.
+    Dim summary As String
+    summary = ReviewQueue.BatchSummaryText(q)
+    result = result & Assert(InStr(summary, "In progress") > 0 And InStr(summary, "In Progress") > 0, "the batch summary states the transformation, both halves")
+    result = result & Assert(InStr(summary, "3 entities") > 0, "the batch summary states the count")
+    result = result & Assert(InStr(summary, "3_P002") > 0, "the batch summary names the affected entities")
+
+    Test_ReviewQueue_UniformControlledGroupIsOneDecision = result
+End Function
+
+Private Function Test_ReviewQueue_FastPathAppliesUniformPartOnly() As String
+    Dim result As String
+
+    ' Wholly uniform: the fast path is honest here, and this is the case Rohan
+    ' identified -- 19 slides, one transformation, one decision.
+    Dim allBatched As ReviewQueueSet
+    Dim i As Long
+    For i = 1 To 19
+        AddQItem allBatched, "3_P" & Format(i, "000"), "PROJECT_STATUS", "In progress", "In Progress"
+    Next i
+    ReviewQueue.AssignBatches allBatched
+
+    result = result & Assert(ReviewQueue.HasBatchableWork(allBatched), "19 identical corrections ARE one decision and may be confirmed in a dialog")
+    result = result & Assert(InStr(ReviewQueue.ConfirmBatchText(allBatched), "In progress") > 0, _
+        "the confirmation shows the actual before-and-after, never degrading to a bare count")
+    result = result & Assert(InStr(ReviewQueue.ConfirmBatchText(allBatched), "19") > 0, "the confirmation states how many slides it covers")
+
+    ' One prose row poisons the whole run, deliberately.
+    Dim mixed As ReviewQueueSet
+    For i = 1 To 19
+        AddQItem mixed, "3_P" & Format(i, "000"), "PROJECT_STATUS", "In progress", "In Progress"
+    Next i
+    AddQItem mixed, "3_P020", "ABOUT_BODY", "Old prose.", "New prose."
+    ReviewQueue.AssignBatches mixed
+
+    ' F5: a mixed run still does its uniform part. The prose row does NOT
+    ' disqualify the other 19 -- that was extra strictness with no rule behind it.
+    result = result & Assert(ReviewQueue.HasBatchableWork(mixed), _
+        "one prose row does NOT block the 19 uniform corrections -- partial application is a valid outcome")
+    result = result & Assert(ReviewQueue.IndividualCount(mixed) = 1, "the prose row remains an individual decision, got " & ReviewQueue.IndividualCount(mixed))
+
+    ' F5's other half: the dialog must not read as covering the whole run.
+    Dim confirmMixed As String
+    confirmMixed = ReviewQueue.ConfirmBatchText(mixed)
+    result = result & Assert(InStr(confirmMixed, "NOT covered") > 0, _
+        "the confirmation states what it is NOT applying -- a partial run must never read as a whole one")
+    result = result & Assert(InStr(confirmMixed, "19 slide field(s)") > 0, _
+        "the count offered is the BATCHED count, not the whole queue -- offering 20 would be a lie")
+
+    ' Approving batches must leave the individual row untouched.
+    ReviewQueue.ApproveBatchedOnly mixed
+    result = result & Assert(mixed.Items(1).Approved, "batched rows are approved by the dialog")
+    result = result & Assert(Not mixed.Items(20).Approved, "the prose row is NOT approved by the dialog -- it still needs its own reading")
+
+    ' An empty queue offers no path, and must not read as 'approve nothing'.
+    Dim emptyQ As ReviewQueueSet
+    result = result & Assert(Not ReviewQueue.HasBatchableWork(emptyQ), "an empty change set takes no path at all")
+
+    ' Too many distinct transformations to read: the dialog is refused (F4).
+    Dim noisy As ReviewQueueSet
+    For i = 1 To 15
+        AddQItem noisy, "3_A" & Format(i, "000"), "PROJECT_STATUS", "was" & i, "now" & i
+        AddQItem noisy, "3_B" & Format(i, "000"), "PROJECT_STATUS", "was" & i, "now" & i
+    Next i
+    ReviewQueue.AssignBatches noisy
+    result = result & Assert(ReviewQueue.DistinctBatchCount(noisy) = 15, "15 distinct transformations, got " & ReviewQueue.DistinctBatchCount(noisy))
+    result = result & Assert(Not ReviewQueue.HasBatchableWork(noisy), _
+        "15 batches is past MAX_BATCHES_IN_MODAL -- a wall of transformations gets dismissed, not read")
+
+    Test_ReviewQueue_FastPathAppliesUniformPartOnly = result
+End Function
+
+Private Function Test_ReviewQueue_ApprovalIsAffirmativeAndBatchWide() As String
+    Dim result As String
+
+    result = result & Assert(ReviewQueue.IsApprovalMark("Y"), "'Y' approves")
+    result = result & Assert(ReviewQueue.IsApprovalMark(" yes "), "'yes' approves, trimmed and case-insensitive")
+    result = result & Assert(Not ReviewQueue.IsApprovalMark(""), "blank does NOT approve")
+    result = result & Assert(Not ReviewQueue.IsApprovalMark("N"), "'N' does not approve")
+    result = result & Assert(Not ReviewQueue.IsApprovalMark("maybe"), "an unrecognised answer never silently approves")
+
+    Dim q As ReviewQueueSet
+    AddQItem q, "3_P001", "PROJECT_STATUS", "In progress", "In Progress"
+    AddQItem q, "3_P002", "PROJECT_STATUS", "In progress", "In Progress"
+    AddQItem q, "3_P003", "PROJECT_STATUS", "In progress", "In Progress"
+    AddQItem q, "3_P004", "ABOUT_BODY", "Old prose.", "New prose."
+    ReviewQueue.AssignBatches q
+
+    ' Tick ONE member of the batch, and nothing else.
+    q.Items(2).Approved = True
+    ReviewQueue.PropagateBatchApprovals q
+
+    result = result & Assert(q.Items(1).Approved And q.Items(3).Approved, _
+        "approving one member of a uniform batch approves the batch -- that is what makes it one decision")
+    result = result & Assert(Not q.Items(4).Approved, _
+        "the individual prose row is untouched by a batch approval -- it still needs its own yes")
+
+    Dim hashes As Object
+    Set hashes = ReviewQueue.ApprovedHashSet(q)
+    result = result & Assert(hashes.Count = 3, "exactly the three batch members are in the approved set, got " & hashes.Count)
+    result = result & Assert(hashes.Exists(q.Items(1).ChangeHash), "the approved set is keyed by change hash, not by row position")
+
+    Test_ReviewQueue_ApprovalIsAffirmativeAndBatchWide = result
+End Function
+
+Private Function Test_InjectPrimitive_TrailingBreaksAreNotADifference() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(1, 10, 10, 300, 50)
+    shp.Tags.Add "role", "about"
+    shp.TextFrame.TextRange.Text = "Some prose." & vbCr
+
+    ' The 2026-07-31 case: slide carries a trailing paragraph mark, the
+    ' register value does not. 20 of 46 real ABOUT_BODY rows looked like this
+    ' and not one was a wording change.
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectPrimitive(sld, "about", "Some prose.", True)
+    result = result & Assert(r.Found, "the tagged shape is found")
+    result = result & Assert(Not r.WouldChange, "a trailing paragraph mark alone is NOT a change -- otherwise 20 real slides get rewritten to remove an invisible character")
+
+    ' The rule must not swallow a REAL difference that happens to sit near the end.
+    Dim r2 As InjectResult
+    r2 = InjectPrimitive.InjectPrimitive(sld, "about", "Some prose!", True)
+    result = result & Assert(r2.WouldChange, "a genuine wording change is still a change, even one character of it")
+
+    ' Nor a difference in the middle, which is the 2_P004 shape (a paragraph
+    ' break the register does not carry) -- that one is NOT covered by this rule
+    ' and must still surface.
+    shp.TextFrame.TextRange.Text = "One." & vbCr & "Two." & vbCr
+    Dim r3 As InjectResult
+    r3 = InjectPrimitive.InjectPrimitive(sld, "about", "One.Two.", True)
+    result = result & Assert(r3.WouldChange, "an INTERNAL break is still a difference -- only trailing ones are ignored")
+
+    ' Normalisation is for comparison only. What lands on the slide is exactly
+    ' what was supplied -- trimming on write would strip real formatting out of
+    ' a deck one sync at a time.
+    shp.TextFrame.TextRange.Text = "Old."
+    Dim r4 As InjectResult
+    r4 = InjectPrimitive.InjectPrimitive(sld, "about", "New." & vbCr, False)
+    result = result & Assert(r4.Written, "the write happens")
+    result = result & Assert(r4.Verified, "and verifies under the same rule it was decided by")
+    result = result & Assert(Right(shp.TextFrame.TextRange.Text, 1) = vbCr Or Len(shp.TextFrame.TextRange.Text) >= 4, _
+        "the supplied value is written as given, not trimmed")
+
+    sld.Delete
+    Test_InjectPrimitive_TrailingBreaksAreNotADifference = result
+End Function
+
 Private Function Test_PlaceholderCheck_FindsRecordsNotTheTemplate() As String
     Dim result As String
 
@@ -1885,11 +2160,11 @@ End Function
 ' Register -- V3, the long-format reader
 ' ---------------------------------------------------------------------
 
-' Builds a long-format register in a real worksheet and returns it.
+' Builds a long-format register in a real worksheet.
 ' Columns deliberately NOT in the E4 order -- the reader locates them by header
 ' name, and a test that lays them out in the documented order proves nothing
 ' about that.
-Private Function SeedRegister(ws As Object) As Object
+Private Sub SeedRegister(ws As Object)
     ws.Cells(1, 1).Value = "Status"
     ws.Cells(1, 2).Value = "FieldID"
     ws.Cells(1, 3).Value = "Quarter"
@@ -1914,7 +2189,7 @@ Private Function SeedRegister(ws As Object) As Object
             ws.Cells(i + 2, j + 1).Value = d(i)(j)
         Next j
     Next i
-End Function
+End Sub
 
 ' The four filters, and the entity-static ALL sentinel, in one pass.
 Private Function Test_Register_FiltersByStatusPeriodAndType() As String
@@ -3775,7 +4050,7 @@ End Function
 ' version only checked each button resolved to one of the expected Subs, which
 ' would still pass if a button silently vanished and another were duplicated --
 ' a check that can't fail the way the thing it guards actually breaks.
-Private Function Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons() As String
+Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     Dim result As String
 
     CommandBarUI.ShowToolbar
@@ -3783,14 +4058,18 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons() As Strin
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar 'Deck Sync' exists after ShowToolbar")
-    result = result & Assert(bar.Controls.count = 7, "toolbar has 7 buttons, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 10, "toolbar has 10 buttons, got " & bar.Controls.count)
 
     Dim seenPreview As Boolean
     Dim seenSyncNow As Boolean
+    Dim seenReview As Boolean
+    Dim seenApply As Boolean
     Dim seenCreateTemplate As Boolean
     Dim seenAuditFields As Boolean
     seenPreview = False
     seenSyncNow = False
+    seenReview = False
+    seenApply = False
     seenCreateTemplate = False
     seenAuditFields = False
 
@@ -3812,7 +4091,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons() As Strin
     ' pass. Tightened 2026-07-30 while adding SyncNow, whose name contains
     ' another entry's prefix.
     Dim expectedActions As String
-    expectedActions = "|SyncPreview|SyncNow|CreateTemplateSlide|AuditFields|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|"
+    expectedActions = "|SyncPreview|SyncNow|ReviewChanges|ReviewChangesApproveAll|ApplyApprovedChanges|CreateTemplateSlide|AuditFields|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|"
 
     Dim i As Long
     For i = 1 To bar.Controls.count
@@ -3830,17 +4109,21 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons() As Strin
         result = result & Assert(Len(ctrl.TooltipText) > 0, "button '" & ctrl.Caption & "' has a non-empty tooltip explainer")
         If subName = "SyncPreview" Then seenPreview = True
         If subName = "SyncNow" Then seenSyncNow = True
+        If subName = "ReviewChanges" Then seenReview = True
+        If subName = "ApplyApprovedChanges" Then seenApply = True
         If subName = "CreateTemplateSlide" Then seenCreateTemplate = True
         If subName = "AuditFields" Then seenAuditFields = True
     Next i
 
     result = result & Assert(seenPreview, "Preview Sync is actually ON the toolbar -- the read-only action, and the safe first thing to run on an unfamiliar machine")
-    result = result & Assert(seenSyncNow, "Sync Now is actually ON the toolbar -- the recurring payoff the tool exists for, and unreachable without a button")
+    result = result & Assert(seenReview, "Review Changes is actually ON the toolbar -- R13's gate, and unreachable without a button")
+    result = result & Assert(seenApply, "Apply Approved is actually ON the toolbar -- the recurring payoff the tool exists for, and useless while the review cannot be acted on")
+    result = result & Assert(seenSyncNow, "Sync Now is ON the toolbar -- batch-aware, and the one-click path for a change set that is honestly one decision")
     result = result & Assert(seenCreateTemplate, "Create Template Slide is actually ON the toolbar -- the fix for cloning new slides off a real project, useless while unreachable")
     result = result & Assert(seenAuditFields, "Audit Fields is actually ON the toolbar -- read-only, and the thing that tells you which fields the type is still missing")
 
     CommandBarUI.HideToolbar
-    Test_CommandBarUI_ShowToolbarCreatesFiveWiredButtons = result
+    Test_CommandBarUI_ShowToolbarCreatesWiredButtons = result
 End Function
 
 Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
@@ -3852,7 +4135,7 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
     Dim bar As Object
     Set bar = Application.CommandBars("Deck Sync")
     result = result & Assert(Not bar Is Nothing, "toolbar still exists after calling ShowToolbar twice")
-    result = result & Assert(bar.Controls.count = 7, "still exactly 7 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 10, "still exactly 10 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarIsIdempotent = result

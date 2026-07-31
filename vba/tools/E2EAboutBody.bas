@@ -1,0 +1,409 @@
+Attribute VB_Name = "E2EAboutBody"
+Option Explicit
+
+' FIELD 2: ABOUT_BODY, taken end to end on a copy of the real 46-slide deck.
+'
+' Deliberately modelled line for line on E2EFirstField, which is the only path
+' that has ever actually delivered a field. Same order, same verification style,
+' same save. Where this differs from that one, it is because ABOUT_BODY differs
+' from PROJECT_STATUS -- not because a better structure suggested itself.
+'
+' WHY THIS RATHER THAN FINISHING ReviewQueue. A delivery check on 2026-07-31
+' found the field count had sat at 1 all day while ~1,700 lines of R13 machinery
+' accumulated -- generalising the review gate before a second field existed to
+' prove it against. R13's requirement is real and its logic is written and
+' tested; what it does not need yet is to be the thing standing between here and
+' field 2. The gate here is the narrowest thing that satisfies R13: every
+' change is listed with before and after, and nothing is written unless the
+' caller passes apply explicitly.
+'
+' ABOUT_BODY is prose and entity-static (Quarter = ALL), so under the flow rules
+' every one of its changes is an INDIVIDUAL decision -- there is no batching to
+' exercise here and none is attempted.
+'
+' A COUNT OF ZERO IS NEVER SELF-EXPLANATORY, which cost a wrong conclusion
+' earlier the same day: a queue of 0 was read as "nothing differs" when it could
+' equally have meant "no tagged shape was found and every field was silently
+' skipped". Those produce identical output from the planner. So this reports
+' found / not-found / would-change separately, always.
+
+' Application.Run UDT warm-up probe -- see E2EFirstField's Ping ladder. In a
+' freshly Imported project a Public Function only resolves once the cross-module
+' Public UDTs it declares have been touched by an earlier Application.Run.
+Public Function PingAB() As String
+    Dim mig As MigrationReport
+    Dim reg As RegisterRead
+    Dim inst As SlideInstance
+    PingAB = "pongAB"
+End Function
+
+Private Function FindByRole(shapesColl As Object, role As String) As Object
+    Dim shp As Object
+    For Each shp In shapesColl
+        If shp.Type = msoGroup Then
+            Dim inner As Object
+            Set inner = FindByRole(shp.GroupItems, role)
+            If Not inner Is Nothing Then
+                Set FindByRole = inner
+                Exit Function
+            End If
+        ElseIf shp.Tags("role") = role Then
+            Set FindByRole = shp
+            Exit Function
+        End If
+    Next shp
+End Function
+
+' mode: "migrate" renames role tags to FieldIDs and saves. Touches no slide
+'                 TEXT -- it renames the labels the tool matches on. A one-off
+'                 structural step, not part of a sync.
+'       "dryrun"  lists what would change and writes nothing.
+'       "apply"   writes, then verifies by re-reading the deck, then saves.
+'
+' MIGRATE IS SEPARATE BECAUSE A DRY RUN CANNOT PREVIEW THROUGH IT. With the old
+' tags still in place every field lookup misses, so a dry run reports 46 shapes
+' NOT FOUND and zero changes -- an honest report of a deck that is not ready,
+' but useless as a preview of what apply would do. Measured on this rig
+' 2026-07-31: renamed 230, already 0.
+Public Function RunAboutBody(deckPath As String, registerPath As String, _
+                             period As String, mode As String) As String
+    Dim r As String
+    Dim doWrite As Boolean, doMigrate As Boolean
+    doWrite = (LCase(Trim(mode)) = "apply")
+    doMigrate = (LCase(Trim(mode)) = "migrate")
+
+    Dim pres As Object
+    Set pres = Application.Presentations.Open(deckPath, msoFalse, msoFalse, msoTrue)
+    pres.Windows(1).Activate
+
+    r = "Deck:     " & deckPath & vbCrLf & _
+        "Register: " & registerPath & vbCrLf & _
+        "Period:   " & period & vbCrLf & _
+        "Mode:     " & IIf(doMigrate, "MIGRATE TAGS (renames labels, saves, no text change)", IIf(doWrite, "APPLY (will write and save)", "DRY RUN (writes nothing)")) & vbCrLf & _
+        "Slides:   " & pres.Slides.count & vbCrLf & vbCrLf
+
+    ' --- Tag migration, exactly as the delivering run did it ---------------
+    ' Idempotent: already-correct tags count as AlreadyDone, not as work. This
+    ' step is why the earlier R13 run found nothing -- it was skipped, so every
+    ' field lookup missed and every slide reported no_change.
+    Dim fromV(1 To 5) As String
+    Dim toV(1 To 5) As String
+    fromV(1) = "Project Status": toV(1) = "PROJECT_STATUS"
+    fromV(2) = "Project Name":   toV(2) = "PROJECT_NAME"
+    fromV(3) = "Project number": toV(3) = "PROJECT_CODE"
+    fromV(4) = "About text":     toV(4) = "ABOUT_BODY"
+    fromV(5) = "events text":    toV(5) = "KEY_EVENTS_BODY"
+
+    Dim mig As MigrationReport
+    mig = TagMigration.MigrateRoleTags(fromV, toV, Not doMigrate)
+    r = r & "--- tag migration (" & IIf(doMigrate, "LIVE", "dry") & ") ---" & vbCrLf & _
+        "  scanned:  " & mig.Scanned & vbCrLf & _
+        "  renamed:  " & mig.Renamed & vbCrLf & _
+        "  already:  " & mig.AlreadyDone & vbCrLf & _
+        "  unmapped: " & mig.Unmapped & vbCrLf & vbCrLf
+
+    If doMigrate Then
+        pres.Save
+        RunAboutBody = r & "Tags migrated and deck SAVED. No slide text was changed." & vbCrLf & _
+            "Re-run with -Mode dryrun to preview ABOUT_BODY." & vbCrLf
+        Exit Function
+    End If
+
+    ' --- Register ----------------------------------------------------------
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Open(registerPath, 0, True)
+
+    Dim reg As RegisterRead
+    reg = Register.ReadRegister(wb.Worksheets(1), period, "q")
+    r = r & "--- register ---" & vbCrLf & _
+        "  rows seen: " & reg.RowsSeen & "   accepted: " & reg.Accepted & vbCrLf & _
+        "  missing columns: '" & reg.MissingColumns & "'" & vbCrLf & vbCrLf
+
+    If reg.MissingColumns <> "" Or reg.Accepted = 0 Then
+        wb.Close False: xl.Quit
+        pres.Saved = msoTrue: pres.Close
+        RunAboutBody = r & "STOPPED: nothing usable read from the register."
+        Exit Function
+    End If
+
+    ' --- The gate: every ABOUT_BODY change, with before and after ----------
+    ' R13.1 in its narrowest honest form. Listed before anything is written,
+    ' and in dry run this is the whole output.
+    Dim keyToSlide As Object
+    Set keyToSlide = CreateObject("Scripting.Dictionary")
+    Dim sld As Object
+    For Each sld In pres.Slides
+        Dim inst As SlideInstance
+        inst = Resolve.ResolveSlideInstance(sld)
+        If inst.HasInstanceKey And Not inst.IsTemplate Then Set keyToSlide(inst.InstanceKey) = sld
+    Next sld
+
+    Dim nFound As Long, nNotFound As Long, nSame As Long, nDiffer As Long, nNoRow As Long
+    Dim changes As String
+
+    Dim k As Variant
+    For Each k In reg.Data.Rows.Keys
+        If Not keyToSlide.Exists(CStr(k)) Then
+            nNoRow = nNoRow + 1
+        ElseIf Not reg.Data.Rows(k).Exists("ABOUT_BODY") Then
+            nNoRow = nNoRow + 1
+        Else
+            Dim want As String
+            want = CStr(reg.Data.Rows(k)("ABOUT_BODY"))
+
+            Dim shp As Object
+            Set shp = FindByRole(keyToSlide(CStr(k)).Shapes, "ABOUT_BODY")
+            If shp Is Nothing Then
+                nNotFound = nNotFound + 1
+            Else
+                nFound = nFound + 1
+                ' DECIDED BY InjectPrimitive ITSELF, dry, rather than by a
+                ' comparison written here. This module reimplemented the
+                ' comparison at first (|| conversion by hand, then a plain =),
+                ' which meant the preview could disagree with the writer about
+                ' what differs -- and it did, the moment F11 (trailing
+                ' paragraph marks are not a difference) landed in the injector
+                ' and not here. A preview that resolves its inputs differently
+                ' from the real thing is worse than no preview.
+                Dim probe As InjectResult
+                probe = InjectPrimitive.InjectPrimitive(keyToSlide(CStr(k)), "ABOUT_BODY", want, True)
+
+                Dim wantSlideForm As String
+                wantSlideForm = Replace(want, "||", Chr(13))
+                Dim have As String
+                have = probe.CurrentValue
+
+                If Not probe.WouldChange Then
+                    nSame = nSame + 1
+                Else
+                    nDiffer = nDiffer + 1
+                    ' CHARACTER CODES, NOT RENDERED TEXT. A difference that looks
+                    ' identical on screen is the whole hazard: an em-dash, a
+                    ' non-breaking hyphen or a trailing space all render
+                    ' invisibly, and the transport between here and a terminal
+                    ' can itself mangle non-ASCII -- so rendered text cannot
+                    ' distinguish "the data is corrupt" from "my console is".
+                    ' Codes can.
+                    Dim dpos As Long, maxLen As Long
+                    maxLen = Len(have)
+                    If Len(wantSlideForm) > maxLen Then maxLen = Len(wantSlideForm)
+                    dpos = 0
+                    Dim ci As Long
+                    For ci = 1 To maxLen
+                        If Mid(have, ci, 1) <> Mid(wantSlideForm, ci, 1) Then
+                            dpos = ci
+                            Exit For
+                        End If
+                    Next ci
+
+                    changes = changes & "  " & k & _
+                        "  slideLen=" & Len(have) & " regLen=" & Len(wantSlideForm) & _
+                        " firstDiffAt=" & dpos
+                    ' NOT IIf. VBA's IIf evaluates BOTH branches regardless of
+                    ' the condition, so `IIf(dpos <= Len(x), AscW(Mid(x,dpos,1)), -1)`
+                    ' still calls AscW on an empty string when the guard is
+                    ' False -- run-time error 5, which headless is a modal
+                    ' dialog and a hung run. A guard that cannot prevent the
+                    ' thing it guards against is worse than no guard: it reads
+                    ' as care taken. Hit live 2026-07-31.
+                    If dpos > 0 Then
+                        Dim sc As Long, rc As Long
+                        sc = -1: rc = -1
+                        If dpos <= Len(have) Then sc = AscW(Mid(have, dpos, 1))
+                        If dpos <= Len(wantSlideForm) Then rc = AscW(Mid(wantSlideForm, dpos, 1))
+                        changes = changes & "  slideChr=" & sc & " regChr=" & rc
+                    End If
+                    changes = changes & vbCrLf
+                End If
+            End If
+        End If
+    Next k
+
+    r = r & "--- ABOUT_BODY, what is actually there ---" & vbCrLf & _
+        "  shape found on slide:  " & nFound & vbCrLf & _
+        "  SHAPE NOT FOUND:       " & nNotFound & vbCrLf & _
+        "  already correct:       " & nSame & vbCrLf & _
+        "  WOULD CHANGE:          " & nDiffer & vbCrLf & _
+        "  no register row/slide: " & nNoRow & vbCrLf & vbCrLf
+
+    If nDiffer > 0 Then
+        r = r & "--- the changes, before and after ---" & vbCrLf & changes & vbCrLf
+    End If
+
+    If Not doWrite Then
+        wb.Close False: xl.Quit
+        pres.Saved = msoTrue: pres.Close
+        RunAboutBody = r & "DRY RUN -- nothing was written to the deck." & vbCrLf
+        Exit Function
+    End If
+
+    ' --- Write, one field, through the real injector -----------------------
+    Dim wrote As Long, failed As Long
+    For Each k In reg.Data.Rows.Keys
+        If keyToSlide.Exists(CStr(k)) Then
+            If reg.Data.Rows(k).Exists("ABOUT_BODY") Then
+                Dim res As InjectResult
+                res = InjectPrimitive.InjectPrimitive(keyToSlide(CStr(k)), "ABOUT_BODY", _
+                        CStr(reg.Data.Rows(k)("ABOUT_BODY")), False)
+                If res.Found And res.Written Then
+                    If res.Verified Then wrote = wrote + 1 Else failed = failed + 1
+                End If
+            End If
+        End If
+    Next k
+
+    wb.Close False
+    xl.Quit
+
+    r = r & "--- write ---" & vbCrLf & _
+        "  written and verified: " & wrote & vbCrLf & _
+        "  failed verification:  " & failed & vbCrLf & vbCrLf
+
+    ' --- Verify by re-reading the DECK, not by trusting the report ---------
+    Dim vMatch As Long, vMiss As Long
+    For Each k In reg.Data.Rows.Keys
+        If keyToSlide.Exists(CStr(k)) Then
+            Dim vshp As Object
+            Set vshp = FindByRole(keyToSlide(CStr(k)).Shapes, "ABOUT_BODY")
+            If Not vshp Is Nothing Then
+                ' THROUGH InjectPrimitive, not a hand-rolled comparison.
+                '
+                ' This block previously did `slideText = Replace(value,"||",CR)`
+                ' and compared with `=`. The moment F11 landed (trailing
+                ' paragraph marks are not a difference) the verifier and the
+                ' gate were applying DIFFERENT rules, and the same run reported
+                ' "45 already correct" and "19 mismatched" about one deck.
+                '
+                ' A verifier that reimplements the thing it verifies is not a
+                ' second opinion, it is a second implementation -- and when they
+                ' disagree neither number means anything. Ask the writer.
+                Dim vprobe As InjectResult
+                vprobe = InjectPrimitive.InjectPrimitive(keyToSlide(CStr(k)), "ABOUT_BODY", _
+                            CStr(reg.Data.Rows(k)("ABOUT_BODY")), True)
+                If vprobe.Found And Not vprobe.WouldChange Then vMatch = vMatch + 1 Else vMiss = vMiss + 1
+            End If
+        End If
+    Next k
+
+    r = r & "--- VERIFIED BY RE-READING THE DECK ---" & vbCrLf & _
+        "  slides matching the register: " & vMatch & vbCrLf & _
+        "  mismatched:                   " & vMiss & vbCrLf
+
+    pres.Save
+    r = r & vbCrLf & "Deck saved." & vbCrLf
+
+    RunAboutBody = r
+End Function
+
+' Repair named register rows FROM the slide, correctly encoded.
+'
+' This is the seeding operation done right, and it is the population side
+' writing back to the synthesis side -- so it is deliberately NOT something any
+' sync does, and it takes an explicit list of entities rather than "everything
+' that differs". Seeding is not approving, and a routine that could silently
+' reseed a whole register would erase the difference between the two.
+'
+' The case it exists for, measured 2026-07-31: 2_P004's slide holds a blank
+' line between paragraphs; the register's "||" expanded to a single break, so
+' the two disagreed by 2 characters at position 309. The SLIDE is right there
+' and the register under-represents it -- applying would have flattened a real
+' blank line out of real prose to satisfy a comparison.
+'
+' Every real line break becomes "||", which is the register's own convention
+' (R6) and the inverse of what InjectPrimitive does on the way in.
+Public Function ReseedFromSlides(deckPath As String, registerPath As String, _
+                                 period As String, entityList As String) As String
+    Dim r As String
+
+    Dim pres As Object
+    Set pres = Application.Presentations.Open(deckPath, msoTrue, msoFalse, msoTrue)
+    pres.Windows(1).Activate
+
+    Dim wanted As Object
+    Set wanted = CreateObject("Scripting.Dictionary")
+    Dim parts() As String
+    parts = Split(entityList, ",")
+    Dim pi As Long
+    For pi = LBound(parts) To UBound(parts)
+        If Trim(parts(pi)) <> "" Then wanted(Trim(parts(pi))) = True
+    Next pi
+
+    r = "Reseeding " & wanted.count & " entity(ies) FROM the slides." & vbCrLf & vbCrLf
+
+    Dim keyToSlide As Object
+    Set keyToSlide = CreateObject("Scripting.Dictionary")
+    Dim sld As Object
+    For Each sld In pres.Slides
+        Dim inst As SlideInstance
+        inst = Resolve.ResolveSlideInstance(sld)
+        If inst.HasInstanceKey And Not inst.IsTemplate Then Set keyToSlide(inst.InstanceKey) = sld
+    Next sld
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Open(registerPath)      ' read-WRITE: this repairs it
+    Set ws = wb.Worksheets(1)
+
+    ' Columns by header name, never by position.
+    Dim cEntity As Long, cField As Long, cValue As Long
+    Dim c As Long
+    For c = 1 To 20
+        Select Case Trim(CStr(ws.Cells(1, c).Value))
+            Case "EntityCode": cEntity = c
+            Case "FieldID":    cField = c
+            Case "Value":      cValue = c
+        End Select
+    Next c
+
+    If cEntity = 0 Or cField = 0 Or cValue = 0 Then
+        wb.Close False: xl.Quit
+        pres.Saved = msoTrue: pres.Close
+        ReseedFromSlides = r & "STOPPED: could not locate EntityCode/FieldID/Value by header."
+        Exit Function
+    End If
+
+    Dim fixed As Long, skipped As Long
+    Dim rowN As Long
+    rowN = 2
+    Do While Trim(CStr(ws.Cells(rowN, cEntity).Value)) <> ""
+        Dim ent As String
+        ent = Trim(CStr(ws.Cells(rowN, cEntity).Value))
+        If wanted.Exists(ent) And Trim(CStr(ws.Cells(rowN, cField).Value)) = "ABOUT_BODY" Then
+            If keyToSlide.Exists(ent) Then
+                Dim shp As Object
+                Set shp = FindByRole(keyToSlide(ent).Shapes, "ABOUT_BODY")
+                If shp Is Nothing Then
+                    skipped = skipped + 1
+                Else
+                    Dim slideText As String
+                    slideText = shp.TextFrame.TextRange.Text
+                    Dim encoded As String
+                    encoded = Replace(slideText, Chr(13), "||")
+                    encoded = Replace(encoded, Chr(11), "||")
+                    ws.Cells(rowN, cValue).Value = encoded
+                    fixed = fixed + 1
+                    r = r & "  " & ent & ": reseeded, slideLen=" & Len(slideText) & _
+                        " encodedLen=" & Len(encoded) & vbCrLf
+                End If
+            Else
+                skipped = skipped + 1
+            End If
+        End If
+        rowN = rowN + 1
+    Loop
+
+    wb.Save
+    wb.Close False
+    xl.Quit
+    pres.Saved = msoTrue
+    pres.Close
+
+    r = r & vbCrLf & "reseeded: " & fixed & "   skipped: " & skipped & vbCrLf & _
+        "Register updated. Deck was opened READ-ONLY and not changed." & vbCrLf
+    ReseedFromSlides = r
+End Function

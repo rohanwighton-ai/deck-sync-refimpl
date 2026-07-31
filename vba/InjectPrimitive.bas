@@ -139,6 +139,43 @@ End Function
 ' provably safe rather than merely careful. Deliberately a parameter on the
 ' existing function rather than a parallel "compare" function: a preview whose
 ' logic can drift from the real thing is worse than no preview.
+' Trailing paragraph marks do not count as a difference.
+'
+' RULE ADDED 2026-07-31, on Rohan's decision, and it changes comparison
+' semantics for EVERY field -- recorded here rather than buried at a call site
+' because of that blast radius.
+'
+' The evidence: ABOUT_BODY measured against the real 46-slide deck showed 22
+' pending changes after the register's encoding was repaired, and 20 of them
+' were this and nothing else -- `TextRange.Text` returns the shape's trailing
+' paragraph mark, and the harvested register value does not carry it. Not one
+' was a wording change. Applying them would have rewritten 20 slides of real
+' prose to remove a character nobody can see, and no human reading that list
+' would ever have approved it.
+'
+' NORMALISES FOR COMPARISON ONLY. What gets WRITTEN is still `sourceValue`
+' exactly as supplied -- this decides whether to write, never what to write.
+' The distinction matters: silently trimming on write would slowly strip real
+' formatting out of a deck one sync at a time.
+'
+' vbCr, vbLf and Chr(11) are all treated as trailing whitespace: PowerPoint
+' returns paragraphs CR-separated and soft line breaks as Chr(11) (AGENTS.md),
+' so which one lands at the end depends on how the text was authored.
+Private Function IgnoringTrailingBreaks(text As String) As String
+    Dim t As String
+    t = text
+    Do While Len(t) > 0
+        Dim lastChar As String
+        lastChar = Right(t, 1)
+        If lastChar = vbCr Or lastChar = vbLf Or lastChar = Chr(11) Then
+            t = Left(t, Len(t) - 1)
+        Else
+            Exit Do
+        End If
+    Loop
+    IgnoringTrailingBreaks = t
+End Function
+
 Public Function InjectPrimitive(sld As Object, identityTag As String, sourceValue As String, Optional dryRun As Boolean = False) As InjectResult
     Dim result As InjectResult
     Dim shp As Object
@@ -178,7 +215,7 @@ Public Function InjectPrimitive(sld As Object, identityTag As String, sourceValu
     Dim currentValue As String
     currentValue = shp.TextFrame.TextRange.Text
     result.CurrentValue = currentValue
-    result.WouldChange = (currentValue <> sourceValue)
+    result.WouldChange = (IgnoringTrailingBreaks(currentValue) <> IgnoringTrailingBreaks(sourceValue))
 
     If Not result.WouldChange Then
         result.Written = False
@@ -210,7 +247,11 @@ Public Function InjectPrimitive(sld As Object, identityTag As String, sourceValu
     reReadValue = shp.TextFrame.TextRange.Text
 
     result.Written = True
-    result.Verified = (reReadValue = sourceValue)
+    ' Same rule as the pre-write check. If these disagreed, a value whose
+    ' only difference was a trailing break would be judged "needs writing"
+    ' by one and "write did not take" by the other -- a permanent failure
+    ' on a field that is actually correct.
+    result.Verified = (IgnoringTrailingBreaks(reReadValue) = IgnoringTrailingBreaks(sourceValue))
     If Not result.Verified Then
         result.ErrorMessage = "wrote " & sourceValue & " but re-read " & reReadValue & " -- write did not take"
     Else
