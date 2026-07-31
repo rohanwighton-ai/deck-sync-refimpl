@@ -662,6 +662,10 @@ Public Function BuildDraftSheet(registerPath As String, period As String, fieldI
     Dim ws As Object
     Set ws = WorkbookBridge.GetOrAddWorksheet(wb, Drafting.DraftSheetNameFor(fieldId))
 
+    ' Refresh the index every time a sheet is added, so the workbook never
+    ' accumulates tabs it cannot explain.
+    WorkbookBridge.WriteWorkbookIndex wb
+
     Dim r As String
     r = Drafting.WriteDraftingSheet(ws, reg.Data, fieldId) & vbCrLf & vbCrLf & _
         "--- prompt to paste above the sheet ---" & vbCrLf & _

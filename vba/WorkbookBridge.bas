@@ -1,6 +1,9 @@
 Attribute VB_Name = "WorkbookBridge"
 Option Explicit
 
+' The sheet that explains the workbook. First tab, so it is what you land on.
+Public Const INDEX_SHEET_NAME As String = "START HERE"
+
 ' Small shared primitive both RibbonUI.bas (Sync Now) and OnboardFlow.bas
 ' (Onboard New Slide Type, which establishes the pairing in the first
 ' place) need: given a workbook path, get a live Workbook object -- reusing
@@ -131,6 +134,97 @@ Public Function WorksheetExists(wb As Object, sheetName As String) As Boolean
         End If
     Next ws
     WorksheetExists = False
+End Function
+
+' ---------------------------------------------------------------------
+' The index sheet -- the workbook explaining itself
+' ---------------------------------------------------------------------
+
+' Writes a "START HERE" sheet listing every sheet, what it is for, and how long
+' it lives.
+'
+' Rohan, 2026-08-01, on opening the register: "not clear on the sheets in it".
+' The same failure as the drafting sheet earlier the same night -- a surface
+' that assumes the reader already knows why it exists. A workbook that
+' accumulates a register, a drafting sheet per field, a review grid per slide
+' type and a log cannot be understood by looking at the tabs.
+'
+' The LIFESPAN column is the part that matters and the part nobody could infer.
+' "Permanent" and "rebuilt every round" look identical as tabs, and the
+' difference decides whether it is safe to type in one.
+Public Sub WriteWorkbookIndex(wb As Object)
+    Dim ws As Object
+    Set ws = GetOrAddWorksheet(wb, INDEX_SHEET_NAME)
+    ws.Cells.Clear
+
+    ws.Cells(1, 1).Value = "WHAT IS IN THIS WORKBOOK"
+    ws.Cells(1, 1).Font.Bold = True
+    ws.Cells(1, 1).Font.Size = 14
+
+    ws.Cells(3, 1).Value = "Sheet"
+    ws.Cells(3, 2).Value = "What it is"
+    ws.Cells(3, 3).Value = "How long it lives"
+    ws.Rows(3).Font.Bold = True
+
+    Dim r As Long
+    r = 4
+
+    Dim sh As Object
+    For Each sh In wb.Worksheets
+        If sh.Name <> INDEX_SHEET_NAME Then
+            ws.Cells(r, 1).Value = sh.Name
+            ws.Cells(r, 2).Value = DescribeSheet(sh.Name)
+            ws.Cells(r, 3).Value = LifespanOf(sh.Name)
+            r = r + 1
+        End If
+    Next sh
+
+    ws.Cells(r + 1, 1).Value = "The register is the record. The deck is a view of it -- " & _
+        "if a slide and the register disagree, the register is what gets reviewed and applied."
+    ws.Cells(r + 1, 1).Font.Italic = True
+
+    ws.Columns(1).ColumnWidth = 26
+    ws.Columns(2).ColumnWidth = 62
+    ws.Columns(3).ColumnWidth = 30
+    ws.Columns(2).WrapText = True
+
+    On Error Resume Next
+    ws.Move Before:=wb.Worksheets(1)   ' first tab, so it is what you land on
+    On Error GoTo 0
+End Sub
+
+' Classified by name, because that is all a sheet carries. Pure, so the wording
+' is testable without a workbook.
+Public Function DescribeSheet(sheetName As String) As String
+    If Left(sheetName, 4) = "TPL_" Then
+        DescribeSheet = "Drafting sheet for " & Mid(sheetName, 5) & _
+            ". Read column C, type new wording in F, put Y in G. Instructions are on the sheet."
+    ElseIf Left(sheetName, 11) = "Sync Review" Then
+        DescribeSheet = "Every change waiting to be approved before it reaches a slide. " & _
+            "Tick what you agree with, then run Apply Approved."
+    ElseIf sheetName = "Sync Log" Then
+        DescribeSheet = "What was written to slides, and when. Written as it happens, so a run " & _
+            "that dies halfway still leaves a record."
+    ElseIf sheetName = "Register" Then
+        DescribeSheet = "THE RECORD. One row per project, field and quarter, with its text and " & _
+            "whether a human approved it. Everything else in this workbook feeds it or reads it."
+    Else
+        DescribeSheet = "(not created by this tool)"
+    End If
+End Function
+
+Public Function LifespanOf(sheetName As String) As String
+    If sheetName = "Register" Then
+        LifespanOf = "PERMANENT -- grows each quarter"
+    ElseIf Left(sheetName, 4) = "TPL_" Then
+        LifespanOf = "Rebuilt each drafting round"
+    ElseIf Left(sheetName, 11) = "Sync Review" Then
+        LifespanOf = "One per run, then consumed"
+    ElseIf sheetName = "Sync Log" Then
+        LifespanOf = "Append-only history"
+    Else
+        LifespanOf = "unknown"
+    End If
 End Function
 
 ' Excel sheet names: max 31 chars, cannot contain \ / ? * [ ] : -- and

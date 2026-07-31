@@ -223,6 +223,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_WorkbookBridge_IndexExplainsEachSheet()
+    AppendResult report, "WorkbookBridge_IndexExplainsEachSheet", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_PlaceholderCheck_FindsRecordsNotTheTemplate()
     AppendResult report, "PlaceholderCheck_FindsRecordsNotTheTemplate", r
     On Error GoTo 0
@@ -2375,6 +2380,38 @@ Private Function Test_DeckRegistry_DeckDeclaresItsOwnPeriod() As String
 
     DeckRegistry.SetDeckPeriod pres, original
     Test_DeckRegistry_DeckDeclaresItsOwnPeriod = result
+End Function
+
+Private Function Test_WorkbookBridge_IndexExplainsEachSheet() As String
+    Dim result As String
+
+    ' The LIFESPAN is the part nobody can infer from a tab, and the part that
+    ' decides whether it is safe to type in a sheet.
+    result = result & Assert(InStr(WorkbookBridge.LifespanOf("Register"), "PERMANENT") > 0, _
+        "the register is marked permanent, got '" & WorkbookBridge.LifespanOf("Register") & "'")
+    result = result & Assert(InStr(WorkbookBridge.LifespanOf("TPL_ABOUT_BODY"), "Rebuilt") > 0, _
+        "a drafting sheet is marked rebuilt, got '" & WorkbookBridge.LifespanOf("TPL_ABOUT_BODY") & "'")
+    result = result & Assert(InStr(WorkbookBridge.LifespanOf("Sync Review q"), "consumed") > 0, _
+        "a review grid is marked consumed, got '" & WorkbookBridge.LifespanOf("Sync Review q") & "'")
+    result = result & Assert(InStr(WorkbookBridge.LifespanOf("Sync Log"), "Append") > 0, _
+        "the log is marked append-only, got '" & WorkbookBridge.LifespanOf("Sync Log") & "'")
+
+    ' An unrecognised sheet must say so rather than be described wrongly --
+    ' a confident description of somebody else's sheet is worse than none.
+    result = result & Assert(InStr(WorkbookBridge.DescribeSheet("Bob's notes"), "not created by this tool") > 0, _
+        "a foreign sheet is not described as ours")
+    result = result & Assert(WorkbookBridge.LifespanOf("Bob's notes") = "unknown", _
+        "and its lifespan is unknown, not guessed")
+
+    ' The drafting description must say where to type, since that was the
+    ' exact thing a reader could not work out.
+    Dim d As String
+    d = WorkbookBridge.DescribeSheet("TPL_ABOUT_BODY")
+    result = result & Assert(InStr(d, "ABOUT_BODY") > 0, "it names the field")
+    result = result & Assert(InStr(d, "column C") > 0 And InStr(d, "F") > 0 And InStr(d, "Y in G") > 0, _
+        "and says read C, type F, tick G -- got '" & d & "'")
+
+    Test_WorkbookBridge_IndexExplainsEachSheet = result
 End Function
 
 Private Function Test_PlaceholderCheck_FindsRecordsNotTheTemplate() As String
