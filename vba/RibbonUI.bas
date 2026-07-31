@@ -48,8 +48,14 @@ Option Explicit
 ' cannot reach a slide with anything a human has not seen.
 '
 ' Carried over unchanged, because R13 supersedes none of it: the unsaved-
-' workbook refusal and the R9 duplicate-key warning, both now in
-' ResolveSyncContext / ReviewChangesCore where planning happens.
+' workbook refusal (ResolveSyncContext) and the R9 duplicate-key warning
+' (WarnOnDuplicateKeys, called by BOTH SyncNowCore and ReviewChangesCore).
+'
+' An earlier version of this comment claimed R9 lived in ResolveSyncContext. It
+' did not, and SyncNowCore's fast path wrote to the deck without ever reaching
+' the only place it did live. A comment asserting a guard that is not there is
+' worse than no comment: it stops the next reader checking. Found by review,
+' 2026-07-31.
 
 ' Sync Now, restored 2026-07-31 and batch-aware.
 '
@@ -92,6 +98,14 @@ Private Sub SyncNowCore()
     Dim types() As String
     Dim lo As Long, hi As Long
     If Not ResolveSyncContext("Sync Now", pres, wb, types, lo, hi) Then Exit Sub
+
+    ' R9 BEFORE the queue is built, because the fast path writes without ever
+    ' reaching ReviewChangesCore. Two slides on one key are invisible to the
+    ' planner and to the applier alike -- both index by key into a Dictionary,
+    ' last write wins -- so one slide is silently corrected and the other left
+    ' stale, and the batch dialog cannot show it either, because its entity list
+    ' comes from that same collapsed index.
+    If Not WarnOnDuplicateKeys("Sync Now", types, lo, hi) Then Exit Sub
 
     ' Build every type's queue first, so the decision covers the whole deck
     ' rather than the first type only -- the same reason SyncNowCore used to
@@ -230,6 +244,31 @@ Private Function ResolveSyncContext(title As String, pres As Object, ByRef wb As
     ResolveSyncContext = True
 End Function
 
+' R9, in ONE place, called by every path that can reach a write.
+'
+' Returns False when the human declined -- callers stop. Extracted after review
+' found Sync Now's fast path had no R9 check at all while a comment said it did:
+' two copies of a guard drift, and one copy plus a comment is not a guard.
+'
+' Warns rather than refuses, unchanged: a duplicate key is a data-entry mistake
+' in the deck, not corruption, and refusing outright would block a quarter's
+' reporting over a fixable typo. The default is No.
+Private Function WarnOnDuplicateKeys(title As String, types() As String, lo As Long, hi As Long) As Boolean
+    Dim dupType As Long
+    For dupType = lo To hi
+        Dim dupReport As DuplicateKeyReport
+        dupReport = IdentityCheck.FindDuplicateKeys(types(dupType))
+        If dupReport.HasDuplicates Then
+            If MsgBox(IdentityCheck.DuplicateKeyWarningText(types(dupType), dupReport) & _
+                      vbCrLf & vbCrLf & "Continue anyway?", _
+                      vbYesNo + vbExclamation + vbDefaultButton2, title) <> vbYes Then
+                Exit Function
+            End If
+        End If
+    Next dupType
+    WarnOnDuplicateKeys = True
+End Function
+
 ' Toolbar entry point. The real work is in ReviewChangesCore; this exists only
 ' to catch anything that escapes it.
 '
@@ -316,18 +355,7 @@ Private Sub ReviewChangesCore(approveAll As Boolean)
     ' SyncNowCore unchanged -- the planner cannot report this usefully, because
     ' to PlanRoutineSync two slides sharing a key is indistinguishable from one
     ' matched slide and one unmatched one. It is only visible across instances.
-    Dim dupType As Long
-    For dupType = lo To hi
-        Dim dupReport As DuplicateKeyReport
-        dupReport = IdentityCheck.FindDuplicateKeys(types(dupType))
-        If dupReport.HasDuplicates Then
-            If MsgBox(IdentityCheck.DuplicateKeyWarningText(types(dupType), dupReport) & _
-                      vbCrLf & vbCrLf & "Continue anyway?", _
-                      vbYesNo + vbExclamation + vbDefaultButton2, title) <> vbYes Then
-                Exit Sub
-            End If
-        End If
-    Next dupType
+    If Not WarnOnDuplicateKeys(title, types, lo, hi) Then Exit Sub
 
     Dim fullReport As String
     Dim totalQueued As Long

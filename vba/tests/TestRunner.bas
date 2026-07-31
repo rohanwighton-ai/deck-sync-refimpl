@@ -2066,8 +2066,16 @@ Private Function Test_InjectPrimitive_TrailingBreaksAreNotADifference() As Strin
     r4 = InjectPrimitive.InjectPrimitive(sld, "about", "New." & vbCr, False)
     result = result & Assert(r4.Written, "the write happens")
     result = result & Assert(r4.Verified, "and verifies under the same rule it was decided by")
-    result = result & Assert(Right(shp.TextFrame.TextRange.Text, 1) = vbCr Or Len(shp.TextFrame.TextRange.Text) >= 4, _
-        "the supplied value is written as given, not trimmed")
+    ' EXACT equality. The first version asserted
+    '   Right(text,1) = vbCr Or Len(text) >= 4
+    ' against a 5-character write -- and "New." trimmed to 4 satisfies the
+    ' second disjunct, which is precisely the regression the message names. The
+    ' two assertions above it cannot backstop that either, because Verified
+    ' compares through IgnoringTrailingBreaks on both sides and passes whether
+    ' the break survived or not. A check whose bound is the length of the
+    ' failure case cannot detect the failure case.
+    result = result & Assert(shp.TextFrame.TextRange.Text = "New." & vbCr, _
+        "the supplied value is written EXACTLY as given, trailing break included -- normalisation is for comparison only")
 
     sld.Delete
     Test_InjectPrimitive_TrailingBreaksAreNotADifference = result
@@ -2099,10 +2107,22 @@ Private Function Test_Register_SeedIsNotApproved() As String
     ws.Cells(5, 1).Value = "ALL": ws.Cells(5, 2).Value = "P004": ws.Cells(5, 3).Value = "q"
     ws.Cells(5, 4).Value = "ABOUT_BODY": ws.Cells(5, 5).Value = "Typo in status": ws.Cells(5, 6).Value = "Aproved"
 
+    ' A PERIOD-MATCHED approved row, so AcceptedPeriod > 0 and ReadDiagnostic
+    ' takes its HEALTHY-READ branch.
+    '
+    ' Without this every fixture row was Quarter = ALL, so AcceptedPeriod was 0
+    ' and the diagnostic fell through to the no-rows-matched branch -- which
+    ' also prepends the warning, so the assertion below passed while never
+    ' exercising the path it names. The refactor it guards ("returning early on
+    ' AcceptedPeriod > 0 would hide the warning behind runs that look fine") was
+    ' therefore untested by its own test. Found by review 2026-07-31.
+    ws.Cells(6, 1).Value = "FY26Q4": ws.Cells(6, 2).Value = "P005": ws.Cells(6, 3).Value = "q"
+    ws.Cells(6, 4).Value = "PROJECT_STATUS": ws.Cells(6, 5).Value = "In Progress": ws.Cells(6, 6).Value = "Approved"
+
     Dim r As RegisterRead
     r = Register.ReadRegister(ws, "FY26Q4", "q")
 
-    result = result & Assert(r.Accepted = 1, "only the Approved row is accepted, got " & r.Accepted)
+    result = result & Assert(r.Accepted = 2, "only the two Approved rows are accepted, got " & r.Accepted)
     result = result & Assert(r.Data.Rows.Exists("P001"), "the approved entity is present")
     result = result & Assert(Not r.Data.Rows.Exists("P002"), "A SEED ROW IS NEVER WRITABLE -- seeding is not approving")
     result = result & Assert(Not r.Data.Rows.Exists("P003"), "a Draft row is not writable")
@@ -2119,6 +2139,7 @@ Private Function Test_Register_SeedIsNotApproved() As String
     ' the case an early return would have hidden.
     Dim diag As String
     diag = Register.ReadDiagnostic(r, "FY26Q4")
+    result = result & Assert(r.AcceptedPeriod > 0, "the fixture reaches the HEALTHY-READ branch, got AcceptedPeriod=" & r.AcceptedPeriod)
     result = result & Assert(InStr(diag, "WARNING") > 0, "an unrecognised status warns even on a healthy read")
     result = result & Assert(InStr(diag, "seeding is not approving") > 0, "held-back seed rows are stated, not silently dropped")
 
@@ -2868,7 +2889,11 @@ Private Function Test_RunSync_EndToEndCreatesSlidesFromFreshSheet() As String
         Dim correctedShp As Object
         Set correctedShp = FindShapeByRole(byKey("e2e-existing"), "Title")
         Dim correctedText As String
-        correctedText = IIf(correctedShp Is Nothing, "<shape not found>", correctedShp.TextFrame.TextRange.Text)
+        If correctedShp Is Nothing Then
+            correctedText = "<shape not found>"
+        Else
+            correctedText = correctedShp.TextFrame.TextRange.Text
+        End If
         result = result & Assert(correctedText = "Existing Value", "existing slide's stale value was corrected (case 4), got '" & correctedText & "'")
 
         ' The REPORT, not just the deck. Until 2026-07-30 this branch printed
@@ -2887,7 +2912,11 @@ Private Function Test_RunSync_EndToEndCreatesSlidesFromFreshSheet() As String
         Dim new1Shp As Object
         Set new1Shp = FindShapeByRole(byKey("e2e-new-1"), "Title")
         Dim new1Text As String
-        new1Text = IIf(new1Shp Is Nothing, "<shape not found>", new1Shp.TextFrame.TextRange.Text)
+        If new1Shp Is Nothing Then
+            new1Text = "<shape not found>"
+        Else
+            new1Text = new1Shp.TextFrame.TextRange.Text
+        End If
         result = result & Assert(new1Text = "Brand New One", "new slide's value injected correctly, got '" & new1Text & "'")
     End If
 
@@ -3099,7 +3128,11 @@ Private Function Test_RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched(
         Dim newTitleShp As Object
         Set newTitleShp = FindShapeByRole(dr.NewSlide, "Title")
         Dim newText As String
-        newText = IIf(newTitleShp Is Nothing, "<shape not found>", newTitleShp.TextFrame.TextRange.Text)
+        If newTitleShp Is Nothing Then
+            newText = "<shape not found>"
+        Else
+            newText = newTitleShp.TextFrame.TextRange.Text
+        End If
         result = result & Assert(newText = "Q2 Value", "new period's slide got the new value injected, got '" & newText & "'")
 
         Dim newInst As SlideInstance
@@ -3110,7 +3143,11 @@ Private Function Test_RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched(
     Dim sourceTitleShp As Object
     Set sourceTitleShp = FindShapeByRole(sourceSld, "Title")
     Dim sourceText As String
-    sourceText = IIf(sourceTitleShp Is Nothing, "<shape not found>", sourceTitleShp.TextFrame.TextRange.Text)
+    If sourceTitleShp Is Nothing Then
+        sourceText = "<shape not found>"
+    Else
+        sourceText = sourceTitleShp.TextFrame.TextRange.Text
+    End If
     result = result & Assert(sourceText = "Q1 Value", "source slide left untouched as history, got '" & sourceText & "'")
 
     ' Collision guard: rolling over to an instance_key that already exists

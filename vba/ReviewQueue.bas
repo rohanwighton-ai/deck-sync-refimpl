@@ -127,7 +127,31 @@ Public Const KIND_STATIC As String = "Static"           ' individually, but rare
 ' symptom would be approvals that quietly stopped existing. Naming per type
 ' costs one function and removes the failure entirely.
 Public Function ReviewSheetNameFor(slideType As String) As String
-    ReviewSheetNameFor = WorkbookBridge.SanitizeSheetName(REVIEW_SHEET_NAME & " " & slideType)
+    Dim tag As String
+    tag = Right("00000000" & Hex(TypeNameHash(slideType)), 8)
+    ReviewSheetNameFor = WorkbookBridge.SanitizeSheetName( _
+        Left(REVIEW_SHEET_NAME & " " & slideType, 22) & "-" & tag)
+End Function
+
+' Small non-cryptographic hash, only to keep truncated sheet names distinct.
+'
+' Excel caps a sheet name at 31 characters, so SanitizeSheetName's Left(.., 31)
+' left just 19 characters of slideType -- two types sharing a 19-character
+' prefix produced the SAME sheet, and WriteQueueSheet's Cells.Clear on the
+' second wiped the first's un-applied ticks. That is exactly the silent
+' approval-loss the per-type naming exists to prevent, reintroduced by the
+' truncation underneath it. Found by review 2026-07-31; latent today because
+' the only registered type is "q", which is why it survived being written and
+' tested.
+Private Function TypeNameHash(text As String) As Long
+    Dim h As Double
+    h = 5381#
+    Dim i As Long
+    For i = 1 To Len(text)
+        h = (h * 33#) + AscW(Mid(text, i, 1))
+        h = h - (Int(h / 2147483647#) * 2147483647#)
+    Next i
+    TypeNameHash = CLng(h)
 End Function
 
 ' ---------------------------------------------------------------------
