@@ -210,7 +210,7 @@ Write-Output "RepoRoot: $RepoRoot"
 Write-Output "vbaSourceDir: $vbaSourceDir"
 Write-Output "fixturesSourceDir: $fixturesSourceDir"
 
-$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "Verification.bas", "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "Register.bas", "PlaceholderCheck.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "tests\TestRunner.bas")
+$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "Verification.bas", "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "Register.bas", "PlaceholderCheck.bas", "RunSync.bas", "ReviewQueue.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "tests\TestRunner.bas")
 foreach ($m in $pptModules) {
     Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging
 }
@@ -233,7 +233,19 @@ try {
     $ppt.Visible = -1  # msoTrue -- visible on purpose for a first real run, see script header
     $pres = $ppt.Presentations.Add()
 
-    foreach ($m in @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas", "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "Register.bas", "PlaceholderCheck.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "TestRunner.bas")) {
+    # Derived from $pptModules rather than repeated. These two lists were
+    # separate literals until 2026-07-31, when adding ReviewQueue.bas to one and
+    # not the other produced "Application.Run : Invalid request. Sub or function
+    # not defined." on TestRunner.RunAllTests -- which reads as a compile error
+    # in the new code, not as a missing import, and sent the diagnosis straight
+    # past the actual cause. Exactly the failure AGENTS.md already records for a
+    # missing ExcelOutput.bas import; a second literal is a second place to
+    # forget. ExcelOutput.bas is staged by $excelModules but PowerPoint needs it
+    # too (RunSync calls into it), so it is added here explicitly. Import order
+    # does not affect compilation -- every module is in the project before
+    # Application.Run is called.
+    $pptImports = @("ExcelOutput.bas") + @($pptModules | ForEach-Object { Split-Path $_ -Leaf })
+    foreach ($m in $pptImports) {
         $comp = $pres.VBProject.VBComponents.Import((Join-Path $staging $m))
         Write-Output ("Imported $m as component name: " + $comp.Name)
     }

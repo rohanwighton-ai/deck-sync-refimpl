@@ -52,6 +52,24 @@ guidance.
   `otherSlideCandCount()`) instead of a Dictionary -- see
   `SPIKE_NOTES_BatchOnboardFlow.md`.
 
+- **Three consecutive headless runs were lost to COMPILE errors on 2026-07-31**,
+  each ~8 minutes, each presenting as a hang with no output rather than a
+  message: a module missing from the driver's import list, a VBA reserved word
+  used as a variable name (`Dim empty As ...`), and a rename that updated a
+  Function's declaration but not its `Name = result` return line. All three are
+  now caught by `check_vba_static.py` in under a second -- run it before every
+  suite run, not after a failure.
+  **The meta-lesson cost more than the bugs.** Two of those checks were written
+  and declared good against a handful of synthetic cases, then reported 27 and
+  then 37 false positives the moment they met the real 28 modules -- because
+  `Public Type Foo` binds a naive name-capture to the word "Type", and because
+  `Set Name = obj` and `Case "x": Name = y` are both perfectly ordinary
+  assignments. **A new static check is not finished until it has been run
+  against the whole corpus and come back clean.** Synthetic cases prove it fires;
+  only the corpus proves it does not cry wolf, and a checker that cries wolf is
+  worse than no checker (this file's own docstring says so, which did not
+  prevent it).
+
 - **VBA: a module-level `Type`/`Const` below the module's first `Sub`/`Function`
   reports its error in a DIFFERENT module.** Declarations must all sit above the
   first procedure. Break that and the offending module compiles quietly; the
