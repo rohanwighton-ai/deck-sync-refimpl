@@ -246,8 +246,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_RunSync_ConfirmSyncTextCallsOutSlideCreation()
-    AppendResult report, "RunSync_ConfirmSyncTextCallsOutSlideCreation", r
+    r = Test_RunSync_ConfirmSyncTextReportsUncreatableRows()
+    AppendResult report, "RunSync_ConfirmSyncTextReportsUncreatableRows", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -2487,7 +2487,25 @@ Private Function Test_RunSync_EndToEndCreatesSlidesFromFreshSheet() As String
     existingSld.Tags.Add "instance_key", "e2e-existing"
 
     Dim report As String
+    ' Two calls now, not one. As of 2026-07-31 a sync no longer creates slides
+    ' (Excel Control Layer round 9 section 4) -- it reports rows that have none,
+    ' and CreateMissingSlides is the separate operation a person chooses. This
+    ' test previously proved creation happened INSIDE the sync; it now proves
+    ' the same end state is reached, via the two operations it actually takes.
+    '
+    ' The sync runs FIRST, deliberately: if creation had silently stayed in it,
+    ' the CreateMissingSlides call after would find nothing to do and the
+    ' assertions below would still pass. Asserting the sync's own report says
+    ' "0 created" is what makes that detectable.
     report = RunSync.RunRoutineSync(ws, "e2e-type", templateSld)
+    result = result & Assert(InStr(report, "no slide for: e2e-new-1") > 0, _
+        "the SYNC reports the row as having no slide rather than creating one -- report: " & report)
+    result = result & Assert(InStr(report, "created:") = 0, _
+        "the sync created NOTHING -- report: " & report)
+
+    Dim sheetForCreate As Sheet
+    sheetForCreate = ExcelOutput.ReadSheet(ws)
+    report = report & RunSync.CreateMissingSlides(sheetForCreate, "e2e-type", templateSld, False)
 
     Dim instances() As Object
     instances = RunSync.GatherInstances("e2e-type")
@@ -2510,7 +2528,7 @@ Private Function Test_RunSync_EndToEndCreatesSlidesFromFreshSheet() As String
         Next i
     End If
 
-    result = result & Assert(byKey.Exists("e2e-new-1") And byKey.Exists("e2e-new-2"), "both new_record slides were created")
+    result = result & Assert(byKey.Exists("e2e-new-1") And byKey.Exists("e2e-new-2"), "both missing slides were created by CreateMissingSlides")
 
     If byKey.Exists("e2e-existing") Then
         Dim correctedShp As Object
@@ -2654,32 +2672,56 @@ End Function
 ' The asymmetry is the point: corrections are cheap to undo and get a plain
 ' line; slide creation is the outcome that was one click from happening to the
 ' real deck on 2026-07-27, so it must be impossible to skim past.
-Private Function Test_RunSync_ConfirmSyncTextCallsOutSlideCreation() As String
+Private Function Test_RunSync_ConfirmSyncTextReportsUncreatableRows() As String
     Dim result As String
 
-    ' --- the ordinary case: corrections only ---
+    ' Renamed and rewritten 2026-07-31. It used to pin a capitalised warning
+    ' that slides WOULD BE CREATED, because until today a sync could create
+    ' them and the warning was the only thing standing between a drifted deck
+    ' and mass duplication. Creation has since moved out of the sync entirely
+    ' (Excel Control Layer round 9 section 4), so the warning describes a
+    ' capability that no longer exists.
+    '
+    ' This test failing was the correct outcome of that change, not collateral:
+    ' pinning wording is precisely so that removing it has to be deliberate.
+    ' What is pinned NOW is the opposite guarantee -- that the dialog does not
+    ' claim anything will be created.
+
+    ' --- the ordinary case ---
     Dim plain As String
     plain = RunSync.ConfirmSyncText(3, 0, 0)
     result = result & Assert(InStr(plain, "3 slide(s) corrected") > 0, _
         "states how many slides change, got: " & plain)
-    result = result & Assert(InStr(plain, "0 new slides created") > 0, _
-        "says plainly that nothing will be created, got: " & plain)
+    result = result & Assert(InStr(plain, "0 rows without a slide") > 0, _
+        "states the count plainly, got: " & plain)
     result = result & Assert(InStr(plain, "Proceed?") > 0, _
         "asks, rather than announcing, got: " & plain)
-    ' Case-sensitive (Option Compare Binary): the shouty wording must not be
-    ' present when there is nothing to shout about, or it stops meaning anything.
-    result = result & Assert(InStr(plain, "NEW SLIDE(S) WILL BE CREATED") = 0, _
-        "no capitalised creation warning when nothing is created, got: " & plain)
 
-    ' --- the dangerous case ---
-    Dim loud As String
-    loud = RunSync.ConfirmSyncText(2, 43, 0)
-    result = result & Assert(InStr(loud, "43 NEW SLIDE(S) WILL BE CREATED") > 0, _
-        "slide creation is stated in capitals with its count, got: " & loud)
-    result = result & Assert(InStr(loud, "mass") > 0 And InStr(loud, "duplication") > 0, _
-        "and names the consequence, not just the number, got: " & loud)
-    result = result & Assert(InStr(loud, "Preview Sync") > 0, _
-        "points at the read-only action that would explain it, got: " & loud)
+    ' --- the case that used to be the dangerous one ---
+    ' 43 unmatched rows against a real deck was the live state on 2026-07-27,
+    ' and one click would have duplicated the template 43 times. The same input
+    ' must now produce a dialog that promises no such thing.
+    Dim many As String
+    many = RunSync.ConfirmSyncText(2, 43, 0)
+    result = result & Assert(InStr(many, "43 row(s) have no slide") > 0, _
+        "reports the count, got: " & many)
+    result = result & Assert(InStr(many, "NOT created by this action") > 0, _
+        "states outright that this action does not create them, got: " & many)
+
+    ' The removed alarm must be genuinely absent, not merely reworded --
+    ' case-sensitive, since Option Compare is Binary here.
+    result = result & Assert(InStr(many, "WILL BE CREATED") = 0, _
+        "the old capitalised creation warning is GONE -- it described a capability that no longer exists, got: " & many)
+    result = result & Assert(InStr(many, "duplication") = 0, _
+        "and so is the mass-duplication language, got: " & many)
+
+    ' The number is still shown, because it is still the signal that this deck's
+    ' linkage has drifted -- or that it is an assembled pack that should not be
+    ' synced at all. Only the alarm went; the information stayed.
+    result = result & Assert(InStr(many, "drifted linkage") > 0, _
+        "explains what a large number means, got: " & many)
+    result = result & Assert(InStr(many, "assembled pack") > 0, _
+        "including that it may be a composite that should not be synced, got: " & many)
 
     ' --- flagged is reported only when it happened ---
     result = result & Assert(InStr(RunSync.ConfirmSyncText(1, 0, 0), "flagged") = 0, _
@@ -2687,7 +2729,7 @@ Private Function Test_RunSync_ConfirmSyncTextCallsOutSlideCreation() As String
     result = result & Assert(InStr(RunSync.ConfirmSyncText(1, 0, 5), "5 flagged") > 0, _
         "flagged count shown when there is one")
 
-    Test_RunSync_ConfirmSyncTextCallsOutSlideCreation = result
+    Test_RunSync_ConfirmSyncTextReportsUncreatableRows = result
 End Function
 
 ' Case 2 (period rollover): duplicates the source instance's current slide
@@ -3712,10 +3754,17 @@ End Function
 '
 ' Sync Now joined 2026-07-30 and DOES write, so it is a real bend in the rule.
 ' The first live cycle got as far as clicking it and found no button, which is
-' how an untested action stays untested forever. What replaces the rule is a
-' confirmation dialog stating what will change with slide creation in capitals
-' -- see Test_RunSync_ConfirmSyncTextCallsOutSlideCreation, which pins that
-' wording, and CommandBarUI.ShowToolbar's header for the full argument.
+' how an untested action stays untested forever. What replaced the rule was a
+' confirmation dialog stating slide creation in capitals.
+'
+' As of 2026-07-31 that warning is gone, because the capability it warned about
+' is gone -- a sync no longer creates slides at all (round 9 section 4 of the
+' Excel Control Layer exchange). Sync Now is therefore a materially smaller
+' risk than when it was promoted: the worst it can now do is write wrong text
+' into fields that already exist, which is visible and correctable, rather than
+' duplicate a template across a deck. See
+' Test_RunSync_ConfirmSyncTextReportsUncreatableRows, which pins the current
+' wording and asserts the old alarm is genuinely absent.
 '
 ' Create Template Slide joined 2026-07-30 (evening) and also writes. Same
 ' argument as Sync Now, plus one specific to it: the hazard it fixes is live

@@ -1,5 +1,12 @@
 # Deck Sync — current workplan
 
+> **UPDATE 31 July, midday.** The pause was lifted for the field-setup work (their
+> round 10) and E1–E5 moved into this lane. Rounds 8–11 are done. Current state: four
+> modules built, `PROJECT_STATUS` mid-flight as the first field end to end, blocked on a
+> VBA macro-visibility bug being bisected. **Fields taken end to end: ONE — `PROJECT_STATUS`, on the real 46-slide deck, 19 corrected as predicted, 46/46 verified by re-reading the deck.**
+>
+> Original pause note follows.
+>
 > **PAUSED 31 July 2026 by direction of the Research Manager.** Neither lane starts new
 > work until both sides are clear on the whole system, including the compiler. V3 and V7
 > completed before the pause arrived; V4, V5 and V6 are stopped. See
@@ -21,9 +28,10 @@ raised no new questions. What follows is build work against settled decisions.
 | **V2** | R9 duplicate identity-tag check | ✅ **done**, 115/115, pushed |
 | **V1** | FieldID rename migration | ✅ built, 120/120 — **not run on the real deck**, blocked on the EntityCode ruling (round 6 §1) |
 | **V3** | Long-format register reader | ✅ **done**, 120/120 — `Register.bas` |
-| **V4** | Wire the register reader into the sync + period property | ⬜ **next** — V3 built the reader, V4 connects it |
-| **V5** | `\|\|` → line break | ⬜ **promoted — see below** |
-| **V6** | Empty `Value` is a validation failure | ⬜ after V3 |
+| **V4** | Wire the register in + period property | 🔨 `RunRoutineSyncWithSheet` built; deck period property not started |
+| **V8** | Creation out of the sync path (round 9 §4) | ✅ built — `CreateMissingSlides` |
+| **V5** | `\|\|` → line break | ✅ built — converts at the top of `InjectPrimitive`, before any comparison |
+| **V6** | Empty `Value` is a validation failure | ⬜ not started |
 | **V7** | Placeholder marker + staleness | ✅ **done**, 122/122 — `PlaceholderCheck.bas`; write-into-sync deferred to V4 |
 | **E1** | Triage the 77 items | 🔨 Excel lane, in progress |
 | **E2** | Mapping table | ✅ **delivered** |
