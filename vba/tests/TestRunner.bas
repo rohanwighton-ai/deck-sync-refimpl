@@ -168,6 +168,16 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_PlaceholderCheck_FindsRecordsNotTheTemplate()
+    AppendResult report, "PlaceholderCheck_FindsRecordsNotTheTemplate", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_PlaceholderCheck_MarkerDistinguishesStale()
+    AppendResult report, "PlaceholderCheck_MarkerDistinguishesStale", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_Register_FiltersByStatusPeriodAndType()
     AppendResult report, "Register_FiltersByStatusPeriodAndType", r
     On Error GoTo 0
@@ -1774,6 +1784,101 @@ Private Function Test_TemplateSlide_ConfirmTextStatesTheConsequences() As String
     result = result & Assert(TemplateSlide.PlaceholderFor("Status") = "<<Status>>", "PlaceholderFor wraps the role name, got '" & TemplateSlide.PlaceholderFor("Status") & "'")
 
     Test_TemplateSlide_ConfirmTextStatesTheConsequences = result
+End Function
+
+' ---------------------------------------------------------------------
+' PlaceholderCheck -- V7, Amendment A
+' ---------------------------------------------------------------------
+
+' Detection: a real record still showing scaffolding is found; the master
+' template is NOT, because its fields are supposed to read <<...>> forever and
+' counting them would mean the marker could never reach zero.
+Private Function Test_PlaceholderCheck_FindsRecordsNotTheTemplate() As String
+    Dim result As String
+
+    Dim seed As Object
+    Set seed = NewOnboardedSlide("phc-type-1", "P100")
+
+    Dim mr As MakeTemplateResult
+    mr = TemplateSlide.MakeTemplateFrom(seed, "phc-type-1")
+    result = result & Assert(mr.Ok, "template created, reason='" & mr.Reason & "'")
+
+    ' Nothing outstanding yet: the real slide carries real values.
+    Dim clean As PlaceholderReport
+    clean = PlaceholderCheck.FindPlaceholders("phc-type-1")
+    result = result & Assert(clean.Count = 0, "the TEMPLATE's own placeholders are not counted -- otherwise this can never reach zero, got " & clean.Count)
+
+    ' Now leave one field on a real record showing scaffolding, as an unfilled
+    ' created slide would.
+    Dim shp As Object
+    Set shp = FindShapeByRole(seed, "Status")
+    result = result & Assert(Not shp Is Nothing, "found the field to blank")
+    If Not shp Is Nothing Then shp.TextFrame.TextRange.Text = TemplateSlide.PlaceholderFor("Status")
+
+    Dim dirty As PlaceholderReport
+    dirty = PlaceholderCheck.FindPlaceholders("phc-type-1")
+    result = result & Assert(dirty.Count = 1, "the record's placeholder IS counted, got " & dirty.Count)
+    result = result & Assert(InStr(dirty.Detail, "P100") > 0, "the report names the entity, got '" & dirty.Detail & "'")
+    result = result & Assert(InStr(dirty.Detail, "Status") > 0, "and the field")
+
+    ' Exact match, not a substring hunt for "<<". False positives on a
+    ' publication gate are how a gate gets ignored.
+    shp.TextFrame.TextRange.Text = "See appendix <<note 4>> for detail"
+    Dim notAPlaceholder As PlaceholderReport
+    notAPlaceholder = PlaceholderCheck.FindPlaceholders("phc-type-1")
+    result = result & Assert(notAPlaceholder.Count = 0, "legitimate text containing << >> is NOT flagged, got " & notAPlaceholder.Count)
+
+    Test_PlaceholderCheck_FindsRecordsNotTheTemplate = result
+End Function
+
+' The staleness distinction -- the reason the period and timestamp are stored
+' at all. A bare count is unactionable: from this morning it means fix them,
+' from last quarter it means ignore it.
+Private Function Test_PlaceholderCheck_MarkerDistinguishesStale() As String
+    Dim result As String
+
+    Dim raw As String
+    raw = PlaceholderCheck.BuildMarker(3, "Q4 FY26", "2026-07-31 10:42")
+
+    Dim c As Long, p As String, s As String
+    result = result & Assert(PlaceholderCheck.ParseMarker(raw, c, p, s), "round-trips")
+    result = result & Assert(c = 3, "count survives, got " & c)
+    result = result & Assert(p = "Q4 FY26", "period survives INCLUDING its space, got '" & p & "'")
+    result = result & Assert(s = "2026-07-31 10:42", "timestamp survives, got '" & s & "'")
+
+    ' Same period -> actionable.
+    Dim cur As String
+    cur = PlaceholderCheck.MarkerStatusText(raw, "Q4 FY26")
+    result = result & Assert(InStr(cur, "3 placeholder") > 0, "current-period status reports the count, got '" & cur & "'")
+    result = result & Assert(InStr(cur, "STALE") = 0, "and does NOT cry stale when it isn't")
+
+    ' Different period -> the number describes a different quarter and saying
+    ' it plainly is the whole point.
+    Dim stale As String
+    stale = PlaceholderCheck.MarkerStatusText(raw, "Q1 FY27")
+    result = result & Assert(InStr(stale, "STALE") > 0, "a marker from another period is called stale, got '" & stale & "'")
+    result = result & Assert(InStr(stale, "Q4 FY26") > 0, "it names the period the record actually describes")
+    result = result & Assert(InStr(stale, "different quarter") > 0, "it says why the number cannot be trusted")
+
+    ' Absent and malformed are routine, not errors.
+    result = result & Assert(Not PlaceholderCheck.ParseMarker("", c, p, s), "empty marker parses as absent")
+    result = result & Assert(Not PlaceholderCheck.ParseMarker("garbage", c, p, s), "malformed marker parses as absent")
+    result = result & Assert(InStr(PlaceholderCheck.MarkerStatusText("", "Q4 FY26"), "No placeholder record") > 0, "absent marker explains itself")
+
+    ' The headline must be ABSENT when there is nothing outstanding -- a
+    ' publication warning that always fires trains people to skip it.
+    Dim none As PlaceholderReport
+    result = result & Assert(PlaceholderCheck.HeadlineText(none, "Q4 FY26") = "", "no headline when nothing is outstanding")
+
+    Dim some As PlaceholderReport
+    some.Count = 2
+    some.Detail = "  slide 3 (P001): PROJECT_STATUS" & vbCrLf
+    Dim h As String
+    h = PlaceholderCheck.HeadlineText(some, "Q4 FY26")
+    result = result & Assert(InStr(h, "NOT READY TO PUBLISH") > 0, "headline leads with the consequence")
+    result = result & Assert(InStr(h, "PROJECT_STATUS") > 0, "headline carries the LIST, not just a count -- a count in a summary is skimmable")
+
+    Test_PlaceholderCheck_MarkerDistinguishesStale = result
 End Function
 
 ' ---------------------------------------------------------------------

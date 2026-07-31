@@ -18,7 +18,7 @@ raised no new questions. What follows is build work against settled decisions.
 | **V4** | Wire the register reader into the sync + period property | ⬜ **next** — V3 built the reader, V4 connects it |
 | **V5** | `\|\|` → line break | ⬜ **promoted — see below** |
 | **V6** | Empty `Value` is a validation failure | ⬜ after V3 |
-| **V7** | Placeholder-count deck property | ⬜ new, from Amendment A |
+| **V7** | Placeholder marker + staleness | ✅ **done**, 122/122 — `PlaceholderCheck.bas`; write-into-sync deferred to V4 |
 | **E1** | Triage the 77 items | 🔨 Excel lane, in progress |
 | **E2** | Mapping table | ✅ **delivered** |
 | **E3/E4/E5** | Field Spec, register, template worksheet | ⬜ Excel lane, `PROJECT_STATUS` first |
