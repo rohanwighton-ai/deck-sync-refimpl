@@ -78,11 +78,25 @@ End Function
 ' scope everywhere else in this port (onboarding.md's own non-goal), so
 ' it's supplied here rather than looked up.
 Public Function RunRoutineSync(ws As Object, slideType As String, templateSld As Object) As String
-    Dim report As String
-    report = "=== RunRoutineSync: " & slideType & " ===" & vbCrLf
-
     Dim sheet As Sheet
     sheet = ExcelOutput.ReadSheet(ws)
+    RunRoutineSync = RunRoutineSyncWithSheet(sheet, slideType, templateSld)
+End Function
+
+' The same sync, driven from an already-read sheet.
+'
+' Split out so the LONG-FORMAT REGISTER can feed the identical engine. That is
+' the whole reason the format change is tractable: Register.ReadRegister
+' returns the same `Sheet` UDT ExcelOutput.ReadSheet does, so the planner, the
+' injector, the resequencer and the report below are untouched by the switch.
+' Wide and long differ in how the sheet is READ, not in what the sync does with
+' it -- and this function is where that claim is actually cashed.
+'
+' Both readers are live on purpose. Decks that have not migrated still use the
+' wide sheet; deleting that path now would strand them.
+Public Function RunRoutineSyncWithSheet(sheet As Sheet, slideType As String, templateSld As Object) As String
+    Dim report As String
+    report = "=== RunRoutineSync: " & slideType & " ===" & vbCrLf
 
     Dim instances() As Object
     instances = GatherInstances(slideType)
@@ -127,10 +141,97 @@ Public Function RunRoutineSync(ws As Object, slideType As String, templateSld As
                     Next doneField
 
                 Case "new_record"
+                    ' REPORTED, NOT CREATED, as of 2026-07-31.
+                    '
+                    ' A sync used to create a slide here. It no longer does, per
+                    ' the Excel Control Layer requirement: "a register row with
+                    ' no matching slide must never cause a slide to be created
+                    ' as a consequence of a sync run. Creation is an operation a
+                    ' person chooses."
+                    '
+                    ' This replaces a guard rather than adding one. Since
+                    ' 2026-07-30 the confirmation stated slide creation in
+                    ' capitals with its consequence spelled out, because the
+                    ' real deck at the time had 43 orphaned rows against 46
+                    ' slides and one click would have mass-duplicated. That
+                    ' guard warned about a capability; removing the capability
+                    ' is strictly better, and it is what makes an accidentally
+                    ' synced composite deck merely wrong rather than
+                    ' destructive -- a hand-assembled board pack is missing most
+                    ' entities, so most rows are unmatched, so the old behaviour
+                    ' would have set about creating them at exactly the moment
+                    ' the content was finished.
+                    '
+                    ' D12 is preserved: a row with no slide is still a supported
+                    ' case, serviced by CreateMissingSlides below.
+                    newRecordCount = newRecordCount + 1
+                    report = report & "  no slide for: " & actions(i).RowInstanceKey & _
+                        "  (use Create Missing Slides -- sync does not create)" & vbCrLf
+
+                Case "flagged"
+                    flaggedCount = flaggedCount + 1
+                    report = report & "  flagged: " & actions(i).Subject & " (" & actions(i).FlagKind & ") -- " & actions(i).Reason & vbCrLf
+            End Select
+        Next i
+    End If
+
+    report = report & "Summary: " & noChangeCount & " unchanged, " & correctedCount & " corrected, " & _
+        newRecordCount & " with no slide, " & failedCount & " failed, " & flaggedCount & " flagged" & vbCrLf
+
+    Dim moveCount As Long
+    moveCount = ResequenceByRowOrder(slideType, sheet.InstanceOrder)
+    report = report & "Resequenced " & moveCount & " slide(s) to match Data-sheet row order." & vbCrLf
+
+    RunRoutineSyncWithSheet = report
+End Function
+
+' D12's supported case, as an operation a person chooses rather than a side
+' effect of syncing: create a slide for every register row that has none.
+'
+' Split out of the sync on 2026-07-31. The engine always separated DECIDING to
+' create (SyncOperations.PlanRoutineSync returns new_record) from DOING it
+' (SlideDuplication.DuplicateAndTag), which is the only reason this is a
+' rewiring rather than a rewrite -- the decision half stays exactly where it
+' was and only the execution moves.
+'
+' dryRun defaults TRUE for the same reason TagMigration's does: this is the one
+' remaining operation that can add slides in bulk, and the caller must ask for
+' the write explicitly rather than get it by omission.
+Public Function CreateMissingSlides(sheet As Sheet, slideType As String, templateSld As Object, _
+                                    Optional dryRun As Boolean = True) As String
+    Dim report As String
+    report = IIf(dryRun, "=== PREVIEW: Create Missing Slides ===", "=== Create Missing Slides ===") & vbCrLf
+
+    Dim instances() As Object
+    instances = GatherInstances(slideType)
+
+    ' dryRun:=True on the plan regardless of our own dryRun. PlanRoutineSync
+    ' writes corrected field text WHILE planning (see its header), and this
+    ' operation must not correct anything -- it creates. Letting it plan wet
+    ' would make Create Missing Slides silently do a sync's work too.
+    Dim actions() As SyncAction
+    actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows, True)
+
+    Dim lo As Long, hi As Long, hasActions As Boolean
+    On Error Resume Next
+    lo = LBound(actions): hi = UBound(actions)
+    hasActions = (Err.Number = 0)
+    On Error GoTo 0
+
+    Dim createdCount As Long, failedCount As Long
+    If hasActions Then
+        Dim i As Long
+        For i = lo To hi
+            If actions(i).Kind = "new_record" Then
+                If dryRun Then
+                    createdCount = createdCount + 1
+                    report = report & "  would create: " & actions(i).RowInstanceKey & vbCrLf
+                Else
                     Dim dr As DuplicateResult
-                    dr = SlideDuplication.DuplicateAndTag(templateSld, slideType, actions(i).RowInstanceKey, actions(i).Values, instances)
+                    dr = SlideDuplication.DuplicateAndTag(templateSld, slideType, _
+                            actions(i).RowInstanceKey, actions(i).Values, instances)
                     If dr.Ok Then
-                        newRecordCount = newRecordCount + 1
+                        createdCount = createdCount + 1
                         report = report & "  created: " & actions(i).RowInstanceKey
                         If dr.MissingFieldCount > 0 Then
                             report = report & " (missing " & dr.MissingFieldCount & " field(s):"
@@ -143,24 +244,23 @@ Public Function RunRoutineSync(ws As Object, slideType As String, templateSld As
                         report = report & vbCrLf
                     Else
                         failedCount = failedCount + 1
-                        report = report & "  FAILED to create " & actions(i).RowInstanceKey & ": " & dr.Reason & vbCrLf
+                        report = report & "  FAILED " & actions(i).RowInstanceKey & ": " & dr.Reason & vbCrLf
                     End If
-
-                Case "flagged"
-                    flaggedCount = flaggedCount + 1
-                    report = report & "  flagged: " & actions(i).Subject & " (" & actions(i).FlagKind & ") -- " & actions(i).Reason & vbCrLf
-            End Select
+                End If
+            End If
         Next i
     End If
 
-    report = report & "Summary: " & noChangeCount & " unchanged, " & correctedCount & " corrected, " & _
-        newRecordCount & " created, " & failedCount & " failed, " & flaggedCount & " flagged" & vbCrLf
+    report = report & "Summary: " & createdCount & IIf(dryRun, " would be created", " created") & _
+        ", " & failedCount & " failed" & vbCrLf
 
-    Dim moveCount As Long
-    moveCount = ResequenceByRowOrder(slideType, sheet.InstanceOrder)
-    report = report & "Resequenced " & moveCount & " slide(s) to match Data-sheet row order." & vbCrLf
+    If Not dryRun And createdCount > 0 Then
+        Dim moveCount As Long
+        moveCount = ResequenceByRowOrder(slideType, sheet.InstanceOrder)
+        report = report & "Resequenced " & moveCount & " slide(s) to match row order." & vbCrLf
+    End If
 
-    RunRoutineSync = report
+    CreateMissingSlides = report
 End Function
 
 ' Read-only twin of RunRoutineSync: says exactly what a routine sync would do
@@ -326,14 +426,21 @@ Public Function ConfirmSyncText(correctCount As Long, createCount As Long, flagC
     s = "This will change the deck." & vbCrLf & vbCrLf & _
         "    " & correctCount & " slide(s) corrected" & vbCrLf
 
+    ' No longer a warning, because a sync can no longer create anything --
+    ' creation moved to CreateMissingSlides on 2026-07-31. What was the
+    ' loudest line in this dialog is now an informational count.
+    '
+    ' Deliberately still SHOWN rather than dropped: a large number here is the
+    ' signal that this deck's linkage has drifted, or that it is a
+    ' hand-assembled composite that should not be synced at all. The number was
+    ' always the useful part; the alarm was only needed while the alarm was the
+    ' only thing standing between it and mass duplication.
     If createCount > 0 Then
-        s = s & "    " & createCount & " NEW SLIDE(S) WILL BE CREATED" & vbCrLf & vbCrLf & _
-            "Slides get created when a Data row matches no slide in" & vbCrLf & _
-            "the deck. If the linkage has drifted, that is a mass" & vbCrLf & _
-            "duplication, not an update. Run Preview Sync first if" & vbCrLf & _
-            "you are not expecting new slides." & vbCrLf
+        s = s & "    " & createCount & " row(s) have no slide -- NOT created by this action" & vbCrLf & _
+            "      (a large number here usually means drifted linkage," & vbCrLf & _
+            "       or that this deck is an assembled pack, not a source deck)" & vbCrLf
     Else
-        s = s & "    0 new slides created" & vbCrLf
+        s = s & "    0 rows without a slide" & vbCrLf
     End If
 
     If flagCount > 0 Then s = s & "    " & flagCount & " flagged" & vbCrLf

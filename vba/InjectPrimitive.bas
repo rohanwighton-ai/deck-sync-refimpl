@@ -21,6 +21,19 @@ Public Type InjectResult
     CurrentValue As String ' the shape's text as found, before any write -- for previews
 End Type
 
+' The register's line-break delimiter (R6). Excel holds no multi-line cells --
+' every line break in a value is written as "||" and converted to a real break
+' here, at the point of injection.
+'
+' Not an edge case. Measured across the real 46-slide deck 2026-07-31:
+' KEY_EVENTS_BODY is multi-line on 46 of 46 slides, median 5 paragraphs;
+' ABOUT_BODY on 3 of 46.
+Public Const LINE_BREAK_DELIMITER As String = "||"
+
+' PowerPoint's in-paragraph line break is vbCr (Chr 13), NOT vbCrLf. Writing
+' vbCrLf into a TextRange leaves the Lf as a stray glyph on the slide.
+Private Const PPT_LINE_BREAK As String = vbCr
+
 ' Locate the single shape on `sld` whose Tags("role") equals `identityTag`.
 ' Mirrors identity_tags.py's read_shape_tags/upsert_shape_tags convention:
 ' the identity tag lives under the fixed tag name "role" (specs/identity-
@@ -129,6 +142,17 @@ End Function
 Public Function InjectPrimitive(sld As Object, identityTag As String, sourceValue As String, Optional dryRun As Boolean = False) As InjectResult
     Dim result As InjectResult
     Dim shp As Object
+
+    ' Converted FIRST, before anything is located or compared, so every
+    ' comparison below is made in the slide's own terms.
+    '
+    ' The ordering is the correctness of it, not a tidiness preference. The
+    ' no-op check compares the slide's current text against sourceValue -- if
+    ' the value still held "||" while the slide held a real line break, the two
+    ' could never be equal, so the field would be rewritten on every single
+    ' sync and reported as corrected every time. A permanent phantom
+    ' correction, on the field that is multi-line on 46 of 46 slides.
+    sourceValue = Replace(sourceValue, LINE_BREAK_DELIMITER, PPT_LINE_BREAK)
 
     Set shp = FindShapeByRoleTag(sld, identityTag)
     If shp Is Nothing Then

@@ -108,6 +108,37 @@ def check_empty_redim(path: Path, lines: list[str]) -> list[str]:
     return findings
 
 
+def check_structural_sanity(path: Path, lines: list[str]) -> list[str]:
+    """Every module has at least one procedure, and starts/ends balance.
+
+    Added after this checker reported a CORRUPTED file as clean. A bad edit had
+    split the word `Private` across an insertion point, leaving `rivate
+    Function ...` — so no line matched PROC_RE, so `check_declaration_order`
+    found no "first procedure" and could not fire, and the file passed.
+
+    A checker that cannot see the thing it checks reports success. That is the
+    same failure as an always-true guard, and it is worse here because the
+    output looks like evidence. So: assert the file has the shape the other
+    checks assume, before trusting what they say about it.
+    """
+    findings: list[str] = []
+    starts = sum(1 for l in lines if PROC_RE.match(l))
+    ends = sum(1 for l in lines if END_PROC_RE.match(l.strip()))
+
+    if starts == 0:
+        findings.append(
+            f"{path}: no procedures found at all. Either the module is empty, or a "
+            f"procedure keyword is mangled (a bad edit splitting `Private`/`Public` "
+            f"will do this). The other checks cannot be trusted on this file."
+        )
+    elif starts != ends:
+        findings.append(
+            f"{path}: {starts} procedure start(s) but {ends} End Sub/Function — "
+            f"unbalanced, so a procedure is unterminated or a keyword is mangled."
+        )
+    return findings
+
+
 def main() -> int:
     root = Path(__file__).resolve().parent.parent
     files = sorted(root.glob("*.bas")) + sorted((root / "tests").glob("*.bas"))
@@ -122,6 +153,7 @@ def main() -> int:
         findings += check_declaration_order(rel, lines)
         findings += check_duplicate_dims(rel, lines)
         findings += check_empty_redim(rel, lines)
+        findings += check_structural_sanity(rel, lines)
 
     if findings:
         print(f"=== {len(findings)} static finding(s) ===")
