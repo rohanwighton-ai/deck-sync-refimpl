@@ -23,6 +23,20 @@ complete is silence — nobody having looked.
 
 Nothing about field count, test count, or slide count is part of this exit test.
 
+## Status, 2026-08-01
+
+**Step 1 has been run.** Rohan read `TPL_ABOUT_BODY` cold and answered all four checkboxes
+yes — *"not perfect but ok for test."* The sentence in "What Phase 1 is for" above, that his
+half has not been run, is now out of date for Step 1 only.
+
+Remaining, and it is the whole of the exit test: **the 10 real projects.** Draft, tick,
+publish, apply, open the deck, say the sentence.
+
+Two things cleared out of the way to get here, both invisible from the outside: the VBA
+project did not compile (`Variant` → `As Object` ByRef), and beneath that the register was
+being read by tab position and had been silently returning the `START HERE` sheet. See
+TRACKER.md. Neither was a Phase 1 item; both stood in front of one.
+
 ## The three hours
 
 | Time | Who | What | Why this and not more |
