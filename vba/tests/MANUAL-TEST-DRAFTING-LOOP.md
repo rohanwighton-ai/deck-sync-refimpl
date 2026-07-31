@@ -7,6 +7,9 @@ need, or whether you'd trust it on a real deck at 9pm before a deadline.
 
 **Time:** about 20 minutes.
 
+**Run it in one PowerShell session**, staying in the repo directory throughout —
+every command below assumes `(Get-Location)` is the repo root.
+
 **You will need:** nothing prepared. Step 0 builds its own sandbox.
 
 ---
@@ -107,15 +110,29 @@ Now for real:
 & "$env:TEMP\field_e2e.ps1" -RepoRoot (Get-Location) -Mode dryrun -FieldId ABOUT_BODY
 ```
 
-**Expect exactly:**
+**Expect:**
 
 ```
 WOULD CHANGE:          1
-not writable (held back by Status): 42
+not writable (held back by Status): <the rest>
 ```
 
-- [ ] **The count of changes is 1, not 43.** Everything you did not approve is
-      held back. This is the whole point of the Seed/Approved split.
+- [ ] **`WOULD CHANGE` equals the number of rows you ticked — not 43.** Everything
+      you did not approve is held back. That is the whole point of the
+      Seed/Approved split.
+
+**Do not expect a specific held-back number.** It is 42 on a pristine rig and
+lower once earlier runs have left rows approved — normal, not a failure. An
+earlier draft of this guide printed 42 as gospel; run it a second time and you
+see 41, and the only two conclusions available are "it broke" or "ignore the
+numbers". The second is the rubber-stamp habit this whole tool exists to
+prevent, so the guide must not teach it.
+
+**You may also see `N drafted but not ticked`.** Rebuilding a drafting sheet
+preserves drafts and clears approvals deliberately — a rebuild can move the
+exemplar, and an approval is against a specific pairing of exemplar and draft.
+So a draft from an earlier session survives with its tick cleared. Correct
+behaviour, not a bug.
 - [ ] The before-and-after line names your project and shows where the text first
       differs.
 - [ ] The last line says `DRY RUN -- nothing was written to the deck.`
@@ -182,6 +199,19 @@ Get-ChildItem "$rig\*.manual-*.bak*" | Sort-Object LastWriteTime | Select-Object
 Copy those two back over `e2e-deck.pptx` and `register.xlsx` if you want the rig
 returned to where you found it. Or leave it — it is a scratch copy and the next
 run rebuilds what it needs.
+
+---
+
+## Verified mechanically on 2026-07-31
+
+Steps 0, 1, 3, 4, 5, 6 and the three guard rows of Step 7 were run exactly as
+written and all passed — including Step 6 (no phantom correction) and every
+guard: ticked-but-empty skipped, typo'd `Status` warned and skipped, blank
+`SlideType` warned and skipped.
+
+**That establishes nothing about Steps 1 and 2.** Those ask whether a person
+would actually use this, which is the question that decides it, and no machine
+can answer it.
 
 ---
 
