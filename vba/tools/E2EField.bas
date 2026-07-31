@@ -221,24 +221,34 @@ Public Function RunField(deckPath As String, registerPath As String, _
                         End If
                     Next ci
 
-                    changes = changes & "  " & k & _
-                        "  slideLen=" & Len(have) & " regLen=" & Len(wantSlideForm) & _
-                        " firstDiffAt=" & dpos
-                    ' NOT IIf. VBA's IIf evaluates BOTH branches regardless of
-                    ' the condition, so `IIf(dpos <= Len(x), AscW(Mid(x,dpos,1)), -1)`
-                    ' still calls AscW on an empty string when the guard is
-                    ' False -- run-time error 5, which headless is a modal
-                    ' dialog and a hung run. A guard that cannot prevent the
-                    ' thing it guards against is worse than no guard: it reads
-                    ' as care taken. Hit live 2026-07-31.
-                    If dpos > 0 Then
-                        Dim sc As Long, rc As Long
-                        sc = -1: rc = -1
-                        If dpos <= Len(have) Then sc = AscW(Mid(have, dpos, 1))
-                        If dpos <= Len(wantSlideForm) Then rc = AscW(Mid(wantSlideForm, dpos, 1))
-                        changes = changes & "  slideChr=" & sc & " regChr=" & rc
+                    ' THE DECISION FIRST, THE FORENSICS SECOND.
+                    '
+                    ' This printed ONLY lengths, the first-difference index and
+                    ' character codes. The reasoning above is sound and is kept
+                    ' -- but it optimised the forensic case at the cost of the
+                    ' one that matters: a person deciding whether these words
+                    ' should reach their deck. You cannot approve text you
+                    ' cannot read, and "nothing reaches a slide unseen" is not
+                    ' satisfied by showing somebody `slideLen=376 regLen=21`.
+                    ' Rohan, 2026-08-01: "It has to be simple and obvious."
+                    '
+                    ' So: the full text of both, always, untruncated -- a
+                    ' truncated diff reintroduces the exact doubt this screen
+                    ' exists to remove. The codes still print, but ONLY when the
+                    ' difference could be invisible on screen. When the change
+                    ' is plainly visible the codes are noise.
+                    changes = changes & "  " & k & vbCrLf & _
+                        "      NOW (" & Len(have) & " chars): " & _
+                        ForApproval(have) & vbCrLf & _
+                        "      NEW (" & Len(wantSlideForm) & " chars): " & _
+                        ForApproval(wantSlideForm) & vbCrLf
+                    If DifferenceCouldBeInvisible(have, wantSlideForm, dpos) Then
+                        changes = changes & _
+                            "      ! the difference at character " & dpos & _
+                            " may not be visible above -- slide " & _
+                            CodePointAt(have, dpos) & ", register " & _
+                            CodePointAt(wantSlideForm, dpos) & vbCrLf
                     End If
-                    changes = changes & vbCrLf
                 End If
             End If
         End If
@@ -810,4 +820,79 @@ Public Function SetPeriodVariant(deckPath As String, newPeriod As String, saveVa
     pres.Close
 
     SetPeriodVariant = r
+End Function
+
+' ---------------------------------------------------------------------------
+' Rendering an approval line so a human can actually decide.
+' Added 2026-08-01 -- see the comment at the change-listing loop for why.
+' ---------------------------------------------------------------------------
+
+' Text as a person needs to read it, on one line, with the things that are
+' real but invisible NAMED rather than silently rendered as nothing.
+' Deliberately does NOT truncate: a cut-off diff puts back exactly the doubt
+' this screen exists to remove.
+Private Function ForApproval(s As String) As String
+    Dim t As String
+    t = s
+    t = Replace(t, vbCrLf, "  //  ")
+    t = Replace(t, vbCr, "  //  ")
+    t = Replace(t, vbLf, "  //  ")
+    t = Replace(t, vbTab, "  ->  ")
+
+    If Len(s) = 0 Then
+        ForApproval = "(empty)"
+        Exit Function
+    End If
+
+    ' Leading and trailing whitespace changes nothing on screen and everything
+    ' to a comparison, so it gets said out loud rather than shown.
+    If Right(s, 1) = " " Then t = t & "   [ends with a space]"
+    If Left(s, 1) = " " Then t = "[starts with a space]   " & t
+
+    ForApproval = t
+End Function
+
+' Whether the two texts differ in a way a reader could miss. An em-dash for a
+' hyphen, a non-breaking space for a space, a trailing blank -- these render
+' identically or near-identically, and they are the whole reason the original
+' version of this display printed codes instead of text. Codes are still the
+' right answer HERE; they were the wrong answer everywhere.
+Private Function DifferenceCouldBeInvisible(a As String, b As String, dpos As Long) As Boolean
+    If dpos = 0 Then Exit Function            ' no difference located
+
+    Dim ca As Long, cb As Long
+    ca = -1: cb = -1
+    ' NOT IIf -- VBA evaluates BOTH branches, so a guarded AscW on an empty
+    ' string still runs and raises error 5, which headless is a modal dialog
+    ' and a hung run. Hit live 2026-07-31; kept as separate If statements.
+    If dpos <= Len(a) Then ca = AscW(Mid(a, dpos, 1))
+    If dpos <= Len(b) Then cb = AscW(Mid(b, dpos, 1))
+
+    ' Anything outside plain printable ASCII can look like something it isn't.
+    If ca > 126 Or cb > 126 Then
+        DifferenceCouldBeInvisible = True
+        Exit Function
+    End If
+
+    ' Whitespace against anything.
+    If ca = 32 Or cb = 32 Or ca = 9 Or cb = 9 Then
+        DifferenceCouldBeInvisible = True
+        Exit Function
+    End If
+
+    ' One string ran out: only invisible if what remains is whitespace.
+    If ca = -1 Or cb = -1 Then
+        If Trim(Mid(a, dpos)) = "" And Trim(Mid(b, dpos)) = "" Then
+            DifferenceCouldBeInvisible = True
+        End If
+    End If
+End Function
+
+' A single character named unambiguously, for when rendering cannot be trusted.
+Private Function CodePointAt(s As String, pos As Long) As String
+    If pos < 1 Or pos > Len(s) Then
+        CodePointAt = "(text ends here)"
+    Else
+        CodePointAt = "U+" & Right$("000" & Hex$(AscW(Mid(s, pos, 1))), 4)
+    End If
 End Function

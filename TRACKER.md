@@ -12,6 +12,11 @@ Not a field count. Not a test count.
 
 - [x] **2. Nothing reaches a slide unseen** — every change shown as before-and-after, nothing
       written without approval. *Caught 22 slides of prose about to be corrupted.*
+      *2026-08-01: this was ticked against a display that printed `slideLen=376 regLen=21
+      firstDiffAt=1` and no text at all — technically "shown", not readably shown. Rohan on
+      seeing it: "fix it now. It has to be simple and obvious to use." Now prints the full
+      untruncated text of both sides, names invisible characters in words, and keeps the
+      character codes for the one case that needs them. The tick stands; it did not before.*
 
 - [x] **3. A drafting sheet exists, and says what to do on it** — instructions on the sheet,
       exemplar beside the input, one tick column.
