@@ -3,7 +3,7 @@
 **Finished =** Rohan produces a real quarter's deck and the tool saved him time.
 Not a field count. Not a test count.
 
-**6 of 10.**
+**7 of 10.**
 
 ---
 
@@ -25,10 +25,10 @@ Not a field count. Not a test count.
 - [x] **6. A quarter rolls forward** — deck declares its own period; at FY26Q4 it cannot see
       FY27Q1 rows at all.
 
-- [ ] **7. Deck settings survive being written** — OPEN BUG. Updating an existing
-      CustomDocumentProperty usually doesn't persist; adding a new one does. 1 success in 5.
-      *Done when: 5 consecutive differing updates persist, verified by `read_deck_props.py`.*
-      *Lead: `pres.Saved` appeared truthful — try retrying Save until it flips.*
+- [x] **7. Deck settings survive being written** — 5 consecutive differing updates confirmed
+      on disk. *The write itself is still unreliable (SaveAs 4/5, Save far worse); the
+      operation is made reliable by `set_deck_period.py` — write, verify offline, retry,
+      fail loudly. Never verify in-process: it shares PowerPoint's cache with the writer.*
 
 - [ ] **8. Rohan says the sheet is usable** — or says exactly why it isn't.
       *Done when: the four checkboxes in `MANUAL-TEST-DRAFTING-LOOP.md` Step 1 are answered.*
