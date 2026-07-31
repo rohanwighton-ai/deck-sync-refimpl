@@ -46,6 +46,27 @@ Public Const COL_STATUS As String = "Status"
 ' this is a one-line change rather than a hunt. All comparisons below are
 ' case-insensitive, so only the spelling is at risk, not the casing.
 Public Const STATUS_APPROVED As String = "Approved"
+
+' SEEDING IS NOT APPROVING, and until 2026-07-31 the Status column could not
+' tell the difference.
+'
+' All 46 ABOUT_BODY rows in the real register read "Approved". None of them had
+' been read and agreed by anyone -- they were copied OFF THE SLIDES so the
+' column would not be empty, exactly as the field package specifies for
+' seeding. Copying something is not approving it.
+'
+' It was harmless only while seed and slide were identical. The moment drafted
+' text arrives, "Approved" becomes the thing deciding whether words reach a
+' slide, and a row copied off that same slide is indistinguishable from one a
+' human genuinely read. There is no way to tell them apart after the fact, so
+' the distinction has to exist BEFORE the first drafting round.
+'
+' Only Approved is writable. Seed and Draft are recognised and refused; an
+' unrecognised value is refused AND reported loudly, because that is a typo in
+' the one column standing between a draft and a real slide.
+Public Const STATUS_SEED As String = "Seed"      ' copied from the slide -- never writable
+Public Const STATUS_DRAFT As String = "Draft"    ' synthesised, not yet agreed -- never writable
+
 Public Const QUARTER_ALL As String = "ALL"
 
 ' What a read produced, and -- as importantly -- what it discarded.
@@ -59,7 +80,10 @@ Public Const QUARTER_ALL As String = "ALL"
 Public Type RegisterRead
     Data As Sheet              ' the SAME UDT the wide reader returns -- nothing downstream changes
     RowsSeen As Long           ' data rows in the register, before any filter
-    RejectedStatus As Long     ' dropped because Status <> Approved
+    RejectedStatus As Long     ' dropped because Status <> Approved (total)
+    RejectedSeed As Long       ' ...of which: Seed, a value copied off the slide
+    RejectedDraft As Long      ' ...of which: Draft, synthesised but not agreed
+    RejectedUnknownStatus As Long  ' ...of which: not a recognised status at all -- a typo
     RejectedPeriod As Long     ' dropped because Quarter matched neither the deck period nor ALL
     RejectedType As Long       ' dropped because SlideType is a different type
     Accepted As Long
@@ -148,6 +172,20 @@ Public Function ReadRegister(ws As Object, deckPeriod As String, slideType As St
                 result.RejectedType = result.RejectedType + 1
             ElseIf StrComp(Trim(CStr(ws.Cells(r, cStatus).Value)), STATUS_APPROVED, vbTextCompare) <> 0 Then
                 result.RejectedStatus = result.RejectedStatus + 1
+                ' WHICH kind of not-approved. "12 rows are seed values" and
+                ' "12 rows have a status nobody recognises" are the same number
+                ' and completely different situations -- one is the system
+                ' working, the other is a typo in the column that decides
+                ' whether words reach a slide.
+                Dim statusRaw As String
+                statusRaw = Trim(CStr(ws.Cells(r, cStatus).Value))
+                If StrComp(statusRaw, STATUS_SEED, vbTextCompare) = 0 Then
+                    result.RejectedSeed = result.RejectedSeed + 1
+                ElseIf StrComp(statusRaw, STATUS_DRAFT, vbTextCompare) = 0 Then
+                    result.RejectedDraft = result.RejectedDraft + 1
+                Else
+                    result.RejectedUnknownStatus = result.RejectedUnknownStatus + 1
+                End If
             ElseIf StrComp(q, deckPeriod, vbTextCompare) <> 0 And StrComp(q, QUARTER_ALL, vbTextCompare) <> 0 Then
                 ' The entity-static case: Quarter = ALL rows carry forward into
                 ' every period. Round 5 §3 -- a field like PROJECT_NAME does not
@@ -211,17 +249,47 @@ Public Function ReadDiagnostic(r As RegisterRead, deckPeriod As String) As Strin
     ' mistyped period still accepts the entity-static ones. Testing Accepted > 0
     ' would therefore stay silent through exactly the failure this guards --
     ' a partial sync that looks like a successful one.
+    ' An UNRECOGNISED status is reported even on an otherwise healthy read, and
+    ' before the success line rather than after it.
+    '
+    ' Every other rejection here is the system working: a Seed row is meant to
+    ' be refused, a Draft row is meant to be refused, a different period is
+    ' meant to be refused. An unrecognised value is none of those -- it is a
+    ' typo in the single column that decides whether words reach a slide, and
+    ' its row is silently absent from the sync. Returning early on
+    ' AcceptedPeriod > 0 would hide it behind exactly the runs that look fine.
+    Dim warn As String
+    If r.RejectedUnknownStatus > 0 Then
+        warn = "WARNING: " & r.RejectedUnknownStatus & " row(s) have a Status that is not " & _
+            STATUS_APPROVED & ", " & STATUS_SEED & " or " & STATUS_DRAFT & "." & vbCrLf & _
+            "Those rows were SKIPPED. A misspelt status is indistinguishable from" & vbCrLf & _
+            "a deliberate hold, and neither reaches a slide." & vbCrLf & vbCrLf
+    End If
+
+    ' Held-back seed rows are stated in BOTH exit paths, not just the healthy
+    ' one. Built here, above the branch, for that reason: the first version put
+    ' the sentence inside the AcceptedPeriod > 0 arm only, so a register whose
+    ' accepted rows were all entity-static reported the seed count as a number
+    ' in a list and never said what it meant. Caught by its own test.
+    Dim held As String
+    If r.RejectedSeed > 0 Then
+        held = r.RejectedSeed & " seed row(s) held back -- seeding is not approving." & vbCrLf
+    End If
+
     If r.AcceptedPeriod > 0 Then
-        ReadDiagnostic = r.Accepted & " row(s) accepted for period '" & deckPeriod & "'" & _
-            IIf(r.AcceptedStatic > 0, " (" & r.AcceptedStatic & " of them entity-static)", "") & "."
+        ReadDiagnostic = warn & r.Accepted & " row(s) accepted for period '" & deckPeriod & "'" & _
+            IIf(r.AcceptedStatic > 0, " (" & r.AcceptedStatic & " of them entity-static)", "") & "." & _
+            IIf(held <> "", vbCrLf & held, "")
         Exit Function
     End If
 
     Dim s As String
-    s = "NO ROWS matched this deck's period '" & deckPeriod & "'." & vbCrLf & vbCrLf & _
+    s = warn & held & "NO ROWS matched this deck's period '" & deckPeriod & "'." & vbCrLf & vbCrLf & _
         "  rows in the register:   " & r.RowsSeen & vbCrLf & _
         "  wrong slide type:       " & r.RejectedType & vbCrLf & _
-        "  not Approved:           " & r.RejectedStatus & vbCrLf & _
+        "  not Approved:           " & r.RejectedStatus & _
+            IIf(r.RejectedStatus > 0, "  (seed " & r.RejectedSeed & ", draft " & r.RejectedDraft & _
+                ", UNRECOGNISED " & r.RejectedUnknownStatus & ")", "") & vbCrLf & _
         "  different period:       " & r.RejectedPeriod & vbCrLf & _
         "  entity-static accepted: " & r.AcceptedStatic & vbCrLf
 

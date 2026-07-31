@@ -198,6 +198,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_Register_SeedIsNotApproved()
+    AppendResult report, "Register_SeedIsNotApproved", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_PlaceholderCheck_FindsRecordsNotTheTemplate()
     AppendResult report, "PlaceholderCheck_FindsRecordsNotTheTemplate", r
     On Error GoTo 0
@@ -2066,6 +2071,60 @@ Private Function Test_InjectPrimitive_TrailingBreaksAreNotADifference() As Strin
 
     sld.Delete
     Test_InjectPrimitive_TrailingBreaksAreNotADifference = result
+End Function
+
+Private Function Test_Register_SeedIsNotApproved() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+
+    ws.Cells(1, 1).Value = "Quarter":    ws.Cells(1, 2).Value = "EntityCode"
+    ws.Cells(1, 3).Value = "SlideType":  ws.Cells(1, 4).Value = "FieldID"
+    ws.Cells(1, 5).Value = "Value":      ws.Cells(1, 6).Value = "Status"
+
+    ' One of each, so the counters have to discriminate rather than just tally.
+    ws.Cells(2, 1).Value = "ALL": ws.Cells(2, 2).Value = "P001": ws.Cells(2, 3).Value = "q"
+    ws.Cells(2, 4).Value = "ABOUT_BODY": ws.Cells(2, 5).Value = "Approved text": ws.Cells(2, 6).Value = "Approved"
+
+    ws.Cells(3, 1).Value = "ALL": ws.Cells(3, 2).Value = "P002": ws.Cells(3, 3).Value = "q"
+    ws.Cells(3, 4).Value = "ABOUT_BODY": ws.Cells(3, 5).Value = "Copied off the slide": ws.Cells(3, 6).Value = "Seed"
+
+    ws.Cells(4, 1).Value = "ALL": ws.Cells(4, 2).Value = "P003": ws.Cells(4, 3).Value = "q"
+    ws.Cells(4, 4).Value = "ABOUT_BODY": ws.Cells(4, 5).Value = "Drafted, not agreed": ws.Cells(4, 6).Value = "Draft"
+
+    ws.Cells(5, 1).Value = "ALL": ws.Cells(5, 2).Value = "P004": ws.Cells(5, 3).Value = "q"
+    ws.Cells(5, 4).Value = "ABOUT_BODY": ws.Cells(5, 5).Value = "Typo in status": ws.Cells(5, 6).Value = "Aproved"
+
+    Dim r As RegisterRead
+    r = Register.ReadRegister(ws, "FY26Q4", "q")
+
+    result = result & Assert(r.Accepted = 1, "only the Approved row is accepted, got " & r.Accepted)
+    result = result & Assert(r.Data.Rows.Exists("P001"), "the approved entity is present")
+    result = result & Assert(Not r.Data.Rows.Exists("P002"), "A SEED ROW IS NEVER WRITABLE -- seeding is not approving")
+    result = result & Assert(Not r.Data.Rows.Exists("P003"), "a Draft row is not writable")
+    result = result & Assert(Not r.Data.Rows.Exists("P004"), "a row with a misspelt status is not writable")
+
+    ' The counters must DISCRIMINATE. "3 rows not approved" is true of all three
+    ' and useless -- one is the system working, one is a hold, one is a typo.
+    result = result & Assert(r.RejectedStatus = 3, "three rows rejected on status, got " & r.RejectedStatus)
+    result = result & Assert(r.RejectedSeed = 1, "one counted as Seed, got " & r.RejectedSeed)
+    result = result & Assert(r.RejectedDraft = 1, "one counted as Draft, got " & r.RejectedDraft)
+    result = result & Assert(r.RejectedUnknownStatus = 1, "one counted as UNRECOGNISED, got " & r.RejectedUnknownStatus)
+
+    ' A typo must be loud even though this read otherwise succeeded -- that is
+    ' the case an early return would have hidden.
+    Dim diag As String
+    diag = Register.ReadDiagnostic(r, "FY26Q4")
+    result = result & Assert(InStr(diag, "WARNING") > 0, "an unrecognised status warns even on a healthy read")
+    result = result & Assert(InStr(diag, "seeding is not approving") > 0, "held-back seed rows are stated, not silently dropped")
+
+    wb.Close False
+    xl.Quit
+    Test_Register_SeedIsNotApproved = result
 End Function
 
 Private Function Test_PlaceholderCheck_FindsRecordsNotTheTemplate() As String

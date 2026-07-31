@@ -165,3 +165,39 @@ The post-write verification uses the identical rule. If the two disagreed, a val
 only difference was a trailing break would be judged "needs writing" by one check and
 "write did not take" by the other — a permanent, self-inflicted failure on a field that is
 in fact correct.
+
+## F12 — Seeding is not approving
+
+`Status` carries **one** meaning: *a human read this text and means it*. It is the gate
+between synthesis and population, and it only works if it says exactly one thing.
+
+| Status | Meaning | Writable |
+|---|---|---|
+| `Approved` | A person read this and meant it | **yes** |
+| `Seed` | Copied off the slide to establish a baseline or exemplar | never |
+| `Draft` | Synthesised, not yet agreed | never |
+| *anything else* | A typo in the column that decides whether words reach a slide | never, **and reported loudly** |
+
+**Why this needed its own status rather than leaving seeds as `Approved`.** All 46
+`ABOUT_BODY` rows in the real register read `Approved`. Not one had been read and agreed by
+anybody — they were copied off the slides so the column would not be empty, exactly as the
+field package specifies for seeding. Copying something is not approving it.
+
+That was harmless only while seed and slide were identical, which is precisely why it was
+easy to miss. The moment drafted text arrives, `Approved` becomes the thing deciding
+whether words reach a slide, and a row copied off that same slide is **indistinguishable**
+from one a human genuinely read. There is no way to recover the distinction after the
+fact — so it has to exist before the first drafting round, not after it.
+
+**An unrecognised status is reported even on an otherwise healthy read.** Every other
+rejection is the system working as intended: `Seed` is meant to be refused, `Draft` is
+meant to be refused, a different period is meant to be refused. A misspelt status is none
+of those — it silently removes a row from the sync, and it looks identical to a deliberate
+hold. Returning early once some rows were accepted would hide it behind exactly the runs
+that appear fine.
+
+**The counters discriminate, deliberately.** "3 rows not approved" is true of a seed, a
+draft and a typo alike, and useless about all three. `RejectedSeed` / `RejectedDraft` /
+`RejectedUnknownStatus` are reported separately because they are three different situations
+wearing one number — the same failure as F1's ambiguous zero, in the status column.
+

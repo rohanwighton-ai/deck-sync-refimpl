@@ -120,7 +120,8 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
     reg = Register.ReadRegister(wb.Worksheets(1), period, "q")
     r = r & "--- register ---" & vbCrLf & _
         "  rows seen: " & reg.RowsSeen & "   accepted: " & reg.Accepted & vbCrLf & _
-        "  missing columns: '" & reg.MissingColumns & "'" & vbCrLf & vbCrLf
+        "  missing columns: '" & reg.MissingColumns & "'" & vbCrLf & _
+        "  " & Register.ReadDiagnostic(reg, period) & vbCrLf & vbCrLf
 
     If reg.MissingColumns <> "" Or reg.Accepted = 0 Then
         wb.Close False: xl.Quit
@@ -141,15 +142,20 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
         If inst.HasInstanceKey And Not inst.IsTemplate Then Set keyToSlide(inst.InstanceKey) = sld
     Next sld
 
-    Dim nFound As Long, nNotFound As Long, nSame As Long, nDiffer As Long, nNoRow As Long
+    Dim nFound As Long, nNotFound As Long, nSame As Long, nDiffer As Long
+    ' Two DIFFERENT causes, kept apart. "no register row/slide: 46" was one
+    ' number covering "this entity has no slide" and "this field was filtered
+    ' out of the register" -- and after the Seed/Approved split the second is
+    ' the normal, correct state while the first is a broken link.
+    Dim nNoSlide As Long, nNotInRegister As Long
     Dim changes As String
 
     Dim k As Variant
     For Each k In reg.Data.Rows.Keys
         If Not keyToSlide.Exists(CStr(k)) Then
-            nNoRow = nNoRow + 1
+            nNoSlide = nNoSlide + 1
         ElseIf Not reg.Data.Rows(k).Exists("ABOUT_BODY") Then
-            nNoRow = nNoRow + 1
+            nNotInRegister = nNotInRegister + 1
         Else
             Dim want As String
             want = CStr(reg.Data.Rows(k)("ABOUT_BODY"))
@@ -227,7 +233,8 @@ Public Function RunAboutBody(deckPath As String, registerPath As String, _
         "  SHAPE NOT FOUND:       " & nNotFound & vbCrLf & _
         "  already correct:       " & nSame & vbCrLf & _
         "  WOULD CHANGE:          " & nDiffer & vbCrLf & _
-        "  no register row/slide: " & nNoRow & vbCrLf & vbCrLf
+        "  entity has no slide:   " & nNoSlide & vbCrLf & _
+        "  not writable (held back by Status): " & nNotInRegister & vbCrLf & vbCrLf
 
     If nDiffer > 0 Then
         r = r & "--- the changes, before and after ---" & vbCrLf & changes & vbCrLf

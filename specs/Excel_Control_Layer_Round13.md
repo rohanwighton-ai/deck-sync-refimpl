@@ -221,3 +221,37 @@ run — it just shows you the transformations first. For anything with prose in 
 `Apply Approved`**, and `Sync Now` will send you there itself rather than proceeding. The
 `TPL_ABOUT_BODY` worksheet and its Copilot prompt block in your §4 are unaffected — that is
 a drafting surface and sits upstream of all of this.
+
+---
+
+## 7. `Status` now has a vocabulary, and it is not optional
+
+**Added 31 July 2026, after measuring your register.** All 46 `ABOUT_BODY` rows read
+`Approved`. None had been read and agreed by anyone — they were copied off the slides per
+your §3 seeding step. Copying is not approving, and the column could not tell the
+difference.
+
+| Status | Meaning | Reaches a slide |
+|---|---|---|
+| `Approved` | A person read this and meant it | **yes** |
+| `Seed` | Copied off the slide as a baseline or exemplar | never |
+| `Draft` | Synthesised, not yet agreed | never |
+| *anything else* | A typo in the column that decides whether words reach a slide | never, and it warns |
+
+**Why it could not wait.** It is harmless today only because seed and slide are identical —
+which is exactly what makes it easy to leave. The moment Copilot drafts replacement text,
+`Approved` becomes the thing deciding whether words land on a slide, and a row copied off
+that same slide is indistinguishable from one a human genuinely read. The distinction
+cannot be recovered afterwards.
+
+**What this changes for you:** `ABOUT_BODY`'s 46 rows are being relabelled `Seed`, so the
+field is inert until someone approves text. That is the correct state — the drafting round
+in your §4 is what produces `Approved` values, and the exemplar in column C is exactly what
+`Seed` is for. `PROJECT_STATUS` is untouched: those are controlled-vocabulary values applied
+and verified against a prediction.
+
+**One thing to confirm:** the publish step in your §4 says approved column-F values are
+pasted into the register. Those rows should be written `Approved`; everything the seeding
+step produces should be written `Seed`. If your publish macro hardcodes `Approved`, that is
+the one line to change.
+
