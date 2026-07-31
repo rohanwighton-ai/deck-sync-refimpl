@@ -12,7 +12,8 @@ param(
     [string]$DeckPath = "C:\Users\rohan\deck-sync-e2e\e2e-deck.pptx",
     [string]$RegisterPath = "C:\Users\rohan\deck-sync-e2e\register.xlsx",
     [string]$Period = "FY26Q4",
-    [ValidateSet("migrate","dryrun","apply","reseed","verifyharvest","deleteentities","draft","publish","setperiod")][string]$Mode = "dryrun",
+    [ValidateSet("migrate","dryrun","apply","reseed","verifyharvest","deleteentities","draft","publish","setperiod","setperiodvariant")][string]$Mode = "dryrun",
+    [string]$Variant = "save",
     [string]$FieldId = "ABOUT_BODY",
     [string]$TsvPath = "C:\Users\rohan\deck-sync-e2e\field_values.tsv",
     [string]$Entities = "",
@@ -100,6 +101,9 @@ try {
     } elseif ($Mode -eq "setperiod") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
             @([string]"E2EField.SetPeriod",[string]$DeckPath,[string]$Period))
+    } elseif ($Mode -eq "setperiodvariant") {
+        $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
+            @([string]"E2EField.SetPeriodVariant",[string]$DeckPath,[string]$Period,[string]$Variant))
     } elseif ($Mode -eq "draft") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
             @([string]"E2EField.BuildDraftSheet",[string]$RegisterPath,[string]$Period,[string]$FieldId))

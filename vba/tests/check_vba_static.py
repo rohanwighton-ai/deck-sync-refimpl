@@ -244,6 +244,45 @@ def check_function_returns(path: Path, lines: list[str]) -> list[str]:
     return findings
 
 
+PROC_PARAMS_RE = re.compile(
+    r"^(?:Public |Private |Friend )?(?:Sub|Function|Property(?:\s+(?:Get|Let|Set))?)\s+\w+\s*\((.*)$",
+    re.IGNORECASE)
+PARAM_NAME_RE = re.compile(r"(?:ByVal\s+|ByRef\s+|Optional\s+|ParamArray\s+)*(\w+)", re.IGNORECASE)
+
+
+def check_reserved_params(path: Path, lines: list[str]) -> list[str]:
+    """A reserved word as a PARAMETER name is a Syntax error too.
+
+    check_reserved_names only inspects declarations (`Dim x As ...`). It does
+    not look inside a procedure's parameter list, so
+    `Function Foo(variant As String)` sailed through -- and `variant` is a VBA
+    data type, so that is a compile-time Syntax error. Cost a full agent run on
+    2026-08-01, having already cost a run as `Dim empty` the day before: the
+    same mistake in the one place the checker was not looking.
+
+    Handles a continued signature (` _` line breaks) by joining forward.
+    """
+    findings: list[str] = []
+    for i, raw in enumerate(lines, 1):
+        m = PROC_PARAMS_RE.match(raw.strip())
+        if not m:
+            continue
+        sig = m.group(1)
+        j = i
+        while sig.rstrip().endswith("_") and j < len(lines):
+            sig = sig.rstrip()[:-1] + lines[j].strip()
+            j += 1
+        sig = sig.split(")")[0]
+        for part in sig.split(","):
+            pm = PARAM_NAME_RE.match(part.strip())
+            if pm and pm.group(1).lower() in RESERVED_NAMES:
+                findings.append(
+                    f"{path}:{i}: parameter '{pm.group(1)}' is a VBA reserved word -- "
+                    f"a compile-time Syntax error, and headless it is a hang with no output."
+                )
+    return findings
+
+
 def check_structural_sanity(path: Path, lines: list[str]) -> list[str]:
     """Every module has at least one procedure, and starts/ends balance.
 
@@ -293,6 +332,7 @@ def main() -> int:
         findings += check_duplicate_dims(rel, lines)
         findings += check_empty_redim(rel, lines)
         findings += check_reserved_names(rel, lines)
+        findings += check_reserved_params(rel, lines)
         findings += check_function_returns(rel, lines)
         findings += check_structural_sanity(rel, lines)
 

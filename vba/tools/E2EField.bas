@@ -743,3 +743,61 @@ Public Function SetPeriod(deckPath As String, newPeriod As String) As String
 
     SetPeriod = r
 End Function
+
+' PROBE, not the shipped path. Tests candidate fixes for the open
+' CustomDocumentProperties persistence bug (AGENTS.md, 2026-07-31) against a
+' SINGLE write, one process lifetime. The caller (field_e2e.ps1) is what
+' supplies "Office fully closed between each" -- this function does not loop
+' or retry across process boundaries, because the whole point is that an
+' in-process check cannot be trusted. The offline docProps/custom.xml read is
+' the only thing that judges pass/fail.
+'
+' variant:
+'   "save"       -- baseline, identical to SetPeriod's own write (Save).
+'   "saveas"     -- SaveAs to the SAME path instead of Save. Untried step #1
+'                   from AGENTS.md. Hypothesis: Save on a large deck (this rig
+'                   is ~49MB) can be an incremental/partial rewrite that
+'                   doesn't always regenerate docProps/custom.xml; SaveAs
+'                   forces a full package rewrite.
+'   "hiddenopen" -- open with WithWindow:=msoFalse (untried step #2), then
+'                   plain Save.
+'   "doublesave" -- call Save twice in a row before Close.
+Public Function SetPeriodVariant(deckPath As String, newPeriod As String, saveVariant As String) As String
+    Dim withWindow As Long
+    withWindow = IIf(LCase(saveVariant) = "hiddenopen", msoFalse, msoTrue)
+
+    Dim pres As Object
+    Set pres = Application.Presentations.Open(deckPath, msoFalse, msoFalse, withWindow)
+    On Error Resume Next
+    pres.Windows(1).Activate   ' no Windows collection item when WithWindow:=False; ignore
+    On Error GoTo 0
+
+    Dim old As String
+    old = DeckRegistry.GetDeckPeriod(pres)
+
+    Dim r As String
+    r = "variant=" & saveVariant & "  from='" & old & "' to='" & newPeriod & "'" & vbCrLf & _
+        "  opened:   " & pres.fullName & vbCrLf & _
+        "  ReadOnly: " & pres.ReadOnly & vbCrLf
+
+    DeckRegistry.SetDeckPeriod pres, newPeriod
+
+    On Error Resume Next
+    Select Case LCase(saveVariant)
+        Case "saveas"
+            pres.SaveAs pres.fullName, ppSaveAsDefault
+        Case "doublesave"
+            pres.Save
+            pres.Save
+        Case Else   ' "save", "hiddenopen"
+            pres.Save
+    End Select
+    If Err.Number <> 0 Then r = r & "  *** write RAISED: " & Err.Number & " " & Err.Description & vbCrLf
+    On Error GoTo 0
+
+    r = r & "  pres.Saved after write: " & pres.Saved & vbCrLf
+
+    pres.Close
+
+    SetPeriodVariant = r
+End Function
