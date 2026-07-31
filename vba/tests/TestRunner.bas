@@ -218,6 +218,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_DeckDeclaresItsOwnPeriod()
+    AppendResult report, "DeckRegistry_DeckDeclaresItsOwnPeriod", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_PlaceholderCheck_FindsRecordsNotTheTemplate()
     AppendResult report, "PlaceholderCheck_FindsRecordsNotTheTemplate", r
     On Error GoTo 0
@@ -2337,6 +2342,39 @@ Private Function Test_RunSync_CreateMissingRefusesWhileSlidesAreUnclassified() A
 
     keyed.Delete
     Test_RunSync_CreateMissingRefusesWhileSlidesAreUnclassified = result
+End Function
+
+Private Function Test_DeckRegistry_DeckDeclaresItsOwnPeriod() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim original As String
+    original = DeckRegistry.GetDeckPeriod(pres)
+
+    DeckRegistry.SetDeckPeriod pres, "FY26Q4"
+    result = result & Assert(DeckRegistry.GetDeckPeriod(pres) = "FY26Q4", "the period round-trips through the deck, got '" & DeckRegistry.GetDeckPeriod(pres) & "'")
+
+    ' THE DECK WINS. This is the whole point: a supplied period is a habit or a
+    ' script default, and trusting it is how a copied deck reports last
+    ' quarter's content with no error anywhere.
+    Dim mm As String
+    mm = DeckRegistry.PeriodMismatchText("FY26Q4", "FY26Q3")
+    result = result & Assert(InStr(mm, "PERIOD MISMATCH") > 0, "a disagreement is reported, not silently resolved")
+    result = result & Assert(InStr(mm, "using the DECK") > 0, "and it says WHICH one wins")
+
+    result = result & Assert(DeckRegistry.PeriodMismatchText("FY26Q4", "FY26Q4") = "", "agreement says nothing")
+    result = result & Assert(DeckRegistry.PeriodMismatchText("FY26Q4", "") = "", "supplying nothing is not a mismatch")
+    result = result & Assert(DeckRegistry.PeriodMismatchText("", "FY26Q4") = "", "a deck with no period recorded cannot mismatch")
+
+    ' Rolling forward states both ends, so it cannot be done by accident.
+    Dim adv As String
+    adv = DeckRegistry.AdvancePeriodText("FY26Q4", "FY27Q1")
+    result = result & Assert(InStr(adv, "FY26Q4") > 0 And InStr(adv, "FY27Q1") > 0, "the roll-forward names BOTH periods")
+    result = result & Assert(InStr(DeckRegistry.AdvancePeriodText("FY26Q4", "FY26Q4"), "Nothing to do") > 0, "rolling to the same period is a no-op, and says so")
+
+    DeckRegistry.SetDeckPeriod pres, original
+    Test_DeckRegistry_DeckDeclaresItsOwnPeriod = result
 End Function
 
 Private Function Test_PlaceholderCheck_FindsRecordsNotTheTemplate() As String

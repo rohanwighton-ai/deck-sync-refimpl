@@ -1,6 +1,10 @@
 Attribute VB_Name = "DeckRegistry"
 Option Explicit
 
+' The deck's own reporting period (D4). See GetDeckPeriod below for why this
+' is stored on the deck rather than supplied per run.
+Public Const PROP_DECK_PERIOD As String = "DeckSyncPeriod"
+
 ' Implements specs/deck-registry.md: the missing lookup a one-click ribbon
 ' button needs and no prior module provides -- "for this open deck, which
 ' workbook is paired with it, and where does each known slide type's
@@ -326,3 +330,69 @@ Public Sub ManualSmokeTest()
     Debug.Print msg
     MsgBox msg
 End Sub
+
+' ---------------------------------------------------------------------
+' The deck's own reporting period (D4)
+' ---------------------------------------------------------------------
+
+' THE DECK DECLARES ITS OWN PERIOD. Until 2026-07-31 the period was supplied as
+' an argument on every run, which meant nothing in the deck knew what quarter it
+' was for -- and the register filter is
+' `Status = Approved AND (Quarter = <deck period> OR Quarter = ALL)`, so the
+' argument silently decided which quarter's content landed.
+'
+' Why an argument is not good enough, and this is the specific hazard the
+' WORKPLAN already recorded as undefended: starting next quarter means COPYING
+' this deck. The copy carries every tag, every registered type, and -- with an
+' argument-supplied period -- absolutely nothing that says which quarter it is.
+' Type the old period by habit, or let a script default, and the new quarter's
+' deck reports last quarter's numbers with no error anywhere. `SlideID` cannot
+' help: the probe showed it is preserved on cross-deck paste.
+'
+' Stored, so a copy inherits the WRONG period rather than no period -- which is
+' worse in principle and better in practice, because AdvancePeriod below makes
+' rolling forward an explicit act, and PeriodMismatchText makes disagreeing with
+' the caller loud.
+
+Public Function GetDeckPeriod(pres As Object) As String
+    GetDeckPeriod = ReadStringProperty(pres, PROP_DECK_PERIOD)
+End Function
+
+Public Sub SetDeckPeriod(pres As Object, period As String)
+    WriteStringProperty pres, PROP_DECK_PERIOD, period
+End Sub
+
+' Rolling forward is an EXPLICIT act with a stated from-and-to, never inferred.
+' Returns the text a caller should show; does not itself decide anything.
+Public Function AdvancePeriodText(oldPeriod As String, newPeriod As String) As String
+    If oldPeriod = "" Then
+        AdvancePeriodText = "This deck has no period recorded." & vbCrLf & _
+            "Setting it to '" & newPeriod & "'."
+    ElseIf StrComp(oldPeriod, newPeriod, vbTextCompare) = 0 Then
+        AdvancePeriodText = "This deck is already '" & newPeriod & "'. Nothing to do."
+    Else
+        AdvancePeriodText = "Roll this deck forward?" & vbCrLf & vbCrLf & _
+            "    from:  " & oldPeriod & vbCrLf & _
+            "    to:    " & newPeriod & vbCrLf & vbCrLf & _
+            "Every quarterly field will then be read from the '" & newPeriod & "'" & vbCrLf & _
+            "rows of the register. Entity-static fields are unaffected."
+    End If
+End Function
+
+' What to say when a caller supplies a period that disagrees with the deck.
+'
+' The DECK wins, always. A caller-supplied period is a habit or a script
+' default; the deck's property was written by somebody rolling it forward on
+' purpose. Returning "" means they agree and there is nothing to say.
+Public Function PeriodMismatchText(deckPeriod As String, suppliedPeriod As String) As String
+    If suppliedPeriod = "" Then Exit Function
+    If deckPeriod = "" Then Exit Function
+    If StrComp(deckPeriod, suppliedPeriod, vbTextCompare) = 0 Then Exit Function
+
+    PeriodMismatchText = "PERIOD MISMATCH -- using the DECK's period, not the one supplied." & vbCrLf & _
+        "    deck says:     " & deckPeriod & vbCrLf & _
+        "    you supplied:  " & suppliedPeriod & vbCrLf & _
+        "The deck's period was written when somebody rolled it forward on purpose." & vbCrLf & _
+        "A supplied period is usually a habit or a script default, which is exactly" & vbCrLf & _
+        "how a copied deck comes to report last quarter's content."
+End Function

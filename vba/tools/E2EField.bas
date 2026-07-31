@@ -76,11 +76,21 @@ Public Function RunField(deckPath As String, registerPath As String, _
     Set pres = Application.Presentations.Open(deckPath, msoFalse, msoFalse, msoTrue)
     pres.Windows(1).Activate
 
+    ' THE DECK'S OWN PERIOD WINS over whatever was supplied. A supplied period
+    ' is a habit or a script default; the deck's property was written when
+    ' somebody rolled it forward deliberately. Getting this backwards is how a
+    ' deck copied to start next quarter reports last quarter's content, with no
+    ' error anywhere.
+    Dim mismatch As String
+    mismatch = DeckRegistry.PeriodMismatchText(DeckRegistry.GetDeckPeriod(pres), period)
+    If DeckRegistry.GetDeckPeriod(pres) <> "" Then period = DeckRegistry.GetDeckPeriod(pres)
+
     r = "Deck:     " & deckPath & vbCrLf & _
         "Register: " & registerPath & vbCrLf & _
-        "Period:   " & period & vbCrLf & _
+        "Period:   " & period & IIf(DeckRegistry.GetDeckPeriod(pres) <> "", "  (from the deck)", "  (SUPPLIED -- this deck declares no period)") & vbCrLf & _
         "Mode:     " & IIf(doMigrate, "MIGRATE TAGS (renames labels, saves, no text change)", IIf(doWrite, "APPLY (will write and save)", "DRY RUN (writes nothing)")) & vbCrLf & _
-        "Slides:   " & pres.Slides.count & vbCrLf & vbCrLf
+        "Slides:   " & pres.Slides.count & vbCrLf & vbCrLf & _
+        IIf(mismatch <> "", mismatch & vbCrLf & vbCrLf, "")
 
     ' --- Tag migration, exactly as the delivering run did it ---------------
     ' Idempotent: already-correct tags count as AlreadyDone, not as work. This
@@ -91,7 +101,13 @@ Public Function RunField(deckPath As String, registerPath As String, _
     fromV(1) = "Project Status": toV(1) = "PROJECT_STATUS"
     fromV(2) = "Project Name":   toV(2) = "PROJECT_NAME"
     fromV(3) = "Project number": toV(3) = "PROJECT_CODE"
-    fromV(4) = "About text":     toV(4) = fieldId
+    ' LITERAL, never the fieldId parameter. This map is the deck's fixed
+    ' old-name -> FieldID translation and has nothing to do with which field
+    ' this run is processing. It briefly read `toV(4) = fieldId` -- collateral
+    ' from a blanket rename when this module was generalised -- which would have
+    ' renamed every "About text" tag to whatever field was passed, corrupting
+    ' the deck's tagging on any migrate run that was not for ABOUT_BODY.
+    fromV(4) = "About text":     toV(4) = "ABOUT_BODY"
     fromV(5) = "events text":    toV(5) = "KEY_EVENTS_BODY"
 
     Dim mig As MigrationReport
@@ -105,7 +121,7 @@ Public Function RunField(deckPath As String, registerPath As String, _
     If doMigrate Then
         pres.Save
         RunField = r & "Tags migrated and deck SAVED. No slide text was changed." & vbCrLf & _
-            "Re-run with -Mode dryrun to preview ABOUT_BODY." & vbCrLf
+            "Re-run with -Mode dryrun to preview " & fieldId & "." & vbCrLf
         Exit Function
     End If
 
@@ -674,4 +690,22 @@ Public Function PublishDraftSheet(registerPath As String, fieldId As String, mod
     wb.Close False
     xl.Quit
     PublishDraftSheet = r
+End Function
+
+' Roll the deck forward. Explicit, with the from-and-to stated.
+Public Function SetPeriod(deckPath As String, newPeriod As String) As String
+    Dim pres As Object
+    Set pres = Application.Presentations.Open(deckPath, msoFalse, msoFalse, msoTrue)
+    pres.Windows(1).Activate
+
+    Dim old As String
+    old = DeckRegistry.GetDeckPeriod(pres)
+    Dim r As String
+    r = DeckRegistry.AdvancePeriodText(old, newPeriod) & vbCrLf & vbCrLf
+
+    DeckRegistry.SetDeckPeriod pres, newPeriod
+    pres.Save
+    r = r & "Deck period is now: " & DeckRegistry.GetDeckPeriod(pres) & vbCrLf
+    pres.Close
+    SetPeriod = r
 End Function
