@@ -51,8 +51,19 @@ Public Const COL_D_NOTES As Long = 5
 Public Const COL_D_DRAFT As Long = 6
 Public Const COL_D_APPROVED As Long = 7
 
-Public Const DRAFT_HEADER_ROW As Long = 1
-Public Const DRAFT_FIRST_ROW As Long = 2
+' The instruction block occupies rows 1-7, so the grid starts lower.
+'
+' The instructions used to be PRINTED TO THE CONSOLE when the sheet was built,
+' and the sheet itself said nothing. Rohan opened it cold on 2026-07-31 and
+' could not tell what he was being asked to do -- "no instruction as to what to
+' type and where or how the information goes when I do". Correct, and the whole
+' reason a human runs step 1 of the manual test.
+'
+' A form with its covering letter thrown away is not a form. They live ON the
+' sheet now, where the person is.
+Public Const DRAFT_INTRO_ROW As Long = 1
+Public Const DRAFT_HEADER_ROW As Long = 9
+Public Const DRAFT_FIRST_ROW As Long = 10
 
 ' Name of a field's drafting sheet. Same hash-disambiguation reasoning as
 ' ReviewQueue.ReviewSheetNameFor: Excel truncates at 31 characters, and two
@@ -115,14 +126,39 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
 
     ws.Cells.Clear
 
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_ENTITY).Value = "EntityCode"
+    ' --- instructions, ON the sheet, for the person ----------------------
+    ws.Cells(DRAFT_INTRO_ROW, 1).Value = "WHAT TO DO ON THIS SHEET  --  " & fieldId
+    ws.Cells(DRAFT_INTRO_ROW, 1).Font.Bold = True
+    ws.Cells(DRAFT_INTRO_ROW, 1).Font.Size = 14
+
+    ws.Cells(2, 1).Value = "1.  Read the CURRENT text in column C. That is what the slide says today."
+    ws.Cells(3, 1).Value = "2.  If it should change, type the new wording in column F. Leave F empty to keep what is there."
+    ws.Cells(4, 1).Value = "3.  Type  Y  in column G for every row you want used. No Y means the row is ignored."
+    ws.Cells(5, 1).Value = "4.  Save and CLOSE this file. Nothing happens until you do."
+    ws.Cells(6, 1).Value = "5.  Then run Publish, read the list of changes it shows you, and Apply."
+
+    ws.Cells(7, 1).Value = "Nothing you type here reaches a slide until you have seen it listed and approved it. " & _
+                           "Column C is read-only -- edit the register, not this sheet, to change what a slide says today."
+    ws.Cells(7, 1).Font.Italic = True
+
+    Dim introRow As Long
+    For introRow = 2 To 7
+        ws.Cells(introRow, 1).Font.Size = 11
+    Next introRow
+
+    ' --- the grid --------------------------------------------------------
+    ' Headers say what to DO, not what the column is called internally.
+    ' "Draft" and "Approved (Y/N)" were accurate and told a first-time reader
+    ' nothing about where to type.
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_ENTITY).Value = "Project code"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_NAME).Value = "Project name"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_CURRENT).Value = "Current " & fieldId & " (read-only)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_CURRENT).Value = "C  --  what the slide says NOW (read-only)"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_CHARS).Value = "Chars"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES).Value = "Your source notes"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_DRAFT).Value = "Draft"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_APPROVED).Value = "Approved (Y/N)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES).Value = "E  --  your notes (optional)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_DRAFT).Value = "F  --  TYPE THE NEW TEXT HERE"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_APPROVED).Value = "G  --  TYPE Y TO USE IT"
     ws.Rows(DRAFT_HEADER_ROW).Font.Bold = True
+    ws.Rows(DRAFT_HEADER_ROW).WrapText = True
 
     Dim written As Long, restored As Long
     r = DRAFT_FIRST_ROW
@@ -166,6 +202,17 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Columns(COL_D_APPROVED).ColumnWidth = 14
     ws.Columns(COL_D_CURRENT).WrapText = True
     ws.Columns(COL_D_DRAFT).WrapText = True
+
+    ' The AI prompt, on the sheet rather than in a console window that closes.
+    ' Placed to the RIGHT of the grid so it is available to copy without
+    ' pushing the instructions a person needs off the top of the screen.
+    ws.Cells(DRAFT_INTRO_ROW, COL_D_APPROVED + 2).Value = "PROMPT TO GIVE COPILOT (copy this cell)"
+    ws.Cells(DRAFT_INTRO_ROW, COL_D_APPROVED + 2).Font.Bold = True
+    ws.Cells(2, COL_D_APPROVED + 2).Value = "'" & DraftingPromptFor(fieldId)
+    ws.Columns(COL_D_APPROVED + 2).ColumnWidth = 70
+    ws.Cells(2, COL_D_APPROVED + 2).WrapText = True
+
+    ws.Rows(DRAFT_HEADER_ROW).RowHeight = 30
 
     WriteDraftingSheet = written & " row(s) written for " & fieldId & _
         IIf(restored > 0, ", " & restored & " existing note(s)/draft(s) preserved", "") & "."

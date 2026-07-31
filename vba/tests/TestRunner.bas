@@ -2190,11 +2190,11 @@ Private Function Test_Drafting_OnlyTickedNonEmptyDraftsPublish() As String
     Next i
 
     ' The drafting sheet, covering every combination that decides publication.
-    dws.Cells(1, 1).Value = "EntityCode"
-    dws.Cells(2, Drafting.COL_D_ENTITY).Value = "P001": dws.Cells(2, Drafting.COL_D_DRAFT).Value = "new one":  dws.Cells(2, Drafting.COL_D_APPROVED).Value = "Y"
-    dws.Cells(3, Drafting.COL_D_ENTITY).Value = "P002": dws.Cells(3, Drafting.COL_D_DRAFT).Value = "new two":  dws.Cells(3, Drafting.COL_D_APPROVED).Value = ""
-    dws.Cells(4, Drafting.COL_D_ENTITY).Value = "P003": dws.Cells(4, Drafting.COL_D_DRAFT).Value = "":         dws.Cells(4, Drafting.COL_D_APPROVED).Value = "Y"
-    dws.Cells(5, Drafting.COL_D_ENTITY).Value = "P004": dws.Cells(5, Drafting.COL_D_DRAFT).Value = "a" & vbCr & "b": dws.Cells(5, Drafting.COL_D_APPROVED).Value = "Y"
+    dws.Cells(Drafting.DRAFT_HEADER_ROW, 1).Value = "Project code"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_ENTITY).Value = "P001": dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_DRAFT).Value = "new one":  dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_APPROVED).Value = "Y"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_ENTITY).Value = "P002": dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_DRAFT).Value = "new two":  dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_APPROVED).Value = ""
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 2, Drafting.COL_D_ENTITY).Value = "P003": dws.Cells(Drafting.DRAFT_FIRST_ROW + 2, Drafting.COL_D_DRAFT).Value = "":         dws.Cells(Drafting.DRAFT_FIRST_ROW + 2, Drafting.COL_D_APPROVED).Value = "Y"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 3, Drafting.COL_D_ENTITY).Value = "P004": dws.Cells(Drafting.DRAFT_FIRST_ROW + 3, Drafting.COL_D_DRAFT).Value = "a" & vbCr & "b": dws.Cells(Drafting.DRAFT_FIRST_ROW + 3, Drafting.COL_D_APPROVED).Value = "Y"
 
     Dim rep As String
     rep = Drafting.PublishDrafts(dws, rws, "ABOUT_BODY", False)
