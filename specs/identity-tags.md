@@ -13,7 +13,7 @@ Defined Tags Part" definition and a real-world example, not by guessing (see Ref
 
 ## Requirements
 
-- **Slide-level tags** (`slide_type`, `instance_key`, `period_key`): stored in a dedicated
+- **Slide-level tags** (`slide_type`, `instance_key`): stored in a dedicated
   Tags Part (`ppt/tags/tagN.xml`, root `<p:tagLst>` containing `<p:tag name="" val=""/>`
   children), related to the slide part directly via a relationship of type
   `.../relationships/tags` in the slide's own `.rels` file.
@@ -34,6 +34,19 @@ Defined Tags Part" definition and a real-world example, not by guessing (see Ref
   create a second Tags Part or a duplicate relationship for the same shape/slide.
 - Two shapes on the same slide, tagged independently, must not interfere with each other —
   each gets its own Tags Part and relationship.
+
+## Withdrawn
+
+- **`period_key` as a slide-level tag.** Listed in this document's requirements until
+  2026-07-31 and never implemented — no code has ever read or written it. Removed rather
+  than built: the Excel Control Layer exchange settled that **the deck declares its own
+  period, in a deck-level custom property**, not per slide. One read, and one thing that can
+  be wrong, against N slide tags that can disagree with each other.
+
+  Deleted rather than left documented-as-pending at the Excel side's request, and the
+  reasoning generalises: a tag described in a spec that nothing reads will be assumed live by
+  whoever reads the spec next. That happened here — it had to be grepped to establish it was
+  dead.
 
 ## Non-goals
 
