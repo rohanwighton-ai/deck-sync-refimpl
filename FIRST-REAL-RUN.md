@@ -143,3 +143,49 @@ field name containing `|` or a line break, rather than writing a record that
 cannot be read back.
 
 *Status: recorded, not fixed.*
+
+### 7. Anything needing the USER'S OWN FILE to hold macros is unusable here
+The rescue script was imported into the presentation's VBA project. That made a
+`.pptx` macro-bearing, which company policy blocks — and the block presented as
+a **silent save no-op**, not a message.
+
+The add-in itself is fine and loads normally, so macros are not blocked
+wholesale: trusted add-ins are allowed, macro-enabled *documents* are not. That
+is a sensible split and the design already respects it — the deck holds tags and
+document properties, the workbook holds sheets, all code lives in the `.ppam`.
+
+The rescue script was the only thing that violated it, and that was a bad shape
+regardless of policy. Maintenance tooling belongs in the add-in, where it is
+already trusted.
+
+*Status: recovered by removing the module. The rescue functions should become
+add-in buttons — `List Marked Fields`, `Unmark Field`, `Unmark By Name` — so
+there is never a reason to put code in a user's document.*
+
+---
+
+## Open, parked deliberately
+
+**Team distribution is now a requirement** (Rohan, 2026-08-01), via OneDrive —
+which reverses the 2026-07-28 "personal tool, not org adoption" decision that a
+lot of the current design rests on. Parked the same day: *"hang on we dont have
+to do it now."*
+
+Two things it forces, recorded so they are not rediscovered:
+
+1. **Code-signing the `.ppam` moves from optional to required.** Unsigned, every
+   teammate needs an individual Trust Center exception — a per-person IT
+   conversation that will not survive a policy refresh.
+2. **The register becomes shared mutable state, and there is no concurrency
+   control.** Two people publishing at once can overwrite each other; a rebuild
+   can wipe a sheet someone is typing into; and OneDrive resolves simultaneous
+   edits by making *conflict copies*, so the add-in could silently read the
+   wrong file. That last one fails the same way everything else here does —
+   quietly, looking correct.
+
+Unanswered, and it decides the shape of any solution: **how many people, and are
+they on one shared register or each on their own?** Three people with their own
+project decks is nearly free. Six on one register is a different tool.
+
+Worth a DECISIONS.md entry when it is picked up, because it reverses a call the
+architecture was built on.
