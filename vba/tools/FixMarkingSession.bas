@@ -24,7 +24,12 @@ Option Explicit
 Private Const SESSION_PROP As String = "DeckSyncMarkingSession"
 
 ' ---------------------------------------------------------------------------
-' Run this FIRST. Shows every marked field, numbered, and changes nothing.
+' Run this FIRST. Writes every marked field to a text file and opens it.
+'
+' NOT a MsgBox. The first version of this used one and showed 18 of 52 marks --
+' MsgBox truncates around 1000 characters, silently, with no indication that
+' anything is missing. A tool for auditing a list that cannot show the whole
+' list is worse than no tool: it looks like the full picture.
 ' ---------------------------------------------------------------------------
 Public Sub ListMarks()
     Dim raw As String
@@ -37,22 +42,47 @@ Public Sub ListMarks()
     Dim lines() As String
     lines = Split(raw, vbCrLf)
 
-    Dim out As String, n As Long
+    Dim out As String, n As Long, odd As Long
     Dim i As Long
     For i = LBound(lines) To UBound(lines)
         If Trim(lines(i)) <> "" Then
             n = n + 1
             Dim p() As String
             p = Split(lines(i), "|")
-            out = out & n & ".  shape: " & p(0)
-            If UBound(p) >= 1 Then out = out & "   field: " & p(1)
-            If UBound(p) >= 2 Then out = out & "   (" & p(2) & ")"
-            out = out & vbCrLf
+
+            Dim shapeName As String, fieldName As String, ftype As String
+            shapeName = p(0)
+            If UBound(p) >= 1 Then fieldName = p(1)
+            If UBound(p) >= 2 Then ftype = p(2)
+
+            Dim flag As String
+            flag = ""
+            If UBound(p) < 3 Or Trim(shapeName) = "" Or Trim(fieldName) = "" Then
+                flag = "   <<< MALFORMED"
+                odd = odd + 1
+            End If
+
+            out = out & Format(n, "00") & "  shape: " & shapeName & _
+                  "   field: " & fieldName & "   (" & ftype & ")" & flag & vbCrLf
         End If
     Next i
 
-    MsgBox n & " marked field(s):" & vbCrLf & vbCrLf & out & vbCrLf & _
-           "To drop one, run RemoveMark with its SHAPE name.", vbInformation, "Marks"
+    Dim path As String
+    path = Environ$("TEMP") & "\deck-sync-marks.txt"
+
+    Dim f As Integer
+    f = FreeFile
+    Open path For Output As #f
+    Print #f, n & " marked field(s), " & odd & " malformed"
+    Print #f, String(60, "-")
+    Print #f, out
+    Close #f
+
+    Shell "notepad.exe """ & path & """", vbNormalFocus
+
+    MsgBox n & " marked field(s), " & odd & " malformed." & vbCrLf & vbCrLf & _
+           "Full list opened in Notepad -- a MsgBox would truncate it." & vbCrLf & _
+           path, vbInformation, "Marks"
 End Sub
 
 ' ---------------------------------------------------------------------------

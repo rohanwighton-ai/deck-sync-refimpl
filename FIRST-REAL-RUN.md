@@ -115,3 +115,31 @@ not a redesign.
 
 *Status: recorded, not fixed. Would be a fourth button ("Unmark Field") or a
 re-mark answer of "-" meaning remove.*
+
+### 5. My own ListMarks truncated at 18 of 52 (MsgBox limit)
+The first version of the rescue tool used a `MsgBox`, which truncates around
+1000 characters **silently** — no ellipsis, no count mismatch, nothing to
+indicate 34 marks were missing. Rohan had 52 marked fields and saw 18.
+
+An auditing tool that cannot show the whole list is worse than no tool: it
+looks like the full picture. Rewritten to write a text file and open it, and to
+flag malformed lines explicitly.
+
+Same failure as everything else today — the wrong answer presenting as a
+complete one.
+
+### 6. Two malformed entries in the marking session
+`ListMarks` showed `1. shape: 256` (no field name, no type) and
+`18. shape:` (no shape name at all). Both are lines that did not split into the
+expected four `|`-separated parts — most likely a field name containing a line
+break, splitting one record across two lines and leaving fragments either side.
+
+Probably harmless: restore matches by shape name and skips marks it cannot
+find, counting them as missing rather than aborting. So they drop out on the
+next save/close/reopen along with the icon.
+
+Worth guarding at write time though — the serializer should refuse or strip a
+field name containing `|` or a line break, rather than writing a record that
+cannot be read back.
+
+*Status: recorded, not fixed.*
