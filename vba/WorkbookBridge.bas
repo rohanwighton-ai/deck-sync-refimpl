@@ -192,7 +192,7 @@ Public Sub WriteWorkbookIndex(wb As Object)
 
     ws.Cells(1, 1).Value = "WHAT IS IN THIS WORKBOOK"
     ws.Cells(1, 1).Font.Bold = True
-    ws.Cells(1, 1).Font.Size = 14
+    ws.Cells(1, 1).Font.Size = 9
 
     ws.Cells(3, 1).Value = "Sheet"
     ws.Cells(3, 2).Value = "What it is"
@@ -216,6 +216,11 @@ Public Sub WriteWorkbookIndex(wb As Object)
         "if a slide and the register disagree, the register is what gets reviewed and applied."
     ws.Cells(r + 1, 1).Font.Italic = True
 
+    ' 8pt, matching every other sheet the tools write. The title above keeps
+    ' its own larger size -- set after this, so order matters.
+    ws.Cells.Font.Size = 8
+    ws.Cells(1, 1).Font.Size = 9
+    ws.Cells.VerticalAlignment = -4160        ' xlTop
     ws.Columns(1).ColumnWidth = 26
     ws.Columns(2).ColumnWidth = 62
     ws.Columns(3).ColumnWidth = 30
@@ -241,6 +246,9 @@ Public Function DescribeSheet(sheetName As String) As String
     ElseIf sheetName = "Field Spec" Then
         DescribeSheet = "How each field should be WRITTEN -- purpose, voice, length, and what " & _
             "not to do. Edit this to change the instructions the AI is given. Yours, not the tool's."
+    ElseIf sheetName = "Sources" Then
+        DescribeSheet = "WHERE THE WORDS CAME FROM. One row per source, referenced by ID from " & _
+            "column E of a drafting sheet. Point at documents; do not paste them in here."
     ElseIf sheetName = "Register" Then
         DescribeSheet = "THE RECORD. One row per project, field and quarter, with its text and " & _
             "whether a human approved it. Everything else in this workbook feeds it or reads it."
@@ -260,6 +268,8 @@ Public Function LifespanOf(sheetName As String) As String
         LifespanOf = "Append-only history"
     ElseIf sheetName = "Field Spec" Then
         LifespanOf = "PERMANENT -- edit it freely"
+    ElseIf sheetName = "Sources" Then
+        LifespanOf = "PERMANENT -- accumulates, never rebuilt"
     Else
         LifespanOf = "unknown"
     End If
@@ -333,3 +343,61 @@ Public Function UnsavedWorkbookText(workbookPath As String) As String
         "built from those values is left with no matching row." & vbCrLf & vbCrLf & _
         "Save the workbook and continue?"
 End Function
+
+' Format the register itself. It is the biggest sheet in the workbook and the
+' one nothing had ever formatted -- it is written by the seeding and publishing
+' paths, which are concerned with values, not with what it looks like to read.
+'
+' Cosmetic only: touches font, widths, alignment and the frozen header. It
+' NEVER writes, moves or clears a cell value, because this is the record and a
+' formatter has no business near its contents.
+'
+' Widths are chosen BY HEADER NAME, not by column position -- the register's
+' column order is not guaranteed and assuming it is, is the exact mistake that
+' cost 2026-08-01. An unrecognised header is left at whatever width it has.
+Public Sub FormatRegisterSheet(ws As Object)
+    On Error Resume Next          ' cosmetic: must never break a caller
+
+    ws.Cells.Font.Size = 8
+    ws.Cells.VerticalAlignment = -4160        ' xlTop
+    ws.Rows(1).Font.Bold = True
+
+    Dim c As Long
+    For c = 1 To 20
+        Dim h As String
+        h = Trim(CStr(ws.Cells(1, c).Value))
+        If h = "" Then
+            ' keep going -- a gap does not mean the end of the header row
+        ElseIf h = "Value" Then
+            ws.Columns(c).ColumnWidth = 70
+            ws.Columns(c).WrapText = True
+        ElseIf h = "EntityCode" Or h = "FieldID" Or h = "SlideType" Then
+            ws.Columns(c).ColumnWidth = 18
+        ElseIf h = "Quarter" Or h = "Status" Or h = "FieldType" Then
+            ws.Columns(c).ColumnWidth = 12
+        ElseIf h = "CharCount" Then
+            ws.Columns(c).ColumnWidth = 8
+        ElseIf h = "UpdatedDate" Then
+            ws.Columns(c).ColumnWidth = 13
+        End If
+    Next c
+
+    ' Same reason as the drafting sheet: the Value column holds 350-500
+    ' character paragraphs and a wrapped autofit turns every row into a page.
+    ws.Rows(1).RowHeight = 26
+    Dim lastRow As Long
+    lastRow = 1
+    Do While Trim(CStr(ws.Cells(lastRow + 1, 1).Value)) <> ""
+        lastRow = lastRow + 1
+    Loop
+    If lastRow > 1 Then ws.Range(ws.Rows(2), ws.Rows(lastRow)).RowHeight = 40
+
+    Dim xlApp As Object
+    Set xlApp = ws.Application
+    ws.Activate
+    xlApp.ActiveWindow.FreezePanes = False
+    ws.Cells(2, 1).Select
+    xlApp.ActiveWindow.FreezePanes = True
+
+    On Error GoTo 0
+End Sub

@@ -35,6 +35,22 @@ Public Const COL_S_LENGTH As Long = 5
 Public Const COL_S_OWNJOB As Long = 6
 Public Const COL_S_DONOT As Long = 7
 
+' THE RULES THAT APPLY TO EVERY FIELD, ON THE SHEET RATHER THAN IN CODE.
+'
+' Three clauses used to be hardcoded in PromptFrom -- that column C is the
+' standard, that the workbook is the sole source of truth, that gaps get asked
+' about rather than invented. Meanwhile the index sheet told the reader this
+' sheet was "the instructions the AI is given. Yours, not the tool's." That was
+' false for a third of the prompt, and the third a person would most want to
+' change. Rohan, 2026-08-01.
+'
+' Held in one cell rather than a row per clause: it is prose the AI reads
+' verbatim, and splitting prose into a grid makes it harder to edit, not
+' easier. The per-field columns are a grid because they are compared field to
+' field; this is not.
+Public Const COL_S_GLOBAL As Long = 9
+Public Const SPEC_GLOBAL_ROW As Long = 2
+
 Public Const SPEC_HEADER_ROW As Long = 1
 Public Const SPEC_FIRST_ROW As Long = 2
 
@@ -47,6 +63,7 @@ Public Type FieldGuidance
     Length As String
     OwnJob As String
     DoNot As String
+    GlobalRules As String   ' shared by every field -- see COL_S_GLOBAL
 End Type
 
 ' Creates the sheet with its headers and, on a fresh workbook, the rows already
@@ -105,6 +122,20 @@ Public Function WriteSpecSheet(ws As Object) As String
         r = r + 1: added = added + 1
     End If
 
+    ' The global clauses. Seeded once with what used to be hardcoded, then
+    ' never touched again -- like every other row on this sheet, an edit here
+    ' is the owner's and must survive a rebuild.
+    ws.Cells(SPEC_HEADER_ROW, COL_S_GLOBAL).Value = "GLOBAL RULES  --  added to EVERY field's prompt. Edit freely."
+    If Trim(CStr(ws.Cells(SPEC_GLOBAL_ROW, COL_S_GLOBAL).Value)) = "" Then
+        ws.Cells(SPEC_GLOBAL_ROW, COL_S_GLOBAL).Value = "'" & DefaultGlobalRules()
+    End If
+    ws.Columns(COL_S_GLOBAL).ColumnWidth = 60
+    ws.Columns(COL_S_GLOBAL).WrapText = True
+    ws.Rows(SPEC_GLOBAL_ROW).RowHeight = 90
+
+    ' 8pt, matching every other sheet the tools write.
+    ws.Cells.Font.Size = 8
+    ws.Cells.VerticalAlignment = -4160        ' xlTop
     ws.Columns(COL_S_FIELDID).ColumnWidth = 20
     ws.Columns(COL_S_KIND).ColumnWidth = 16
     Dim c As Long
@@ -138,6 +169,12 @@ Public Function LookupGuidance(ws As Object, fieldId As String) As FieldGuidance
         LookupGuidance = g
         Exit Function
     End If
+
+    ' Read regardless of whether the field has a row of its own: the global
+    ' rules apply to every field, including the ones running unguided.
+    On Error Resume Next
+    g.GlobalRules = Trim(CStr(ws.Cells(SPEC_GLOBAL_ROW, COL_S_GLOBAL).Value))
+    On Error GoTo 0
 
     Dim r As Long
     r = SPEC_FIRST_ROW
@@ -185,13 +222,32 @@ Public Function PromptFrom(g As FieldGuidance) As String
             "Write into column F ONLY. Leave every other column untouched." & vbCrLf & vbCrLf
     End If
 
-    s = s & "Column C is the standard, not a draft to improve on. Stay close to it in" & vbCrLf & _
+    ' The sheet's wording wins when it has any. The built-in is a fallback for
+    ' a workbook that predates the global cell, never an override of it --
+    ' otherwise editing the cell would appear to do nothing, which is the worst
+    ' possible behaviour for a control whose whole promise is "yours, not the
+    ' tool's".
+    If Trim(g.GlobalRules) <> "" Then
+        s = s & g.GlobalRules
+    Else
+        s = s & DefaultGlobalRules()
+    End If
+
+    PromptFrom = s
+End Function
+
+' What the global clauses say when nobody has edited them. Seeded onto the
+' sheet by WriteSpecSheet and used as the fallback by PromptFrom, so the two
+' can never drift apart -- they were one hardcoded string in two conceptual
+' places before, which is how the sheet came to claim ownership of text it did
+' not hold.
+Public Function DefaultGlobalRules() As String
+    DefaultGlobalRules = _
+        "Column C is the standard, not a draft to improve on. Stay close to it in" & vbCrLf & _
         "length and in voice. If the text in column C already does its job, say so" & vbCrLf & _
         "and leave the row blank." & vbCrLf & vbCrLf & _
         "The workbook is the sole source of truth. Do not introduce facts, figures," & vbCrLf & _
         "organisations or outcomes that are not in it. Where something needed is" & vbCrLf & _
-        "missing or ambiguous, say so in column E and ask -- do not infer or fill" & vbCrLf & _
-        "the gap."
-
-    PromptFrom = s
+        "missing or ambiguous, say so in column J (notes) and ask -- do not infer or" & vbCrLf & _
+        "fill the gap."
 End Function

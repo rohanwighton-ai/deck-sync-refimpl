@@ -43,13 +43,44 @@ Option Explicit
 ' synthesis/population boundary: the register's Status column means "a person
 ' read this and meant it", and this is the one function entitled to say so.
 
+' THREE TEXTS PER ROW, AND ONLY ONE OF THEM CAN REACH A SLIDE.
+'
+' ORIGINAL   what the slide says today. Read-only.
+' AI DRAFT   what Copilot wrote. Never published -- not once, not ever.
+' SUBMIT     what YOU are sending. Starts empty. Publish reads this and
+'            nothing else.
+'
+' The split exists because "the AI wrote it and I didn't stop it" and "I sent
+' it" are different acts, and the old single Draft column could not tell them
+' apart. Copy AI -> Submit is one action away and fills only EMPTY Submit
+' cells, so re-running it can never overwrite an edit you made.
 Public Const COL_D_ENTITY As Long = 1
 Public Const COL_D_NAME As Long = 2
 Public Const COL_D_CURRENT As Long = 3
 Public Const COL_D_CHARS As Long = 4
-Public Const COL_D_NOTES As Long = 5
+Public Const COL_D_SOURCES As Long = 5
 Public Const COL_D_DRAFT As Long = 6
-Public Const COL_D_APPROVED As Long = 7
+Public Const COL_D_SUBMIT As Long = 7
+Public Const COL_D_SUBCHARS As Long = 8
+Public Const COL_D_APPROVED As Long = 9
+Public Const COL_D_NOTES As Long = 10
+Public Const COL_D_LAYOUT As Long = 11
+Public Const COL_D_PROMPT As Long = 12
+
+' THE SHEET DECLARES WHICH LAYOUT IT WAS WRITTEN IN.
+'
+' Bump this whenever a COL_D_* constant changes meaning. Carrying a person's
+' work across a rebuild means reading the OLD sheet with column numbers -- and
+' if those numbers have been renumbered underneath, the read is silently
+' wrong. It is not a crash; it is column 7 meaning "tick" on Monday and
+' "SUBMIT" on Tuesday, so three ticks arrive as three pieces of publishable
+' text.
+'
+' Caught live 2026-08-01 the first time this layout changed, by a count that
+' did not match: "3 left alone (you had already written something there)" when
+' only one row had been written. The number was the only evidence; nothing
+' raised, and the sheet looked fine.
+Public Const DRAFT_LAYOUT_VERSION As Long = 2
 
 ' The instruction block occupies rows 1-7, so the grid starts lower.
 '
@@ -96,42 +127,67 @@ End Function
 ' have changed the exemplar.
 Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String, _
                                    Optional guidance As Variant) As String
-    Dim keptDraft As Object, keptNotes As Object
+    ' A REBUILD MUST NOT COST A PERSON THEIR WORK. Everything a human or an AI
+    ' put on this sheet is carried across: the AI draft, the SUBMIT text they
+    ' edited, the source IDs they assigned, and their notes. Only ORIGINAL and
+    ' the character counts are re-derived, because only those come from the
+    ' register. Losing a column here would be silent and would cost an evening.
+    Dim keptDraft As Object, keptNotes As Object, keptSubmit As Object, keptSources As Object
     Set keptDraft = CreateObject("Scripting.Dictionary")
     Set keptNotes = CreateObject("Scripting.Dictionary")
+    Set keptSubmit = CreateObject("Scripting.Dictionary")
+    Set keptSources = CreateObject("Scripting.Dictionary")
+
+    ' Only carry work across if the sheet was written by THIS layout. A sheet
+    ' from an older layout is read with column numbers that have since been
+    ' renumbered, which silently relabels a person's data rather than losing
+    ' it -- the worse of the two failures, because it looks like content.
+    Dim sheetLayout As Long
+    Dim layoutMatches As Boolean
+    On Error Resume Next
+    sheetLayout = CLng(Val(CStr(ws.Cells(DRAFT_INTRO_ROW, COL_D_LAYOUT).Value)))
+    On Error GoTo 0
+    layoutMatches = (sheetLayout = DRAFT_LAYOUT_VERSION)
+
+    Dim isNewSheet As Boolean
+    isNewSheet = (Trim(CStr(ws.Cells(DRAFT_FIRST_ROW, COL_D_ENTITY).Value)) = "")
 
     Dim r As Long
     r = DRAFT_FIRST_ROW
-    On Error Resume Next
-    Do While Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value)) <> ""
-        Dim oldKey As String
-        oldKey = Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value))
-        If Trim(CStr(ws.Cells(r, COL_D_DRAFT).Value)) <> "" Then keptDraft(oldKey) = CStr(ws.Cells(r, COL_D_DRAFT).Value)
-        If Trim(CStr(ws.Cells(r, COL_D_NOTES).Value)) <> "" Then keptNotes(oldKey) = CStr(ws.Cells(r, COL_D_NOTES).Value)
-        r = r + 1
-    Loop
-    On Error GoTo 0
+    If layoutMatches Then
+        On Error Resume Next
+        Do While Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value)) <> ""
+            Dim oldKey As String
+            oldKey = Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value))
+            If Trim(CStr(ws.Cells(r, COL_D_DRAFT).Value)) <> "" Then keptDraft(oldKey) = CStr(ws.Cells(r, COL_D_DRAFT).Value)
+            If Trim(CStr(ws.Cells(r, COL_D_NOTES).Value)) <> "" Then keptNotes(oldKey) = CStr(ws.Cells(r, COL_D_NOTES).Value)
+            If Trim(CStr(ws.Cells(r, COL_D_SUBMIT).Value)) <> "" Then keptSubmit(oldKey) = CStr(ws.Cells(r, COL_D_SUBMIT).Value)
+            If Trim(CStr(ws.Cells(r, COL_D_SOURCES).Value)) <> "" Then keptSources(oldKey) = CStr(ws.Cells(r, COL_D_SOURCES).Value)
+            r = r + 1
+        Loop
+        On Error GoTo 0
+    End If
 
     ws.Cells.Clear
 
     ' --- instructions, ON the sheet, for the person ----------------------
     ws.Cells(DRAFT_INTRO_ROW, 1).Value = "WHAT TO DO ON THIS SHEET  --  " & fieldId
     ws.Cells(DRAFT_INTRO_ROW, 1).Font.Bold = True
-    ws.Cells(DRAFT_INTRO_ROW, 1).Font.Size = 14
+    ws.Cells(DRAFT_INTRO_ROW, 1).Font.Size = 9
 
-    ws.Cells(2, 1).Value = "1.  Read the CURRENT text in column C. That is what the slide says today."
-    ws.Cells(3, 1).Value = "2.  If it should change, type the new wording in column F. Leave F empty to keep what is there."
-    ws.Cells(4, 1).Value = "3.  Type  Y  in column G for every row you want used. No Y means the row is ignored."
-    ws.Cells(5, 1).Value = "4.  Save and CLOSE this file. Nothing happens until you do."
-    ws.Cells(6, 1).Value = "5.  Then run Publish, read the list of changes it shows you, and Apply."
+    ws.Cells(2, 1).Value = "1.  Read column C (ORIGINAL) -- what the slide says today."
+    ws.Cells(3, 1).Value = "2.  List the source IDs you are working from in column E. Add new ones on the Sources sheet first."
+    ws.Cells(4, 1).Value = "3.  Ask Copilot for a draft (prompt is in L2). It writes into column F (AI DRAFT). F is never published."
+    ws.Cells(5, 1).Value = "4.  Run Copy AI to Submit, then EDIT column G (SUBMIT) until you are happy. G is what gets sent."
+    ws.Cells(6, 1).Value = "5.  Type  Y  in column I, save and CLOSE the file, then run Publish and Apply."
 
-    ws.Cells(7, 1).Value = "Nothing you type here reaches a slide until you have seen it listed and approved it. " & _
-                           "Column C is read-only -- edit the register, not this sheet, to change what a slide says today."
+    ws.Cells(7, 1).Value = "Only column G is published -- nothing the AI writes reaches a slide unless you have put it in SUBMIT and ticked it. " & _
+                           "Column C is read-only: edit the register, not this sheet, to change what a slide says today."
     ws.Cells(7, 1).Font.Italic = True
 
     Dim introRow As Long
     For introRow = 2 To 7
-        ws.Cells(introRow, 1).Font.Size = 11
+        ws.Cells(introRow, 1).Font.Size = 8
     Next introRow
 
     ' --- the grid --------------------------------------------------------
@@ -140,11 +196,14 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' nothing about where to type.
     ws.Cells(DRAFT_HEADER_ROW, COL_D_ENTITY).Value = "Project code"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_NAME).Value = "Project name"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_CURRENT).Value = "C  --  what the slide says NOW (read-only)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_CURRENT).Value = "C  --  ORIGINAL, what the slide says now (read-only)"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_CHARS).Value = "Chars"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES).Value = "E  --  your notes (optional)"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_DRAFT).Value = "F  --  TYPE THE NEW TEXT HERE"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_APPROVED).Value = "G  --  TYPE Y TO USE IT"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_SOURCES).Value = "E  --  SOURCES (IDs from the Sources sheet, e.g. S01,S03)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_DRAFT).Value = "F  --  AI DRAFT (Copilot writes here -- NEVER published)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_SUBMIT).Value = "G  --  SUBMIT, your text (THIS is what gets sent)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_SUBCHARS).Value = "Chars"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_APPROVED).Value = "I  --  TYPE Y TO USE IT"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES).Value = "J  --  your notes (optional)"
     ws.Rows(DRAFT_HEADER_ROW).Font.Bold = True
     ws.Rows(DRAFT_HEADER_ROW).WrapText = True
 
@@ -175,26 +234,75 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
                 restored = restored + 1
             End If
             If keptDraft.Exists(key) Then ws.Cells(r, COL_D_DRAFT).Value = "'" & keptDraft(key)
+            If keptSources.Exists(key) Then ws.Cells(r, COL_D_SOURCES).Value = "'" & keptSources(key)
+            If keptSubmit.Exists(key) Then
+                ws.Cells(r, COL_D_SUBMIT).Value = "'" & keptSubmit(key)
+                ws.Cells(r, COL_D_SUBCHARS).Value = Len(CStr(keptSubmit(key)))
+            End If
             ws.Cells(r, COL_D_APPROVED).Value = ""
             written = written + 1
             r = r + 1
         End If
     Next k
 
-    ws.Columns(COL_D_ENTITY).ColumnWidth = 12
-    ws.Columns(COL_D_NAME).ColumnWidth = 34
-    ws.Columns(COL_D_CURRENT).ColumnWidth = 60
-    ws.Columns(COL_D_CHARS).ColumnWidth = 7
-    ws.Columns(COL_D_NOTES).ColumnWidth = 26
-    ws.Columns(COL_D_DRAFT).ColumnWidth = 60
-    ws.Columns(COL_D_APPROVED).ColumnWidth = 14
+    ' 8pt throughout. At 11pt three text columns of 350+ characters do not fit
+    ' on a screen together, and the whole point of ORIGINAL / AI / SUBMIT is
+    ' reading them side by side.
+    ws.Cells.Font.Size = 8
+    ws.Cells(DRAFT_INTRO_ROW, 1).Font.Size = 9
+
+    ws.Columns(COL_D_ENTITY).ColumnWidth = 11
+    ws.Columns(COL_D_NAME).ColumnWidth = 30
+    ws.Columns(COL_D_CURRENT).ColumnWidth = 52
+    ws.Columns(COL_D_CHARS).ColumnWidth = 6
+    ws.Columns(COL_D_SOURCES).ColumnWidth = 14
+    ws.Columns(COL_D_DRAFT).ColumnWidth = 52
+    ws.Columns(COL_D_SUBMIT).ColumnWidth = 52
+    ws.Columns(COL_D_SUBCHARS).ColumnWidth = 6
+    ws.Columns(COL_D_APPROVED).ColumnWidth = 9
+    ws.Columns(COL_D_NOTES).ColumnWidth = 24
     ws.Columns(COL_D_CURRENT).WrapText = True
     ws.Columns(COL_D_DRAFT).WrapText = True
+    ws.Columns(COL_D_SUBMIT).WrapText = True
+    ws.Columns(COL_D_NOTES).WrapText = True
+
+    ' SUBMIT is the only column that reaches a slide, so it is the only one
+    ' that looks like an input. ORIGINAL and AI DRAFT are shaded as reference.
+    ws.Columns(COL_D_CURRENT).Interior.Color = RGB(242, 242, 242)
+    ws.Columns(COL_D_DRAFT).Interior.Color = RGB(242, 242, 242)
+    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_SUBMIT), _
+             ws.Cells(r - 1, COL_D_SUBMIT)).Interior.Color = RGB(255, 249, 219)
+    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_APPROVED), _
+             ws.Cells(r - 1, COL_D_APPROVED)).Interior.Color = RGB(255, 249, 219)
+
+    ' Top-align, or a 500-character ORIGINAL centres itself against a one-line
+    ' SUBMIT and the two stop reading as the same row.
+    ws.Cells.VerticalAlignment = -4160          ' xlTop
+
+    ' The header row and the identifying columns stay put while you scroll --
+    ' at 43 rows and 10 columns you otherwise lose track of which project a
+    ' 350-character paragraph belongs to.
+    '
+    ' ws.Application, NOT a bare ActiveWindow. This code runs inside
+    ' PowerPoint's VBA host and drives Excel over COM, so an unqualified
+    ' ActiveWindow is POWERPOINT'S window -- it would either raise or silently
+    ' freeze panes on a slide. Same class of mistake as reading Worksheets(1).
+    '
+    ' Wrapped, because freezing panes is cosmetic and must never be the reason
+    ' a drafting sheet fails to build.
+    On Error Resume Next
+    Dim xlApp As Object
+    Set xlApp = ws.Application
+    ws.Activate
+    xlApp.ActiveWindow.FreezePanes = False
+    ws.Cells(DRAFT_FIRST_ROW, COL_D_CURRENT).Select
+    xlApp.ActiveWindow.FreezePanes = True
+    On Error GoTo 0
 
     ' The AI prompt, on the sheet rather than in a console window that closes.
     ' Placed to the RIGHT of the grid so it is available to copy without
     ' pushing the instructions a person needs off the top of the screen.
-    ws.Cells(DRAFT_INTRO_ROW, COL_D_APPROVED + 2).Font.Bold = True
+    ws.Cells(DRAFT_INTRO_ROW, COL_D_PROMPT).Font.Bold = True
     ' The prompt comes from the field's OWN spec row when there is one. A field
     ' with no row still drafts -- on generic guidance that says so -- because
     ' blocking the work until somebody writes a style guide would be paperwork
@@ -212,16 +320,54 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     Else
         g.FieldId = fieldId
     End If
-    ws.Cells(2, COL_D_APPROVED + 2).Value = "'" & FieldSpec.PromptFrom(g)
-    ws.Cells(DRAFT_INTRO_ROW, COL_D_APPROVED + 2).Value = _
+    ws.Cells(2, COL_D_PROMPT).Value = "'" & FieldSpec.PromptFrom(g)
+    ws.Cells(DRAFT_INTRO_ROW, COL_D_PROMPT).Value = _
         "PROMPT TO GIVE COPILOT (copy this cell)" & IIf(g.Found, "", "  --  GENERIC, no Field Spec row")
-    ws.Columns(COL_D_APPROVED + 2).ColumnWidth = 70
-    ws.Cells(2, COL_D_APPROVED + 2).WrapText = True
+    ws.Columns(COL_D_PROMPT).ColumnWidth = 70
+    ws.Cells(2, COL_D_PROMPT).WrapText = True
 
     ws.Rows(DRAFT_HEADER_ROW).RowHeight = 30
 
+    ' ROW HEIGHTS ARE SET, NEVER LEFT TO AUTOFIT.
+    '
+    ' Three wrapped columns of 350-500 characters at width 52 autofit to well
+    ' over 100 points each, so one project fills the screen and the sheet reads
+    ' as a stack of essays rather than a grid. Rohan, 2026-08-01: "something
+    ' weird happening with row height".
+    '
+    ' Fixed instead: enough to see the shape of a paragraph and compare three
+    ' of them, not enough to read one in full. Reading one in full is what
+    ' clicking the cell is for -- the formula bar holds the whole thing, and a
+    ' row can always be dragged taller for a moment.
+    ws.Rows(DRAFT_INTRO_ROW).RowHeight = 14
+    Dim ir As Long
+    For ir = 2 To 7
+        ws.Rows(ir).RowHeight = 11
+    Next ir
+    ws.Rows(8).RowHeight = 6
+    ws.Rows(DRAFT_HEADER_ROW).RowHeight = 30
+    If r > DRAFT_FIRST_ROW Then
+        ws.Range(ws.Rows(DRAFT_FIRST_ROW), ws.Rows(r - 1)).RowHeight = 52
+    End If
+
+    ws.Cells(DRAFT_INTRO_ROW, COL_D_LAYOUT).Value = DRAFT_LAYOUT_VERSION
+    ws.Cells(DRAFT_INTRO_ROW, COL_D_LAYOUT).Font.Color = RGB(190, 190, 190)
+    ws.Columns(COL_D_LAYOUT).ColumnWidth = 4
+
     WriteDraftingSheet = written & " row(s) written for " & fieldId & _
         IIf(restored > 0, ", " & restored & " existing note(s)/draft(s) preserved", "") & "."
+
+    ' Said out loud, because the alternative is a person discovering by absence
+    ' that a rebuild dropped their drafting. Not raised: the rebuild itself is
+    ' correct and the register is untouched, so this is news, not a failure.
+    If Not layoutMatches And Not isNewSheet Then
+        WriteDraftingSheet = WriteDraftingSheet & vbCrLf & _
+            "NOTE: this sheet was built by layout " & sheetLayout & _
+            " and the tool is now on layout " & DRAFT_LAYOUT_VERSION & ". Nothing was" & vbCrLf & _
+            "carried across -- the columns have been renumbered, so the old contents" & vbCrLf & _
+            "would have been read into the wrong meanings. Anything you had drafted is" & vbCrLf & _
+            "in the .bak beside the workbook, not lost."
+    End If
 End Function
 
 ' Reads the sheet back and publishes approved drafts into the register.
@@ -236,9 +382,22 @@ End Function
 ' holding a carriage return after conversion FAILS rather than being written,
 ' per the field package's publish step.
 Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, _
-                              Optional dryRun As Boolean = True) As String
+                              Optional dryRun As Boolean = True, _
+                              Optional sourcesWs As Variant) As String
     Dim report As String
     report = IIf(dryRun, "=== PREVIEW: publish " & fieldId & " ===", "=== Publish " & fieldId & " ===") & vbCrLf
+
+    ' TYPED LOCAL, not the Variant straight through. Passing an Optional
+    ' Variant into a ByRef `As Object` parameter is a COMPILE error in VBA and
+    ' cost a whole session on 2026-08-01 -- the unit tests could not see it
+    ' because it only exists where two modules meet.
+    Dim knownSources As Object
+    If IsObject(sourcesWs) Then
+        Dim srcSheet As Object
+        Set srcSheet = sourcesWs
+        Set knownSources = Sources.KnownSourceIds(srcSheet)
+    End If
+    Dim badRefs As String
 
     Dim hdr As Object
     Set hdr = CreateObject("Scripting.Dictionary")
@@ -264,15 +423,40 @@ Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, 
     Do While Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value)) <> ""
         Dim ent As String
         ent = Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value))
+
+        ' SUBMIT, NEVER THE AI COLUMN. This is the entire point of splitting
+        ' them: text Copilot produced has no route to a slide until a person
+        ' has moved it into SUBMIT and ticked it. Reading COL_D_DRAFT here
+        ' would silently collapse the two back into one and undo the control
+        ' without changing anything visible on the sheet.
         Dim draft As String
-        draft = CStr(ws.Cells(r, COL_D_DRAFT).Value)
+        draft = CStr(ws.Cells(r, COL_D_SUBMIT).Value)
         Dim tick As Boolean
         tick = ReviewQueue.IsApprovalMark(CStr(ws.Cells(r, COL_D_APPROVED).Value))
+
+        ' Source IDs are checked on every row that is being sent, and REPORTED
+        ' rather than enforced. A wrong ID means the provenance record is wrong,
+        ' which is worth saying out loud -- but refusing to publish a quarter's
+        ' text over a typo in a reference column would be the tool getting in
+        ' the way of the work it exists to do.
+        If tick And Not knownSources Is Nothing Then
+            Dim rowBad As String
+            rowBad = Sources.UnknownRefs(CStr(ws.Cells(r, COL_D_SOURCES).Value), knownSources)
+            If rowBad <> "" Then
+                badRefs = badRefs & "  " & ent & " refers to " & rowBad & _
+                    " -- not on the Sources sheet" & vbCrLf
+            End If
+        End If
 
         If Trim(draft) = "" Then
             If tick Then
                 skippedEmpty = skippedEmpty + 1
-                report = report & "  SKIPPED " & ent & " -- ticked but the draft is empty" & vbCrLf
+                If Trim(CStr(ws.Cells(r, COL_D_DRAFT).Value)) <> "" Then
+                    report = report & "  SKIPPED " & ent & " -- ticked, and there IS an AI draft, " & _
+                        "but SUBMIT is empty. Run Copy AI to Submit, or type it yourself." & vbCrLf
+                Else
+                    report = report & "  SKIPPED " & ent & " -- ticked but SUBMIT is empty" & vbCrLf
+                End If
             End If
         ElseIf Not tick Then
             skippedNoTick = skippedNoTick + 1
@@ -317,6 +501,11 @@ Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, 
             "slide until they have one." & vbCrLf
     End If
 
+    If badRefs <> "" Then
+        report = report & vbCrLf & "SOURCE REFERENCES THAT DO NOT RESOLVE:" & vbCrLf & badRefs & _
+            "The text still published. The provenance record for those rows is wrong." & vbCrLf
+    End If
+
     PublishDrafts = report
 End Function
 
@@ -333,4 +522,63 @@ Private Function FindRegisterRow(regWs As Object, hdr As Object, entity As Strin
         r = r + 1
     Loop
     FindRegisterRow = 0
+End Function
+
+' Copy AI DRAFT into SUBMIT, for rows where SUBMIT is still empty.
+'
+' FILLS ONLY BLANKS, DELIBERATELY. The obvious implementation overwrites
+' SUBMIT wholesale, and it would destroy an afternoon's editing the second time
+' somebody ran it -- silently, because a re-run that looks identical to the
+' first is exactly what nobody re-checks. Anything already in SUBMIT is a
+' decision a person made and this function is not entitled to it.
+'
+' Reports the skipped count rather than hiding it: "23 copied" and "23 copied,
+' 8 left alone because you had already written something" are different
+' situations and a person needs to know which one happened.
+Public Function CopyAiToSubmit(ws As Object) As String
+    Dim copied As Long, keptExisting As Long, noAi As Long
+
+    Dim r As Long
+    r = DRAFT_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value)) <> ""
+        Dim ai As String, submitted As String
+        ai = CStr(ws.Cells(r, COL_D_DRAFT).Value)
+        submitted = CStr(ws.Cells(r, COL_D_SUBMIT).Value)
+
+        If Trim(ai) = "" Then
+            noAi = noAi + 1
+        ElseIf Trim(submitted) <> "" Then
+            keptExisting = keptExisting + 1
+        Else
+            ws.Cells(r, COL_D_SUBMIT).Value = "'" & ai
+            ws.Cells(r, COL_D_SUBCHARS).Value = Len(ai)
+            copied = copied + 1
+        End If
+        r = r + 1
+    Loop
+
+    CopyAiToSubmit = "Copy AI -> Submit: " & copied & " copied, " & _
+        keptExisting & " left alone (you had already written something there), " & _
+        noAi & " with no AI draft." & vbCrLf & _
+        "Nothing was overwritten. Edit column G, tick column I, then publish." & vbCrLf
+End Function
+
+' Refresh the SUBMIT character counts without touching any text. Cheap, and it
+' means the length column is never stale after hand-editing.
+Public Function RefreshSubmitCounts(ws As Object) As String
+    Dim n As Long
+    Dim r As Long
+    r = DRAFT_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value)) <> ""
+        Dim s As String
+        s = CStr(ws.Cells(r, COL_D_SUBMIT).Value)
+        If Trim(s) = "" Then
+            ws.Cells(r, COL_D_SUBCHARS).Value = ""
+        Else
+            ws.Cells(r, COL_D_SUBCHARS).Value = Len(s)
+            n = n + 1
+        End If
+        r = r + 1
+    Loop
+    RefreshSubmitCounts = n & " row(s) have SUBMIT text."
 End Function

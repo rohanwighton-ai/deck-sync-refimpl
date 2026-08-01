@@ -679,10 +679,19 @@ Public Function BuildDraftSheet(registerPath As String, period As String, fieldI
     Dim specNote As String
     specNote = FieldSpec.WriteSpecSheet(specWs)
 
+    ' The provenance sheet, created once and thereafter only refreshed around
+    ' its existing rows. Built here rather than on demand so a person never has
+    ' to know it needs creating before they can cite something.
+    Dim srcWs As Object
+    Set srcWs = WorkbookBridge.GetOrAddWorksheet(wb, Sources.SOURCES_SHEET_NAME)
+    Dim srcNote As String
+    srcNote = Sources.WriteSourcesSheet(srcWs)
+
     WorkbookBridge.WriteWorkbookIndex wb
+    WorkbookBridge.FormatRegisterSheet WorkbookBridge.RegisterSheet(wb)
 
     Dim r As String
-    r = specNote & vbCrLf & _
+    r = specNote & vbCrLf & srcNote & vbCrLf & _
         Drafting.WriteDraftingSheet(ws, reg.Data, fieldId, specWs) & vbCrLf & vbCrLf & _
         "--- prompt to paste above the sheet ---" & vbCrLf & _
         FieldSpec.PromptFrom(FieldSpec.LookupGuidance(specWs, fieldId)) & vbCrLf
@@ -703,13 +712,38 @@ Public Function PublishDraftSheet(registerPath As String, fieldId As String, mod
     Dim ws As Object
     Set ws = WorkbookBridge.GetOrAddWorksheet(wb, Drafting.DraftSheetNameFor(fieldId))
 
+    Dim srcWs As Object
+    Set srcWs = WorkbookBridge.GetOrAddWorksheet(wb, Sources.SOURCES_SHEET_NAME)
+
     Dim r As String
-    r = Drafting.PublishDrafts(ws, WorkbookBridge.RegisterSheet(wb), fieldId, (LCase(Trim(mode)) <> "apply"))
+    r = Drafting.PublishDrafts(ws, WorkbookBridge.RegisterSheet(wb), fieldId, _
+                               (LCase(Trim(mode)) <> "apply"), srcWs)
 
     wb.Save
     wb.Close False
     xl.Quit
     PublishDraftSheet = r
+End Function
+
+' Fill empty SUBMIT cells from AI DRAFT. Workbook-only, like the rest of
+' drafting -- no deck, no period, nothing to get wrong.
+Public Function CopyAiToSubmitSheet(registerPath As String, fieldId As String) As String
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Open(registerPath)
+
+    Dim ws As Object
+    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, Drafting.DraftSheetNameFor(fieldId))
+
+    Dim r As String
+    r = Drafting.CopyAiToSubmit(ws) & Drafting.RefreshSubmitCounts(ws) & vbCrLf
+
+    wb.Save
+    wb.Close False
+    xl.Quit
+    CopyAiToSubmitSheet = r
 End Function
 
 ' Roll the deck forward. Explicit, with the from-and-to stated.

@@ -454,6 +454,11 @@ Public Sub WriteQueueSheet(ws As Object, q As ReviewQueueSet)
         ws.Cells(r, COL_HASH).Value = q.Items(i).ChangeHash
     Next i
 
+    ' 8pt, matching every other sheet the tools write. Two 55-wide text
+    ' columns side by side do not fit on a screen at 11pt, and comparing
+    ' them is the entire job of this grid.
+    ws.Cells.Font.Size = 8
+    ws.Cells.VerticalAlignment = -4160        ' xlTop
     ws.Columns(COL_ENTITY).ColumnWidth = 14
     ws.Columns(COL_FIELDID).ColumnWidth = 20
     ws.Columns(COL_CURRENT).ColumnWidth = 55

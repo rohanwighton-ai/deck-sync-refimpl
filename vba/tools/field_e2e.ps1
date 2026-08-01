@@ -12,7 +12,7 @@ param(
     [string]$DeckPath = "C:\Users\rohan\deck-sync-e2e\e2e-deck.pptx",
     [string]$RegisterPath = "C:\Users\rohan\deck-sync-e2e\register.xlsx",
     [string]$Period = "FY26Q4",
-    [ValidateSet("migrate","dryrun","apply","reseed","verifyharvest","deleteentities","draft","publish","setperiod","setperiodvariant")][string]$Mode = "dryrun",
+    [ValidateSet("migrate","dryrun","apply","reseed","verifyharvest","deleteentities","draft","copyai","publish","setperiod","setperiodvariant")][string]$Mode = "dryrun",
     [string]$Variant = "save",
     [string]$FieldId = "ABOUT_BODY",
     [string]$TsvPath = "C:\Users\rohan\deck-sync-e2e\field_values.tsv",
@@ -46,7 +46,7 @@ $modules = @(
     "Discovery.bas","InjectPrimitive.bas","Matching.bas","Resolve.bas",
     "SyncOperations.bas","Onboarding.bas","ExcelOutput.bas","Verification.bas",
     "SlideDuplication.bas","TemplateSlide.bas","TemplateAudit.bas","IdentityCheck.bas",
-    "TagMigration.bas","Register.bas","PlaceholderCheck.bas","RunSync.bas","ReviewQueue.bas","Drafting.bas","FieldSpec.bas",
+    "TagMigration.bas","Register.bas","PlaceholderCheck.bas","RunSync.bas","ReviewQueue.bas","Drafting.bas","FieldSpec.bas","Sources.bas",
     "DeckAdoption.bas","ResolveFields.bas","DeckRegistry.bas","WorkbookBridge.bas",
     "OnboardFlow.bas","RibbonUI.bas","AdoptFlow.bas","BatchOnboardFlow.bas","CommandBarUI.bas"
 )
@@ -119,6 +119,9 @@ try {
     } elseif ($Mode -eq "draft") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
             @([string]"E2EField.BuildDraftSheet",[string]$RegisterPath,[string]$Period,[string]$FieldId))
+    } elseif ($Mode -eq "copyai") {
+        $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
+            @([string]"E2EField.CopyAiToSubmitSheet",[string]$RegisterPath,[string]$FieldId))
     } elseif ($Mode -eq "publish" -or $Mode -eq "publishapply") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
             @([string]"E2EField.PublishDraftSheet",[string]$RegisterPath,[string]$FieldId,[string]$(if ($Write) { "apply" } else { "preview" })))
