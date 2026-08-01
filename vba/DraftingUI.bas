@@ -385,8 +385,20 @@ Public Sub PublishDraftsForField()
     result = Drafting.PublishDrafts(ws, regWs, fieldId, False, srcWs)
 
     ShowSheet wb, WorkbookBridge.REGISTER_SHEET_NAME
-    MsgBox result & vbCrLf & vbCrLf & _
-           "Now run Preview Sync to see what would change on the slides.", vbInformation, CAP
+
+    ' THE STEP THAT TOLD YOU TO PRESS THE NEXT BUTTON NOW OFFERS TO.
+    '
+    ' This used to end with "Now run Preview Sync" -- the tool admitting the
+    ' boundary was artificial. Nothing happens between writing Approved into the
+    ' register and looking at what that would do to slides, so there is no
+    ' decision for a button to mark. Offered rather than done, because it opens
+    ' the deck and a person may not want that yet.
+    If MsgBox(result & vbCrLf & vbCrLf & _
+              "Show what this would change on the slides?" & vbCrLf & _
+              "Preview only -- reads the deck, writes nothing.", _
+              vbYesNo + vbQuestion, CAP) = vbYes Then
+        RibbonUI.SyncPreview
+    End If
     Exit Sub
 
 Failed:

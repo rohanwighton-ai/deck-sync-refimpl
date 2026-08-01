@@ -95,11 +95,7 @@ Public Sub ShowToolbar()
     AddButton bar, "Setup A: Mark Fields", "BatchOnboardFlow.MarkFieldForBatch", 165, _
         "SETUP, once per slide type. Click a field's shape on your template slide, then run this. Repeat for each field. Text shapes only -- pictures, icons and bars are not supported yet."
     AddButton bar, "Setup B: Onboard Slides", "BatchOnboardFlow.BatchOnboardType", 122, _
-        "SETUP, after marking. Finds the other slides of the same layout, shows every field in Excel for review, and links the whole batch at once."
-    AddButton bar, "Setup C: Check Coverage", "RibbonUI.AuditFields", 1000, _
-        "SETUP, after onboarding. Lists everything on a slide of this type that is NOT being tracked, ranked by how likely it is to be project data. Writes a checklist to a 'Template Audit' sheet; never changes the deck. Run it to find fields you meant to mark and missed."
-    AddButton bar, "Setup D: Template Slide", "RibbonUI.CreateTemplateSlide", 26, _
-        "SETUP, last, once per slide type. Adds a hidden master slide carrying this type's placeholder fields, so a NEW project gets a clean slide built from the template instead of a clone of somebody else's project. Needs the type onboarded first -- it cannot know which fields to place until then. Asks before writing."
+        "SETUP, after marking. Finds the other slides of the same layout, shows every field in Excel for review, links the whole batch -- then offers to check what is NOT tracked and to create the hidden template slide."
     AddButton bar, "Setup: Clear Marks", "BatchOnboardFlow.ClearMarkedFieldsForBatch", 480, _
         "Discard every field marked so far and start the marking over. Cannot remove just one."
 
@@ -108,22 +104,20 @@ Public Sub ShowToolbar()
         "STEP 1. Build or refresh the drafting sheets -- one per prose field, every project on a row, current text beside a box for your new wording, Copilot's prompt in L2. Keeps everything you have already written. Writes nothing to the deck.", True
     AddButton bar, "2. Copy AI to Submit", "DraftingUI.CopyAiDraftsToSubmit", 122, _
         "STEP 2, optional. Copy the AI's drafts into the SUBMIT column, filling ONLY cells you left empty. Never overwrites your own words. Then edit column G and tick column I."
-    AddButton bar, "3. Publish Drafts", "DraftingUI.PublishDraftsForField", 3, _
-        "STEP 3. Show every ticked SUBMIT row, then on your say-so write them into the register as Approved. Touches no slide."
-    AddButton bar, "4. Preview Sync", "RibbonUI.SyncPreview", 1090, _
-        "STEP 4. Show everything the register would change in this deck. Reads only, writes nothing. The safest thing on this toolbar.", True
-    AddButton bar, "5. Sync Now", "RibbonUI.SyncNow", 1004, _
-        "STEP 5. Apply the register's changes to the slides. If every change is the same transformation repeated, it shows them and asks once; if anything needs reading one at a time, it sends you to the review sheet instead."
+    AddButton bar, "3. Publish & Preview", "DraftingUI.PublishDraftsForField", 3, _
+        "STEP 3. Show every ticked SUBMIT row, then on your say-so write them into the register as Approved -- and offer to preview what that would change on the slides. Touches no slide by itself."
+    AddButton bar, "4. Sync Now", "RibbonUI.SyncNow", 1004, _
+        "STEP 4. Apply the register's changes to the slides. Shows exactly what it will change and asks first. If anything needs reading one at a time, it sends you to the review sheet instead."
 
-    ' --- The careful route to slides, when step 5 is too blunt -----------
-    AddButton bar, "5a. Review Changes", "RibbonUI.ReviewChanges", 1090, _
-        "INSTEAD OF STEP 5, when you want to read each change. Builds a 'Sync Review' sheet showing current vs proposed per slide. Writes nothing to the deck.", True
-    AddButton bar, "5b. Apply Approved", "RibbonUI.ApplyApprovedChanges", 3, _
-        "After 5a. Writes the changes you ticked onto the slides. Takes a backup first, re-checks each change against the slide, and skips anything that has moved since you approved it."
+    ' --- The careful route to slides, when step 4 is too blunt -----------
+    AddButton bar, "Preview Sync", "RibbonUI.SyncPreview", 1090, _
+        "Show everything the register would change in this deck. Reads only, writes nothing -- the safest thing on this toolbar, and the right first action on an unfamiliar machine.", True
+    AddButton bar, "Review Changes", "RibbonUI.ReviewChanges", 1090, _
+        "INSTEAD OF STEP 4, when you want to read each change. Builds a 'Sync Review' sheet showing current vs proposed per slide. Writes nothing to the deck."
+    AddButton bar, "Apply Approved", "RibbonUI.ApplyApprovedChanges", 3, _
+        "After Review Changes. Writes the changes you ticked onto the slides. Takes a backup first, re-checks each change against the slide, and skips anything that has moved since you approved it."
     AddButton bar, "Review + Approve All", "RibbonUI.ReviewChangesApproveAll", 463, _
-        "SCRATCH COPIES ONLY: builds the review sheet and ticks every row without individual review. Still writes nothing until you run 5b."
-
-    bar.Visible = True
+        "SCRATCH COPIES ONLY: builds the review sheet and ticks every row without individual review. Still writes nothing until you run Apply Approved."
 End Sub
 
 Public Sub HideToolbar()

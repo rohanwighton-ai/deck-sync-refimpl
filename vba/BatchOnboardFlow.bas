@@ -2793,6 +2793,48 @@ Private Sub BatchOnboardTypeCore()
     If report <> "" Then
         RibbonUI.ShowSyncResult "Bulk Onboard Type", report
     End If
+
+    ' WHAT USED TO BE TWO MORE BUTTONS.
+    '
+    ' Check Coverage and Template Slide were separate toolbar items that could
+    ' only run AFTER onboarding and had nothing happening in between. Rohan,
+    ' 2026-08-01, on which buttons could merge: a boundary earns its place only
+    ' where a person has to do work or make a decision in the gap. Neither of
+    ' these did.
+    '
+    ' Coverage is more useful arriving unbidden here than as a button somebody
+    ' has to know to press -- "what did I not track" is the question you want
+    ' answered the moment linking finishes, and it would have caught the icons
+    ' and the progress bar on Rohan's first pass.
+    '
+    ' Gated on REAL STATE -- does this deck now have a registered type -- and
+    ' not on reading the report string. A checker that matches on wording
+    ' agrees with itself; this project has been caught by that before.
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim types() As String
+    types = DeckRegistry.ListRegisteredTypes(pres)
+    Dim hasTypes As Boolean
+    On Error Resume Next
+    hasTypes = (UBound(types) >= LBound(types))
+    On Error GoTo 0
+    If Not hasTypes Then Exit Sub
+
+    If MsgBox("Check what is NOT being tracked on these slides?" & vbCrLf & vbCrLf & _
+              "Writes a checklist to a 'Template Audit' sheet. Changes no slide." & vbCrLf & _
+              "This is how you find fields you meant to mark and missed.", _
+              vbYesNo + vbQuestion, "Bulk Onboard Type") = vbYes Then
+        RibbonUI.AuditFields
+    End If
+
+    If MsgBox("Create the hidden template slide for this type now?" & vbCrLf & vbCrLf & _
+              "It carries this type's placeholder fields, so a NEW project gets a " & _
+              "clean slide instead of a copy of somebody else's project." & vbCrLf & vbCrLf & _
+              "Recommended, and it needs doing before the first new project arrives.", _
+              vbYesNo + vbQuestion, "Bulk Onboard Type") = vbYes Then
+        RibbonUI.CreateTemplateSlide
+    End If
 End Sub
 
 ' One field of a marking-session record, with everything that would break the
