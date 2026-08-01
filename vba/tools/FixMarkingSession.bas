@@ -93,7 +93,13 @@ End Sub
 ' silent no-op that looks like success.
 ' ---------------------------------------------------------------------------
 Public Sub RemoveMark()
-    Const SHAPE_TO_DROP As String = "Graphic 285"      ' <-- edit this
+    Dim SHAPE_TO_DROP As String
+    SHAPE_TO_DROP = Trim(InputBox( _
+        "Remove the marked field on this SHAPE:" & vbCrLf & vbCrLf & _
+        "Use the shape name exactly as ListMarks shows it." & vbCrLf & _
+        "e.g. Graphic 285", _
+        "Remove one mark", "Graphic 285"))
+    If SHAPE_TO_DROP = "" Then Exit Sub
 
     Dim raw As String
     raw = ReadSession()
@@ -149,7 +155,16 @@ End Sub
 ' hour to build.
 ' ---------------------------------------------------------------------------
 Public Sub RemoveMarksByFieldName()
-    Const CONTAINS As String = "Heading"        ' <-- edit this
+    ' ASKS, rather than making you edit the code. Rohan, 2026-08-01: "nowhere to
+    ' specify word". A constant is fine for whoever wrote the macro and useless
+    ' for whoever runs it.
+    Dim CONTAINS As String
+    CONTAINS = Trim(InputBox( _
+        "Remove every marked field whose NAME contains this word:" & vbCrLf & vbCrLf & _
+        "e.g. Heading   (case-insensitive)" & vbCrLf & vbCrLf & _
+        "You will see the full list and can say no.", _
+        "Remove marks by field name", "Heading"))
+    If CONTAINS = "" Then Exit Sub
 
     Dim raw As String
     raw = ReadSession()
