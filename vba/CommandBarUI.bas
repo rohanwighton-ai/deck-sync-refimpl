@@ -44,7 +44,7 @@ Option Explicit
 ' BUMP THIS when building a new .ppam. It is deliberately manual: a version that
 ' derives itself from something automatic would drift out of step with the file
 ' the user actually loaded, which is the thing being disambiguated.
-Private Const TOOLBAR_BUILD As String = "38"
+Private Const TOOLBAR_BUILD As String = "39"
 Private Const TOOLBAR_NAME As String = "Deck Sync " & TOOLBAR_BUILD
 
 ' The toolbar's name, for anything that needs to find it.
