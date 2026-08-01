@@ -437,12 +437,33 @@ Public Function RegisterOrFirstDataSheet(wb As Object) As Object
 End Function
 
 ' Sheets this tool creates and would never be a register.
+'
+' TWO LIVE BUGS FOUND HERE BY REVIEW, 2026-08-01, both the house failure mode:
+'
+'   Left(sheetName, 13) = "Template Audit"   -- that literal is FOURTEEN
+'   characters, so the comparison could never be True. An always-false guard
+'   shipped in production, reading as care taken. Exactly what the project's own
+'   zettel warns about, in the list written to prevent this class of mistake.
+'
+'   "Field Discovery" was absent. DiscoverUI writes that sheet INTO the paired
+'   register workbook, so RegisterOrFirstDataSheet could hand a caller the
+'   discovery grid and call it the register -- the very defect this denylist
+'   exists to prevent, reintroduced by a module written seven hours after the
+'   list.
+'
+' Both were possible because this is a hand-maintained list duplicating names
+' that already exist as public constants. It now uses the constants, so a
+' renamed sheet cannot drift out of step with the code that names it. The two
+' prefix rules stay literal because there is no constant for a prefix, and their
+' lengths are now derived with Len() rather than counted by hand -- which is how
+' the 13-versus-14 error happened in the first place.
 Public Function IsToolOwnedSheet(sheetName As String) As Boolean
     If sheetName = INDEX_SHEET_NAME Then IsToolOwnedSheet = True
-    If sheetName = "Field Spec" Then IsToolOwnedSheet = True
-    If sheetName = "Sources" Then IsToolOwnedSheet = True
+    If sheetName = FieldSpec.SPEC_SHEET_NAME Then IsToolOwnedSheet = True
+    If sheetName = Sources.SOURCES_SHEET_NAME Then IsToolOwnedSheet = True
+    If sheetName = DiscoverUI.DISCOVERY_SHEET_NAME Then IsToolOwnedSheet = True
     If sheetName = "Sync Log" Then IsToolOwnedSheet = True
-    If Left(sheetName, 4) = "TPL_" Then IsToolOwnedSheet = True
-    If Left(sheetName, 11) = "Sync Review" Then IsToolOwnedSheet = True
-    If Left(sheetName, 13) = "Template Audit" Then IsToolOwnedSheet = True
+    If Left(sheetName, Len("TPL_")) = "TPL_" Then IsToolOwnedSheet = True
+    If Left(sheetName, Len("Sync Review")) = "Sync Review" Then IsToolOwnedSheet = True
+    If Left(sheetName, Len("Template Audit")) = "Template Audit" Then IsToolOwnedSheet = True
 End Function

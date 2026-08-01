@@ -4795,7 +4795,7 @@ Private Function Test_BatchOnboardFlow_NormalizeFieldTypeAcceptsNumberOrName() A
     result = result & Assert(BatchOnboardFlow.NormalizeFieldType("Currency") = "currency", "'Currency' resolves to currency (case-insensitive)")
     result = result & Assert(BatchOnboardFlow.NormalizeFieldType("4") = "date", "'4' resolves to date")
     result = result & Assert(BatchOnboardFlow.NormalizeFieldType("date") = "date", "'date' resolves to date")
-    result = result & Assert(BatchOnboardFlow.NormalizeFieldType("") = "text", "blank falls back to text, never errors")
+    result = result & Assert(BatchOnboardFlow.NormalizeFieldType("") = "text", "blank falls back to text -- CALLERS MUST CHECK FOR CANCEL FIRST (finding 2); this function cannot tell Cancel from OK-with-nothing-typed and is not expected to")
     result = result & Assert(BatchOnboardFlow.NormalizeFieldType("gibberish") = "text", "unrecognized answer falls back to text, never errors")
 
     Test_BatchOnboardFlow_NormalizeFieldTypeAcceptsNumberOrName = result

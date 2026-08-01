@@ -150,11 +150,12 @@ Fixed via `WorkbookBridge.RegisterSheet(wb)` — by name, and it **raises** on a
 register rather than returning `Nothing`, because "reportable as zero rows" is what let this
 live. All five `E2EField.bas` sites converted; 43 rows confirmed back.
 
-**Still unconverted, same defect, not in the item 9/10 path:** `E2EFirstField.bas:129`,
-`VerifyRealDeck.bas:36`, `R13RealDeck.bas:45`. All three open the register workbook and will
-read `START HERE`. Left alone deliberately — `R13` is parked and the other two are not on the
-route to finished. Fix before ever trusting them again. (`BatchOnboardFlow` and the
-`R13RealDeck` `gwb` sites index into *different*, single-sheet workbooks and are fine.)
+**~~Still unconverted~~ — CONVERTED the same day, and this paragraph was stale for a day
+after that.** `E2EFirstField.bas:129`, `VerifyRealDeck.bas:36` and `R13RealDeck.bas:45` all
+call `RegisterOrFirstDataSheet` now. Caught by consultant review 2026-08-01, which noted the
+irony precisely: *the file that exists to stop stale claims was carrying one, one day after
+it carried a stale count.* (`BatchOnboardFlow` and the `R13RealDeck` `gwb` sites index into
+*different*, single-sheet workbooks and are genuinely fine.)
 
 **The lesson, which the codebase already knew:** `E2EField.bas` carries the comment
 *"Columns by header name, never by position"* directly beneath a line selecting the **sheet**

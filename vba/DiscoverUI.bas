@@ -27,6 +27,11 @@ Option Explicit
 ' not be the only road; if this misbehaves he marks the old way and loses
 ' nothing but the time he would have spent anyway.
 
+' PUBLIC, so WorkbookBridge.IsToolOwnedSheet can name it by constant rather
+' than by a duplicated string literal. It was private and duplicated, and the
+' duplicate was simply missing -- which let the register resolver treat this
+' sheet as the user's data.
+Public Const DISCOVERY_SHEET_NAME As String = "Field Discovery"
 Private Const DISCOVERY_SHEET As String = "Field Discovery"
 
 Private Const COL_ID As Long = 1

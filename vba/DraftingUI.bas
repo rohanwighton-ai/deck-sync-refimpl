@@ -384,6 +384,40 @@ Public Sub PublishDraftsForField()
     Dim result As String
     result = Drafting.PublishDrafts(ws, regWs, fieldId, False, srcWs)
 
+    ' SAVE. THE BUTTON PATH DID NOT.
+    '
+    ' PublishDrafts writes Value and Status into the register in memory. The
+    ' harness path (E2EField.PublishDraftSheet) has always called wb.Save; this
+    ' button never did. So "published: 12" was true of Excel's buffer and of
+    ' nothing on disk -- and a person who believes they have published is
+    ' exactly the person who clicks "Don't Save" on the way out.
+    '
+    ' Found by consultant review 2026-08-01 and verified before fixing. The
+    ' register is the record; writing to it without committing is the one place
+    ' this tool cannot afford to be optimistic.
+    '
+    ' Reported, not assumed: the result says where it saved, and says loudly if
+    ' the save did not take -- a read-only workbook (see FIRST-REAL-RUN finding
+    ' 14) fails here silently otherwise.
+    Dim savedOk As Boolean
+    savedOk = False
+    On Error Resume Next
+    wb.Save
+    savedOk = (Err.Number = 0)
+    Err.Clear
+    On Error GoTo 0
+
+    If savedOk Then
+        result = result & vbCrLf & vbCrLf & "Register SAVED to:" & vbCrLf & wb.FullName
+    Else
+        result = result & vbCrLf & vbCrLf & _
+            "!! THE REGISTER COULD NOT BE SAVED !!" & vbCrLf & _
+            "The rows above are in Excel's memory and NOT on disk. Do not close " & _
+            "Excel without saving." & vbCrLf & vbCrLf & _
+            "Most likely the file is open read-only, or somewhere you cannot write:" & vbCrLf & _
+            wb.FullName
+    End If
+
     ShowSheet wb, WorkbookBridge.REGISTER_SHEET_NAME
 
     ' THE STEP THAT TOLD YOU TO PRESS THE NEXT BUTTON NOW OFFERS TO.
