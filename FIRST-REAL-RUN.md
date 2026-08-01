@@ -225,3 +225,36 @@ Two fixes, because one is not enough:
   that cannot be read back. That is where the two bad records came from.
 
 *Status: FIXED both sides.*
+
+### 10. Error 13 — my rescue macro corrupted the session, and an unguarded CLng turned that into a dead end
+`Bulk Onboard Type` and `Mark Field for Batch` both died with *"Error 13: Type
+mismatch"*, on a text shape and a graphic alike, with 33 marks intact and
+unreachable in the document property.
+
+Cause, in two halves:
+
+1. **Mine.** The rescue macro rebuilt the session as
+   `kept = kept & vbCrLf & line`, starting from an empty string — which puts a
+   **blank line at the front**. The session's first line is a *slide ID*, not a
+   record, so every line was shifted by one.
+2. **The add-in's.** `RestoreMarkingSession` read `slideId = CLng(lines(0))`
+   with no validation. `CLng("")` raises 13. Any session whose first line was
+   not a number — a leading blank, a stray newline, anything hand-edited — was
+   unrecoverable, and the message blamed something unanticipated.
+
+Both were needed for the failure. Only one is fixable in the tool, so that is
+the one fixed: the header line is now **located** (first non-blank) rather than
+assumed to sit at index 0, a non-numeric header degrades to slide 0 instead of
+raising, and the record loop starts after the header wherever it is. A session
+that cannot name its slide is still a session full of marks; losing all of them
+over a header is the wrong trade.
+
+The rescue macro is fixed too, but that matters less — it should never have been
+the thing writing to a user's file.
+
+**The pattern, for the fourth time today:** unvalidated input meeting a
+conversion that assumes success. `CLng` here, `parts(1..3)` in finding 9,
+`NormalizeFieldType("")` in finding 2, `Worksheets(1)` this morning. Every one
+presented as something other than what it was.
+
+*Status: FIXED. Needs addin35.*

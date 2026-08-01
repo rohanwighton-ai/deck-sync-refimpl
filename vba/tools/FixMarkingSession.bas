@@ -120,7 +120,15 @@ Public Sub RemoveMark()
             If StrComp(Trim(p(0)), Trim(SHAPE_TO_DROP), vbTextCompare) = 0 Then
                 removed = removed + 1
             Else
-                kept = kept & vbCrLf & lines(i)
+                ' NO LEADING SEPARATOR. Building the string as
+                ' kept = kept & vbCrLf & line puts a blank line at the front,
+                ' which shifts the whole session by one and makes the add-in's
+                ' header read fail. That is exactly what happened on 2026-08-01.
+                If kept = "" Then
+                    kept = lines(i)
+                Else
+                    kept = kept & vbCrLf & lines(i)
+                End If
                 keptCount = keptCount + 1
             End If
         End If
@@ -192,7 +200,15 @@ Public Sub RemoveMarksByFieldName()
                 removeCount = removeCount + 1
                 doomed = doomed & "   " & fieldName & "   (shape " & p(0) & ")" & vbCrLf
             Else
-                kept = kept & vbCrLf & lines(i)
+                ' NO LEADING SEPARATOR. Building the string as
+                ' kept = kept & vbCrLf & line puts a blank line at the front,
+                ' which shifts the whole session by one and makes the add-in's
+                ' header read fail. That is exactly what happened on 2026-08-01.
+                If kept = "" Then
+                    kept = lines(i)
+                Else
+                    kept = kept & vbCrLf & lines(i)
+                End If
                 keptCount = keptCount + 1
             End If
         End If

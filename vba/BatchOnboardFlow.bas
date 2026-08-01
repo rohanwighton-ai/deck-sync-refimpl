@@ -238,8 +238,43 @@ Public Function RestoreMarkingSession(serialized As String, templateSld As Objec
         Exit Function
     End If
 
+    ' THE HEADER LINE, FOUND RATHER THAN ASSUMED TO BE FIRST.
+    '
+    ' This read CLng(lines(0)) directly. Any session whose first line was not a
+    ' number -- a leading blank, a stray newline, anything hand-edited -- became
+    ' "Error 13: Type mismatch", reported as "something went wrong that this
+    ' add-in didn't anticipate", with 33 marks sitting intact and unreachable in
+    ' the document property.
+    '
+    ' Hit live 2026-08-01 by a rescue macro of mine that rebuilt the session
+    ' with a leading vbCrLf, shifting every line by one. My bug produced the bad
+    ' data; this unguarded CLng turned it into a dead end instead of a skipped
+    ' line. Both were needed for the failure, and only one of them is fixable
+    ' here -- so this is the one that gets fixed.
+    '
+    ' Skips leading blanks and accepts a non-numeric header as slide 0 rather
+    ' than raising: a session that cannot name its slide is still a session full
+    ' of marks, and losing all of them over a header is the wrong trade.
+    Dim headerIdx As Long
+    headerIdx = -1
+    Dim hi2 As Long
+    For hi2 = lo To hi
+        If Trim(lines(hi2)) <> "" Then
+            headerIdx = hi2
+            Exit For
+        End If
+    Next hi2
+    If headerIdx = -1 Then
+        RestoreMarkingSession = "Nothing to restore."
+        Exit Function
+    End If
+
     Dim slideId As Long
-    slideId = CLng(lines(0))
+    If IsNumeric(Trim(lines(headerIdx))) Then
+        slideId = CLng(Val(Trim(lines(headerIdx))))
+    Else
+        slideId = 0
+    End If
 
     Dim allCandidates() As Candidate
     Dim allShapes() As Object
@@ -263,7 +298,7 @@ Public Function RestoreMarkingSession(serialized As String, templateSld As Objec
     missingCount = 0
 
     Dim li As Long
-    For li = 1 To hi
+    For li = headerIdx + 1 To hi
         If Trim(lines(li)) <> "" Then
             Dim parts() As String
             parts = Split(lines(li), FIELD_KEY_SEP)
