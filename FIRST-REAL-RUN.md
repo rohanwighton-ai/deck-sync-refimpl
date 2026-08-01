@@ -189,3 +189,39 @@ project decks is nearly free. Six on one register is a different tool.
 
 Worth a DECISIONS.md entry when it is picked up, because it reverses a call the
 architecture was built on.
+
+### 8. Bulk Onboard never restored the saved marking session
+After reopening the deck, `Bulk Onboard Type` reported **"No fields marked
+yet"** while 33 marks sat intact in the `DeckSyncMarkingSession` document
+property.
+
+The restore lived only inside `MarkFieldForBatchCore`. So the one button a
+person presses *after reopening a file* was the only one that never looked for
+the saved session — and the message told them to start over.
+
+*Status: FIXED — `PromptBatchOnboardType` now attempts a restore before
+concluding nothing is marked.*
+*Workaround until rebuilt: select a TEXT shape, run `Mark Field for Batch`, and
+Cancel at the name prompt. The restore runs before the prompts, so cancelling
+leaves the session restored and adds nothing.*
+
+### 9. The session parser crashed on the malformed records — and I called them harmless
+`RestoreMarkingSession` read `parts(1)`, `parts(2)` and `parts(3)` with **no
+check on how many parts the line had**. So a record that did not split into four
+took down the entire restore, losing every good mark with it.
+
+Rohan's session contained exactly two such records (finding 6). I looked at them
+and said they were "probably harmless: restore skips marks it cannot find". That
+was wrong — it skips marks whose SHAPE cannot be found, which is a different
+branch entirely. A short record that *does* match a shape name goes straight
+into the unguarded read.
+
+Two fixes, because one is not enough:
+- **Read side:** a record with fewer than four parts is skipped and counted, not
+  repaired. Guessing the missing parts would mark a shape under a name nobody
+  chose.
+- **Write side:** `SafePart` strips `|` and line breaks from every part before
+  serialising, so a field name containing either can no longer produce a record
+  that cannot be read back. That is where the two bad records came from.
+
+*Status: FIXED both sides.*

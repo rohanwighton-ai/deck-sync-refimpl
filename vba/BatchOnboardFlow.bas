@@ -201,7 +201,14 @@ Public Function SerializeMarkingSession(slideId As Long, shapes As Collection, n
     lines = CStr(slideId)
     Dim i As Long
     For i = 1 To shapes.count
-        lines = lines & vbCrLf & shapes(i).Name & FIELD_KEY_SEP & names(i) & FIELD_KEY_SEP & types(i) & FIELD_KEY_SEP & volatility(i)
+        ' Strip the separator and any line break out of the parts before
+        ' writing. A field name containing "|" or a newline produces a record
+        ' that cannot be parsed back -- which is how two unreadable entries got
+        ' into Rohan's session in the first place. Refusing at write time is
+        ' cheaper than tolerating at read time, and both are now done.
+        lines = lines & vbCrLf & SafePart(shapes(i).Name) & FIELD_KEY_SEP & _
+                SafePart(CStr(names(i))) & FIELD_KEY_SEP & _
+                SafePart(CStr(types(i))) & FIELD_KEY_SEP & SafePart(CStr(volatility(i)))
     Next i
     SerializeMarkingSession = lines
 End Function
@@ -261,6 +268,23 @@ Public Function RestoreMarkingSession(serialized As String, templateSld As Objec
             Dim parts() As String
             parts = Split(lines(li), FIELD_KEY_SEP)
 
+            ' A SHORT LINE MUST NOT BLOW UP THE RESTORE.
+            '
+            ' parts(1), parts(2) and parts(3) were read unconditionally, so any
+            ' record that did not split into four crashed the whole restore --
+            ' taking every good mark with it. Rohan's real session on
+            ' 2026-08-01 contained two such records (one with no field name, one
+            ' with no shape name), almost certainly from a field name that
+            ' contained a line break and split one record across two lines.
+            '
+            ' Skipped and counted, not repaired: a half-record cannot be
+            ' reconstructed, and guessing at the missing parts would put a mark
+            ' on a shape under a name nobody chose.
+            If UBound(parts) < 3 Then
+                missingCount = missingCount + 1
+                GoTo NextLine
+            End If
+
             Dim foundShp As Object
             Set foundShp = Nothing
             If hasAny Then
@@ -285,6 +309,7 @@ Public Function RestoreMarkingSession(serialized As String, templateSld As Objec
                 restoredCount = restoredCount + 1
             End If
         End If
+NextLine:
     Next li
 
     RestoreMarkingSession = "Restored " & restoredCount & " field(s) from a previous session." & IIf(missingCount > 0, " (" & missingCount & " could not be re-found -- shape renamed or deleted since marking.)", "")
@@ -2308,6 +2333,32 @@ Public Function PromptBatchOnboardType() As String
     Dim pres As Object
     Set pres = Application.ActivePresentation
 
+    ' RESTORE HERE TOO, NOT JUST WHEN MARKING.
+    '
+    ' The restore lived only in MarkFieldForBatchCore, so reopening a deck and
+    ' pressing Bulk Onboard Type reported "No fields marked yet" while 33 marks
+    ' sat intact in the document property. The one button a person presses after
+    ' reopening a file was the one that never looked for the saved session.
+    ' Rohan hit it on his real deck, 2026-08-01.
+    Dim restoreNote As String
+    If markedShapes Is Nothing Or MarkedFieldCountForBatch() = 0 Then
+        Dim saved As String
+        saved = ReadMarkingSessionProperty(pres)
+        If Trim(saved) <> "" Then
+            Dim tmplSld As Object
+            Set tmplSld = Nothing
+            On Error Resume Next
+            Set tmplSld = pres.Slides(1)
+            If Application.ActiveWindow.View.Slide.SlideIndex > 0 Then
+                Set tmplSld = Application.ActiveWindow.View.Slide
+            End If
+            On Error GoTo 0
+            If Not tmplSld Is Nothing Then
+                restoreNote = RestoreMarkingSession(saved, tmplSld)
+            End If
+        End If
+    End If
+
     If markedShapes Is Nothing Then
         PromptBatchOnboardType = "No fields marked yet. Click each field's shape on your template slide and run 'Mark Field for Batch' for each one before running this."
         Exit Function
@@ -2655,3 +2706,17 @@ Private Sub BatchOnboardTypeCore()
         RibbonUI.ShowSyncResult "Bulk Onboard Type", report
     End If
 End Sub
+
+' One field of a marking-session record, with everything that would break the
+' format taken out. Spaces, not deletion, so a name stays recognisable to the
+' person who typed it.
+Private Function SafePart(value As String) As String
+    Dim t As String
+    t = value
+    t = Replace(t, FIELD_KEY_SEP, " ")
+    t = Replace(t, vbCrLf, " ")
+    t = Replace(t, vbCr, " ")
+    t = Replace(t, vbLf, " ")
+    t = Replace(t, Chr(11), " ")
+    SafePart = Trim(t)
+End Function
