@@ -207,6 +207,20 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "Drafting_OnlyTickedNonEmptyDraftsPublish", r
     On Error GoTo 0
 
+    ' REGISTERED BY HAND, like every other test here. Writing the Function is
+    ' not enough -- RunAllTests dispatches explicitly, so an unregistered test
+    ' simply never runs and the suite still says PASS. Added both of these and
+    ' the count stayed at 135, which is the only reason it was noticed.
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DiscoverUI_GridListsEveryTextShapeWithUniqueIds()
+    AppendResult report, "DiscoverUI_GridListsEveryTextShapeWithUniqueIds", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DiscoverUI_MarksOnlyTickedAndNamedRows()
+    AppendResult report, "DiscoverUI_MarksOnlyTickedAndNamedRows", r
+    On Error GoTo 0
+
     r = "": On Error Resume Next: Err.Clear
     r = Test_Register_BlankTypeAndCadenceCollision()
     AppendResult report, "Register_BlankTypeAndCadenceCollision", r
@@ -6245,4 +6259,120 @@ Private Function Test_BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale() As 
     xl.Quit
 
     Test_BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale = result
+End Function
+
+' ===========================================================================
+' DiscoverUI -- the marking grid. Added 2026-08-01, the evening it was written,
+' because a module with no coverage is a module whose next change breaks it
+' silently. The prompt chain it replaces went 52 fields and three findings
+' without anything asserting its behaviour.
+' ===========================================================================
+
+Private Function Test_DiscoverUI_GridListsEveryTextShapeWithUniqueIds() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    ' Deliberately out of reading order, and deliberately sharing a NAME --
+    ' the exact condition that destroyed an hour of real marking.
+    Dim bottom As Object, top_ As Object, middle As Object
+    Set bottom = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 60, 400, 200, 40)
+    bottom.TextFrame.TextRange.Text = "BOTTOM"
+    Set top_ = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 60, 50, 200, 40)
+    top_.TextFrame.TextRange.Text = "TOP"
+    Set middle = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 60, 220, 200, 40)
+    middle.TextFrame.TextRange.Text = "MIDDLE"
+    bottom.Name = "Shape 16"
+    top_.Name = "Shape 16"
+    middle.Name = "Shape 16"
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+
+    Dim note As String
+    note = DiscoverUI.BuildDiscoverySheet(sld, wb)
+    result = result & Assert(Left(note, 1) <> "!", "the grid builds, got '" & note & "'")
+
+    Dim ws As Object
+    Set ws = wb.Worksheets("Field Discovery")
+
+    ' Reading order, not creation order and not z-order.
+    result = result & Assert(ws.Cells(7, 4).Value = "TOP", _
+        "first grid row is the TOPMOST shape, got '" & ws.Cells(7, 4).Value & "'")
+    result = result & Assert(ws.Cells(8, 4).Value = "MIDDLE", _
+        "second row is the middle shape, got '" & ws.Cells(8, 4).Value & "'")
+    result = result & Assert(ws.Cells(9, 4).Value = "BOTTOM", _
+        "third row is the bottom shape, got '" & ws.Cells(9, 4).Value & "'")
+
+    ' THE WHOLE POINT. Three shapes share one name; their ids must differ, or
+    ' the grid reproduces finding 11 in a new place.
+    result = result & Assert(ws.Cells(7, 2).Value = ws.Cells(8, 2).Value, _
+        "the fixture really does share a shape NAME across rows")
+    result = result & Assert(ws.Cells(7, 1).Value <> ws.Cells(8, 1).Value, _
+        "IDs DIFFER even where names collide -- got " & ws.Cells(7, 1).Value & " and " & ws.Cells(8, 1).Value)
+    result = result & Assert(ws.Cells(8, 1).Value <> ws.Cells(9, 1).Value, _
+        "all three ids are distinct")
+
+    wb.Saved = True: wb.Close
+    xl.Quit
+    Set wb = Nothing: Set xl = Nothing
+    sld.Delete
+    Test_DiscoverUI_GridListsEveryTextShapeWithUniqueIds = result
+End Function
+
+Private Function Test_DiscoverUI_MarksOnlyTickedAndNamedRows() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim a As Object, b As Object, c As Object
+    Set a = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 60, 50, 200, 40)
+    a.TextFrame.TextRange.Text = "ALPHA"
+    Set b = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 60, 150, 200, 40)
+    b.TextFrame.TextRange.Text = "BETA"
+    Set c = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 60, 250, 200, 40)
+    c.TextFrame.TextRange.Text = "GAMMA"
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    DiscoverUI.BuildDiscoverySheet sld, wb
+
+    Dim ws As Object
+    Set ws = wb.Worksheets("Field Discovery")
+
+    ' Row 1: ticked and named  -> marks.
+    ' Row 2: named but NOT ticked -> must not mark. A name typed while thinking
+    '        is not an instruction.
+    ' Row 3: ticked with NO name -> must not mark, and must be REPORTED.
+    ws.Cells(7, 6).Value = "Y": ws.Cells(7, 7).Value = "FIELD_ALPHA"
+    ws.Cells(8, 7).Value = "FIELD_BETA"
+    ws.Cells(9, 6).Value = "Y"
+
+    Dim rep As String
+    rep = DiscoverUI.ApplyDiscoverySheet(sld, wb)
+
+    result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() = 1, _
+        "exactly one row marked -- ticked AND named, got " & BatchOnboardFlow.MarkedFieldCountForBatch())
+    result = result & Assert(BatchOnboardFlow.MarkedFieldNameForBatch(1) = "FIELD_ALPHA", _
+        "the marked field is the ticked-and-named one, got '" & BatchOnboardFlow.MarkedFieldNameForBatch(1) & "'")
+    result = result & Assert(InStr(rep, "ticked but has no field name") > 0, _
+        "the ticked-but-unnamed row is REPORTED, never guessed at")
+    result = result & Assert(InStr(rep, "FIELD_BETA") = 0, _
+        "a named-but-unticked row is silently left alone, not marked and not complained about")
+
+    ' ResetMarkingSession, not ClearMarkedFieldsForBatch -- the latter shows a
+    ' MsgBox and would hang a headless run. The public reset already existed;
+    ' adding a new "silent" wrapper for it was a solution to a problem I had not
+    ' checked for.
+    BatchOnboardFlow.ResetMarkingSession
+    wb.Saved = True: wb.Close
+    xl.Quit
+    Set wb = Nothing: Set xl = Nothing
+    sld.Delete
+    Test_DiscoverUI_MarksOnlyTickedAndNamedRows = result
 End Function
