@@ -1,0 +1,72 @@
+# First real run — findings
+
+Rohan onboarding his **real** deck for the first time, on the work machine,
+2026-08-01. Everything before this was the redacted deck on the personal
+machine.
+
+**This file is the log of what he hits, as he hits it.** Findings get written
+down and the run continues — they are not fixed mid-run unless they actually
+block typing. The point of a first real run is to produce a list, and stopping
+to fix each item is how you end up with a good tool and no finished quarter.
+
+## Starting state, established before touching anything
+
+- The add-in **loads on the work machine**. `addin33` active. This was the
+  existential risk for the whole design — an employer blocking unsigned VBA
+  add-ins would have killed it outright — and it is now answered. Yes.
+- The real deck had **never been touched by the tool**: no paired workbook, no
+  `DeckSyncId`, no tags. `Preview Sync` said so plainly. Cleanest possible
+  starting state — nothing to migrate, nothing to undo.
+- The register must be a **NEW workbook**, not `SAAFE-Projects-Data.xlsx` —
+  that one was seeded from the *redacted* deck, so pairing the real deck to it
+  would stage redacted text to sync onto real slides.
+
+---
+
+## Findings
+
+### 1. No picture or icon field type when marking a field
+`BatchOnboardFlow.NormalizeFieldType` accepts exactly four answers: `text`,
+`number`, `currency`, `date`. There is no way to declare a field as a picture,
+an icon, a bar or a timeline marker.
+
+**Deeper than it looks.** That type is currently *cosmetic only* — its own
+comment says it affects "a bonus NumberFormat, never the synced value itself".
+So `FieldType` is an Excel formatting hint, NOT a rendering contract.
+
+That corrects an earlier claim of mine that `FieldType` was already the right
+hook for picture/bar rendering. The column exists; it means something else.
+Widening its meaning silently would be the same class of mistake as the column
+renumbering earlier today — a value whose meaning changed underneath the code
+that reads it.
+
+Whoever builds picture/bar rendering must decide deliberately: widen
+`FieldType` and document the change, or add a separate rendering dimension.
+Not both, and not by accident.
+
+*Status: recorded, not fixed.*
+
+### 2. Cancelling the field-type dialog marked the field anyway, as "text"
+Rohan: *"cancelling the dialogue seemed to mark the field anyway incorrectly
+text"*.
+
+`InputBox` returns `""` both for **Cancel** and for **OK with nothing typed**,
+and `NormalizeFieldType` maps anything unrecognised to `"text"`. So backing out
+silently marked the field and carried on. The volatility prompt one step later
+had the identical bug — it would have defaulted to `"variable"` — found by
+reading rather than by being hit.
+
+**The idiom was already in the same function.** The field-NAME prompt, eleven
+lines above, does exactly the right thing: `If Trim(typedName) = "" Then …
+Exit Sub`. It simply was not carried to the next two prompts. Same shape as
+"columns by header name, never by position" sitting directly above a line that
+read a sheet by position.
+
+Two situations — "I changed my mind" and "I pressed OK" — collapsing into one
+indistinguishable value. That is the recurring failure of this whole project,
+now at the UI layer.
+
+*Status: FIXED in source. Needs a new .ppam to reach the work machine.*
+*Workaround until then: do not cancel those two dialogs. To undo a mis-marked
+field use `Clear Marked Fields` and re-mark — marking again on top adds a
+second identity rather than replacing the first.*

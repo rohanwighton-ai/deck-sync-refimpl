@@ -1308,6 +1308,22 @@ Private Sub MarkFieldForBatchCore()
 
     Dim typedType As String
     typedType = InputBox("Field type -- reference metadata shown in the Field Review grid (never changes what's synced):" & vbCrLf & "1) Text  2) Number  3) Currency  4) Date", "Mark Field for Batch", defaultType)
+
+    ' CANCEL MUST CANCEL. InputBox returns "" for Cancel AND for OK-with-nothing-
+    ' typed, and NormalizeFieldType turns anything unrecognised into "text" -- so
+    ' backing out of this dialog silently marked the field as text and carried on.
+    ' Rohan hit it on his first real onboarding, 2026-08-01: "cancelling the
+    ' dialogue seemed to mark the field anyway incorrectly text".
+    '
+    ' The name prompt eleven lines above already does exactly this check. The
+    ' idiom was known in this very function and not carried to the next prompt.
+    If Trim(typedType) = "" Then
+        RibbonUI.ShowSyncResult "Mark Field for Batch", _
+            "Cancelled -- the field was NOT marked." & vbCrLf & vbCrLf & _
+            "Nothing was changed. Run this again on the same shape when you are ready."
+        Exit Sub
+    End If
+
     Dim fieldType As String
     fieldType = NormalizeFieldType(typedType)
 
@@ -1320,6 +1336,16 @@ Private Sub MarkFieldForBatchCore()
 
     Dim typedVolatility As String
     typedVolatility = InputBox("Does this field usually stay the same, or change each period? Hint only -- reference metadata shown in the Field Review grid (never locks or changes what's synced):" & vbCrLf & "1) Static  2) Variable", "Mark Field for Batch", defaultVolatility)
+
+    ' Same bug, same fix, one prompt later -- found by looking rather than by
+    ' being hit. Cancelling here would have marked the field as "variable".
+    If Trim(typedVolatility) = "" Then
+        RibbonUI.ShowSyncResult "Mark Field for Batch", _
+            "Cancelled -- the field was NOT marked." & vbCrLf & vbCrLf & _
+            "Nothing was changed. Run this again on the same shape when you are ready."
+        Exit Sub
+    End If
+
     Dim fieldVolatility As String
     fieldVolatility = NormalizeFieldVolatility(typedVolatility)
 
