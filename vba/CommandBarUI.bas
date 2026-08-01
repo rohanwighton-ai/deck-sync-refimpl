@@ -93,6 +93,18 @@ Public Sub ShowToolbar()
     ' which is the situation it was asked for.
     AddButton bar, "Preview Sync", "RibbonUI.SyncPreview", 1090, "Show everything the paired workbook would change in this deck -- reads only, writes nothing."
 
+    ' THE DRAFTING HALF, WHICH HAD NO BUTTONS AT ALL UNTIL 2026-08-01.
+    '
+    ' Everything below existed for a day reachable only from a PowerShell test
+    ' harness -- demonstrable, but not usable by the person the tool is for.
+    ' Placed first because it is first in the actual order of work: you draft
+    ' the words, publish them into the register, and only then sync the deck.
+    ' The existing Preview Sync / Sync Now buttons are the last leg and needed
+    ' no change.
+    AddButton bar, "Refresh Drafting Sheets", "DraftingUI.RefreshDraftingSheets", 1697, "Bring the drafting sheets up to date -- one per prose field, every project on a row, current text beside a box for your new wording, Copilot's prompt in L2. Keeps everything you have already written. Writes nothing to the deck."
+    AddButton bar, "Copy AI to Submit", "DraftingUI.CopyAiDraftsToSubmit", 122, "Copy the AI's drafts into the SUBMIT column, filling ONLY the cells you have left empty. Never overwrites anything you wrote yourself."
+    AddButton bar, "Publish Drafts", "DraftingUI.PublishDraftsForField", 3, "Show every ticked SUBMIT row, then on your say-so write them into the register as Approved. Touches no slide -- run Preview Sync afterwards."
+
     ' R13, 2026-07-31. Sync Now survives, but it can no longer write anything a
     ' human has not seen. It was briefly deleted earlier the same day on the
     ' reasoning that its old count-based confirmation could not satisfy R13;

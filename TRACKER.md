@@ -3,7 +3,10 @@
 **Finished =** Rohan produces a real quarter's deck and the tool saved him time.
 Not a field count. Not a test count.
 
-**7 of 10.**
+**8 of 10.**
+
+*Said "7 of 10" for two hours after item 8 was ticked. The file that exists to police
+stale counts carried a stale count — caught by the PM agent, not by anyone editing it.*
 
 ---
 

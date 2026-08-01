@@ -57,7 +57,18 @@ $productionModules = @(
     "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas",
     "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "Register.bas", "PlaceholderCheck.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas",
     "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas",
-    "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas"
+    "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas",
+    # ReviewQueue was MISSING from this list while RibbonUI.SyncNow called it in
+    # nine places. An undefined module reference is a COMPILE error in VBA, and a
+    # compile error takes out the entire project -- so the built .ppam could not
+    # run Sync Now, Review Changes or Apply Approved. Found 2026-08-01 while
+    # adding the drafting buttons, not by anyone using the add-in, which is its
+    # own finding: nothing verifies that this list covers what the modules
+    # actually reference.
+    "ReviewQueue.bas",
+    # The drafting half. Present in the repo since 2026-07-31 and never shipped
+    # in the add-in at all -- reachable only from the PowerShell test harness.
+    "Drafting.bas", "FieldSpec.bas", "Sources.bas", "DraftingUI.bas"
 )
 
 function Request-GracefulQuit {
