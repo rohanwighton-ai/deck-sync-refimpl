@@ -257,6 +257,21 @@ Public Function InjectPrimitive(sld As Object, identityTag As String, sourceValu
     ' Captured before, restored after, and the restore is then RE-READ. An
     ' autofit shape can refuse to keep a width it has been given, so assuming
     ' the restore worked would be the same mistake in a new place.
+    '
+    ' SCOPE, AND DO NOT GENERALISE THIS. Rohan, 2026-08-01: "Some geometry
+    ' movement allowed ie the circles on the timeline changing shape /
+    ' formatting based on different points of achievement."
+    '
+    ' Correct, and the distinction is the whole point:
+    '   geometry moving as a SIDE EFFECT of writing text   -> a bug, restore it
+    '   geometry or formatting changing as the PAYLOAD     -> the feature
+    '
+    ' This function is the TEXT injector. Everything it does is the first case,
+    ' so restoring is unconditionally right HERE. A bar-part or milestone-marker
+    ' injector deliberately moves and restyles shapes -- that is what it is for
+    ' -- and must NOT reuse this guard. Anyone tempted to "make injection
+    ' consistent" by adding geometry restore there would be deleting the
+    ' feature.
     Dim hadL As Single, hadT As Single, hadW As Single, hadH As Single
     Dim haveGeom As Boolean
     On Error Resume Next
