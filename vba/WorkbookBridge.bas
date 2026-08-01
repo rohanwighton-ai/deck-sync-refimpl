@@ -401,3 +401,48 @@ Public Sub FormatRegisterSheet(ws As Object)
 
     On Error GoTo 0
 End Sub
+
+' The register sheet, for callers that do not know which workbook shape they
+' have been handed.
+'
+' TWO SHAPES ARE BOTH LEGITIMATE. The e2e rig uses a single sheet named
+' "Register". A live pairing registers a sheet name per slide type. RegisterSheet
+' above is exact and raises when there is no "Register" -- correct for the
+' drafting path, wrong for tools pointed at either kind.
+'
+' So: the named register when it exists, otherwise the first sheet that is not
+' one of the tool's OWN sheets. Those are excluded by name because they are the
+' ones this tool creates, and the failure being fixed is precisely a tool
+' reading its own instructions sheet and reporting an empty register as a clean
+' run. Anything else is assumed to be the caller's data.
+Public Function RegisterOrFirstDataSheet(wb As Object) As Object
+    Dim sh As Object
+    For Each sh In wb.Worksheets
+        If StrComp(sh.Name, REGISTER_SHEET_NAME, vbTextCompare) = 0 Then
+            Set RegisterOrFirstDataSheet = sh
+            Exit Function
+        End If
+    Next sh
+
+    For Each sh In wb.Worksheets
+        If Not IsToolOwnedSheet(sh.Name) Then
+            Set RegisterOrFirstDataSheet = sh
+            Exit Function
+        End If
+    Next sh
+
+    Err.Raise vbObjectError + 514, "WorkbookBridge.RegisterOrFirstDataSheet", _
+        "This workbook contains only sheets created by the tool -- there is no " & _
+        "register in it. Located by name, never by tab position."
+End Function
+
+' Sheets this tool creates and would never be a register.
+Public Function IsToolOwnedSheet(sheetName As String) As Boolean
+    If sheetName = INDEX_SHEET_NAME Then IsToolOwnedSheet = True
+    If sheetName = "Field Spec" Then IsToolOwnedSheet = True
+    If sheetName = "Sources" Then IsToolOwnedSheet = True
+    If sheetName = "Sync Log" Then IsToolOwnedSheet = True
+    If Left(sheetName, 4) = "TPL_" Then IsToolOwnedSheet = True
+    If Left(sheetName, 11) = "Sync Review" Then IsToolOwnedSheet = True
+    If Left(sheetName, 13) = "Template Audit" Then IsToolOwnedSheet = True
+End Function

@@ -33,7 +33,7 @@ Public Function VerifyRealDeck(deckPath As String, workbookPath As String) As St
     xl.Visible = False
     xl.DisplayAlerts = False
     Set wb = xl.Workbooks.Open(workbookPath, 0, True) ' positional: UpdateLinks:=0, ReadOnly:=True -- named args aren't reliable on a late-bound Object
-    Set ws = wb.Worksheets(1)
+    Set ws = WorkbookBridge.RegisterOrFirstDataSheet(wb)
 
     Dim sheet As ExcelOutput.Sheet
     sheet = ExcelOutput.ReadSheet(ws)

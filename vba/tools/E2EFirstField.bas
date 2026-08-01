@@ -126,7 +126,7 @@ Public Function RunE2E(deckPath As String, registerPath As String, period As Str
     Set wb = xl.Workbooks.Open(registerPath, 0, True)
 
     Dim reg As RegisterRead
-    reg = Register.ReadRegister(wb.Worksheets(1), period, "q")
+    reg = Register.ReadRegister(WorkbookBridge.RegisterOrFirstDataSheet(wb), period, "q")
 
     r = r & "--- V3 register read ---" & vbCrLf & _
         "  rows seen:        " & reg.RowsSeen & vbCrLf & _

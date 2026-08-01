@@ -42,7 +42,7 @@ Private Function OpenRegisterSheet(registerPath As String, period As String, _
     Set wb = xl.Workbooks.Open(registerPath, 0, True)   ' read-only
 
     Dim reg As RegisterRead
-    reg = Register.ReadRegister(wb.Worksheets(1), period, "q")
+    reg = Register.ReadRegister(WorkbookBridge.RegisterOrFirstDataSheet(wb), period, "q")
 
     diag = "--- register ---" & vbCrLf & _
         "  rows seen:       " & reg.RowsSeen & vbCrLf & _

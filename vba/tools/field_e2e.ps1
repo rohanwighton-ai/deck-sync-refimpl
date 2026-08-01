@@ -122,7 +122,7 @@ try {
     } elseif ($Mode -eq "copyai") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
             @([string]"E2EField.CopyAiToSubmitSheet",[string]$RegisterPath,[string]$FieldId))
-    } elseif ($Mode -eq "publish" -or $Mode -eq "publishapply") {
+    } elseif ($Mode -eq "publish") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
             @([string]"E2EField.PublishDraftSheet",[string]$RegisterPath,[string]$FieldId,[string]$(if ($Write) { "apply" } else { "preview" })))
     } elseif ($Mode -eq "deleteentities") {
