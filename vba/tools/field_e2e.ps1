@@ -12,7 +12,7 @@ param(
     [string]$DeckPath = "C:\Users\rohan\deck-sync-e2e\e2e-deck.pptx",
     [string]$RegisterPath = "C:\Users\rohan\deck-sync-e2e\register.xlsx",
     [string]$Period = "FY26Q4",
-    [ValidateSet("migrate","dryrun","apply","reseed","verifyharvest","deleteentities","draft","copyai","publish","timelinetest","setperiod","setperiodvariant")][string]$Mode = "dryrun",
+    [ValidateSet("migrate","dryrun","apply","reseed","verifyharvest","deleteentities","draft","copyai","publish","timelinetest","discovertest","setperiod","setperiodvariant")][string]$Mode = "dryrun",
     [string]$Variant = "save",
     [string]$FieldId = "ABOUT_BODY",
     [string]$TsvPath = "C:\Users\rohan\deck-sync-e2e\field_values.tsv",
@@ -48,7 +48,7 @@ $modules = @(
     "SlideDuplication.bas","TemplateSlide.bas","TemplateAudit.bas","IdentityCheck.bas",
     "TagMigration.bas","Register.bas","PlaceholderCheck.bas","RunSync.bas","ReviewQueue.bas","Drafting.bas","FieldSpec.bas","Sources.bas","Timeline.bas",
     "DeckAdoption.bas","ResolveFields.bas","DeckRegistry.bas","WorkbookBridge.bas",
-    "OnboardFlow.bas","RibbonUI.bas","AdoptFlow.bas","BatchOnboardFlow.bas","CommandBarUI.bas","DraftingUI.bas"
+    "OnboardFlow.bas","RibbonUI.bas","AdoptFlow.bas","BatchOnboardFlow.bas","CommandBarUI.bas","DraftingUI.bas","DiscoverUI.bas"
 )
 foreach ($m in $modules) { Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging }
 Copy-Item (Join-Path $vbaSourceDir "tools\E2EField.bas") -Destination $staging
@@ -119,6 +119,9 @@ try {
     } elseif ($Mode -eq "draft") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
             @([string]"E2EField.BuildDraftSheet",[string]$RegisterPath,[string]$Period,[string]$FieldId))
+    } elseif ($Mode -eq "discovertest") {
+        $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
+            @([string]"E2EField.DiscoverSelfTest",[string]$DeckPath,[string]$RegisterPath))
     } elseif ($Mode -eq "timelinetest") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
             @([string]"Timeline.SelfTest"))

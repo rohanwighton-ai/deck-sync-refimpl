@@ -948,3 +948,77 @@ Private Function CodePointAt(s As String, pos As Long) As String
         CodePointAt = "U+" & Right$("000" & Hex$(AscW(Mid(s, pos, 1))), 4)
     End If
 End Function
+
+' Drives DiscoverUI end to end with no human in it: build the grid, fill two
+' rows the way a person would, read it back, and report what got marked.
+'
+' Exists because a flow that can only be run by clicking is a flow nobody can
+' regression-test -- which is exactly how the prompt chain it replaces stayed
+' broken through 52 fields and three findings.
+Public Function DiscoverSelfTest(deckPath As String, registerPath As String) As String
+    Dim r As String
+
+    Dim pres As Object
+    Set pres = Application.Presentations.Open(deckPath, msoFalse, msoFalse, msoTrue)
+    pres.Windows(1).Activate
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Open(registerPath)
+
+    Dim sld As Object
+    Set sld = pres.Slides(1)
+
+    r = r & "build: " & DiscoverUI.BuildDiscoverySheet(sld, wb) & vbCrLf
+
+    Dim ws As Object
+    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, "Field Discovery")
+
+    ' Count what the grid found, and prove the ID column is populated and
+    ' UNIQUE -- the whole point of the rewrite. A grid with duplicate ids would
+    ' reintroduce finding 11 in a new place.
+    Dim seen As Object
+    Set seen = CreateObject("Scripting.Dictionary")
+    Dim rows As Long, dupIds As Long, blankIds As Long
+    Dim rr As Long
+    rr = 7
+    Do While Trim(CStr(ws.Cells(rr, 1).Value)) <> ""
+        rows = rows + 1
+        Dim thisId As String
+        thisId = Trim(CStr(ws.Cells(rr, 1).Value))
+        If thisId = "" Then
+            blankIds = blankIds + 1
+        ElseIf seen.Exists(thisId) Then
+            dupIds = dupIds + 1
+        Else
+            seen(thisId) = True
+        End If
+        rr = rr + 1
+    Loop
+    r = r & "grid rows: " & rows & "   blank ids: " & blankIds & "   DUPLICATE ids: " & dupIds & vbCrLf
+
+    ' Tick and name the first two rows, exactly as a person would.
+    ' No clear-marks call here: ClearMarkedFieldsForBatch shows a modal, which
+    ' would hang a headless run. The harness imports modules into a fresh
+    ' PowerPoint each time, so module state starts empty anyway.
+    ws.Cells(7, 6).Value = "Y": ws.Cells(7, 7).Value = "SELFTEST_ONE"
+    ws.Cells(8, 6).Value = "Y": ws.Cells(8, 7).Value = "SELFTEST_TWO"
+    ' A third ticked with NO name -- must be reported, never guessed at.
+    ws.Cells(9, 6).Value = "Y"
+
+    r = r & "apply: " & DiscoverUI.ApplyDiscoverySheet(sld, wb) & vbCrLf
+    r = r & "marked count now: " & BatchOnboardFlow.MarkedFieldCountForBatch() & vbCrLf
+    If BatchOnboardFlow.MarkedFieldCountForBatch() >= 2 Then
+        r = r & "  field 1 = " & BatchOnboardFlow.MarkedFieldNameForBatch(1) & vbCrLf
+        r = r & "  field 2 = " & BatchOnboardFlow.MarkedFieldNameForBatch(2) & vbCrLf
+    End If
+
+    wb.Close False
+    xl.Quit
+    pres.Saved = msoTrue
+    pres.Close
+
+    DiscoverSelfTest = r
+End Function

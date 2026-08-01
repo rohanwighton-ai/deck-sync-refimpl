@@ -24,7 +24,28 @@ Option Explicit
 ' other module uses) in case Auto_Open didn't fire, e.g. code added to an
 ' add-in that was already loaded before this module existed.
 
-Private Const TOOLBAR_NAME As String = "Deck Sync"
+' THE BUILD NUMBER IS IN THE NAME, ON PURPOSE.
+'
+' Every version used to name its toolbar "Deck Sync". Auto_Open deletes any bar
+' of that name and rebuilds; Auto_Close deletes it. So whichever add-in loaded
+' or unloaded LAST won, and unloading an old add-in removed the NEW one's
+' toolbar by name -- silently, with the only symptom being buttons that looked
+' wrong, which requires already knowing what they should say.
+'
+' It happened twice on 2026-08-01: addin28 alongside addin33 in the morning
+' (four buttons), addin35 alongside addin36 in the evening (the pre-reorder
+' set). I flagged it after the first and did not act, and it cost a second
+' diagnosis.
+'
+' With the build in the name, two loaded add-ins produce TWO VISIBLE TOOLBARS
+' instead of one quietly winning. The collision stops being invisible, which is
+' the entire fix -- you can see you have two, and go untick one.
+'
+' BUMP THIS when building a new .ppam. It is deliberately manual: a version that
+' derives itself from something automatic would drift out of step with the file
+' the user actually loaded, which is the thing being disambiguated.
+Private Const TOOLBAR_BUILD As String = "37"
+Private Const TOOLBAR_NAME As String = "Deck Sync " & TOOLBAR_BUILD
 
 Public Sub Auto_Open()
     ShowToolbar
@@ -94,6 +115,8 @@ Public Sub ShowToolbar()
     ' --- SETUP: once per slide type -------------------------------------
     AddButton bar, "Setup A: Mark Fields", "BatchOnboardFlow.MarkFieldForBatch", 165, _
         "SETUP, once per slide type. Click a field's shape on your template slide, then run this. Repeat for each field. Text shapes only -- pictures, icons and bars are not supported yet."
+    AddButton bar, "Setup A2: Discover Fields", "DiscoverUI.DiscoverFields", 1697, _
+        "SETUP, alternative to A. Lists every text shape on this slide in ONE Excel grid, in reading order -- tick and name the ones you want, all at once, instead of three dialogs per field. Marks nothing until you confirm. 'Setup A' still works and is unchanged."
     AddButton bar, "Setup B: Onboard Slides", "BatchOnboardFlow.BatchOnboardType", 122, _
         "SETUP, after marking. Finds the other slides of the same layout, shows every field in Excel for review, links the whole batch -- then offers to check what is NOT tracked and to create the hidden template slide."
     AddButton bar, "Setup: Clear Marks", "BatchOnboardFlow.ClearMarkedFieldsForBatch", 480, _
@@ -122,6 +145,8 @@ End Sub
 
 Public Sub HideToolbar()
     On Error Resume Next
+    ' By our own exact name only. Deleting anything that merely looks like ours
+    ' is how the collision above worked.
     Application.CommandBars(TOOLBAR_NAME).Delete
     On Error GoTo 0
 End Sub
