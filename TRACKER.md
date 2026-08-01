@@ -54,6 +54,42 @@ stale counts carried a stale count — caught by the PM agent, not by anyone edi
 
 ---
 
+## The first real run — 2026-08-01
+
+Rohan took the add-in to his **work machine** and started onboarding his **real**
+deck. Everything before this was the redacted deck on the personal machine.
+
+**The existential risk is answered: the add-in loads there.** An employer
+blocking unsigned VBA add-ins would have killed this design outright, with no
+workaround inside the architecture. It does not. Policy allows trusted add-ins
+and blocks macro-enabled *documents* — which this design already respects, since
+decks carry tags and document properties, workbooks carry sheets, and all code
+lives in the `.ppam`.
+
+**Thirteen findings in about two hours of use. Nine fixed the same day.** Full
+account in `FIRST-REAL-RUN.md`. Four `.ppam` builds (33→37).
+
+The most expensive, and the one worth carrying: **the marking session identified
+shapes by NAME.** Measured on the real deck — 158 shapes on slide 1 including
+nested, **47 sharing a name, zero sharing an `Id`**. Four currency fields all
+recorded against "Shape 16" restored onto one shape. The marking was correct when
+made and destroyed at *serialise* time, which also made it unrepairable. An hour
+of his work, gone.
+
+**And the suite was not compiling.** `run_vba_tests.ps1` never imported
+`Sources.bas`, so "135 tests pass" had not been true all day while work was
+reported as verified. `build_ppam.ps1` had never imported `ReviewQueue.bas`,
+which meant every shipped add-in failed to compile — silently breaking Sync Now,
+Review Changes and Apply Approved. Three hand-maintained module lists, nothing
+checking them. `vba/tools/check_module_lists.py` now does. **Run it before
+trusting a build.**
+
+Suite is green: 135 passed, 0 failed.
+
+**Where item 9 stands: still zero.** Nothing about the real FY26Q4 content has
+moved. The tool is markedly more trustworthy than it was that morning and that
+is not the same thing.
+
 ## The rule for this file
 
 **Only tick something when it is observably true**, not when the code for it exists. Six of
