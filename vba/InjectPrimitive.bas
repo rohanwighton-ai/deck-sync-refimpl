@@ -19,6 +19,13 @@ Public Type InjectResult
     ErrorMessage As String ' non-empty iff Found=False or Verified=False
     WouldChange As Boolean ' the shape's text differs from sourceValue (set in BOTH modes)
     CurrentValue As String ' the shape's text as found, before any write -- for previews
+    ' Geometry, because "the text is right" is not the same as "the slide is
+    ' right" on a deck where position and size carry meaning. GeometryMoved is
+    ' True when writing the text shifted or resized the shape (autofit doing its
+    ' job); GeometryRestored is False when it could not be put back, which is a
+    ' slide that now differs from the one that was approved.
+    GeometryMoved As Boolean
+    GeometryRestored As Boolean
 End Type
 
 ' The register's line-break delimiter (R6). Excel holds no multi-line cells --
@@ -237,11 +244,60 @@ Public Function InjectPrimitive(sld As Object, identityTag As String, sourceValu
         Exit Function
     End If
 
+    ' POSITION AND SIZE ARE PART OF THE SLIDE, AND WRITING TEXT CAN MOVE THEM.
+    '
+    ' Rohan, 2026-08-01: "Position is critical to these slides, and size."
+    ' Nothing here had ever touched geometry -- but PowerPoint does. A shape
+    ' with autofit on resizes when its text gets shorter or longer, and one
+    ' with "resize shape to fit text" will move its own bottom edge. So a sync
+    ' that only ever assigns .Text can still shift the layout of every slide it
+    ' touches, silently, and the existing re-read check would call every one of
+    ' those a clean verified write, because the TEXT is right.
+    '
+    ' Captured before, restored after, and the restore is then RE-READ. An
+    ' autofit shape can refuse to keep a width it has been given, so assuming
+    ' the restore worked would be the same mistake in a new place.
+    Dim hadL As Single, hadT As Single, hadW As Single, hadH As Single
+    Dim haveGeom As Boolean
+    On Error Resume Next
+    hadL = shp.Left: hadT = shp.Top: hadW = shp.Width: hadH = shp.Height
+    haveGeom = (Err.Number = 0)
+    Err.Clear
+    On Error GoTo 0
+
     ' Assigning .Text replaces the entire text-range contents in one run,
     ' which matches _set_text's "write the first run, clear the rest" net
     ' effect (formatting of the original first run is retained by
     ' PowerPoint; any additional runs are removed rather than left stale).
     shp.TextFrame.TextRange.Text = sourceValue
+
+    If haveGeom Then
+        Dim movedBy As Single
+        movedBy = Abs(shp.Left - hadL) + Abs(shp.Top - hadT) + _
+                  Abs(shp.Width - hadW) + Abs(shp.Height - hadH)
+
+        ' A twentieth of a point is below anything visible and above the noise
+        ' of PowerPoint's own float handling. Zero would fire on every write.
+        If movedBy > 0.05 Then
+            result.GeometryMoved = True
+            On Error Resume Next
+            shp.Left = hadL: shp.Top = hadT
+            shp.Width = hadW: shp.Height = hadH
+            On Error GoTo 0
+
+            Dim stillOff As Single
+            stillOff = Abs(shp.Left - hadL) + Abs(shp.Top - hadT) + _
+                       Abs(shp.Width - hadW) + Abs(shp.Height - hadH)
+            result.GeometryRestored = (stillOff <= 0.05)
+        Else
+            result.GeometryRestored = True
+        End If
+    Else
+        ' No geometry readable (a placeholder mid-edit, a protected shape).
+        ' Reported as not-restored rather than quietly true: unknown is not the
+        ' same as fine, and this is the field where that distinction matters.
+        result.GeometryRestored = False
+    End If
 
     Dim reReadValue As String
     reReadValue = shp.TextFrame.TextRange.Text

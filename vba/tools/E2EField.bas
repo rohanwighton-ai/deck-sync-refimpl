@@ -275,6 +275,7 @@ Public Function RunField(deckPath As String, registerPath As String, _
 
     ' --- Write, one field, through the real injector -----------------------
     Dim wrote As Long, failed As Long
+    Dim moved As Long, notRestored As String
     For Each k In reg.Data.Rows.Keys
         If keyToSlide.Exists(CStr(k)) Then
             If reg.Data.Rows(k).Exists(fieldId) Then
@@ -283,6 +284,14 @@ Public Function RunField(deckPath As String, registerPath As String, _
                         CStr(reg.Data.Rows(k)(fieldId)), False)
                 If res.Found And res.Written Then
                     If res.Verified Then wrote = wrote + 1 Else failed = failed + 1
+
+                    ' Geometry is reported separately from text, because they
+                    ' fail independently: a write can be perfectly verified and
+                    ' still have moved the shape it wrote into.
+                    If res.GeometryMoved Then moved = moved + 1
+                    If Not res.GeometryRestored Then
+                        notRestored = notRestored & "    " & CStr(k) & vbCrLf
+                    End If
                 End If
             End If
         End If
@@ -293,7 +302,14 @@ Public Function RunField(deckPath As String, registerPath As String, _
 
     r = r & "--- write ---" & vbCrLf & _
         "  written and verified: " & wrote & vbCrLf & _
-        "  failed verification:  " & failed & vbCrLf & vbCrLf
+        "  failed verification:  " & failed & vbCrLf & _
+        "  shapes autofit MOVED and were put back: " & moved & vbCrLf & vbCrLf
+
+    If notRestored <> "" Then
+        r = r & "SHAPES WHOSE POSITION/SIZE COULD NOT BE RESTORED:" & vbCrLf & notRestored & _
+            "These slides now differ in LAYOUT from the ones that were approved." & vbCrLf & _
+            "The text is correct; where it sits is not." & vbCrLf & vbCrLf
+    End If
 
     ' --- Verify by re-reading the DECK, not by trusting the report ---------
     Dim vMatch As Long, vMiss As Long
