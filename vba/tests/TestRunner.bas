@@ -2201,10 +2201,17 @@ Private Function Test_Drafting_OnlyTickedNonEmptyDraftsPublish() As String
 
     ' The drafting sheet, covering every combination that decides publication.
     dws.Cells(Drafting.DRAFT_HEADER_ROW, 1).Value = "Project code"
-    dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_ENTITY).Value = "P001": dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_DRAFT).Value = "new one":  dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_APPROVED).Value = "Y"
-    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_ENTITY).Value = "P002": dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_DRAFT).Value = "new two":  dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_APPROVED).Value = ""
-    dws.Cells(Drafting.DRAFT_FIRST_ROW + 2, Drafting.COL_D_ENTITY).Value = "P003": dws.Cells(Drafting.DRAFT_FIRST_ROW + 2, Drafting.COL_D_DRAFT).Value = "":         dws.Cells(Drafting.DRAFT_FIRST_ROW + 2, Drafting.COL_D_APPROVED).Value = "Y"
-    dws.Cells(Drafting.DRAFT_FIRST_ROW + 3, Drafting.COL_D_ENTITY).Value = "P004": dws.Cells(Drafting.DRAFT_FIRST_ROW + 3, Drafting.COL_D_DRAFT).Value = "a" & vbCr & "b": dws.Cells(Drafting.DRAFT_FIRST_ROW + 3, Drafting.COL_D_APPROVED).Value = "Y"
+    ' PUBLISH READS SUBMIT, NOT THE AI COLUMN. This test used to write into
+    ' COL_D_DRAFT, which was the only text column when it was written. Since
+    ' 2026-08-01 the sheet carries three: ORIGINAL (read-only), AI DRAFT (what
+    ' Copilot wrote, never published) and SUBMIT (what the person is sending).
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_ENTITY).Value = "P001": dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SUBMIT).Value = "new one":  dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_APPROVED).Value = "Y"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_ENTITY).Value = "P002": dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SUBMIT).Value = "new two":  dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_APPROVED).Value = ""
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 2, Drafting.COL_D_ENTITY).Value = "P003": dws.Cells(Drafting.DRAFT_FIRST_ROW + 2, Drafting.COL_D_SUBMIT).Value = "":         dws.Cells(Drafting.DRAFT_FIRST_ROW + 2, Drafting.COL_D_APPROVED).Value = "Y"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 3, Drafting.COL_D_ENTITY).Value = "P004": dws.Cells(Drafting.DRAFT_FIRST_ROW + 3, Drafting.COL_D_SUBMIT).Value = "a" & vbCr & "b": dws.Cells(Drafting.DRAFT_FIRST_ROW + 3, Drafting.COL_D_APPROVED).Value = "Y"
+    ' P005: an AI draft, TICKED, with SUBMIT left empty. Must NOT publish -- this
+    ' is the whole reason the two columns are separate, and nothing asserted it.
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 4, Drafting.COL_D_ENTITY).Value = "P005": dws.Cells(Drafting.DRAFT_FIRST_ROW + 4, Drafting.COL_D_DRAFT).Value = "AI WROTE THIS": dws.Cells(Drafting.DRAFT_FIRST_ROW + 4, Drafting.COL_D_APPROVED).Value = "Y"
 
     Dim rep As String
     rep = Drafting.PublishDrafts(dws, rws, "ABOUT_BODY", False)
@@ -2215,7 +2222,18 @@ Private Function Test_Drafting_OnlyTickedNonEmptyDraftsPublish() As String
     result = result & Assert(rws.Cells(3, 4).Value = "Seed", "DRAFTED BUT NOT TICKED stays Seed -- a draft is not an approval, got '" & rws.Cells(3, 4).Value & "'")
     result = result & Assert(rws.Cells(3, 3).Value = "old 2", "an unticked row's value is untouched, got '" & rws.Cells(3, 3).Value & "'")
     result = result & Assert(rws.Cells(4, 4).Value = "Seed", "TICKED BUT EMPTY publishes nothing -- a tick against no draft is a mis-click, got '" & rws.Cells(4, 4).Value & "'")
-    result = result & Assert(InStr(rep, "ticked but the draft is empty") > 0, "the empty-but-ticked row is REPORTED, not silently dropped")
+    result = result & Assert(InStr(rep, "SUBMIT is empty") > 0, "the empty-but-ticked row is REPORTED, not silently dropped")
+
+    ' THE POINT OF SPLITTING THE TWO COLUMNS. P005 has an AI draft and a tick,
+    ' and nothing in SUBMIT. Publishing it would mean text the AI wrote reaching
+    ' a slide because nobody stopped it, which is precisely the act the split
+    ' exists to prevent -- and nothing asserted it until 2026-08-01.
+    result = result & Assert(rws.Cells(6, 4).Value <> "Approved", _
+        "AN AI DRAFT ALONE DOES NOT PUBLISH, even when ticked -- only SUBMIT does, got '" & rws.Cells(6, 4).Value & "'")
+    result = result & Assert(rws.Cells(6, 3).Value <> "AI WROTE THIS", _
+        "the AI's text never reaches the register on its own, got '" & rws.Cells(6, 3).Value & "'")
+    result = result & Assert(InStr(rep, "there IS an AI draft") > 0, _
+        "the report NAMES the AI-draft-without-submit case, so a person knows to run Copy AI to Submit")
 
     ' Line breaks become the register delimiter, the exact inverse of what
     ' InjectPrimitive does on the way out.
@@ -4473,9 +4491,9 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     CommandBarUI.ShowToolbar
 
     Dim bar As Object
-    Set bar = Application.CommandBars("Deck Sync")
-    result = result & Assert(Not bar Is Nothing, "toolbar 'Deck Sync' exists after ShowToolbar")
-    result = result & Assert(bar.Controls.count = 10, "toolbar has 10 buttons, got " & bar.Controls.count)
+    Set bar = Application.CommandBars(CommandBarUI.ToolbarName())
+    result = result & Assert(Not bar Is Nothing, "the toolbar exists after ShowToolbar")
+    result = result & Assert(bar.Controls.count = 13, "toolbar has 13 buttons, got " & bar.Controls.count)
 
     Dim seenPreview As Boolean
     Dim seenSyncNow As Boolean
@@ -4508,7 +4526,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     ' pass. Tightened 2026-07-30 while adding SyncNow, whose name contains
     ' another entry's prefix.
     Dim expectedActions As String
-    expectedActions = "|SyncPreview|SyncNow|ReviewChanges|ReviewChangesApproveAll|ApplyApprovedChanges|CreateTemplateSlide|AuditFields|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|"
+    expectedActions = "|SyncPreview|SyncNow|ReviewChanges|ReviewChangesApproveAll|ApplyApprovedChanges|CreateTemplateSlide|AuditFields|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|DiscoverFields|RefreshDraftingSheets|CopyAiDraftsToSubmit|PublishDraftsForField|"
 
     Dim i As Long
     For i = 1 To bar.Controls.count
@@ -4536,7 +4554,13 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     result = result & Assert(seenReview, "Review Changes is actually ON the toolbar -- R13's gate, and unreachable without a button")
     result = result & Assert(seenApply, "Apply Approved is actually ON the toolbar -- the recurring payoff the tool exists for, and useless while the review cannot be acted on")
     result = result & Assert(seenSyncNow, "Sync Now is ON the toolbar -- batch-aware, and the one-click path for a change set that is honestly one decision")
-    result = result & Assert(seenCreateTemplate, "Create Template Slide is actually ON the toolbar -- the fix for cloning new slides off a real project, useless while unreachable")
+    ' Create Template Slide is deliberately NOT a button as of 2026-08-01 -- it
+    ' is offered at the end of Bulk Onboard, where it belongs: it cannot run
+    ' before onboarding and is a once-per-slide-type action. This assertion used
+    ' to require the button and is kept, inverted, so the decision is visible
+    ' rather than looking like an omission.
+    result = result & Assert(Not seenCreateTemplate, _
+        "Create Template Slide is NOT a toolbar button -- it is offered at the end of Bulk Onboard instead")
     result = result & Assert(seenAuditFields, "Audit Fields is actually ON the toolbar -- read-only, and the thing that tells you which fields the type is still missing")
 
     CommandBarUI.HideToolbar
@@ -4550,9 +4574,9 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
     CommandBarUI.ShowToolbar  ' must not raise "toolbar already exists" or leave duplicates
 
     Dim bar As Object
-    Set bar = Application.CommandBars("Deck Sync")
+    Set bar = Application.CommandBars(CommandBarUI.ToolbarName())
     result = result & Assert(Not bar Is Nothing, "toolbar still exists after calling ShowToolbar twice")
-    result = result & Assert(bar.Controls.count = 10, "still exactly 10 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 13, "still exactly 13 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarIsIdempotent = result
@@ -4566,7 +4590,7 @@ Private Function Test_CommandBarUI_HideToolbarRemovesIt() As String
 
     Dim bar As Object
     On Error Resume Next
-    Set bar = Application.CommandBars("Deck Sync")
+    Set bar = Application.CommandBars(CommandBarUI.ToolbarName())
     On Error GoTo 0
     result = result & Assert(bar Is Nothing, "toolbar no longer exists after HideToolbar")
 

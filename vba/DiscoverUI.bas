@@ -87,6 +87,19 @@ Public Sub DiscoverFields()
         Exit Sub
     End If
 
+    ' PRESENTING IS THE UI'S JOB, NOT THE BUILDER'S.
+    ' BuildDiscoverySheet used to make Excel visible itself, which meant a
+    ' headless test left a VISIBLE Excel behind -- and the harness's cleanup
+    ' sweep only reaps windowless processes, so it survived every run and had to
+    ' be killed by hand. A function that both computes and presents cannot be
+    ' called without its side effects.
+    On Error Resume Next
+    wb.Application.Visible = True
+    wb.Activate
+    wb.Worksheets(DISCOVERY_SHEET).Activate
+    wb.Worksheets(DISCOVERY_SHEET).Cells(FIRST_ROW, COL_INCLUDE).Select
+    On Error GoTo 0
+
     ' --- wait for the human ---------------------------------------------
     ' Same shape as Bulk Onboard's own review pause. VBA cannot watch a
     ' worksheet and continue, so the dialog IS the wait -- and it is honest
@@ -207,13 +220,6 @@ Public Function BuildDiscoverySheet(sld As Object, wb As Object) As String
     ' The two columns a person types in are the only ones that look like inputs.
     ws.Range(ws.Cells(FIRST_ROW, COL_INCLUDE), ws.Cells(r - 1, COL_FIELD)).Interior.Color = RGB(255, 249, 219)
     ws.Columns(COL_TEXT).Interior.Color = RGB(242, 242, 242)
-
-    On Error Resume Next
-    wb.Application.Visible = True
-    wb.Activate
-    ws.Activate
-    ws.Cells(FIRST_ROW, COL_INCLUDE).Select
-    On Error GoTo 0
 
     BuildDiscoverySheet = written & " text shape(s) listed in '" & DISCOVERY_SHEET & "'."
 End Function

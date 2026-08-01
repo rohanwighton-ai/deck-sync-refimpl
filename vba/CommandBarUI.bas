@@ -47,6 +47,16 @@ Option Explicit
 Private Const TOOLBAR_BUILD As String = "37"
 Private Const TOOLBAR_NAME As String = "Deck Sync " & TOOLBAR_BUILD
 
+' The toolbar's name, for anything that needs to find it.
+'
+' Exposed because three tests hardcoded the literal "Deck Sync" and broke the
+' moment the build number went into the name -- a test that duplicates a
+' constant is a second place to update, and it fails for a reason that has
+' nothing to do with what it is testing.
+Public Function ToolbarName() As String
+    ToolbarName = TOOLBAR_NAME
+End Function
+
 Public Sub Auto_Open()
     ShowToolbar
 End Sub
@@ -119,6 +129,16 @@ Public Sub ShowToolbar()
         "SETUP, alternative to A. Lists every text shape on this slide in ONE Excel grid, in reading order -- tick and name the ones you want, all at once, instead of three dialogs per field. Marks nothing until you confirm. 'Setup A' still works and is unchanged."
     AddButton bar, "Setup B: Onboard Slides", "BatchOnboardFlow.BatchOnboardType", 122, _
         "SETUP, after marking. Finds the other slides of the same layout, shows every field in Excel for review, links the whole batch -- then offers to check what is NOT tracked and to create the hidden template slide."
+    ' KEPT AS A BUTTON, unlike Template Slide, and the distinction is real.
+    ' Both were merged into onboarding on 2026-08-01 -- then the test suite
+    ' pointed out both had become unreachable except by re-running onboarding.
+    ' Template Slide is genuinely once per slide type, so the offer at the end
+    ' of onboarding covers it. "What am I not tracking?" is a RECURRING question
+    ' -- asked again every time a field is added or a slide is redesigned -- and
+    ' a read-only diagnostic you can only reach by re-running a setup step is
+    ' one nobody will run. It is offered at onboarding AND available here.
+    AddButton bar, "Setup C: Check Coverage", "RibbonUI.AuditFields", 1000, _
+        "Lists everything on a slide of this type that is NOT being tracked, ranked by how likely it is to be project data. Writes a checklist to a 'Template Audit' sheet; never changes the deck. Run it any time you wonder what you have missed."
     AddButton bar, "Setup: Clear Marks", "BatchOnboardFlow.ClearMarkedFieldsForBatch", 480, _
         "Discard every field marked so far and start the marking over. Cannot remove just one."
 
