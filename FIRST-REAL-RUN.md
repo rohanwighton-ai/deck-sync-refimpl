@@ -304,3 +304,49 @@ their original ambiguity, so an old session is not thrown away.*
 value that could not distinguish two situations. This one is an *identifier*
 that could not distinguish two objects — the same failure at the level where it
 does the most damage, because it corrupts data silently and looks like data.
+
+### 12. Removing the modules did not shed the VBA project — only an explicit .pptx Save As did
+After finding 7, the two rescue modules were deleted and the deck saved. It later
+stopped saving again, silently, with AutoSave off.
+
+Cause: **PowerPoint keeps the VBA project part even when every module is
+removed.** The file still counted as macro-bearing, so policy still blocked it,
+and the symptom was the same silent no-op.
+
+Fix, which is also the test: `File > Save As`, explicitly choose
+**PowerPoint Presentation (\*.pptx)**, new filename. That writes a fresh package
+with no VBA part. It saved.
+
+Two things worth carrying:
+- **"I deleted the code" is not the same as "the file has no code."** The
+  container outlives the contents.
+- **The marking session survived**, because it is a document *property* — data,
+  not code. That distinction is what made the design compatible with this
+  policy in the first place, and it held.
+
+**And a trap on the far side:** Save As to a cloud-backed location turns AutoSave
+back ON by default, which is the combination that caused the earlier silent
+failures — AutoSave disables manual save, and an upload that cannot complete
+leaves edits unpersisted with nothing said. Turn it off for any deck the add-in
+writes to.
+
+*Status: resolved. Root cause was my rescue macro (finding 7); this is the tail
+of it.*
+
+### 13. The toolbar name is shared across add-in versions, so old builds silently overwrite new ones
+Twice today the toolbar showed the wrong buttons: four buttons this morning
+(`addin28` loaded alongside `addin33`), and the pre-reorder set this evening
+(`addin35` alongside `addin36`).
+
+Every version names its toolbar `"Deck Sync"`. `Auto_Open` deletes any bar of
+that name and rebuilds; `Auto_Close` deletes it. So whichever add-in loads or
+unloads **last** wins, and unloading an old one removes the new one's toolbar
+by name.
+
+No error either time. The tool simply presented an older interface, and the only
+signal was the buttons looking wrong — which requires already knowing what they
+should say.
+
+*Status: recorded, not fixed. Putting the build number in the toolbar name
+("Deck Sync 36") turns an invisible collision into two visible toolbars.
+Flagged this morning and not acted on; it then cost a second diagnosis.*
