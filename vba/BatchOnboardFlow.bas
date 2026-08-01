@@ -1287,6 +1287,41 @@ Private Sub MarkFieldForBatchCore()
     ' Previewed, not shown whole: an About-text field's real value is a 250+
     ' char paragraph, which made this prompt a wall of text (and rendered its
     ' paragraph CRs as literal boxes) on the real deck.
+    ' REFUSE AT MARKING TIME, NOT TWENTY MINUTES LATER.
+    '
+    ' Discovery only ever returns shapes with a text frame that HAS text
+    ' (Discovery.ShapeHasNonEmptyText). BuildBatchPlanFromMarkedFields then
+    ' reconciles marked shapes against that candidate list by object identity,
+    ' so a picture, icon or graphic can be marked happily and can NEVER be
+    ' reconciled -- and the failure surfaced at the end of the batch as
+    ' "could not be re-found ... was it deleted or moved into/out of a group?",
+    ' blaming the user for something they had not done.
+    '
+    ' Rohan hit this on his first real onboarding, 2026-08-01, after marking a
+    ' slide's worth of fields: one icon ("Graphic 285") invalidated the whole
+    ' batch and cost every mark on the slide.
+    '
+    ' Picture and icon fields are a real future requirement -- see
+    ' FIRST-REAL-RUN.md finding 1. Until the tool can render them, saying so
+    ' HERE costs one dialog; saying it at batch time costs the session's work.
+    Dim markable As Boolean
+    markable = False
+    On Error Resume Next
+    If shp.HasTextFrame Then
+        If shp.TextFrame.HasText Then markable = (Trim(shp.TextFrame.TextRange.Text) <> "")
+    End If
+    On Error GoTo 0
+
+    If Not markable Then
+        RibbonUI.ShowSyncResult "Mark Field for Batch", _
+            "'" & shp.Name & "' cannot be marked as a field." & vbCrLf & vbCrLf & _
+            "Only shapes that CONTAIN TEXT can be tracked. Pictures, icons, " & _
+            "graphics and progress bars are not supported yet -- marking one " & _
+            "would fail later, at Bulk Onboard, and take the whole batch with it." & vbCrLf & vbCrLf & _
+            "Nothing was marked. Your other marked fields are untouched."
+        Exit Sub
+    End If
+
     Dim currentValue As String
     If shp.HasTextFrame Then
         If shp.TextFrame.HasText Then currentValue = FieldPreview(shp.TextFrame.TextRange.Text)

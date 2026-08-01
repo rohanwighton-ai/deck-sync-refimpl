@@ -70,3 +70,32 @@ now at the UI layer.
 *Workaround until then: do not cancel those two dialogs. To undo a mis-marked
 field use `Clear Marked Fields` and re-mark — marking again on top adds a
 second identity rather than replacing the first.*
+
+### 3. Marking an icon killed the whole batch, and the error blamed the user
+`Bulk Onboard Type` failed with:
+
+> Marked shape 'Graphic 285' could not be re-found on the template slide (was
+> it deleted or moved into/out of a group after marking?). Clear marked fields
+> and mark again.
+
+**Nothing was deleted or regrouped.** `Discovery` only returns shapes with a
+text frame that has non-empty text. `BuildBatchPlanFromMarkedFields` reconciles
+marked shapes against that candidate list **by object identity** (`Is`), so an
+icon or picture can be marked happily and can never be reconciled.
+
+Three separate faults stacked:
+1. **Marking accepted a shape the batch cannot process.** No check at the point
+   of marking, where it costs one dialog.
+2. **The failure surfaced at the END**, after a slide's worth of marking, and
+   invalidated all of it.
+3. **The message named the wrong cause** and implied user error. A person
+   following it would go looking for a shape they had moved, and find nothing.
+
+Cost: every mark on the slide, plus the time spent looking for a non-existent
+regrouping.
+
+*Status: FIXED in source — marking now refuses a shape with no text up front and
+says why, naming pictures/icons/bars as unsupported-for-now rather than
+implying a mistake. Needs a new .ppam.*
+*Workaround until then: mark TEXT shapes only. Skip icons, photos, graphics and
+the progress bar.*
