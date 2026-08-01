@@ -76,91 +76,52 @@ Public Sub ShowToolbar()
     Dim bar As Object
     Set bar = Application.CommandBars.Add(Name:=TOOLBAR_NAME, Position:=1, Temporary:=True)  ' msoBarTop = 1
 
-    ' Preview Sync is on the toolbar as of 2026-07-29, at Rohan's request, and
-    ' it is the one action where promoting it BEFORE a live test is the correct
-    ' call rather than an exception to his rule.
+    ' ---------------------------------------------------------------------
+    ' ORDERED BY THE WORK, AND NUMBERED. Rohan, 2026-08-01: "The ribbon should
+    ' be organised in line with the workflow and numbered in steps."
     '
-    ' The rule ("only add an operation when I'm fully clear it works") exists to
-    ' stop a half-understood button changing a real deck. Preview Sync cannot:
-    ' RunSync.PreviewRoutineSync suppresses all three mutation sites, and
-    ' Test_RunSync_PreviewReportsWithoutTouchingTheDeck asserts that directly --
-    ' no slides created, stale text still stale, order unchanged. So the risk
-    ' the rule guards against is absent here, while the cost of NOT having it is
-    ' real: without a button, the only way to run it is from the VBE, and
-    ' driving the VBE is precisely the friction that keeps it untested.
+    ' The previous order was accretion -- buttons sat wherever they were added,
+    ' so Preview Sync came first, the setup steps came last, and nothing told a
+    ' person what to press after what. On a toolbar this is not cosmetic: it is
+    ' the only instruction the tool gives before somebody clicks something.
     '
-    ' It is also the safest possible first action on an unfamiliar machine,
-    ' which is the situation it was asked for.
-    AddButton bar, "Preview Sync", "RibbonUI.SyncPreview", 1090, "Show everything the paired workbook would change in this deck -- reads only, writes nothing."
+    ' Two tracks, deliberately distinguished. SETUP runs once per slide type,
+    ' ever. The numbered steps run every quarter. Numbering all of them 1..7
+    ' would say "do these seven things each time", which is wrong and would
+    ' send somebody back through onboarding they have already done.
+    ' ---------------------------------------------------------------------
 
-    ' THE DRAFTING HALF, WHICH HAD NO BUTTONS AT ALL UNTIL 2026-08-01.
-    '
-    ' Everything below existed for a day reachable only from a PowerShell test
-    ' harness -- demonstrable, but not usable by the person the tool is for.
-    ' Placed first because it is first in the actual order of work: you draft
-    ' the words, publish them into the register, and only then sync the deck.
-    ' The existing Preview Sync / Sync Now buttons are the last leg and needed
-    ' no change.
-    AddButton bar, "Refresh Drafting Sheets", "DraftingUI.RefreshDraftingSheets", 1697, "Bring the drafting sheets up to date -- one per prose field, every project on a row, current text beside a box for your new wording, Copilot's prompt in L2. Keeps everything you have already written. Writes nothing to the deck."
-    AddButton bar, "Copy AI to Submit", "DraftingUI.CopyAiDraftsToSubmit", 122, "Copy the AI's drafts into the SUBMIT column, filling ONLY the cells you have left empty. Never overwrites anything you wrote yourself."
-    AddButton bar, "Publish Drafts", "DraftingUI.PublishDraftsForField", 3, "Show every ticked SUBMIT row, then on your say-so write them into the register as Approved. Touches no slide -- run Preview Sync afterwards."
+    ' --- SETUP: once per slide type -------------------------------------
+    AddButton bar, "Setup A: Mark Fields", "BatchOnboardFlow.MarkFieldForBatch", 165, _
+        "SETUP, once per slide type. Click a field's shape on your template slide, then run this. Repeat for each field. Text shapes only -- pictures, icons and bars are not supported yet."
+    AddButton bar, "Setup B: Onboard Slides", "BatchOnboardFlow.BatchOnboardType", 122, _
+        "SETUP, after marking. Finds the other slides of the same layout, shows every field in Excel for review, and links the whole batch at once."
+    AddButton bar, "Setup C: Check Coverage", "RibbonUI.AuditFields", 1000, _
+        "SETUP, after onboarding. Lists everything on a slide of this type that is NOT being tracked, ranked by how likely it is to be project data. Writes a checklist to a 'Template Audit' sheet; never changes the deck. Run it to find fields you meant to mark and missed."
+    AddButton bar, "Setup D: Template Slide", "RibbonUI.CreateTemplateSlide", 26, _
+        "SETUP, last, once per slide type. Adds a hidden master slide carrying this type's placeholder fields, so a NEW project gets a clean slide built from the template instead of a clone of somebody else's project. Needs the type onboarded first -- it cannot know which fields to place until then. Asks before writing."
+    AddButton bar, "Setup: Clear Marks", "BatchOnboardFlow.ClearMarkedFieldsForBatch", 480, _
+        "Discard every field marked so far and start the marking over. Cannot remove just one."
 
-    ' R13, 2026-07-31. Sync Now survives, but it can no longer write anything a
-    ' human has not seen. It was briefly deleted earlier the same day on the
-    ' reasoning that its old count-based confirmation could not satisfy R13;
-    ' Rohan corrected that -- R13.2 makes a verified uniform batch ONE decision,
-    ' so a change set that collapses into a few uniform transformations can
-    ' honestly be shown and approved in a dialog. It refuses to the review sheet
-    ' the moment anything needs reading individually.
-    '
-    ' None of the three below bends the "only add an operation when I'm fully
-    ' clear it works" rule. Review Changes cannot write to the deck at all -- it
-    ' builds a worksheet. Sync Now and Apply Approved write, but only what a
-    ' human approved, only after revalidating each change against the live
-    ' slide, and only after taking a backup.
-    ' Batch-aware: shows every uniform transformation in full and applies them on
-    ' one confirmation, or refuses to the review sheet when anything needs
-    ' reading individually. See RibbonUI.SyncNowCore.
-    AddButton bar, "Sync Now", "RibbonUI.SyncNow", 1004, "Apply the workbook's changes. If every change is the same transformation repeated, it shows them and asks once; if anything needs reading one at a time, it sends you to the review sheet instead."
+    ' --- THE QUARTERLY LOOP ---------------------------------------------
+    AddButton bar, "1. Drafting Sheets", "DraftingUI.RefreshDraftingSheets", 1697, _
+        "STEP 1. Build or refresh the drafting sheets -- one per prose field, every project on a row, current text beside a box for your new wording, Copilot's prompt in L2. Keeps everything you have already written. Writes nothing to the deck.", True
+    AddButton bar, "2. Copy AI to Submit", "DraftingUI.CopyAiDraftsToSubmit", 122, _
+        "STEP 2, optional. Copy the AI's drafts into the SUBMIT column, filling ONLY cells you left empty. Never overwrites your own words. Then edit column G and tick column I."
+    AddButton bar, "3. Publish Drafts", "DraftingUI.PublishDraftsForField", 3, _
+        "STEP 3. Show every ticked SUBMIT row, then on your say-so write them into the register as Approved. Touches no slide."
+    AddButton bar, "4. Preview Sync", "RibbonUI.SyncPreview", 1090, _
+        "STEP 4. Show everything the register would change in this deck. Reads only, writes nothing. The safest thing on this toolbar.", True
+    AddButton bar, "5. Sync Now", "RibbonUI.SyncNow", 1004, _
+        "STEP 5. Apply the register's changes to the slides. If every change is the same transformation repeated, it shows them and asks once; if anything needs reading one at a time, it sends you to the review sheet instead."
 
-    AddButton bar, "Review Changes", "RibbonUI.ReviewChanges", 1090, "Build the list of every change the workbook would make to this deck, as a 'Sync Review' sheet showing current vs proposed per slide. Writes nothing to the deck."
-
-    ' The loosened setting (Round 13 SS0.1) -- permitted on a scratch copy only,
-    ' and a separate button precisely so that using it is a decision taken each
-    ' time rather than a default. Delete this one line to enforce full R13.
-    AddButton bar, "Review + Approve All", "RibbonUI.ReviewChangesApproveAll", 463, "SCRATCH COPIES ONLY: builds the same review sheet and ticks every row without individual review. Still writes nothing until you run Apply Approved."
-
-    AddButton bar, "Apply Approved", "RibbonUI.ApplyApprovedChanges", 3, "Write the changes you ticked in the 'Sync Review' sheet onto the slides. Takes a backup first, re-checks each change against the slide, and skips anything that has moved since you approved it."
-
-    ' Writes, and confirms before it does -- same shape as Sync Now, and on the
-    ' toolbar for the same reason. It is also the one action that has to be
-    ' reachable BEFORE the thing it fixes can bite: until a type has a master
-    ' template, every slide Sync Now creates is cloned from a real project's
-    ' slide and inherits whatever the sync does not manage. Leaving it off the
-    ' toolbar would leave that hazard live while the fix sat in the file
-    ' unreachable -- exactly the C2 trap (2026-07-30), where the rule "only add
-    ' what you have tried" made the central action untriable.
-    AddButton bar, "Create Template Slide", "RibbonUI.CreateTemplateSlide", 26, "One-off per slide type: adds a hidden master template slide with placeholder fields, so new slides stop being cloned from a real project's slide. Asks before writing."
-
-    ' Reads the deck and writes nothing to it -- the only write is a dedicated
-    ' 'Template Audit' worksheet. Same basis as Preview Sync for going on the
-    ' toolbar before a live test: the risk the rule guards against (a
-    ' half-understood button changing a real deck) is absent, and without a
-    ' button the only way to run it is the VBE, which is the friction that
-    ' keeps things untested. Works on any deck at any maturity -- it does NOT
-    ' require a master template to exist (see RibbonUI.AuditFieldsCore).
-    AddButton bar, "Audit Fields", "RibbonUI.AuditFields", 1000, "Lists everything on a slide of this type that the tool is NOT tracking as a field, ranked by how likely it is to be project data. Writes a checklist to a 'Template Audit' sheet; never changes the deck."
-
-    ' Still not live-tested against a real deck -- hidden, not deleted. These
-    ' DO write, so the rule applies to them unchanged. See this Sub's header.
-    ' AddButton bar, "New Period", "RibbonUI.NewPeriod", 297, "Duplicate an existing slide instance into a new period (e.g. next quarter), with a fresh instance key."
-    ' AddButton bar, "Onboard New Slide Type", "RibbonUI.OnboardNewType", 1697, "Register a brand-new slide type from one example slide, one field at a time via prompts."
-    ' AddButton bar, "Resolve Unmatched Fields", "RibbonUI.ResolveUnmatchedFields", 594, "Manually assign a role to one selected shape that Sync Now couldn't confidently match on its own."
-    ' AddButton bar, "Adopt Existing Slides", "AdoptFlow.AdoptExistingSlides", 1651, "Link a batch of already-existing slides to their matching Data-sheet rows without duplicating anything."
-
-    AddButton bar, "Mark Field for Batch", "BatchOnboardFlow.MarkFieldForBatch", 165, "Click a field's shape first, then run this. Names and types the field, ready to include in a batch. Repeat for each field on your template slide."
-    AddButton bar, "Bulk Onboard Type", "BatchOnboardFlow.BatchOnboardType", 122, "After marking your fields, run this to auto-select matching slides, review in Excel, and link the whole batch at once."
-    AddButton bar, "Clear Marked Fields", "BatchOnboardFlow.ClearMarkedFieldsForBatch", 480, "Discard the fields you've marked so far and start over (e.g. after a misclick)."
+    ' --- The careful route to slides, when step 5 is too blunt -----------
+    AddButton bar, "5a. Review Changes", "RibbonUI.ReviewChanges", 1090, _
+        "INSTEAD OF STEP 5, when you want to read each change. Builds a 'Sync Review' sheet showing current vs proposed per slide. Writes nothing to the deck.", True
+    AddButton bar, "5b. Apply Approved", "RibbonUI.ApplyApprovedChanges", 3, _
+        "After 5a. Writes the changes you ticked onto the slides. Takes a backup first, re-checks each change against the slide, and skips anything that has moved since you approved it."
+    AddButton bar, "Review + Approve All", "RibbonUI.ReviewChangesApproveAll", 463, _
+        "SCRATCH COPIES ONLY: builds the review sheet and ticks every row without individual review. Still writes nothing until you run 5b."
 
     bar.Visible = True
 End Sub
@@ -175,7 +136,8 @@ End Sub
 ' faceId shows a blank/default icon, not a load failure. tooltipText shows
 ' on hover, so a real explanation is available without cluttering the
 ' button's own visible caption.
-Private Sub AddButton(bar As Object, caption As String, onAction As String, faceId As Long, tooltipText As String)
+Private Sub AddButton(bar As Object, caption As String, onAction As String, faceId As Long, tooltipText As String, _
+                      Optional beginGroup As Boolean = False)
     Dim btn As Object
     Set btn = bar.Controls.Add(1)  ' msoControlButton = 1
     btn.Caption = caption
@@ -183,4 +145,6 @@ Private Sub AddButton(bar As Object, caption As String, onAction As String, face
     btn.FaceId = faceId
     btn.Style = 2  ' msoButtonIconAndCaption
     btn.TooltipText = tooltipText
+    ' A separator bar before this button -- the CommandBars idiom for grouping.
+    If beginGroup Then btn.BeginGroup = True
 End Sub
