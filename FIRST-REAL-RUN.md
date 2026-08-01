@@ -258,3 +258,49 @@ conversion that assumes success. `CLng` here, `parts(1..3)` in finding 9,
 presented as something other than what it was.
 
 *Status: FIXED. Needs addin35.*
+
+### 11. The marking session identified shapes by NAME, and names are not unique
+The Field Review grid showed `Industry Cash Value`, `SAAFE Cash value`,
+`In-Kind Value` and `Total Project Value` **all reading `$275,598`** — one
+value in four fields. `About Text` and `Problem Text` both showed the About
+paragraph. `Start Date` sampled 2028 while `End Date` sampled 2024.
+
+The evidence was already in `ListMarks` and I read past it:
+
+```
+12. shape: Shape 16   field: Industry Cash Value
+13. shape: Shape 16   field: SAAFE Cash value
+15. shape: Shape 16   field: In-Kind Value
+17. shape: Shape 16   field: Total Project Value
+```
+
+Four fields recorded against one shape name. Three more against `Text 35`.
+
+**Measured on the real deck rather than assumed:**
+
+```
+slide 1 shapes (incl. nested): 158
+duplicate NAMES: 47
+duplicate IDs:   0
+```
+
+`Shape 13` appears twice, with `Id=125` and `Id=148`. **47 of 158 shapes share
+a name.** Restore matched `allShapes(ai).Name = parts(0)` and bound every
+duplicate to whichever came first.
+
+**The marking was correct when made** — in memory it holds real Shape
+references. The information was destroyed at *serialise* time, by writing a key
+that could not distinguish the shapes. Which means the stored session cannot be
+repaired: the distinction is already gone.
+
+Cost: Rohan's hour of marking, unrecoverable.
+
+*Status: FIXED. Records are now `Id | Name | Field | Type | Volatility`, matched
+on `Shape.Id`. The name is still written, second, purely so a human can read the
+session — it is a label now, not a key. Legacy four-part records still load, with
+their original ambiguity, so an old session is not thrown away.*
+
+**The lesson, and it is the day's biggest:** every other finding today was a
+value that could not distinguish two situations. This one is an *identifier*
+that could not distinguish two objects — the same failure at the level where it
+does the most damage, because it corrupts data silently and looks like data.

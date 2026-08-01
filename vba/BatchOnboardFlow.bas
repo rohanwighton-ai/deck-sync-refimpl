@@ -206,7 +206,23 @@ Public Function SerializeMarkingSession(slideId As Long, shapes As Collection, n
         ' that cannot be parsed back -- which is how two unreadable entries got
         ' into Rohan's session in the first place. Refusing at write time is
         ' cheaper than tolerating at read time, and both are now done.
-        lines = lines & vbCrLf & SafePart(shapes(i).Name) & FIELD_KEY_SEP & _
+        ' SHAPE.ID FIRST, BECAUSE NAMES ARE NOT UNIQUE.
+        '
+        ' Measured on Rohan's real deck 2026-08-01: slide 1 carries 158 shapes
+        ' (including nested), of which 47 share a name with another shape, and
+        ' ZERO share an Id. "Shape 13" appears twice with Ids 125 and 148.
+        '
+        ' The session used to store the name alone, so a restore bound every
+        ' field with a duplicate name to whichever shape came first. Four
+        ' separate currency fields -- Industry Cash, SAAFE Cash, In-Kind, Total
+        ' Project Value -- were all recorded against "Shape 16" and all restored
+        ' onto one shape, showing one value four times. His hour of marking was
+        ' correct when made and destroyed at save time.
+        '
+        ' The name is still written, second, purely so a human reading the
+        ' session can tell what a record refers to. It is a label now, not a key.
+        lines = lines & vbCrLf & SafePart(CStr(shapes(i).Id)) & FIELD_KEY_SEP & _
+                SafePart(shapes(i).Name) & FIELD_KEY_SEP & _
                 SafePart(CStr(names(i))) & FIELD_KEY_SEP & _
                 SafePart(CStr(types(i))) & FIELD_KEY_SEP & SafePart(CStr(volatility(i)))
     Next i
@@ -320,16 +336,53 @@ Public Function RestoreMarkingSession(serialized As String, templateSld As Objec
                 GoTo NextLine
             End If
 
+            ' TWO FORMATS, told apart by how many parts a record has.
+            '   5 parts: Id | Name | Field | Type | Volatility   (current)
+            '   4 parts: Name | Field | Type | Volatility        (legacy)
+            ' Legacy records are still read so an existing session is not thrown
+            ' away -- but they carry the ambiguity that made this change
+            ' necessary, and a duplicate name will still bind to the first match.
+            Dim isNewFormat As Boolean
+            isNewFormat = (UBound(parts) >= 4)
+
+            Dim wantId As String, wantName As String
+            Dim nameIdx As Long, fieldIdx As Long
+            If isNewFormat Then
+                wantId = Trim(parts(0))
+                wantName = Trim(parts(1))
+                nameIdx = 1: fieldIdx = 2
+            Else
+                wantId = ""
+                wantName = Trim(parts(0))
+                nameIdx = 0: fieldIdx = 1
+            End If
+
             Dim foundShp As Object
             Set foundShp = Nothing
             If hasAny Then
                 Dim ai As Long
-                For ai = aLo To aHi
-                    If allShapes(ai).Name = parts(0) Then
-                        Set foundShp = allShapes(ai)
-                        Exit For
-                    End If
-                Next ai
+                ' By Id first -- the only identifier that is actually unique.
+                If wantId <> "" Then
+                    For ai = aLo To aHi
+                        On Error Resume Next
+                        Dim thisId As String
+                        thisId = CStr(allShapes(ai).Id)
+                        On Error GoTo 0
+                        If thisId = wantId Then
+                            Set foundShp = allShapes(ai)
+                            Exit For
+                        End If
+                    Next ai
+                End If
+                ' Name only as a fallback, and only for legacy records.
+                If foundShp Is Nothing And Not isNewFormat Then
+                    For ai = aLo To aHi
+                        If allShapes(ai).Name = wantName Then
+                            Set foundShp = allShapes(ai)
+                            Exit For
+                        End If
+                    Next ai
+                End If
             End If
 
             If foundShp Is Nothing Then
@@ -338,9 +391,9 @@ Public Function RestoreMarkingSession(serialized As String, templateSld As Objec
                 markedShapes.Add foundShp
                 Dim posIdx As Long
                 posIdx = markedShapes.count
-                markedNames(posIdx) = parts(1)
-                markedTypes(posIdx) = parts(2)
-                markedVolatility(posIdx) = parts(3)
+                markedNames(posIdx) = parts(fieldIdx)
+                markedTypes(posIdx) = parts(fieldIdx + 1)
+                markedVolatility(posIdx) = parts(fieldIdx + 2)
                 restoredCount = restoredCount + 1
             End If
         End If
