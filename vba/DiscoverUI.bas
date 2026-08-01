@@ -256,13 +256,33 @@ Public Function ApplyDiscoverySheet(sld As Object, wb As Object) As String
 
     ' --- read it back ----------------------------------------------------
     Dim marked As Long, skippedNoName As Long, skippedNotFound As Long
-    Dim problems As String
+    Dim unmarked As Long
+    Dim problems As String, removedList As String
 
     Dim rr As Long
     rr = FIRST_ROW
     Do While Trim(CStr(ws.Cells(rr, COL_ID).Value)) <> ""
         Dim wantId As String
         wantId = Trim(CStr(ws.Cells(rr, COL_ID).Value))
+
+        ' UNTICKING REMOVES THE MARK. The grid presents as declarative state --
+        ' "what is ticked is what is tracked" -- and until now it behaved
+        ' imperatively: ticked rows were appended and unticked rows did nothing.
+        ' A sheet that looks like a checklist and acts like an in-tray is the
+        ' same lie as every other finding here, and it meant this grid did NOT
+        ' fix finding 4 even though it looked like it should.
+        If Not ReviewQueue.IsApprovalMark(CStr(ws.Cells(rr, COL_INCLUDE).Value)) Then
+            Dim maybeMarked As Object
+            Set maybeMarked = ShapeById(shapes, lo, hi, wantId)
+            If Not maybeMarked Is Nothing Then
+                Dim goneName As String
+                goneName = BatchOnboardFlow.UnmarkShapeForBatch(maybeMarked)
+                If goneName <> "" Then
+                    unmarked = unmarked + 1
+                    removedList = removedList & "  " & goneName & vbCrLf
+                End If
+            End If
+        End If
 
         If ReviewQueue.IsApprovalMark(CStr(ws.Cells(rr, COL_INCLUDE).Value)) Then
             Dim fname As String
@@ -303,6 +323,7 @@ Public Function ApplyDiscoverySheet(sld As Object, wb As Object) As String
 
     Dim msg As String
     msg = marked & " field(s) marked from the grid."
+    If unmarked > 0 Then msg = msg & vbCrLf & unmarked & " UNMARKED (unticked here, so no longer tracked):" & vbCrLf & removedList
     If skippedNoName > 0 Then msg = msg & vbCrLf & skippedNoName & " ticked but unnamed -- not marked."
     If skippedNotFound > 0 Then msg = msg & vbCrLf & skippedNotFound & " shape(s) no longer on the slide."
     If problems <> "" Then msg = msg & vbCrLf & vbCrLf & "NOT MARKED:" & vbCrLf & problems

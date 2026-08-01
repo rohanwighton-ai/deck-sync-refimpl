@@ -154,7 +154,15 @@ Private Sub SyncNowCore()
         Exit Sub
     End If
 
-    If MsgBox(ReviewQueue.ConfirmBatchText(combined), vbYesNo + vbQuestion, "Sync Now") <> vbYes Then
+    ' A macro-enabled DECK cannot be saved on a managed machine, and the block
+    ' is silent -- so the sync would appear to succeed and then quietly not
+    ' persist. Said before the confirmation, where it can still change the
+    ' answer. See WorkbookBridge.MacroEnabledWarning for the incident.
+    Dim deckMacroWarn As String
+    deckMacroWarn = WorkbookBridge.MacroEnabledWarning(pres.fullName)
+    If deckMacroWarn <> "" Then deckMacroWarn = deckMacroWarn & vbCrLf & vbCrLf
+
+    If MsgBox(deckMacroWarn & ReviewQueue.ConfirmBatchText(combined), vbYesNo + vbQuestion, "Sync Now") <> vbYes Then
         Exit Sub
     End If
 

@@ -369,10 +369,16 @@ Public Sub PublishDraftsForField()
     Dim srcWs As Object
     Set srcWs = WorkbookBridge.GetOrAddWorksheet(wb, Sources.SOURCES_SHEET_NAME)
 
+    ' Said BEFORE the confirmation, not after the write. A warning that arrives
+    ' with the result is a warning about something already done.
+    Dim macroWarn As String
+    macroWarn = WorkbookBridge.MacroEnabledWarning(wb.FullName)
+    If macroWarn <> "" Then macroWarn = macroWarn & vbCrLf & vbCrLf
+
     Dim preview As String
     preview = Drafting.PublishDrafts(ws, regWs, fieldId, True, srcWs)
 
-    If MsgBox(preview & vbCrLf & vbCrLf & _
+    If MsgBox(macroWarn & preview & vbCrLf & vbCrLf & _
               "Write these into the register as Approved?" & vbCrLf & vbCrLf & _
               "This does NOT touch any slide -- run Sync Now or Preview Sync " & _
               "afterwards to get them onto the deck.", _

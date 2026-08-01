@@ -6369,6 +6369,19 @@ Private Function Test_DiscoverUI_MarksOnlyTickedAndNamedRows() As String
     ' MsgBox and would hang a headless run. The public reset already existed;
     ' adding a new "silent" wrapper for it was a solution to a problem I had not
     ' checked for.
+    ' UNTICK MUST UNMARK. Re-apply the same grid with row 1 unticked; the field
+    ' marked a moment ago must be gone. Without this the grid only ever adds,
+    ' which is what made finding 4 survive a rewrite that looked like it fixed it.
+    ws.Cells(7, 6).Value = ""
+    Dim rep2 As String
+    rep2 = DiscoverUI.ApplyDiscoverySheet(sld, wb)
+    result = result & Assert(BatchOnboardFlow.MarkedFieldCountForBatch() = 0, _
+        "unticking a row REMOVES its mark, got " & BatchOnboardFlow.MarkedFieldCountForBatch() & " still marked")
+    result = result & Assert(InStr(rep2, "UNMARKED") > 0, _
+        "the removal is reported, not silent")
+    result = result & Assert(InStr(rep2, "FIELD_ALPHA") > 0, _
+        "the report NAMES what it removed, so an accidental untick is visible")
+
     BatchOnboardFlow.ResetMarkingSession
     wb.Saved = True: wb.Close
     xl.Quit

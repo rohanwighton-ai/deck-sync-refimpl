@@ -467,3 +467,48 @@ Public Function IsToolOwnedSheet(sheetName As String) As Boolean
     If Left(sheetName, Len("Sync Review")) = "Sync Review" Then IsToolOwnedSheet = True
     If Left(sheetName, Len("Template Audit")) = "Template Audit" Then IsToolOwnedSheet = True
 End Function
+
+' A warning if this path is a macro-enabled Office file, or "" if it is fine.
+'
+' MACRO-ENABLED FILES CANNOT BE SAVED ON A MANAGED MACHINE, AND FAIL SILENTLY.
+'
+' Rohan, 2026-08-01: his deck stopped saving with no message and no dialog --
+' Ctrl+S simply did nothing. Cause: a rescue macro had been imported into the
+' presentation's own VBA project, which made a .pptx macro-bearing, and company
+' policy blocks macro-enabled DOCUMENTS (while permitting trusted add-ins). It
+' cost 41 minutes of unsaved work and a diagnosis that started in the wrong
+' place. He raised it again the same evening -- "remember the pptx vs pptm thing
+' too (pptm won't save on work machine)" -- because it is a standing constraint,
+' not a past incident.
+'
+' Nothing in this tool ever CREATES a macro-enabled file: there is no .pptm or
+' .xlsm format constant anywhere in the source, and every path it constructs
+' ends .xlsx. The exposure is writing to a file that already is one.
+'
+' Warns rather than refuses. On the author's personal machine these files save
+' perfectly well, and a tool that refused to touch them there would be wrong.
+' The person knows which machine they are on; the tool does not.
+Public Function MacroEnabledWarning(path As String) As String
+    If path = "" Then Exit Function
+
+    Dim p As String
+    p = LCase(Trim(path))
+
+    Dim ext As String
+    Dim dotAt As Long
+    dotAt = InStrRev(p, ".")
+    If dotAt = 0 Then Exit Function
+    ext = Mid(p, dotAt)
+
+    ' Length derived, never counted by hand -- see IsToolOwnedSheet, where a
+    ' hand-counted 13-versus-14 shipped an always-false guard.
+    Select Case ext
+        Case ".pptm", ".ppsm", ".potm", ".xlsm", ".xlsb", ".xltm", ".docm"
+            MacroEnabledWarning = _
+                "WARNING: this is a MACRO-ENABLED file (" & ext & ")." & vbCrLf & _
+                "On a managed work machine, saving it may be blocked by policy -- " & _
+                "and the block is SILENT: no message, and Ctrl+S simply does nothing." & vbCrLf & vbCrLf & _
+                "If that happens, use File > Save As and explicitly pick the " & _
+                "non-macro format (.pptx / .xlsx), to a local folder."
+    End Select
+End Function

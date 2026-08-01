@@ -1575,6 +1575,69 @@ End Sub
 ' inline handler would be switched off by the first of them and read as
 ' protection while providing none. Putting the handler in a separate frame
 ' means nothing inside the body can turn it off, now or after a later edit.
+' Remove ONE marked field, by the shape it is on.
+'
+' Until now the only removal was ClearMarkedFieldsForBatch, which discards
+' everything. That is what turned one wrong click into a lost slide's work on
+' 2026-08-01 (FIRST-REAL-RUN finding 4): Rohan marked 52 fields, one of them an
+' icon the batch could not process, and the only route forward was to throw away
+' all 52. "that marking took friggin ages surely it can be copied rather than
+' clearing it?"
+'
+' The three dictionaries are keyed by POSITION in markedShapes, so removing an
+' item means shifting every later key down. Rebuilt rather than mutated in
+' place: an off-by-one here would silently reattach a field name to a different
+' shape, which is the exact class of failure that destroyed his marking in the
+' first place.
+'
+' Returns "" when it removed nothing, so a caller can tell "not marked" from
+' "unmarked" -- the distinction this project keeps losing.
+Public Function UnmarkShapeForBatch(shp As Object) As String
+    If markedShapes Is Nothing Then Exit Function
+    If markedShapes.count = 0 Then Exit Function
+
+    Dim foundAt As Long
+    foundAt = 0
+    Dim i As Long
+    For i = 1 To markedShapes.count
+        If markedShapes(i) Is shp Then
+            foundAt = i
+            Exit For
+        End If
+    Next i
+    If foundAt = 0 Then Exit Function
+
+    Dim removedName As String
+    removedName = ""
+    If markedNames.Exists(foundAt) Then removedName = CStr(markedNames(foundAt))
+
+    Dim keepShapes As Collection
+    Dim keepNames As Object, keepTypes As Object, keepVol As Object
+    Set keepShapes = New Collection
+    Set keepNames = CreateObject("Scripting.Dictionary")
+    Set keepTypes = CreateObject("Scripting.Dictionary")
+    Set keepVol = CreateObject("Scripting.Dictionary")
+
+    Dim newIdx As Long
+    newIdx = 0
+    For i = 1 To markedShapes.count
+        If i <> foundAt Then
+            keepShapes.Add markedShapes(i)
+            newIdx = newIdx + 1
+            If markedNames.Exists(i) Then keepNames(newIdx) = markedNames(i)
+            If markedTypes.Exists(i) Then keepTypes(newIdx) = markedTypes(i)
+            If markedVolatility.Exists(i) Then keepVol(newIdx) = markedVolatility(i)
+        End If
+    Next i
+
+    Set markedShapes = keepShapes
+    Set markedNames = keepNames
+    Set markedTypes = keepTypes
+    Set markedVolatility = keepVol
+
+    UnmarkShapeForBatch = IIf(removedName = "", "(unnamed)", removedName)
+End Function
+
 Public Sub ClearMarkedFieldsForBatch()
     On Error GoTo Failed
     ClearMarkedFieldsForBatchCore

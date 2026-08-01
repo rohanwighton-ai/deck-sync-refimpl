@@ -427,3 +427,70 @@ has never bitten. It would become the first support call the moment anyone else
 moves a file — with no self-service fix.
 
 *Status: recorded, not fixed.*
+
+---
+
+## Fixed the same night, after consultant review
+
+**16. The publish button never saved the register.** `DraftingUI.PublishDraftsForField`
+wrote `Value` and `Status` in memory and stopped; the harness path had always
+called `wb.Save`. So `published: 12` described Excel's buffer and nothing on
+disk. **Rohan's refusal to run a real quarter before the tool worked was
+correct** — that exercise would have ended in lost approvals. Now saves and
+*reports the outcome*, because a read-only workbook (finding 14) would otherwise
+fail here in silence too.
+
+**17. Two live bugs in `IsToolOwnedSheet`.** `Left(sheetName, 13) = "Template Audit"`
+— that literal is **fourteen** characters, so the comparison could never be true:
+an always-false guard shipped in production, inside the list written to prevent
+this very class of mistake. And `"Field Discovery"` was missing, so
+`RegisterOrFirstDataSheet` could hand back the discovery grid and call it the
+register. Both were possible because the list duplicated names that already exist
+as public constants. It now uses the constants, and prefix lengths are derived
+with `Len()` instead of counted by hand.
+
+**18. Macro-enabled files now warn before a write.** Rohan: *"remember the pptx vs
+pptm thing too (pptm won't save on work machine)."* Nothing in this tool creates
+a macro-enabled file — no `.pptm`/`.xlsm` constant exists in the source — but it
+can be pointed at one, and on a managed machine that save fails **silently**.
+`WorkbookBridge.MacroEnabledWarning` is surfaced before the confirmation in both
+`Publish` and `Sync Now`, where it can still change the answer. It warns rather
+than refuses: these files save fine on the personal machine, and the person knows
+which machine they are on.
+
+**19. Unticking a row now unmarks the field (finding 4, properly this time).**
+`ApplyDiscoverySheet` only ever ADDED. A sheet that presents as declarative state
+— *what is ticked is what is tracked* — behaved as an in-tray, which meant the
+grid did **not** fix finding 4 despite looking like it should. I described it to
+Rohan as fixing that, and it did not.
+
+`BatchOnboardFlow.UnmarkShapeForBatch` removes one field by its shape, rebuilding
+the position-keyed dictionaries rather than mutating them — an off-by-one there
+would reattach a field name to a different shape, which is precisely what
+destroyed the original marking. Reported by name, so an accidental untick is
+visible. Covered by test.
+
+---
+
+## What review found that the suite could not
+
+Two consultants and the PM reviewed the repo the same evening. Between them they
+produced findings 14–19, and the single most uncomfortable observation:
+
+**`test-fixtures/crc-real-deck-redacted.pptx` has been committed since 25 July
+and is opened by ZERO VBA tests.** Measured: 46 slides, 5,828 shapes, **1,630
+duplicate shape names, 0 duplicate ids.** Finding 11 — the defect that destroyed
+an hour of real marking and could not be repaired — was sitting in a fixture in
+this repository the whole time. The suite could not see it because *every fixture
+it uses is one it wrote itself, from the same assumptions as the code.*
+
+The systemic framing worth keeping: **for almost every fact this system depends
+on, the component that produces the fact is also the component that vouches for
+it.** The three exceptions — `read_deck_props.py` reading the zip with no Office,
+counting `PASS` lines instead of grepping for `FAIL`, and Rohan's screenshots —
+were each bought with an expensive incident, and each one works. The remedy is
+not to distrust more values; it is to add independent oracles where none exists.
+
+And the closing rule, which this project has earned: **an incident is not closed
+until it has produced a check that has been made to fail once, on purpose.**
+Prose belongs in the commit message; the defence belongs in a script.
