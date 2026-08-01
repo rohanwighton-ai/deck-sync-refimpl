@@ -4507,7 +4507,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     Dim bar As Object
     Set bar = Application.CommandBars(CommandBarUI.ToolbarName())
     result = result & Assert(Not bar Is Nothing, "the toolbar exists after ShowToolbar")
-    result = result & Assert(bar.Controls.count = 13, "toolbar has 13 buttons, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 15, "toolbar has 15 buttons, got " & bar.Controls.count)
 
     Dim seenPreview As Boolean
     Dim seenSyncNow As Boolean
@@ -4540,7 +4540,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     ' pass. Tightened 2026-07-30 while adding SyncNow, whose name contains
     ' another entry's prefix.
     Dim expectedActions As String
-    expectedActions = "|SyncPreview|SyncNow|ReviewChanges|ReviewChangesApproveAll|ApplyApprovedChanges|CreateTemplateSlide|AuditFields|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|DiscoverFields|RefreshDraftingSheets|CopyAiDraftsToSubmit|PublishDraftsForField|"
+    expectedActions = "|SyncPreview|SyncNow|ReviewChanges|ReviewChangesApproveAll|ApplyApprovedChanges|CreateTemplateSlide|AuditFields|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|DiscoverFields|RefreshDraftingSheets|CopyAiDraftsToSubmit|PublishDraftsForField|StartQuarter|RepointWorkbookUI|"
 
     Dim i As Long
     For i = 1 To bar.Controls.count
@@ -4590,7 +4590,7 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
     Dim bar As Object
     Set bar = Application.CommandBars(CommandBarUI.ToolbarName())
     result = result & Assert(Not bar Is Nothing, "toolbar still exists after calling ShowToolbar twice")
-    result = result & Assert(bar.Controls.count = 13, "still exactly 13 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 15, "still exactly 15 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarIsIdempotent = result

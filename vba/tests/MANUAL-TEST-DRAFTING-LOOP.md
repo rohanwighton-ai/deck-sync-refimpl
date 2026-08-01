@@ -1,5 +1,20 @@
 # Manual test — the drafting loop, end to end
 
+> **REWRITTEN 2026-08-01 for layout 2.** The sheet gained a third text column
+> that day: **C = ORIGINAL** (read-only), **F = AI DRAFT** (what Copilot wrote,
+> *never* published), **G = SUBMIT** (your text — the only column that reaches a
+> slide), **I = the tick**.
+>
+> This document previously said "column F is where the new text goes and G is
+> the tick", which was true of the older layout. Following it as written would
+> have put real text into the column that is never published, and a `Y` into the
+> column that now holds text.
+>
+> **TRACKER item 8 was ticked against the OLD layout and these OLD
+> instructions.** That approval does not carry over — the sheet Rohan approved
+> no longer exists. Re-run Step 1 against the current sheet before treating item
+> 8 as evidence of anything.
+
 **What this tests:** the one thing no automated test can — whether the loop is
 *usable by a person*. The 132 automated tests prove the machinery is correct. They
 cannot tell you whether the sheet is readable, whether the gate tells you what you
@@ -56,7 +71,7 @@ real test, and it is a judgement call only you can make:
 
 - [ ] Can you tell at a glance what you are being asked to do?
 - [ ] Is the current text readable in column C, or do you have to widen it?
-- [ ] Is it obvious that column F is where the new text goes and G is the tick?
+- [ ] Is it obvious that **G (SUBMIT)** is where your text goes and **I** is the tick?
 - [ ] **Would you be willing to work down 43 rows of this?** If the honest answer
       is no, the sheet is wrong and the rest of this test does not matter.
 
@@ -68,9 +83,9 @@ Write down anything that annoyed you. That list is worth more than a pass.
 
 Pick any project. In its row:
 
-- Put something in **column F** — genuinely rewrite the sentence in column C, or
+- Put something in **column G (SUBMIT)** — genuinely rewrite the sentence in column C, or
   just change a word. Do not invent facts about the project.
-- Put `Y` in **column G**.
+- Put `Y` in **column I**.
 
 Save and close the workbook.
 
@@ -178,7 +193,8 @@ accepted.
 
 | Do this | Expect |
 |---|---|
-| Tick `Y` on a row with an **empty** column F, publish | `SKIPPED ... ticked but the draft is empty`, nothing published |
+| Tick `Y` on a row with an **empty** column G, publish | `SKIPPED ... SUBMIT is empty`, nothing published |
+| Tick `Y` on a row with text in **F (AI DRAFT)** but empty **G**, publish | `SKIPPED ... there IS an AI draft, but SUBMIT is empty`. The AI's words never publish on their own. |
 | Write a draft but leave G **blank**, publish | counted as `drafted but not ticked`, nothing published |
 | Publish **twice in a row** with `-Write` | second run publishes the same row again — harmless, but note whether that surprises you |
 | Edit the slide **by hand** in PowerPoint, save, close, then run `-Mode dryrun` | the change shows up as pending again, with your hand edit as the "now" side |

@@ -143,6 +143,8 @@ Public Sub ShowToolbar()
         "Discard every field marked so far and start the marking over. Cannot remove just one."
 
     ' --- THE QUARTERLY LOOP ---------------------------------------------
+    AddButton bar, "0. Start a Quarter", "DraftingUI.StartQuarter", 297, _
+        "STEP 0, once a quarter. Tell the deck which period it is now. Everything after this filters on it -- skip it and you will draft against last quarter without being told. Verifies the change took. Touches no slide.", True
     AddButton bar, "1. Drafting Sheets", "DraftingUI.RefreshDraftingSheets", 1697, _
         "STEP 1. Build or refresh the drafting sheets -- one per prose field, every project on a row, current text beside a box for your new wording, Copilot's prompt in L2. Keeps everything you have already written. Writes nothing to the deck.", True
     AddButton bar, "2. Copy AI to Submit", "DraftingUI.CopyAiDraftsToSubmit", 122, _
@@ -161,6 +163,8 @@ Public Sub ShowToolbar()
         "After Review Changes. Writes the changes you ticked onto the slides. Takes a backup first, re-checks each change against the slide, and skips anything that has moved since you approved it."
     AddButton bar, "Review + Approve All", "RibbonUI.ReviewChangesApproveAll", 463, _
         "SCRATCH COPIES ONLY: builds the review sheet and ticks every row without individual review. Still writes nothing until you run Apply Approved."
+    AddButton bar, "Repoint Workbook", "DraftingUI.RepointWorkbookUI", 23, _
+        "Point this deck at a different Excel workbook. Only needed if the deck and its workbook have been separated -- keep them in the same folder and the pairing repairs itself.", True
 End Sub
 
 Public Sub HideToolbar()

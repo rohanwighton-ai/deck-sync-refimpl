@@ -227,7 +227,14 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
 
             ws.Cells(r, COL_D_ENTITY).Value = key
             ws.Cells(r, COL_D_NAME).Value = "'" & projName
-            ws.Cells(r, COL_D_CURRENT).Value = "'" & current
+            ' THE DELIMITER IS STORAGE, NOT SOMETHING A PERSON SHOULD READ.
+            ' The register stores line breaks as "||". Column C was writing that
+            ' straight out, so a human comparing text saw "a||b" and -- worse --
+            ' so did Copilot, which then learns to emit "||" in its drafts.
+            ' Rendered as real breaks here. Safe to copy from: publish re-encodes
+            ' vbLf back to "||", so a value copied out of C and into SUBMIT makes
+            ' the round trip intact.
+            ws.Cells(r, COL_D_CURRENT).Value = "'" & Replace(current, "||", vbLf)
             ws.Cells(r, COL_D_CHARS).Value = Len(current)
             If keptNotes.Exists(key) Then
                 ws.Cells(r, COL_D_NOTES).Value = "'" & keptNotes(key)
@@ -467,9 +474,20 @@ Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, 
             encoded = Replace(encoded, vbLf, "||")
             encoded = Replace(encoded, Chr(11), "||")
 
-            If InStr(encoded, vbCr) > 0 Or InStr(encoded, vbLf) > 0 Then
+            ' THIS GUARD USED TO BE UNREACHABLE. It tested for vbCr and vbLf
+            ' four lines after Replace had removed both, so the branch could
+            ' never run -- an always-false guard reading as care taken, the same
+            ' shape as IsToolOwnedSheet's 13-versus-14 and the two guards the
+            ' project's own zettel was written about.
+            '
+            ' Now checks what could ACTUALLY survive: any remaining control
+            ' character, including the Unicode line and paragraph separators
+            ' (U+2028/U+2029) that Office produces and that Replace above does
+            ' not touch. A register value containing one breaks the round-trip
+            ' silently.
+            If HasControlCharacter(encoded) Then
                 failed = failed + 1
-                report = report & "  FAILED " & ent & " -- a line break survived conversion" & vbCrLf
+                report = report & "  FAILED " & ent & " -- a line break or control character survived conversion" & vbCrLf
             Else
                 Dim target As Long
                 target = FindRegisterRow(regWs, hdr, ent, fieldId)
@@ -581,4 +599,26 @@ Public Function RefreshSubmitCounts(ws As Object) As String
         r = r + 1
     Loop
     RefreshSubmitCounts = n & " row(s) have SUBMIT text."
+End Function
+
+' Any control character that would break a register round-trip.
+'
+' Deliberately includes U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR:
+' Office emits both, and the Replace chain that strips vbCrLf/vbCr/vbLf/Chr(11)
+' does not touch them. Tab is allowed -- it is legal in a cell and harmless in
+' the register.
+Private Function HasControlCharacter(value As String) As Boolean
+    Dim i As Long
+    For i = 1 To Len(value)
+        Dim c As Long
+        c = AscW(Mid(value, i, 1))
+        If c < 32 And c <> 9 Then
+            HasControlCharacter = True
+            Exit Function
+        End If
+        If c = 8232 Or c = 8233 Then
+            HasControlCharacter = True
+            Exit Function
+        End If
+    Next i
 End Function

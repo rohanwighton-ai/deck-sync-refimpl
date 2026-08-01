@@ -91,6 +91,48 @@ Public Function OpenOrGetWorkbook(path As String) As Object
     Set OpenOrGetWorkbook = wb
 End Function
 
+' Why this workbook cannot be written to, or "" if it can.
+'
+' READ-ONLY WAS NEVER CHECKED ANYWHERE. Confirmed 2026-08-01 across the whole
+' vba/ tree: the only `.ReadOnly` references were two diagnostic prints in a
+' tools module, and those were on the presentation, not the workbook.
+'
+' So a register that is locked -- open in someone else's Excel, on a read-only
+' share, or opened read-only after a recovery prompt -- opens happily, every
+' write appears to work, and the failure lands at wb.Save or nowhere at all.
+' The returned object cannot distinguish "I opened it" from "I opened a copy you
+' cannot keep", which is this project's signature failure one layer up from the
+' values it has already been caught by.
+'
+' A separate function rather than a refusal inside OpenOrGetWorkbook, because
+' read-only is legitimate for the read-only paths (Preview Sync opens the
+' register to compare and never writes). The caller that is about to WRITE is
+' the one that has to ask.
+Public Function WriteBlockedReason(wb As Object) As String
+    If wb Is Nothing Then
+        WriteBlockedReason = "The workbook could not be opened at all."
+        Exit Function
+    End If
+
+    Dim ro As Boolean
+    ro = False
+    On Error Resume Next
+    ro = wb.ReadOnly
+    On Error GoTo 0
+
+    If ro Then
+        WriteBlockedReason = _
+            "THE REGISTER IS OPEN READ-ONLY, so nothing can be saved into it." & vbCrLf & vbCrLf & _
+            wb.FullName & vbCrLf & vbCrLf & _
+            "Usually this means it is already open somewhere else -- another " & _
+            "Excel window, another machine, or a colleague. Close it there, then " & _
+            "try again."
+        Exit Function
+    End If
+
+    WriteBlockedReason = MacroEnabledWarning(wb.FullName)
+End Function
+
 ' Creates `path` as a fresh, empty workbook if nothing exists there yet --
 ' the first-onboarding-on-this-deck case, where there is no paired workbook
 ' to open. Returns Nothing (never raises) if the path's containing folder

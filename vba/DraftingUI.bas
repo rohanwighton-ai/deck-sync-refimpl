@@ -316,7 +316,7 @@ Public Sub CopyAiDraftsToSubmit()
     sheetName = Drafting.DraftSheetNameFor(fieldId)
     If Not WorkbookBridge.WorksheetExists(wb, sheetName) Then
         MsgBox "There is no drafting sheet for " & fieldId & " yet." & vbCrLf & vbCrLf & _
-               "Run 'Draft a Field' first.", vbExclamation, CAP
+               "Run '1. Drafting Sheets' first.", vbExclamation, CAP
         Exit Sub
     End If
 
@@ -359,7 +359,7 @@ Public Sub PublishDraftsForField()
     sheetName = Drafting.DraftSheetNameFor(fieldId)
     If Not WorkbookBridge.WorksheetExists(wb, sheetName) Then
         MsgBox "There is no drafting sheet for " & fieldId & " yet." & vbCrLf & vbCrLf & _
-               "Run 'Draft a Field' first.", vbExclamation, CAP
+               "Run '1. Drafting Sheets' first.", vbExclamation, CAP
         Exit Sub
     End If
 
@@ -371,8 +371,10 @@ Public Sub PublishDraftsForField()
 
     ' Said BEFORE the confirmation, not after the write. A warning that arrives
     ' with the result is a warning about something already done.
+    ' Covers read-only AND macro-enabled: both mean this write will not stick,
+    ' and both used to fail silently.
     Dim macroWarn As String
-    macroWarn = WorkbookBridge.MacroEnabledWarning(wb.FullName)
+    macroWarn = WorkbookBridge.WriteBlockedReason(wb)
     If macroWarn <> "" Then macroWarn = macroWarn & vbCrLf & vbCrLf
 
     Dim preview As String
@@ -443,5 +445,126 @@ Public Sub PublishDraftsForField()
 
 Failed:
     MsgBox "Could not publish." & vbCrLf & vbCrLf & _
+           "Error " & Err.Number & ": " & Err.Description, vbCritical, CAP
+End Sub
+
+' ---------------------------------------------------------------------------
+' BUTTON: 0. Start a Quarter
+' ---------------------------------------------------------------------------
+'
+' THE LOOP HAD NO BEGINNING. The toolbar ran 1..4, but the quarter starts before
+' step 1: somebody has to tell the deck it is now FY27Q1. DeckRegistry.SetDeckPeriod
+' was reachable only from a harness module and a Python script -- so the first act
+' of a new quarter required a developer in WSL.
+'
+' Worse, skipping it FAILED QUIETLY. RefreshDraftingSheets filters the register by
+' the deck's period and reports which period it used in a MsgBox AFTER writing the
+' sheets. Draft a whole quarter against last quarter's rows and nothing objects.
+'
+' Found by product review 2026-08-01. Deliberately does NOT create the new
+' period's register rows -- that is a bigger decision (which rows carry forward,
+' at what Status) and guessing at it would be worse than not doing it. This tells
+' the deck what quarter it is, verifies the write landed, and says plainly what is
+' still missing.
+Public Sub StartQuarter()
+    Const CAP As String = "Start a Quarter"
+    On Error GoTo Failed
+
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim current As String
+    current = DeckRegistry.GetDeckPeriod(pres)
+
+    Dim typed As String
+    typed = Trim(InputBox( _
+        "This deck currently reports its period as:" & vbCrLf & vbCrLf & _
+        "    " & IIf(current = "", "(none set)", current) & vbCrLf & vbCrLf & _
+        "Type the period it should now be, e.g. FY27Q1." & vbCrLf & vbCrLf & _
+        "Nothing else changes: no slide is touched and no register row is created.", _
+        CAP, IIf(current = "", "FY27Q1", current)))
+    If typed = "" Then Exit Sub
+
+    If StrComp(typed, current, vbTextCompare) = 0 Then
+        MsgBox "The deck already reports " & current & ". Nothing changed.", vbInformation, CAP
+        Exit Sub
+    End If
+
+    If MsgBox("Change this deck's period?" & vbCrLf & vbCrLf & _
+              "    from:  " & IIf(current = "", "(none)", current) & vbCrLf & _
+              "    to:    " & typed & vbCrLf & vbCrLf & _
+              "After this, the drafting sheets and every sync will read " & typed & _
+              " rows only.", vbYesNo + vbQuestion, CAP) <> vbYes Then Exit Sub
+
+    DeckRegistry.SetDeckPeriod pres, typed
+
+    ' VERIFIED BY READING IT BACK, because deck-property writes on a large deck
+    ' are documented in this project as unreliable -- TRACKER item 7: Save loses
+    ' them, SaveAs is better and still not certain. An unverified period is worse
+    ' than none: every later step would filter confidently on the wrong quarter.
+    Dim readBack As String
+    readBack = DeckRegistry.GetDeckPeriod(pres)
+
+    If StrComp(readBack, typed, vbTextCompare) = 0 Then
+        MsgBox "Deck period is now " & readBack & "." & vbCrLf & vbCrLf & _
+               "SAVE THE DECK before anything else -- the property is not on disk " & _
+               "until you do, and this project has lost it that way before." & vbCrLf & vbCrLf & _
+               "STILL TO DO, and this tool does not do it for you: the register " & _
+               "needs rows for " & typed & ". Without them the drafting sheets will " & _
+               "be empty. Copy the previous period's rows forward in Excel and set " & _
+               "their Status to Seed.", vbInformation, CAP
+    Else
+        MsgBox "THE PERIOD DID NOT TAKE." & vbCrLf & vbCrLf & _
+               "Asked for: " & typed & vbCrLf & _
+               "Reads back: " & IIf(readBack = "", "(none)", readBack) & vbCrLf & vbCrLf & _
+               "Do not draft or sync until this is right -- everything downstream " & _
+               "filters on it.", vbCritical, CAP
+    End If
+    Exit Sub
+
+Failed:
+    MsgBox "Could not set the period." & vbCrLf & vbCrLf & _
+           "Error " & Err.Number & ": " & Err.Description, vbCritical, CAP
+End Sub
+
+' ---------------------------------------------------------------------------
+' BUTTON: Repoint Workbook
+' ---------------------------------------------------------------------------
+'
+' DeckRegistry.RepointWorkbook has existed with no button. GetWorkbookPath's
+' sibling fallback covers the common case -- a workbook that moved WITH its deck
+' -- so this has never bitten. It becomes the first support call the moment the
+' two are separated, with no self-service fix.
+Public Sub RepointWorkbookUI()
+    Const CAP As String = "Repoint Workbook"
+    On Error GoTo Failed
+
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim current As String
+    current = DeckRegistry.GetWorkbookPath(pres)
+
+    Dim typed As String
+    typed = Trim(InputBox( _
+        "This deck is paired with:" & vbCrLf & vbCrLf & _
+        "    " & IIf(current = "", "(nothing)", current) & vbCrLf & vbCrLf & _
+        "Type the full path of the workbook it should use instead." & vbCrLf & vbCrLf & _
+        "Easiest way to get it: open the workbook, File > Info, Copy path.", _
+        CAP, current))
+    If typed = "" Then Exit Sub
+
+    DeckRegistry.RepointWorkbook pres, typed
+
+    Dim readBack As String
+    readBack = DeckRegistry.GetWorkbookPath(pres)
+    MsgBox "Paired workbook is now:" & vbCrLf & vbCrLf & readBack & vbCrLf & vbCrLf & _
+           "Save the deck so this survives closing it." & vbCrLf & vbCrLf & _
+           "Keep the deck and its workbook in the SAME FOLDER -- then the pairing " & _
+           "repairs itself when either moves.", vbInformation, CAP
+    Exit Sub
+
+Failed:
+    MsgBox "Could not repoint the workbook." & vbCrLf & vbCrLf & _
            "Error " & Err.Number & ": " & Err.Description, vbCritical, CAP
 End Sub
