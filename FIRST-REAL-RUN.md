@@ -350,3 +350,47 @@ should say.
 *Status: recorded, not fixed. Putting the build number in the toolbar name
 ("Deck Sync 36") turns an invisible collision into two visible toolbars.
 Flagged this morning and not acted on; it then cost a second diagnosis.*
+
+---
+
+## Built the same evening, in response
+
+### `Setup A2: Discover Fields` — the marking grid
+Finding 3, 4 and 11 were all consequences of marking being a **prompt chain**:
+52 fields x 3 dialogs, about 150 prompts and an hour, where one wrong click cost
+the lot and there was no way to remove a single entry.
+
+This project already made this journey once. Instance keys were a modal prompt
+per slide — 45 of them — until 2026-07-29, on the recorded reasoning that *modal
+prompts are irreplaceable input, while a sheet is editable, re-openable, and
+survives a validation failure with the human's edits intact.* Field marking never
+got the same treatment.
+
+`DiscoverUI` lists every text shape on the template slide in **one grid, in
+reading order** — top of the slide first, not z-order, which is an artefact of
+how the deck was built and correlates with nothing a person can see. Tick column
+F, name in column G, one confirm.
+
+Keyed on `Shape.Id` throughout.
+
+**Additive on purpose.** `Setup A: Mark Fields` is untouched. A flow written in
+one evening and never run against the real deck should not be the only road.
+
+**Exercised, not just compiled.** Split into `BuildDiscoverySheet` /
+`ApplyDiscoverySheet` so it runs with no human in it, then driven on the
+43-slide rig:
+
+```
+build: 82 text shape(s) listed
+grid rows: 82   blank ids: 0   DUPLICATE ids: 0
+apply: 2 marked, 1 ticked-but-unnamed REPORTED not guessed
+read back: SELFTEST_ONE, SELFTEST_TWO
+```
+
+82 shapes with zero duplicate ids, on the same slide where 47 of 158 *names*
+collide. Both branches observed — the marking and the refusal — rather than only
+the happy one.
+
+### Toolbar name now carries the build number (finding 13)
+`"Deck Sync 37"`. Two loaded add-ins now produce two visible toolbars instead of
+one silently winning.
