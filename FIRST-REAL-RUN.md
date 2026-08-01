@@ -99,3 +99,19 @@ says why, naming pictures/icons/bars as unsupported-for-now rather than
 implying a mistake. Needs a new .ppam.*
 *Workaround until then: mark TEXT shapes only. Skip icons, photos, graphics and
 the progress bar.*
+
+### 4. No way to unmark a single field — one bad mark costs every mark
+Marks are held as a marking-session list. The only removal is
+`Clear Marked Fields`, which discards **all** of them. There is no "unmark this
+shape".
+
+On its own that is a small gap. Combined with finding 3 it is what turned one
+wrong click into a lost slide's work: the bad mark could not be removed, so the
+only route forward was to discard every good mark alongside it.
+
+Marking already knows how to *update* an existing mark (`existingIdx > 0`
+re-marks in place), so the list is addressable — removal is a small addition,
+not a redesign.
+
+*Status: recorded, not fixed. Would be a fourth button ("Unmark Field") or a
+re-mark answer of "-" meaning remove.*
