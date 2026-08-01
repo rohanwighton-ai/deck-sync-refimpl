@@ -394,3 +394,36 @@ the happy one.
 ### Toolbar name now carries the build number (finding 13)
 `"Deck Sync 37"`. Two loaded add-ins now produce two visible toolbars instead of
 one silently winning.
+
+### 14. A read-only workbook is never detected — found by consultant review, verified
+`WorkbookBridge.OpenOrGetWorkbook` does `xl.Workbooks.Open(path)` inside
+`On Error Resume Next`. **`.ReadOnly` is never checked anywhere in production
+code** — verified: the only hits in the tree are two diagnostic prints in
+`tools/E2EField.bas`, and those are on the *presentation*, not the workbook.
+
+So a register that is locked (open elsewhere, or on a read-only share) opens
+**read-only**, everything proceeds normally, and the failure surfaces — or
+doesn't — at `wb.Save`. The user is told nothing.
+
+This is the project's signature failure one layer up: **a returned object that
+cannot distinguish "I opened it" from "I opened a copy you cannot save"**. Same
+family as `Worksheets(1)`, `CLng("")`, `NormalizeFieldType("")` and the shape
+names.
+
+It matters more the moment a second person exists, but it is already reachable
+today — anyone with the register open in Excel triggers it.
+
+*Status: recorded, not fixed. Roughly five lines in one place: after opening,
+if `wb.ReadOnly` then refuse loudly and name the path. This is the one I would
+fix first.*
+
+### 15. `RepointWorkbook` exists but has no button
+`DeckRegistry.RepointWorkbook` (`DeckRegistry.bas:210`) is the escape hatch for a
+deck whose paired workbook has moved. It is referenced **zero times** in
+`CommandBarUI.bas`.
+
+Today the sibling-fallback in `GetWorkbookPath` covers the common case, so this
+has never bitten. It would become the first support call the moment anyone else
+moves a file — with no self-service fix.
+
+*Status: recorded, not fixed.*
