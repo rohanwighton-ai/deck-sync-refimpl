@@ -250,9 +250,14 @@ Public Sub RefreshDraftingSheets()
     WorkbookBridge.WriteWorkbookIndex wb
     WorkbookBridge.FormatRegisterSheet regWs
 
+    ' Dropdowns on the controlled fields, and a report of anything already in
+    ' the register that the vocabulary does not allow.
+    Dim valNote As String
+    valNote = FieldSpec.ApplyControlledValidation(regWs, specWs)
+
     ShowSheet wb, firstSheet
 
-    MsgBox "Period: " & period & vbCrLf & vbCrLf & report & vbCrLf & _
+    MsgBox "Period: " & period & vbCrLf & vbCrLf & report & vbCrLf & valNote & vbCrLf & vbCrLf & _
            "Read column C, put your wording in column G (SUBMIT), type Y in column I." & vbCrLf & _
            "The prompt for Copilot is in cell L2." & vbCrLf & vbCrLf & _
            "Nothing reaches a slide until you publish and apply.", vbInformation, CAP

@@ -689,9 +689,11 @@ Public Function BuildDraftSheet(registerPath As String, period As String, fieldI
 
     WorkbookBridge.WriteWorkbookIndex wb
     WorkbookBridge.FormatRegisterSheet WorkbookBridge.RegisterSheet(wb)
+    Dim valNote As String
+    valNote = FieldSpec.ApplyControlledValidation(WorkbookBridge.RegisterSheet(wb), specWs)
 
     Dim r As String
-    r = specNote & vbCrLf & srcNote & vbCrLf & _
+    r = specNote & vbCrLf & srcNote & vbCrLf & valNote & vbCrLf & _
         Drafting.WriteDraftingSheet(ws, reg.Data, fieldId, specWs) & vbCrLf & vbCrLf & _
         "--- prompt to paste above the sheet ---" & vbCrLf & _
         FieldSpec.PromptFrom(FieldSpec.LookupGuidance(specWs, fieldId)) & vbCrLf

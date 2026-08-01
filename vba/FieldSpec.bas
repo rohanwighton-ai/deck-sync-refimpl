@@ -35,6 +35,17 @@ Public Const COL_S_LENGTH As Long = 5
 Public Const COL_S_OWNJOB As Long = 6
 Public Const COL_S_DONOT As Long = 7
 
+' The vocabulary a Controlled field is allowed to take, comma-separated.
+'
+' Evidence for why this exists, from Rohan's own register on 2026-08-01:
+' PROJECT_STATUS held "Not Started" 10 times and "Not started" 5 times. Same
+' status, two spellings, and nothing anywhere objected -- which is how a
+' controlled field stops being controlled and a filter silently misses a third
+' of its rows.
+'
+' Empty means unconstrained. A Prose field leaves it blank forever.
+Public Const COL_S_ALLOWED As Long = 8
+
 ' THE RULES THAT APPLY TO EVERY FIELD, ON THE SHEET RATHER THAN IN CODE.
 '
 ' Three clauses used to be hardcoded in PromptFrom -- that column C is the
@@ -58,6 +69,7 @@ Public Type FieldGuidance
     Found As Boolean
     FieldId As String
     Kind As String          ' Controlled / Prose / Static -- see ReviewQueue
+    Allowed As String       ' comma-separated vocabulary, Controlled fields only
     Purpose As String
     Voice As String
     Length As String
@@ -90,6 +102,7 @@ Public Function WriteSpecSheet(ws As Object) As String
     ws.Cells(SPEC_HEADER_ROW, COL_S_LENGTH).Value = "Length"
     ws.Cells(SPEC_HEADER_ROW, COL_S_OWNJOB).Value = "Own-job test"
     ws.Cells(SPEC_HEADER_ROW, COL_S_DONOT).Value = "Do NOT"
+    ws.Cells(SPEC_HEADER_ROW, COL_S_ALLOWED).Value = "Allowed values (Controlled fields -- comma separated)"
     ws.Rows(SPEC_HEADER_ROW).Font.Bold = True
     ws.Rows(SPEC_HEADER_ROW).WrapText = True
 
@@ -121,6 +134,22 @@ Public Function WriteSpecSheet(ws As Object) As String
             "Invent a new status. Vary the capitalisation. Explain or qualify it."
         r = r + 1: added = added + 1
     End If
+
+    ' Seeded onto whatever row PROJECT_STATUS is on, only when that cell is
+    ' still empty -- like every other cell on this sheet, an edit is the
+    ' owner's and survives a rebuild.
+    Dim vr As Long
+    vr = SPEC_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(vr, COL_S_FIELDID).Value)) <> ""
+        If StrComp(Trim(CStr(ws.Cells(vr, COL_S_FIELDID).Value)), "PROJECT_STATUS", vbTextCompare) = 0 Then
+            If Trim(CStr(ws.Cells(vr, COL_S_ALLOWED).Value)) = "" Then
+                ws.Cells(vr, COL_S_ALLOWED).Value = "In Progress,Not Started,Project Closed"
+            End If
+        End If
+        vr = vr + 1
+    Loop
+    ws.Columns(COL_S_ALLOWED).ColumnWidth = 40
+    ws.Columns(COL_S_ALLOWED).WrapText = True
 
     ' The global clauses. Seeded once with what used to be hardcoded, then
     ' never touched again -- like every other row on this sheet, an edit here
@@ -188,6 +217,7 @@ Public Function LookupGuidance(ws As Object, fieldId As String) As FieldGuidance
             g.Length = Trim(CStr(ws.Cells(r, COL_S_LENGTH).Value))
             g.OwnJob = Trim(CStr(ws.Cells(r, COL_S_OWNJOB).Value))
             g.DoNot = Trim(CStr(ws.Cells(r, COL_S_DONOT).Value))
+            g.Allowed = Trim(CStr(ws.Cells(r, COL_S_ALLOWED).Value))
             Exit Do
         End If
         r = r + 1
@@ -250,4 +280,107 @@ Public Function DefaultGlobalRules() As String
         "organisations or outcomes that are not in it. Where something needed is" & vbCrLf & _
         "missing or ambiguous, say so in column J (notes) and ask -- do not infer or" & vbCrLf & _
         "fill the gap."
+End Function
+
+' Put a real dropdown on every Controlled field's Value cell in the register,
+' and report anything already sitting there that the vocabulary does not allow.
+'
+' VALIDATES BUT DOES NOT CORRECT. "Not started" is almost certainly meant to be
+' "Not Started" -- and almost certainly is not a licence for a tool to rewrite
+' the record without being asked. It is reported; a person decides. Same posture
+' as unresolved source IDs.
+'
+' Excel's own dropdown rather than a checker of our own: a constraint that can
+' only be violated is worth less than one that is awkward to violate, and the
+' cheapest place to stop a typo is the cell it would be typed into.
+Public Function ApplyControlledValidation(regWs As Object, specWs As Object) As String
+    If regWs Is Nothing Or specWs Is Nothing Then
+        ApplyControlledValidation = "Validation: skipped (no register or no Field Spec)."
+        Exit Function
+    End If
+
+    ' Vocabulary per field, read once.
+    Dim vocab As Object
+    Set vocab = CreateObject("Scripting.Dictionary")
+    Dim r As Long
+    r = SPEC_FIRST_ROW
+    Do While Trim(CStr(specWs.Cells(r, COL_S_FIELDID).Value)) <> ""
+        Dim allowed As String
+        allowed = Trim(CStr(specWs.Cells(r, COL_S_ALLOWED).Value))
+        If allowed <> "" Then
+            vocab(UCase(Trim(CStr(specWs.Cells(r, COL_S_FIELDID).Value)))) = allowed
+        End If
+        r = r + 1
+    Loop
+    If vocab.count = 0 Then
+        ApplyControlledValidation = "Validation: no field declares an allowed-value list."
+        Exit Function
+    End If
+
+    ' Columns by header name, never by position.
+    Dim hdr As Object
+    Set hdr = CreateObject("Scripting.Dictionary")
+    Dim c As Long
+    For c = 1 To 20
+        Dim h As String
+        h = Trim(CStr(regWs.Cells(1, c).Value))
+        If h <> "" Then hdr(h) = c
+    Next c
+    If Not hdr.Exists("FieldID") Or Not hdr.Exists("Value") Then
+        ApplyControlledValidation = "Validation: register has no FieldID/Value column."
+        Exit Function
+    End If
+
+    Dim applied As Long, offending As String
+    Dim rr As Long
+    rr = 2
+    Do While Trim(CStr(regWs.Cells(rr, hdr("FieldID")).Value)) <> ""
+        Dim fid As String
+        fid = UCase(Trim(CStr(regWs.Cells(rr, hdr("FieldID")).Value)))
+        If vocab.Exists(fid) Then
+            Dim cell As Object
+            Set cell = regWs.Cells(rr, hdr("Value"))
+
+            ' Cosmetic-ish and must never break a caller: a workbook opened
+            ' read-only, or a protected sheet, will refuse validation.
+            On Error Resume Next
+            cell.Validation.Delete
+            cell.Validation.Add 3, 1, 1, CStr(vocab(fid))   ' xlValidateList, xlValidAlertStop, xlBetween
+            cell.Validation.IgnoreBlank = True
+            cell.Validation.InCellDropdown = True
+            If Err.Number = 0 Then applied = applied + 1
+            Err.Clear
+            On Error GoTo 0
+
+            Dim current As String
+            current = Trim(CStr(cell.Value))
+            If current <> "" Then
+                If Not InVocabulary(current, CStr(vocab(fid))) Then
+                    offending = offending & "  row " & rr & "  " & fid & " = """ & current & """" & vbCrLf
+                End If
+            End If
+        End If
+        rr = rr + 1
+    Loop
+
+    ApplyControlledValidation = "Validation: dropdown on " & applied & " cell(s)."
+    If offending <> "" Then
+        ApplyControlledValidation = ApplyControlledValidation & vbCrLf & _
+            "VALUES OUTSIDE THE ALLOWED LIST (left exactly as they are):" & vbCrLf & offending
+    End If
+End Function
+
+' Case-SENSITIVE on purpose. "Not started" against a vocabulary of "Not Started"
+' is precisely the drift this exists to surface -- matching case-insensitively
+' here would make the checker agree with the thing it was written to catch.
+Private Function InVocabulary(value As String, allowed As String) As Boolean
+    Dim parts As Variant
+    parts = Split(allowed, ",")
+    Dim i As Long
+    For i = LBound(parts) To UBound(parts)
+        If Trim(CStr(parts(i))) = Trim(value) Then
+            InVocabulary = True
+            Exit Function
+        End If
+    Next i
 End Function
