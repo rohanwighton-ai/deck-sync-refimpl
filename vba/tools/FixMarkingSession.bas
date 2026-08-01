@@ -135,6 +135,73 @@ Public Sub RemoveMark()
            "corrected one back.", vbInformation, "Marks"
 End Sub
 
+' ---------------------------------------------------------------------------
+' Drop every mark whose FIELD NAME contains a given word. Confirms first,
+' listing exactly what it will remove.
+'
+' Built for "perhaps we don't need the headings" -- five separate heading
+' fields, and RemoveMark takes one shape name at a time. Matching on the field
+' name rather than the shape name is what makes it one pass: the headings are
+' called "... Heading" but their shapes are Rectangle 126, 132, 135, 136.
+'
+' CONFIRMS BEFORE REMOVING, and lists the names. A bulk delete that just tells
+' you a number afterwards is not reviewable, and this is a session that took an
+' hour to build.
+' ---------------------------------------------------------------------------
+Public Sub RemoveMarksByFieldName()
+    Const CONTAINS As String = "Heading"        ' <-- edit this
+
+    Dim raw As String
+    raw = ReadSession()
+    If raw = "" Then
+        MsgBox "No marking session on this presentation.", vbExclamation, "Marks"
+        Exit Sub
+    End If
+
+    Dim lines() As String
+    lines = Split(raw, vbCrLf)
+
+    Dim doomed As String, kept As String
+    Dim removeCount As Long, keptCount As Long
+    Dim i As Long
+    For i = LBound(lines) To UBound(lines)
+        If Trim(lines(i)) <> "" Then
+            Dim p() As String
+            p = Split(lines(i), "|")
+
+            Dim fieldName As String
+            fieldName = ""
+            If UBound(p) >= 1 Then fieldName = p(1)
+
+            If fieldName <> "" And InStr(1, fieldName, CONTAINS, vbTextCompare) > 0 Then
+                removeCount = removeCount + 1
+                doomed = doomed & "   " & fieldName & "   (shape " & p(0) & ")" & vbCrLf
+            Else
+                kept = kept & vbCrLf & lines(i)
+                keptCount = keptCount + 1
+            End If
+        End If
+    Next i
+
+    If removeCount = 0 Then
+        MsgBox "No marked field's name contains '" & CONTAINS & "'." & vbCrLf & vbCrLf & _
+               "Nothing was changed.", vbExclamation, "Marks"
+        Exit Sub
+    End If
+
+    If MsgBox("Remove these " & removeCount & " mark(s)?" & vbCrLf & vbCrLf & doomed & vbCrLf & _
+              keptCount & " mark(s) would be kept.", vbYesNo + vbQuestion, "Marks") <> vbYes Then
+        MsgBox "Nothing was changed.", vbInformation, "Marks"
+        Exit Sub
+    End If
+
+    WriteSession kept
+
+    MsgBox "Removed " & removeCount & ", kept " & keptCount & "." & vbCrLf & vbCrLf & _
+           "NOW: save, close the deck, and reopen it -- the add-in holds the old " & _
+           "list in memory until then.", vbInformation, "Marks"
+End Sub
+
 Private Function ReadSession() As String
     On Error Resume Next
     ReadSession = CStr(ActivePresentation.CustomDocumentProperties(SESSION_PROP).Value)
