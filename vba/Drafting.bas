@@ -65,6 +65,7 @@ Public Const COL_D_SUBCHARS As Long = 8
 Public Const COL_D_APPROVED As Long = 9
 Public Const COL_D_NOTES As Long = 10
 Public Const COL_D_LAYOUT As Long = 11
+Public Const COL_D_PERIOD As Long = 13
 Public Const COL_D_PROMPT As Long = 12
 
 ' THE SHEET DECLARES WHICH LAYOUT IT WAS WRITTEN IN.
@@ -126,7 +127,9 @@ End Function
 ' approval is against a specific pairing of exemplar and draft, and a rebuild may
 ' have changed the exemplar.
 Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String, _
-                                   Optional guidance As Variant) As String
+                                   Optional guidance As Variant, _
+                                   Optional periodStamp As String = "", _
+                                   Optional cadence As Object = Nothing) As String
     ' A REBUILD MUST NOT COST A PERSON THEIR WORK. Everything a human or an AI
     ' put on this sheet is carried across: the AI draft, the SUBMIT text they
     ' edited, the source IDs they assigned, and their notes. Only ORIGINAL and
@@ -149,8 +152,83 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     On Error GoTo 0
     layoutMatches = (sheetLayout = DRAFT_LAYOUT_VERSION)
 
+    ' AND THE PERIOD MUST MATCH TOO.
+    '
+    ' The sheet is per FIELD, not per period, and a rebuild carries SUBMIT and
+    ' SOURCES forward by EntityCode. So rolling the deck to a new quarter left
+    ' last quarter's text sitting in column G with last quarter's source IDs --
+    ' approvals are cleared, but one tick republishes stale prose as though it
+    ' were this quarter's, and CopyAiToSubmit would decline to overwrite it
+    ' ("left alone -- you had already written something there").
+    '
+    ' Silent, plausible, and in a funder-facing deck. Found by review
+    ' 2026-08-01, the same evening the layout guard was added for exactly this
+    ' shape of failure one axis over.
+    '
+    ' THE TWO EMPTY CASES ARE NOT SYMMETRIC, and an earlier version of this
+    ' comment claimed they were:
+    '   - Sheet has no stamp, caller names a period -> treated as a MISMATCH.
+    '     A sheet that cannot say which quarter it belongs to is not evidence
+    '     that it belongs to this one, and dropping work is the safe direction.
+    '   - Caller names no period -> carry across as before. The caller did not
+    '     say, so there is nothing to compare; guessing "mismatch" here would
+    '     make every driver that omits the argument destroy drafting silently.
+    ' RefreshDraftingSheets refuses outright on an undeclared deck period
+    ' (DraftingUI.bas:223), so the UI path can never reach the second case.
+    '
+    ' THE DROP IS PER ROW, NOT PER SHEET, and that distinction is the whole of
+    ' this guard's correctness.
+    '
+    ' Variability is a property of the ROW. The register carries `Quarter = ALL`
+    ' rows into every period as entity-static (Register.bas:232), and for such a
+    ' row LAST QUARTER'S TEXT IS THIS QUARTER'S TEXT -- dropping it is pure loss
+    ' with no safety bought, because there is no stale value to republish.
+    '
+    ' The first version of this guard dropped everything on the sheet, defended
+    ' by "a drafting sheet only holds Prose fields, so it is all quarterly". That
+    ' conflates two different axes and is wrong:
+    '     FieldSpec.Kind (Controlled/Prose/Static)  = HOW a value is produced
+    '     Register Quarter (a period, or ALL)       = WHEN it applies
+    ' A project description is prose AND static -- Round 5 §3 classes ABOUT_BODY,
+    ' the flagship prose field, as entity-static, and Rohan confirmed 2026-08-02
+    ' that he writes it once and edits it rarely. So the destroyed-work case was
+    ' not hypothetical; it was the main field, every rollover.
+    '
+    ' `cadence` is the register's own answer, keyed EntityCode & Chr(1) & FieldID:
+    ' True = this value came from a period row (drop the drafting on rollover),
+    ' False = it came from an ALL row (keep it). Absent or unknown drops, because
+    ' the old blunt behaviour is the safe direction when nobody can say.
+    Dim sheetPeriod As String
+    On Error Resume Next
+    sheetPeriod = Trim(CStr(ws.Cells(DRAFT_INTRO_ROW, COL_D_PERIOD).Value))
+    On Error GoTo 0
+
+    Dim periodMatches As Boolean
+    If periodStamp = "" Then
+        periodMatches = True            ' caller did not say; do not guess
+    Else
+        periodMatches = (StrComp(sheetPeriod, periodStamp, vbTextCompare) = 0)
+    End If
+
+    ' THE LAYOUT GUARD STILL BLOCKS EVERYTHING, and must. An old layout is read
+    ' with column numbers that have since been renumbered, so there is no such
+    ' thing as a row that can be safely rescued from it -- unlike a rollover,
+    ' where the columns are fine and only the CONTENT'S shelf life is in
+    ' question. Two different failures; only one of them is per row.
+
     Dim isNewSheet As Boolean
     isNewSheet = (Trim(CStr(ws.Cells(DRAFT_FIRST_ROW, COL_D_ENTITY).Value)) = "")
+
+    ' A SHEET THAT CANNOT SAY WHICH QUARTER IT IS FROM IS TREATED AS A ROLLOVER.
+    ' Every drafting sheet built before this stamp existed is in that state. It
+    ' cannot be shown to be current, so its quarterly rows go and its ALL rows
+    ' stay -- which is strictly better than the two alternatives of assuming it
+    ' is current (republishes stale prose) or dropping the lot (throws away
+    ' entity-static work that was never at risk).
+    Dim periodChanged As Boolean
+    periodChanged = (Not periodMatches) And (Not isNewSheet)
+
+    Dim droppedQuarterly As Long, keptStatic As Long
 
     Dim r As Long
     r = DRAFT_FIRST_ROW
@@ -159,10 +237,32 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
         Do While Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value)) <> ""
             Dim oldKey As String
             oldKey = Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value))
-            If Trim(CStr(ws.Cells(r, COL_D_DRAFT).Value)) <> "" Then keptDraft(oldKey) = CStr(ws.Cells(r, COL_D_DRAFT).Value)
-            If Trim(CStr(ws.Cells(r, COL_D_NOTES).Value)) <> "" Then keptNotes(oldKey) = CStr(ws.Cells(r, COL_D_NOTES).Value)
-            If Trim(CStr(ws.Cells(r, COL_D_SUBMIT).Value)) <> "" Then keptSubmit(oldKey) = CStr(ws.Cells(r, COL_D_SUBMIT).Value)
-            If Trim(CStr(ws.Cells(r, COL_D_SOURCES).Value)) <> "" Then keptSources(oldKey) = CStr(ws.Cells(r, COL_D_SOURCES).Value)
+
+            ' On a rollover, this row survives only if the register says its
+            ' value came from a Quarter = ALL row.
+            Dim carryThisRow As Boolean
+            carryThisRow = True
+            If periodChanged Then
+                carryThisRow = False
+                If Not cadence Is Nothing Then
+                    Dim cadKey As String
+                    cadKey = oldKey & Chr(1) & fieldId
+                    ' CBool of the stored flag: True means period-specific.
+                    ' Exists() first -- reading a missing key from a Dictionary
+                    ' ADDS it, and silently growing the register's own cadence
+                    ' map from inside the drafting sheet would be a fine way to
+                    ' make a later sync disagree with itself.
+                    If cadence.Exists(cadKey) Then carryThisRow = Not CBool(cadence(cadKey))
+                End If
+                If carryThisRow Then keptStatic = keptStatic + 1 Else droppedQuarterly = droppedQuarterly + 1
+            End If
+
+            If carryThisRow Then
+                If Trim(CStr(ws.Cells(r, COL_D_DRAFT).Value)) <> "" Then keptDraft(oldKey) = CStr(ws.Cells(r, COL_D_DRAFT).Value)
+                If Trim(CStr(ws.Cells(r, COL_D_NOTES).Value)) <> "" Then keptNotes(oldKey) = CStr(ws.Cells(r, COL_D_NOTES).Value)
+                If Trim(CStr(ws.Cells(r, COL_D_SUBMIT).Value)) <> "" Then keptSubmit(oldKey) = CStr(ws.Cells(r, COL_D_SUBMIT).Value)
+                If Trim(CStr(ws.Cells(r, COL_D_SOURCES).Value)) <> "" Then keptSources(oldKey) = CStr(ws.Cells(r, COL_D_SOURCES).Value)
+            End If
             r = r + 1
         Loop
         On Error GoTo 0
@@ -357,6 +457,9 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
         ws.Range(ws.Rows(DRAFT_FIRST_ROW), ws.Rows(r - 1)).RowHeight = 52
     End If
 
+    ws.Cells(DRAFT_INTRO_ROW, COL_D_PERIOD).Value = periodStamp
+    ws.Cells(DRAFT_INTRO_ROW, COL_D_PERIOD).Font.Color = RGB(190, 190, 190)
+    ws.Columns(COL_D_PERIOD).ColumnWidth = 9
     ws.Cells(DRAFT_INTRO_ROW, COL_D_LAYOUT).Value = DRAFT_LAYOUT_VERSION
     ws.Cells(DRAFT_INTRO_ROW, COL_D_LAYOUT).Font.Color = RGB(190, 190, 190)
     ws.Columns(COL_D_LAYOUT).ColumnWidth = 4
@@ -367,7 +470,17 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' Said out loud, because the alternative is a person discovering by absence
     ' that a rebuild dropped their drafting. Not raised: the rebuild itself is
     ' correct and the register is untouched, so this is news, not a failure.
-    If Not layoutMatches And Not isNewSheet Then
+    If periodChanged Then
+        WriteDraftingSheet = WriteDraftingSheet & vbCrLf & _
+            "NOTE: this sheet was built for " & IIf(sheetPeriod = "", "(no period recorded)", sheetPeriod) & _
+            " and is now " & periodStamp & "." & vbCrLf & _
+            droppedQuarterly & " quarterly row(s) were CLEARED -- last quarter's SUBMIT text would" & vbCrLf & _
+            "otherwise have sat there ready to be ticked and republished as this" & vbCrLf & _
+            "quarter's. Column C still shows what the slide says today, to draft against." & vbCrLf & _
+            keptStatic & " entity-static row(s) were KEPT -- their register row is Quarter = ALL," & vbCrLf & _
+            "so last quarter's text IS this quarter's text and there was nothing to clear." & vbCrLf & _
+            "The old sheet is in the .bak beside the workbook."
+    ElseIf Not layoutMatches And Not isNewSheet Then
         WriteDraftingSheet = WriteDraftingSheet & vbCrLf & _
             "NOTE: this sheet was built by layout " & sheetLayout & _
             " and the tool is now on layout " & DRAFT_LAYOUT_VERSION & ". Nothing was" & vbCrLf & _

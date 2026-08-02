@@ -207,6 +207,16 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "Drafting_OnlyTickedNonEmptyDraftsPublish", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_Drafting_PeriodRolloverDropsStaleSubmit()
+    AppendResult report, "Drafting_PeriodRolloverDropsStaleSubmit", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_Drafting_RolloverKeepsEntityStaticRows()
+    AppendResult report, "Drafting_RolloverKeepsEntityStaticRows", r
+    On Error GoTo 0
+
     ' REGISTERED BY HAND, like every other test here. Writing the Function is
     ' not enough -- RunAllTests dispatches explicitly, so an unregistered test
     ' simply never runs and the suite still says PASS. Added both of these and
@@ -6388,4 +6398,203 @@ Private Function Test_DiscoverUI_MarksOnlyTickedAndNamedRows() As String
     Set wb = Nothing: Set xl = Nothing
     sld.Delete
     Test_DiscoverUI_MarksOnlyTickedAndNamedRows = result
+End Function
+
+' PERIOD ROLLOVER MUST NOT CARRY LAST QUARTER'S TEXT FORWARD.
+'
+' The drafting sheet is per FIELD, not per period, and a rebuild deliberately
+' carries SUBMIT / SOURCES / AI DRAFT / NOTES across by EntityCode so that a
+' refresh never costs someone their evening. Roll the deck to a new quarter and
+' that same kindness becomes the defect: last quarter's prose sits in column G
+' against last quarter's source IDs, approvals cleared but ONE TICK away from
+' being republished as though it were current -- and CopyAiToSubmit would
+' decline to overwrite it, because from where it stands the person had already
+' written something there. Silent, plausible, and funder-facing.
+'
+' ASSERTS BOTH DIRECTIONS, deliberately. A guard that fired on every rebuild
+' would destroy work on the ordinary path while looking like caution, so the
+' same-period rebuild is asserted to still carry everything across. A test that
+' only checked the dropping half would pass against `layoutMatches = False`
+' hardcoded, which is not the behaviour anyone wants.
+'
+' SCOPE, and it is borrowed from another module: dropping every row wholesale
+' is only correct because a drafting sheet can only ever hold PROSE fields --
+' AskForField offers nothing else (DraftingUI.bas:124). Entity-static content
+' lives in `Quarter = ALL` register rows, which are supposed to survive a
+' rollover. Nothing here can test that, because nothing can currently put such
+' a row on a drafting sheet; see the note in Drafting.WriteDraftingSheet.
+Private Function Test_Drafting_PeriodRolloverDropsStaleSubmit() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, dws As Object, rws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set dws = wb.Worksheets(1)
+    Set rws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+
+    ' A two-project register, read back through the real reader rather than
+    ' hand-built, so the test breaks if the Sheet shape moves under it.
+    rws.Cells(1, 1).Value = ExcelOutput.INSTANCE_ID_HEADER
+    rws.Cells(1, 2).Value = "PROJECT_NAME"
+    rws.Cells(1, 3).Value = "ABOUT_BODY"
+    rws.Cells(2, 1).Value = "P001": rws.Cells(2, 2).Value = "Alpha": rws.Cells(2, 3).Value = "register one"
+    rws.Cells(3, 1).Value = "P002": rws.Cells(3, 2).Value = "Beta":  rws.Cells(3, 3).Value = "register two"
+
+    Dim reg As Sheet
+    reg = ExcelOutput.ReadSheet(rws)
+
+    ' 1. Build it for FY26Q3, then put a person's evening on it.
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Empty, "FY26Q3"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value = "P001 last quarter"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value = "S01,S03"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value = "chase the finance number"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).Value = "AI text from last quarter"
+
+    ' 2. THE ORDINARY PATH. Same period, so a rebuild must still cost nothing.
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Empty, "FY26Q3"
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value) = "P001 last quarter", _
+        "A SAME-PERIOD REBUILD KEEPS SUBMIT -- the guard must not fire on the common path, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value) & "'")
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value) = "S01,S03", _
+        "a same-period rebuild keeps the source IDs, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value) & "'")
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value) = "chase the finance number", _
+        "a same-period rebuild keeps the notes, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value) & "'")
+
+    ' 3. THE ROLLOVER. Nothing a person wrote for FY26Q3 may survive into FY26Q4.
+    Dim rep As String
+    rep = Drafting.WriteDraftingSheet(dws, reg, "ABOUT_BODY", Empty, "FY26Q4")
+
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value)) = "", _
+        "LAST QUARTER'S SUBMIT TEXT IS GONE -- one tick would otherwise republish it as this quarter's, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value) & "'")
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value)) = "", _
+        "last quarter's source IDs go with it -- they cite the wrong quarter's evidence, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value) & "'")
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).Value)) = "", _
+        "and last quarter's AI draft, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).Value) & "'")
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value)) = "", _
+        "and the notes, which were written about last quarter's text, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value) & "'")
+
+    ' TOLD, NOT JUST DONE. A person discovering by absence that their drafting
+    ' vanished is the failure this project keeps having; the note has to name
+    ' both quarters or it does not explain anything.
+    result = result & Assert(InStr(rep, "FY26Q3") > 0 And InStr(rep, "FY26Q4") > 0, _
+        "the report NAMES BOTH PERIODS so the drop is explained, got '" & rep & "'")
+
+    ' The sheet must now declare the quarter it was actually built for, or the
+    ' next rebuild re-runs this same drop against a stale stamp.
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value)) = "FY26Q4", _
+        "the sheet now declares FY26Q4, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value) & "'")
+
+    ' The rebuild is otherwise a normal, correct rebuild -- the register still
+    ' lands in ORIGINAL. Dropping the drafting is not licence to drop the rest.
+    result = result & Assert(InStr(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_CURRENT).Value), "register one") > 0, _
+        "the register value still reaches ORIGINAL after a rollover, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_CURRENT).Value) & "'")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing: Set xl = Nothing
+    Test_Drafting_PeriodRolloverDropsStaleSubmit = result
+End Function
+
+' THE ROLLOVER DROP IS PER ROW, AND THIS IS THE ASSERTION THAT SAYS SO.
+'
+' Two projects, same field, different cadence in the register: P001's value came
+' from a period row, P002's from a `Quarter = ALL` row. A rollover must clear
+' P001's drafting and leave P002's completely alone.
+'
+' Why this is not a nicety: Round 5 §3 classes ABOUT_BODY -- the flagship prose
+' field, the one the whole drafting sheet was built around -- as entity-static,
+' and Rohan confirmed 2026-08-02 that he writes it once and edits it rarely. The
+' first version of this guard dropped every row on the sheet, which would have
+' destroyed his ABOUT_BODY drafting on every single rollover, for no safety
+' whatsoever: an ALL row's previous text IS its current text, so there is no
+' stale value to republish.
+'
+' Made to fail on purpose by keying the drop on the sheet instead of the row --
+' P002's SUBMIT then comes back empty.
+Private Function Test_Drafting_RolloverKeepsEntityStaticRows() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, dws As Object, rws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set dws = wb.Worksheets(1)
+    Set rws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+
+    rws.Cells(1, 1).Value = ExcelOutput.INSTANCE_ID_HEADER
+    rws.Cells(1, 2).Value = "PROJECT_NAME"
+    rws.Cells(1, 3).Value = "ABOUT_BODY"
+    rws.Cells(2, 1).Value = "P001": rws.Cells(2, 2).Value = "Alpha": rws.Cells(2, 3).Value = "quarterly one"
+    rws.Cells(3, 1).Value = "P002": rws.Cells(3, 2).Value = "Beta":  rws.Cells(3, 3).Value = "static two"
+
+    Dim reg As Sheet
+    reg = ExcelOutput.ReadSheet(rws)
+
+    ' The register's own cadence answer, in the shape Register.ReadRegisterCore
+    ' produces it: True = the value came from a PERIOD row, False = from ALL.
+    Dim cadence As Object
+    Set cadence = CreateObject("Scripting.Dictionary")
+    cadence("P001" & Chr(1) & "ABOUT_BODY") = True      ' quarterly
+    cadence("P002" & Chr(1) & "ABOUT_BODY") = False     ' Quarter = ALL
+
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Empty, "FY26Q3", cadence
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SUBMIT).Value = "P001 quarterly draft"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SOURCES).Value = "S01"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SUBMIT).Value = "P002 the project description"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value = "S07"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_NOTES).Value = "settled, do not touch"
+
+    Dim rep As String
+    rep = Drafting.WriteDraftingSheet(dws, reg, "ABOUT_BODY", Empty, "FY26Q4", cadence)
+
+    ' The quarterly row goes.
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SUBMIT).Value)) = "", _
+        "THE QUARTERLY ROW IS CLEARED on rollover, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SUBMIT).Value) & "'")
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SOURCES).Value)) = "", _
+        "and its source IDs with it, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SOURCES).Value) & "'")
+
+    ' THE ENTITY-STATIC ROW SURVIVES INTACT. This is the whole test.
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SUBMIT).Value) = "P002 the project description", _
+        "THE Quarter = ALL ROW KEEPS ITS SUBMIT TEXT -- it was never quarterly and there is nothing stale about it, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SUBMIT).Value) & "'")
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value) = "S07", _
+        "the static row keeps its source IDs -- they cite the project, not the quarter, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value) & "'")
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_NOTES).Value) = "settled, do not touch", _
+        "and its notes, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_NOTES).Value) & "'")
+
+    ' COUNTED OUT LOUD, both ways. "Nothing was carried across" was the old
+    ' message and it would now be a lie on exactly the rows that matter.
+    result = result & Assert(InStr(rep, "1 quarterly row(s) were CLEARED") > 0, _
+        "the report counts what it cleared, got '" & rep & "'")
+    result = result & Assert(InStr(rep, "1 entity-static row(s) were KEPT") > 0, _
+        "and counts what it deliberately kept, got '" & rep & "'")
+
+    ' UNKNOWN CADENCE STILL DROPS. A row the register cannot classify is treated
+    ' as quarterly, because assuming it is static is the failure that publishes
+    ' stale prose, and this guard exists to prevent exactly that.
+    Dim empt As Object
+    Set empt = CreateObject("Scripting.Dictionary")
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SUBMIT).Value = "unclassified text"
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Empty, "FY27Q1", empt
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SUBMIT).Value)) = "", _
+        "A ROW THE REGISTER CANNOT CLASSIFY IS DROPPED, not assumed static, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SUBMIT).Value) & "'")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing: Set xl = Nothing
+    Test_Drafting_RolloverKeepsEntityStaticRows = result
 End Function

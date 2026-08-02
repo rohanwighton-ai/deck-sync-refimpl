@@ -494,3 +494,122 @@ not to distrust more values; it is to add independent oracles where none exists.
 And the closing rule, which this project has earned: **an incident is not closed
 until it has produced a check that has been made to fail once, on purpose.**
 Prose belongs in the commit message; the defence belongs in a script.
+
+---
+
+## 2026-08-02 — three things are called "rollover", and they disagree
+
+Found by Rohan asking a plain question about a guard being written for the
+drafting sheet: *"rollover — what do you mean by it, and why would you delete
+static text when it happens? Variable text is the text that gets updated on
+each new time horizon."*
+
+The guard was clearing every carried column on a period change. The defence
+offered for that was: a drafting sheet only ever holds **Prose** fields, so
+everything on it is quarterly. **That is wrong, and it conflates two different
+axes:**
+
+- `FieldSpec.Kind` — Controlled / Prose / Static — is *how a value is produced*.
+- The register's `Quarter` column — a period, or `ALL` — is *when it applies*.
+
+A project description is prose **and** static. Nothing stops a Prose field
+carrying a `Quarter = ALL` row, and the guard would destroy that person's draft
+while the register went on serving the ALL row. The Prose-only filter lives in
+`DraftingUI.AskForField` (`:124`); the guard that depends on it is in
+`Drafting.WriteDraftingSheet`. **Neither one said so.** Same shape as the
+`E2EField.bas` sheet-by-position defect: a rule understood at one level and
+never lifted to the level that relies on it.
+
+**~~Recorded rather than fixed, because nothing can currently put an ALL row on
+a drafting sheet.~~ WRONG, and stale within the hour.** Round 5 §3 classes
+`ABOUT_BODY` — the flagship prose field, the one the drafting sheet was built
+around — as **entity-static**, and Rohan confirmed the same evening that he
+writes it once and edits it rarely. So the destroyed-work case was never
+hypothetical: it was the main field, on every rollover, for no safety at all —
+an ALL row's previous text *is* its current text, so there is nothing stale to
+republish.
+
+**FIXED the same night.** `Register.RegisterRead` now keeps the cadence map it
+was already computing and discarding (`EntityCode & Chr(1) & FieldID -> True`
+when the value came from a period row); `Drafting.WriteDraftingSheet` takes it
+and drops **per row** instead of per sheet. A sheet with no period stamp is
+treated as a rollover rather than as current — strictly better than both earlier
+options, since it drops what might be stale and keeps what cannot be. Both
+directions asserted, and the report counts what it cleared *and* what it kept,
+because "nothing was carried across" would now be a lie on exactly the rows that
+matter.
+
+### The larger one, which the question flushed out
+
+Searching for what `ALL` actually does turned up **three separate mechanisms
+named for period rollover, built to two incompatible models:**
+
+| Mechanism | Model |
+|---|---|
+| `DeckRegistry.SetDeckPeriod` — deck declares its period, register filters to it | deck renders ONE quarter |
+| Register `Quarter` column + `QUARTER_ALL` — rows accumulate, ALL rows match any period | register is the ARCHIVE |
+| `SyncOperations.PlanPeriodRollover` / `RunSync.RunPeriodRollover` | deck ACCUMULATES quarters |
+
+The third duplicates a project's slide **inside the same deck**, tags the copy
+with a new instance key, and leaves the original "untouched as history"
+(`RunSync.bas:505`). It is the most thoroughly built of the three — a written
+spec (`specs/sync-operations.md` case 2), a plan/execute split, its own tests,
+and a ribbon button (`RibbonUI.bas:721`).
+
+**Rohan's call, 2026-08-02: the deck must not accumulate.** Fourteen projects
+over four quarters is 56 slides in a year, which he named as the reason without
+being shown the code: *"the deck growing across time, ie gaining more quarters,
+[is] less sensible for a multi project report."* The register grows; the deck
+is a per-quarter **render** of it, and each quarter produces a new deck file
+while last quarter's stays on disk as the record.
+
+**Nothing implements that.** No per-quarter deck copy exists anywhere in the
+source. The most-specified rollover subsystem in the codebase builds the model
+that has now been rejected, and the model that was chosen has no code at all.
+
+Not touched tonight: `RunPeriodRollover` and its button are now dead weight at
+best and a trap at worst, but removing a spec'd, tested, wired subsystem is a
+decision to take deliberately and in daylight, not as a side effect of writing
+a test for something else.
+
+### What this cost, and what it was worth
+
+One question from Rohan, asked cold about a variable name, reached further into
+the architecture than 138 passing tests. The tests all agree with the code
+because they were written from the same assumptions; **he was the only oracle in
+the room that had not read the source.** Same lesson as the fixture nobody
+opened, arriving from the other direction.
+
+### The gap underneath all of it — you already answered, three times
+
+Rohan, on being shown the ABOUT_BODY reasoning: *"why just focussing on about?"*
+Correct, and the honest answer was "because the spec's example did", which is
+not a reason. The question is per field, and there are ~33 of them.
+
+**Static-vs-variable is asked or stated in three places, and only one of them
+does anything:**
+
+| Where | Effect |
+|---|---|
+| Discovery grid `Static/Variable` (`DiscoverUI.bas:176`, defaults to `variable`) | **none** — `BatchOnboardFlow.bas:129`: *"human-declared hint only, not wired into sync behavior yet"* |
+| Field Spec `Kind` = Controlled / Prose / **Static** | decides whether a field gets a drafting sheet at all (`DraftingUI.bas:124`) |
+| Register `Quarter` column — a period, or `ALL` | **the only one that changes sync behaviour**, and it is typed by hand |
+
+So the person marking fields answers the question for every one of them, the
+answer is serialised, carried through onboarding, and read by nothing; while the
+column that actually governs the behaviour is the one no part of the tool helps
+them fill in. Rohan did not know `ALL` existed — *"I don't know where ALL came
+from or what its for"* — which is unsurprising: it entered via
+`Excel_Control_Layer_Round5_Consolidated.md` §3 and was implemented straight out
+of a spec exchange he never had to ratify.
+
+Worse, `Kind = Static` and `Quarter = ALL` sound like the same statement and are
+not: the first switches OFF drafting for a field, the second keeps its value
+across quarters. Marking `ABOUT_BODY` "static" per Round 5 in the wrong sheet
+silently removes it from the drafting menu.
+
+**Next item, and it is bigger than tonight's fix:** the marking answer should
+seed the register's `Quarter` column, so classification happens once, in the grid
+already being filled in. Same shape as the instance-key fix (45 prompts → one
+grid) and the marking grid after it: *the answer was already given; the tool
+just never used it.*

@@ -710,7 +710,7 @@ Public Function BuildDraftSheet(registerPath As String, period As String, fieldI
 
     Dim r As String
     r = specNote & vbCrLf & srcNote & vbCrLf & valNote & vbCrLf & _
-        Drafting.WriteDraftingSheet(ws, reg.Data, fieldId, specWs) & vbCrLf & vbCrLf & _
+        Drafting.WriteDraftingSheet(ws, reg.Data, fieldId, specWs, period, reg.Cadence) & vbCrLf & vbCrLf & _
         "--- prompt to paste above the sheet ---" & vbCrLf & _
         FieldSpec.PromptFrom(FieldSpec.LookupGuidance(specWs, fieldId)) & vbCrLf
 

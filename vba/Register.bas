@@ -93,6 +93,17 @@ Public Type RegisterRead
     AcceptedStatic As Long     ' accepted because Quarter = ALL -- these match ANY period
     PeriodsPresent As String   ' distinct Quarter values found, comma-joined
     MissingColumns As String   ' required headers not found -- "" when the shape is right
+    ' EntityCode & Chr(1) & FieldID -> True when the accepted value came from a
+    ' PERIOD-SPECIFIC row, False when it came from a Quarter = ALL row.
+    '
+    ' This was already computed and thrown away. It is kept because the caller
+    ' needs to distinguish quarterly content from entity-static content, and the
+    ' Quarter column is the only place that distinction is actually stated --
+    ' FieldSpec.Kind ("Static") is about how a value is PRODUCED, not when it
+    ' applies, and the two are not the same axis. Round 5 §3 classes ABOUT_BODY
+    ' as entity-static while it is also the flagship PROSE field; anything that
+    ' reads Kind to answer "does this change quarterly" gets that pair wrong.
+    Cadence As Object
 End Type
 
 ' Reads `ws` as a field register, filtered to one deck period and one slide
@@ -319,6 +330,8 @@ Private Function ReadRegisterCore(ws As Object, deckPeriod As String, slideType 
     For Each k In periods.Keys
         result.PeriodsPresent = result.PeriodsPresent & IIf(result.PeriodsPresent = "", "", ", ") & k
     Next k
+
+    Set result.Cadence = cadenceSeen
 
     ReadRegisterCore = result
 End Function

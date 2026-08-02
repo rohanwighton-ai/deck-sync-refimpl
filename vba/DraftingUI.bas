@@ -244,7 +244,7 @@ Public Sub RefreshDraftingSheets()
 
         Dim ws As Object
         Set ws = WorkbookBridge.GetOrAddWorksheet(wb, sName)
-        report = report & fid & ": " & Drafting.WriteDraftingSheet(ws, reg.Data, fid, specWs) & vbCrLf
+        report = report & fid & ": " & Drafting.WriteDraftingSheet(ws, reg.Data, fid, specWs, period, reg.Cadence) & vbCrLf
     Next i
 
     WorkbookBridge.WriteWorkbookIndex wb
