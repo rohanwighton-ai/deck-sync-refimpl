@@ -660,3 +660,58 @@ and tested; harvesting values and writing them to the sheet is not, and shipping
 an unexercised writer would break this project's own rule — *don't infer a link
 works from the two ends looking consistent.* It is not usable until that is
 built and watched working once.
+
+## 2026-08-03 — the wide sheet exists, and Sync Now cannot read it correctly
+
+The rig's 220-row long register was pivoted into the wide, one-row-per-slide-per-period
+shape and read back through `ExcelOutput.ReadSheetForPeriod` in real Excel:
+
+    rows on sheet:  48
+    FY26Q4:         43 instances, 0 duplicates
+    FY27Q1:          5 instances, 0 duplicates
+
+`3_P001` sits in both periods with `PROJECT_STATUS` differing (`Project Closed` /
+`Not started`) and `PROJECT_CODE` / `PROJECT_NAME` / `ABOUT_BODY` identical. That is
+the `Quarter = ALL` sentinel replaced by copying, demonstrated rather than argued.
+`migrate_register_to_wide.py` did it; it refuses to write its own input, so
+`register.xlsx` is untouched and the output is `register-wide.xlsx`.
+
+### The check that was wrong first
+
+The first discriminator compared the filtered read against the unfiltered one and
+**declared failure on a correct read**. Under the wide model the unfiltered read
+collapses one project's two periods onto a single instance, so both returned 43. The
+number that works is the row count taken off the sheet — 48 — because no reader bug
+can move it. *Two periods had to be read; one period's count is not evidence.* Third
+time this project has learned that, and the first time the check was built to say so.
+
+### The hazard this exposed, read off the source and not inferred
+
+**`Sync Now` reads the wide sheet UNFILTERED.** `RibbonUI.bas:123` calls
+`ExcelOutput.ReadSheet`, not `ReadSheetForPeriod`, and so do the four other sync-side
+reads (`:180`, `:402`, `:515`, `:710`). On a sheet that now holds two periods it takes
+whichever row sits higher and counts the rest in `DuplicateInstances` — **a counter
+nothing reads**. So the deck would render one period's rows and one silently-discarded
+period's rows, reported as a clean sync.
+
+`DraftingUI.bas:231` has the mirror-image problem: it reads via
+`Register.ReadRegisterAllStatuses`, which is the LONG format, so against the wide sheet
+it reads nothing at all.
+
+**The wide sheet is therefore proven readable and not yet usable.** The next change is
+not `CreateSheet`'s Quarter header — it is pointing the sync path at
+`ReadSheetForPeriod(ws, DeckRegistry.GetDeckPeriod(pres))` and making a non-zero
+`DuplicateInstances` refuse rather than count.
+
+### Why `CreateSheet` was still left alone
+
+The queued one-liner is a regression on its own. `UpsertRow` writes no period, so a
+sheet created with a `Quarter` header and filled by onboarding has blank period cells,
+and a filtered read of it returns **zero rows** — reported as success. The header and
+the period-aware write have to land together, and `FindOrAppendInstanceRow` has to key
+on instance AND period, or syncing FY27Q1 overwrites the FY26Q4 row.
+
+### Data note, not ours to fix
+
+`PROJECT_STATUS` at FY27Q1 reads `Not started`; the sheet's own validation list says
+`Not Started`. Five rows, in the source register, predating this migration.

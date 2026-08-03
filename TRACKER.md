@@ -90,6 +90,44 @@ Suite is green: 135 passed, 0 failed.
 moved. The tool is markedly more trustworthy than it was that morning and that
 is not the same thing.
 
+## 2026-08-03 — the wide model stopped being theory
+
+`register-wide.xlsx` on the rig, read back through `ExcelOutput.ReadSheetForPeriod`
+in real Excel. 220 long rows became **48 wide rows**:
+
+| Period | Rows read |
+|---|---|
+| (rows on sheet) | 48 |
+| FY26Q4 | **43** |
+| FY27Q1 | **5** |
+
+`3_P001` appears in both, `PROJECT_STATUS` reading `Project Closed` at FY26Q4 and
+`Not started` at FY27Q1, while `PROJECT_CODE` / `PROJECT_NAME` / `ABOUT_BODY` are
+identical in both — the `Quarter = ALL` sentinel replaced by copying the value onto
+each period row, working, on real data. `KEY_EVENTS_BODY` is absent at FY27Q1,
+which is correct: next quarter's events are not written yet.
+
+**Two periods were read because one proves nothing.** A single FY26Q4 read returning
+43 is exactly what a broken filter returns too. The first version of the check
+compared the filtered read against the unfiltered one and **reported failure on a
+correct read** — the unfiltered read collapses one project's two periods onto one
+instance, so both came back 43. The usable discriminator is the row count taken off
+the sheet itself, which no reader bug can move: 43 + 0 duplicates against 48 rows.
+
+Original `register.xlsx` untouched — `migrate_register_to_wide.py` refuses to write
+its own input, and the migration went to a new file.
+
+**Item 9 has NOT moved.** This makes the sheet real; it is not a quarter of content.
+
+## What is now knowingly half-wired
+
+`CreateSheet` still does not write the `Quarter` header, and this is the reason the
+one-line change was not made: `UpsertRow` does not write a period either. A sheet
+with the header and blank period cells reads as **zero rows** under a filtered read,
+and an empty read is a legal state that reads as success — the failure that has
+already cost this project two evenings. The header and the write have to land
+together, with the period coming from the deck that is being onboarded.
+
 ## The rule for this file
 
 **Only tick something when it is observably true**, not when the code for it exists. Six of

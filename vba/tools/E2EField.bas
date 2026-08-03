@@ -1022,3 +1022,86 @@ Public Function DiscoverSelfTest(deckPath As String, registerPath As String) As 
 
     DiscoverSelfTest = r
 End Function
+
+' Read a wide sheet back through ExcelOutput.ReadSheetForPeriod and report what
+' actually came out of it.
+'
+' WHY IT REPORTS BOTH READS. A filtered count on its own cannot tell a correct
+' read from one where the Quarter column was never found -- both produce a
+' number, and an empty or over-full read is a legal state that reads as success.
+' That failure has cost this project two evenings. So the unfiltered count is
+' printed beside it: if filtering is not happening, the two are EQUAL, and the
+' difference is the evidence.
+'
+' READ-ONLY, deliberately. The workbook is opened ReadOnly and closed without
+' saving -- this exists to observe the rig, not to change it.
+Public Function ReadWidePeriod(registerPath As String, sheetName As String, _
+                               period As String, sampleInstance As String) As String
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Open(registerPath, , True)
+
+    Dim ws As Object
+    Set ws = wb.Worksheets(sheetName)
+
+    Dim all As Sheet, wanted As Sheet
+    all = ExcelOutput.ReadSheet(ws)
+    wanted = ExcelOutput.ReadSheetForPeriod(ws, period)
+
+    ' Counted off the sheet, not off a read -- it is the one number in this
+    ' report that no reader bug can move, so it is what the reads get judged
+    ' against. (-4162 is xlUp; the constant in ExcelOutput is Private.)
+    Dim dataRows As Long
+    dataRows = ws.Cells(ws.Rows.count, 1).End(-4162).Row - 1
+
+    Dim r As String
+    r = "workbook:   " & registerPath & vbCrLf
+    r = r & "sheet:      " & sheetName & vbCrLf
+    r = r & "period:     " & period & vbCrLf & vbCrLf
+    r = r & "rows on sheet:  " & dataRows & vbCrLf
+    ' The unfiltered read collapses one project's two periods onto one instance
+    ' and counts the collision -- expected here, and the reason "unfiltered vs
+    ' filtered" is NOT a usable discriminator for the period filter. The first
+    ' version of this check compared exactly that and cried failure on a correct
+    ' read.
+    r = r & "unfiltered:     " & all.InstanceOrder.count & " instance(s), " & _
+            all.DuplicateInstances & " collapsed" & vbCrLf
+    r = r & "filtered:       " & wanted.InstanceOrder.count & " instance(s), " & _
+            wanted.DuplicateInstances & " duplicate(s)" & vbCrLf
+    ' If the filter never ran, every row on the sheet is accounted for by this
+    ' one read. That IS different from a correct filtered read whenever the
+    ' sheet holds more than one period, which is the only case worth checking.
+    If wanted.InstanceOrder.count + wanted.DuplicateInstances = dataRows And dataRows > 0 Then
+        r = r & "  *** this read took EVERY row on the sheet -- the period filter did NOT run ***" & vbCrLf
+    End If
+
+    Dim i As Long, f As String
+    For i = 1 To wanted.Fields.count
+        If i > 1 Then f = f & ", "
+        f = f & wanted.Fields(i)
+    Next i
+    r = r & "fields:     " & f & vbCrLf & vbCrLf
+
+    ' One row printed WHOLE. A count says rows arrived; only the text says the
+    ' right values arrived on the right row.
+    If wanted.Rows.Exists(sampleInstance) Then
+        r = r & "--- " & sampleInstance & " @ " & period & " ---" & vbCrLf
+        For i = 1 To wanted.Fields.count
+            Dim fn As String
+            fn = wanted.Fields(i)
+            If wanted.Rows(sampleInstance).Exists(fn) Then
+                r = r & "  " & fn & " = " & wanted.Rows(sampleInstance)(fn) & vbCrLf
+            Else
+                r = r & "  " & fn & " = <absent>" & vbCrLf
+            End If
+        Next i
+    Else
+        r = r & "*** " & sampleInstance & " is NOT in the " & period & " read ***" & vbCrLf
+    End If
+
+    wb.Close False
+    xl.Quit
+    ReadWidePeriod = r
+End Function

@@ -12,9 +12,10 @@ param(
     [string]$DeckPath = "C:\Users\rohan\deck-sync-e2e\e2e-deck.pptx",
     [string]$RegisterPath = "C:\Users\rohan\deck-sync-e2e\register.xlsx",
     [string]$Period = "FY26Q4",
-    [ValidateSet("migrate","dryrun","apply","reseed","verifyharvest","deleteentities","draft","copyai","publish","timelinetest","discovertest","setperiod","setperiodvariant")][string]$Mode = "dryrun",
+    [ValidateSet("migrate","dryrun","apply","reseed","verifyharvest","deleteentities","draft","copyai","publish","timelinetest","discovertest","setperiod","setperiodvariant","readwide")][string]$Mode = "dryrun",
     [string]$Variant = "save",
     [string]$FieldId = "ABOUT_BODY",
+    [string]$SheetName = "Register",
     [string]$TsvPath = "C:\Users\rohan\deck-sync-e2e\field_values.tsv",
     [string]$Entities = "",
     # Publishing writes with -Write. It briefly reused $ApproveAll, which is a
@@ -107,7 +108,13 @@ try {
     # would-be runtime mystery into a compile error where it belongs.
     Write-Output ("compile: " + (Invoke-ForceCompile -App $ppt))
 
-    if ($Mode -eq "reseed") {
+    if ($Mode -eq "readwide") {
+        # Read-only. -Entities carries the instance to print in full, because a
+        # count alone has never been enough evidence on this project.
+        $sample = if ($Entities -ne "") { $Entities } else { "" }
+        $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
+            @([string]"E2EField.ReadWidePeriod",[string]$RegisterPath,[string]$SheetName,[string]$Period,[string]$sample))
+    } elseif ($Mode -eq "reseed") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
             @([string]"E2EField.ReseedFromSlides",[string]$DeckPath,[string]$RegisterPath,[string]$Period,[string]$Entities,[string]$FieldId))
     } elseif ($Mode -eq "setperiod") {
