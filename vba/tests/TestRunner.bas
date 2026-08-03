@@ -222,6 +222,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "RegisterSeed_CadenceDecidesTheQuarter", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ExcelOutput_PeriodRowsAndRollForward()
+    AppendResult report, "ExcelOutput_PeriodRowsAndRollForward", r
+    On Error GoTo 0
+
     ' REGISTERED BY HAND, like every other test here. Writing the Function is
     ' not enough -- RunAllTests dispatches explicitly, so an unregistered test
     ' simply never runs and the suite still says PASS. Added both of these and
@@ -6692,4 +6697,113 @@ Private Function Test_RegisterSeed_CadenceDecidesTheQuarter() As String
     result = result & Assert(raised, "SEEDING WITHOUT A DECK PERIOD RAISES rather than writing blank quarters")
 
     Test_RegisterSeed_CadenceDecidesTheQuarter = result
+End Function
+
+' THE WIDE SHEET CARRIES ITS OWN PERIOD -- one row per slide per period, rows
+' accumulating, each deck picking up the period it declares. Rohan's model,
+' 2026-08-03, and the thing that lets history and "one row per slide" stop being
+' a trade-off.
+'
+' Also asserts the two ways this could quietly go wrong, both of which this
+' project has already been bitten by in other forms: a sheet with no Quarter
+' column must NOT be filtered to nothing, and two rows for one project in one
+' period must not silently resolve to whichever sits lower.
+Private Function Test_ExcelOutput_PeriodRowsAndRollForward() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+
+    ' Quarter deliberately NOT in column A: the reader must find both structural
+    ' columns by header name. Put a field first to prove position is irrelevant.
+    ws.Cells(1, 1).Value = "PROJECT_NAME"
+    ws.Cells(1, 2).Value = ExcelOutput.INSTANCE_ID_HEADER
+    ws.Cells(1, 3).Value = ExcelOutput.QUARTER_HEADER
+    ws.Cells(1, 4).Value = "PROJECT_STATUS"
+
+    ws.Cells(2, 1).Value = "Alpha": ws.Cells(2, 2).Value = "P001": ws.Cells(2, 3).Value = "FY26Q4": ws.Cells(2, 4).Value = "In Progress"
+    ws.Cells(3, 1).Value = "Beta":  ws.Cells(3, 2).Value = "P002": ws.Cells(3, 3).Value = "FY26Q4": ws.Cells(3, 4).Value = "In Progress"
+    ws.Cells(4, 1).Value = "Alpha": ws.Cells(4, 2).Value = "P001": ws.Cells(4, 3).Value = "FY27Q1": ws.Cells(4, 4).Value = "Closed"
+
+    Dim s As Sheet
+    s = ExcelOutput.ReadSheetForPeriod(ws, "FY26Q4")
+
+    result = result & Assert(s.InstanceOrder.count = 2, _
+        "FY26Q4 sees ONLY its own two projects, not all three rows, got " & s.InstanceOrder.count)
+    result = result & Assert(s.Rows("P001")("PROJECT_STATUS") = "In Progress", _
+        "P001 reads its FY26Q4 status, got '" & s.Rows("P001")("PROJECT_STATUS") & "'")
+
+    Dim s2 As Sheet
+    s2 = ExcelOutput.ReadSheetForPeriod(ws, "FY27Q1")
+    result = result & Assert(s2.InstanceOrder.count = 1, _
+        "FY27Q1 sees only the one project rolled into it, got " & s2.InstanceOrder.count)
+    result = result & Assert(s2.Rows("P001")("PROJECT_STATUS") = "Closed", _
+        "THE SAME PROJECT READS A DIFFERENT VALUE IN A DIFFERENT PERIOD -- the whole point, got '" & _
+        s2.Rows("P001")("PROJECT_STATUS") & "'")
+
+    ' The structural columns are not fields. If Quarter leaked into Fields it
+    ' would be offered for drafting and synced onto a slide.
+    Dim f As Variant, sawQuarter As Boolean, sawInstance As Boolean
+    For Each f In s.Fields
+        If CStr(f) = ExcelOutput.QUARTER_HEADER Then sawQuarter = True
+        If CStr(f) = ExcelOutput.INSTANCE_ID_HEADER Then sawInstance = True
+    Next f
+    result = result & Assert(s.Fields.count = 2 And Not sawQuarter And Not sawInstance, _
+        "Quarter and Instance ID are STRUCTURE, not fields -- got " & s.Fields.count & " field(s)")
+
+    ' A SHEET WITH NO QUARTER COLUMN IS NEVER FILTERED. Every sheet built before
+    ' this change is in that state, and returning nothing would be an empty read
+    ' presenting as a clean one.
+    Dim old As Object
+    Set old = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+    old.Cells(1, 1).Value = ExcelOutput.INSTANCE_ID_HEADER
+    old.Cells(1, 2).Value = "PROJECT_NAME"
+    old.Cells(2, 1).Value = "P001": old.Cells(2, 2).Value = "Alpha"
+    Dim s3 As Sheet
+    s3 = ExcelOutput.ReadSheetForPeriod(old, "FY26Q4")
+    result = result & Assert(s3.InstanceOrder.count = 1, _
+        "A PRE-QUARTER SHEET IS READ IN FULL, not filtered to nothing, got " & s3.InstanceOrder.count)
+
+    ' Two rows, one project, one period: counted, not silently resolved.
+    ws.Cells(5, 1).Value = "Alpha dup": ws.Cells(5, 2).Value = "P001": ws.Cells(5, 3).Value = "FY26Q4": ws.Cells(5, 4).Value = "Wrong"
+    Dim s4 As Sheet
+    s4 = ExcelOutput.ReadSheetForPeriod(ws, "FY26Q4")
+    result = result & Assert(s4.DuplicateInstances = 1, _
+        "a second row for one project in one period is COUNTED, got " & s4.DuplicateInstances)
+    result = result & Assert(s4.Rows("P001")("PROJECT_STATUS") = "In Progress", _
+        "first row wins deterministically rather than whichever sits lower, got '" & _
+        s4.Rows("P001")("PROJECT_STATUS") & "'")
+    ws.Rows(5).Delete
+
+    ' ROLL FORWARD REPLACES Quarter = ALL. The project name arrives by being
+    ' copied; no sentinel, no cadence declaration, nothing for a person to learn.
+    Dim rep As String
+    rep = ExcelOutput.RollForwardPeriod(ws, "FY26Q4", "FY27Q2")
+    Dim s5 As Sheet
+    s5 = ExcelOutput.ReadSheetForPeriod(ws, "FY27Q2")
+    result = result & Assert(s5.InstanceOrder.count = 2, _
+        "both FY26Q4 projects were carried into FY27Q2, got " & s5.InstanceOrder.count)
+    result = result & Assert(s5.Rows("P001")("PROJECT_NAME") = "Alpha", _
+        "THE STATIC VALUE ARRIVES BY BEING COPIED -- this is what ALL was for, got '" & _
+        s5.Rows("P001")("PROJECT_NAME") & "'")
+
+    ' The source period is untouched -- it is the record of what was reported.
+    Dim s6 As Sheet
+    s6 = ExcelOutput.ReadSheetForPeriod(ws, "FY26Q4")
+    result = result & Assert(s6.InstanceOrder.count = 2, _
+        "rolling forward does not disturb the period it copied from, got " & s6.InstanceOrder.count)
+
+    ' Twice would double every project, and would look exactly like once.
+    Dim rep2 As String
+    rep2 = ExcelOutput.RollForwardPeriod(ws, "FY26Q4", "FY27Q2")
+    result = result & Assert(InStr(rep2, "REFUSED") > 0, _
+        "A SECOND ROLL FORWARD IS REFUSED rather than duplicating every project, got '" & rep2 & "'")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing: Set xl = Nothing
+    Test_ExcelOutput_PeriodRowsAndRollForward = result
 End Function

@@ -60,7 +60,26 @@ Public Type Sheet
     Fields As Collection
     InstanceOrder As Collection
     Rows As Object
+    ' Two rows for the SAME instance in the SAME period. A data error, and the
+    ' kind this project keeps being bitten by: whichever sat lower in the sheet
+    ' silently won, and a partial read looked like a whole one. Counted so a
+    ' caller can refuse rather than quietly pick one.
+    DuplicateInstances As Long
 End Type
+
+' THE WIDE SHEET CARRIES ITS OWN PERIOD, one row per slide per period.
+'
+' Rohan's model, 2026-08-03: "the row that has the fields from the selected
+' slide in it" is what a person sees and manages. Rows accumulate -- FY26Q4 and
+' FY27Q1 for the same project sit side by side -- and a deck picks up the rows
+' for the period it declares.
+'
+' This is what replaces the long register's per-row Quarter. It is also why
+' cadence stops being a storage concept: rolling forward COPIES a period's rows
+' into the next period, so a project name carries across by being copied rather
+' than by a Quarter = ALL sentinel nobody had been told about. See the
+' project-deck-sync-object-model memory for the reasoning.
+Public Const QUARTER_HEADER As String = "Quarter"
 
 ' ---------------------------------------------------------------------
 ' Create
@@ -91,7 +110,27 @@ End Sub
 ' Excel's End(xlToLeft)/End(xlUp) "walk from the far side" idiom rather than
 ' a stored count, the standard reliable way to find a used range's true
 ' extent in the object model.
+' Unfiltered read -- every row, whatever period it carries. Correct for a sheet
+' with no Quarter column at all (which is every sheet built before 2026-08-03).
 Public Function ReadSheet(ws As Object) As Sheet
+    ReadSheet = ReadSheetForPeriod(ws, "")
+End Function
+
+' Reads `ws` back into a Sheet, keeping only the rows for `deckPeriod`.
+'
+' `deckPeriod = ""` means "no filter" -- used by the unfiltered reader above and
+' by any sheet that predates the Quarter column. A sheet WITHOUT a Quarter
+' column is never filtered: it has one row per instance and no opinion about
+' periods, so filtering it would return nothing and an empty read is a legal
+' state that reads as success. That failure has already cost this project two
+' evenings; it does not get a third.
+'
+' COLUMNS BY HEADER NAME, NEVER BY POSITION. The previous version took the
+' instance from column 1 and every other column as a field, which meant adding
+' any column anywhere shifted what a field was called. That rule is written in
+' three places in this codebase and has been broken twice by the code beneath
+' it -- once reading the sheet by tab position, once reading a sheet by index.
+Public Function ReadSheetForPeriod(ws As Object, deckPeriod As String) As Sheet
     Dim result As Sheet
     Set result.Fields = New Collection
     Set result.InstanceOrder = New Collection
@@ -101,37 +140,86 @@ Public Function ReadSheet(ws As Object) As Sheet
 
     Dim lastCol As Long
     lastCol = LastUsedColumn(ws)
+    If lastCol = 0 Then
+        ReadSheetForPeriod = result
+        Exit Function
+    End If
+
+    ' Locate the two structural columns by name; everything else is a field.
+    Dim cInstance As Long, cQuarter As Long
     Dim c As Long
-    For c = 2 To lastCol
-        result.Fields.Add CStr(ws.Cells(1, c).Value)
+    For c = 1 To lastCol
+        Dim h As String
+        h = Trim$(CStr(ws.Cells(1, c).Value))
+        If StrComp(h, INSTANCE_ID_HEADER, vbTextCompare) = 0 Then
+            cInstance = c
+        ElseIf StrComp(h, QUARTER_HEADER, vbTextCompare) = 0 Then
+            cQuarter = c
+        End If
     Next c
+
+    ' A sheet whose first column is the instance but is not headed as such is
+    ' every sheet this tool wrote before headers were read by name. Falling back
+    ' to column 1 keeps those readable; it is not a guess about arbitrary sheets,
+    ' because CreateSheet has always written INSTANCE_ID_HEADER into A1.
+    If cInstance = 0 Then cInstance = 1
+
+    For c = 1 To lastCol
+        If c <> cInstance And c <> cQuarter Then
+            result.Fields.Add CStr(ws.Cells(1, c).Value)
+        End If
+    Next c
+
+    Dim filtering As Boolean
+    filtering = (deckPeriod <> "") And (cQuarter > 0)
 
     Dim lastRow As Long
     lastRow = LastUsedRow(ws)
     Dim r As Long
     For r = 2 To lastRow
         Dim instanceId As String
-        instanceId = CStr(ws.Cells(r, 1).Value)
+        instanceId = Trim$(CStr(ws.Cells(r, cInstance).Value))
         If instanceId <> "" Then
-            result.InstanceOrder.Add instanceId
+            Dim keep As Boolean
+            keep = True
+            If filtering Then
+                keep = (StrComp(Trim$(CStr(ws.Cells(r, cQuarter).Value)), deckPeriod, vbTextCompare) = 0)
+            End If
 
-            Dim rowValues As Object
-            Set rowValues = CreateObject("Scripting.Dictionary")
-            For c = 2 To lastCol
-                ' IsEmpty (not "= """"") to distinguish "field never
-                ' harvested for this instance" from "harvested value happens
-                ' to be an empty string" -- mirrors read_sheet's structural
-                ' cell-presence check (Python looks at whether a <c> element
-                ' exists at all, not whether its text is falsy).
-                If Not IsEmpty(ws.Cells(r, c).Value) Then
-                    rowValues(result.Fields(c - 1)) = CStr(ws.Cells(r, c).Value)
+            If keep Then
+                If result.Rows.Exists(instanceId) Then
+                    ' Same project, same period, twice. First one wins so the
+                    ' result is at least deterministic, and it is COUNTED so a
+                    ' caller can refuse -- silently taking the lower row is how
+                    ' the cadence collision in the long register used to behave,
+                    ' and that was judged a defect there too.
+                    result.DuplicateInstances = result.DuplicateInstances + 1
+                Else
+                    result.InstanceOrder.Add instanceId
+
+                    Dim rowValues As Object
+                    Set rowValues = CreateObject("Scripting.Dictionary")
+                    Dim fi As Long
+                    fi = 0
+                    For c = 1 To lastCol
+                        If c <> cInstance And c <> cQuarter Then
+                            fi = fi + 1
+                            ' IsEmpty (not "= """"") to distinguish "field never
+                            ' harvested for this instance" from "harvested value
+                            ' happens to be an empty string" -- mirrors
+                            ' read_sheet's structural cell-presence check.
+                            If Not IsEmpty(ws.Cells(r, c).Value) Then
+                                rowValues(result.Fields(fi)) = CStr(ws.Cells(r, c).Value)
+                            End If
+                        End If
+                    Next c
+                    Set result.Rows(instanceId) = rowValues
                 End If
-            Next c
-            Set result.Rows(instanceId) = rowValues
+            End If
         End If
     Next r
 
-    ReadSheet = result
+    ReadSheetForPeriod = result
 End Function
 
 Private Function LastUsedColumn(ws As Object) As Long
@@ -304,4 +392,91 @@ Private Function JoinCollection(coll As Collection) As String
         result = result & coll(i)
     Next i
     JoinCollection = result
+End Function
+
+' Copies every row for `fromPeriod` into a new set of rows stamped `toPeriod`.
+'
+' THIS IS WHAT REPLACES Quarter = ALL. The sentinel existed so a project name
+' would not need retyping every quarter. Copying the row forward achieves the
+' same thing with no concept attached: static values arrive already correct,
+' variable values arrive as last period's text and get rewritten through the
+' drafting sheet -- where last period's value is exactly the exemplar a drafter
+' wants in front of them anyway.
+'
+' Refuses when `toPeriod` already has rows. Rolling forward twice would double
+' every project, and the second run would look identical to the first.
+Public Function RollForwardPeriod(ws As Object, fromPeriod As String, toPeriod As String) As String
+    If Trim$(fromPeriod) = "" Or Trim$(toPeriod) = "" Then
+        Err.Raise vbObjectError + 3, "ExcelOutput.RollForwardPeriod", _
+            "both the period being copied from and the period being created must be named"
+    End If
+    If StrComp(fromPeriod, toPeriod, vbTextCompare) = 0 Then
+        Err.Raise vbObjectError + 3, "ExcelOutput.RollForwardPeriod", _
+            "cannot roll " & fromPeriod & " forward into itself"
+    End If
+
+    Dim lastCol As Long
+    lastCol = LastUsedColumn(ws)
+
+    Dim cQuarter As Long
+    Dim c As Long
+    For c = 1 To lastCol
+        If StrComp(Trim$(CStr(ws.Cells(1, c).Value)), QUARTER_HEADER, vbTextCompare) = 0 Then cQuarter = c
+    Next c
+
+    If cQuarter = 0 Then
+        Err.Raise vbObjectError + 3, "ExcelOutput.RollForwardPeriod", _
+            "this sheet has no '" & QUARTER_HEADER & "' column, so it holds no periods to roll forward"
+    End If
+
+    Dim lastRow As Long
+    lastRow = LastUsedRow(ws)
+
+    ' Collect the source rows FIRST. Appending while walking would re-read the
+    ' rows just written and copy them again, forever.
+    Dim src As Collection
+    Set src = New Collection
+    Dim existingTarget As Long
+    Dim r As Long
+    For r = 2 To lastRow
+        Dim q As String
+        q = Trim$(CStr(ws.Cells(r, cQuarter).Value))
+        If StrComp(q, fromPeriod, vbTextCompare) = 0 Then src.Add r
+        If StrComp(q, toPeriod, vbTextCompare) = 0 Then existingTarget = existingTarget + 1
+    Next r
+
+    If existingTarget > 0 Then
+        RollForwardPeriod = "REFUSED: " & toPeriod & " already has " & existingTarget & _
+            " row(s). Rolling forward again would duplicate every project."
+        Exit Function
+    End If
+
+    If src.count = 0 Then
+        RollForwardPeriod = "Nothing to do: no rows found for " & fromPeriod & "."
+        Exit Function
+    End If
+
+    Dim outRow As Long
+    outRow = lastRow + 1
+
+    Dim v As Variant
+    For Each v In src
+        Dim from As Long
+        from = CLng(v)
+        For c = 1 To lastCol
+            If c = cQuarter Then
+                ws.Cells(outRow, c).Value = toPeriod
+            Else
+                ' Value, not formula or format: this is data being carried, and
+                ' a copied format would drag the source row's styling with it.
+                ws.Cells(outRow, c).Value = ws.Cells(from, c).Value
+            End If
+        Next c
+        outRow = outRow + 1
+    Next v
+
+    RollForwardPeriod = src.count & " row(s) copied from " & fromPeriod & " to " & toPeriod & "." & vbCrLf & _
+        "Static text arrives already correct. Everything that changes this period is" & vbCrLf & _
+        "last period's text until you rewrite it -- which is what the drafting sheet" & vbCrLf & _
+        "shows you in the ORIGINAL column."
 End Function
