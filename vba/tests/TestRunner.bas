@@ -217,6 +217,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "Drafting_RolloverKeepsEntityStaticRows", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_RegisterSeed_CadenceDecidesTheQuarter()
+    AppendResult report, "RegisterSeed_CadenceDecidesTheQuarter", r
+    On Error GoTo 0
+
     ' REGISTERED BY HAND, like every other test here. Writing the Function is
     ' not enough -- RunAllTests dispatches explicitly, so an unregistered test
     ' simply never runs and the suite still says PASS. Added both of these and
@@ -6597,4 +6602,94 @@ Private Function Test_Drafting_RolloverKeepsEntityStaticRows() As String
     xl.Quit
     Set wb = Nothing: Set xl = Nothing
     Test_Drafting_RolloverKeepsEntityStaticRows = result
+End Function
+
+' SEEDING TURNS THE MARKING ANSWER INTO REGISTER ROWS, and the cadence mapping
+' is the whole point of it: static -> ONE row at Quarter = ALL, variable -> one
+' row per period. Get that backwards and either the person retypes every project
+' name each quarter, or one quarter's status silently becomes every quarter's.
+'
+' Pure -- no Office. That is deliberate: this is the decision, and this project's
+' rules only ever get asserted twice when the assertion does not need PowerPoint.
+Private Function Test_RegisterSeed_CadenceDecidesTheQuarter() As String
+    Dim result As String
+
+    Dim entities As Collection, fields As Collection
+    Set entities = New Collection
+    entities.Add "P001": entities.Add "P002"
+    Set fields = New Collection
+    fields.Add "PROJECT_NAME": fields.Add "PROJECT_STATUS"
+
+    Dim cadence As Object
+    Set cadence = CreateObject("Scripting.Dictionary")
+    cadence("PROJECT_NAME") = "static"
+    cadence("PROJECT_STATUS") = "variable"
+
+    Dim existing As Object
+    Set existing = CreateObject("Scripting.Dictionary")
+
+    Dim p As SeedPlan
+    p = RegisterSeed.PlanSeedRows(entities, fields, cadence, existing, "FY26Q4")
+
+    result = result & Assert(p.ToAdd = 4, "2 entities x 2 fields = 4 rows to add, got " & p.ToAdd)
+
+    Dim i As Long, staticQ As String, varQ As String
+    For i = LBound(p.Rows) To UBound(p.Rows)
+        If p.Rows(i).EntityCode = "P001" And p.Rows(i).FieldID = "PROJECT_NAME" Then staticQ = p.Rows(i).Quarter
+        If p.Rows(i).EntityCode = "P001" And p.Rows(i).FieldID = "PROJECT_STATUS" Then varQ = p.Rows(i).Quarter
+    Next i
+
+    result = result & Assert(staticQ = Register.QUARTER_ALL, _
+        "A STATIC FIELD GETS Quarter = ALL, so it is typed once and never again, got '" & staticQ & "'")
+    result = result & Assert(varQ = "FY26Q4", _
+        "a variable field gets the deck's own period, got '" & varQ & "'")
+
+    ' UNKNOWN CADENCE DEFAULTS TO VARIABLE, matching NormalizeFieldVolatility.
+    ' Variable is the safe guess: extra typing if wrong, versus a wrong ALL row
+    ' quietly carrying one quarter's value into every quarter after it.
+    Dim fields2 As Collection
+    Set fields2 = New Collection
+    fields2.Add "NEVER_CLASSIFIED"
+    Dim p2 As SeedPlan
+    p2 = RegisterSeed.PlanSeedRows(entities, fields2, cadence, existing, "FY26Q4")
+    result = result & Assert(p2.Rows(1).Quarter = "FY26Q4", _
+        "AN UNCLASSIFIED FIELD IS TREATED AS VARIABLE, not silently made ALL, got '" & p2.Rows(1).Quarter & "'")
+
+    ' Already there -> nothing to do, and counted as such rather than duplicated.
+    existing(RegisterSeed.RowKey("P001", "PROJECT_NAME", "ALL")) = True
+    Dim p3 As SeedPlan
+    p3 = RegisterSeed.PlanSeedRows(entities, fields, cadence, existing, "FY26Q4")
+    result = result & Assert(p3.ToAdd = 3 And p3.SkippedExisting = 1, _
+        "an existing row is skipped, not duplicated -- got ToAdd=" & p3.ToAdd & " skipped=" & p3.SkippedExisting)
+
+    ' THE CADENCE CLASH. A field marked static whose entity already carries a
+    ' period row: adding an ALL row beside it passes every register filter,
+    ' counts as a CadenceCollision, and sits permanently shadowed by the period
+    ' row -- until the next period, when it silently becomes the value. Refuse.
+    Dim existing2 As Object
+    Set existing2 = CreateObject("Scripting.Dictionary")
+    existing2(RegisterSeed.RowKey("P002", "PROJECT_NAME", "FY26Q4")) = True
+    Dim p4 As SeedPlan
+    p4 = RegisterSeed.PlanSeedRows(entities, fields, cadence, existing2, "FY26Q4")
+    result = result & Assert(p4.SkippedCadenceClash = 1, _
+        "A STATIC FIELD IS REFUSED WHERE A PERIOD ROW ALREADY EXISTS, got " & p4.SkippedCadenceClash)
+
+    Dim diag As String
+    diag = RegisterSeed.PlanDiagnostic(p4, "FY26Q4")
+    result = result & Assert(InStr(diag, "P002") > 0 And InStr(diag, "PROJECT_NAME") > 0, _
+        "the clash is NAMED, not just counted -- a count is not something a person can act on, got '" & diag & "'")
+
+    ' NO PERIOD, NO SEEDING. A variable row would have nothing to be stamped
+    ' with, and a blank Quarter matches no period at all -- it would read as a
+    ' successful seed that syncs nothing.
+    Dim raised As Boolean
+    On Error Resume Next
+    Dim p5 As SeedPlan
+    p5 = RegisterSeed.PlanSeedRows(entities, fields, cadence, existing, "")
+    raised = (Err.Number <> 0)
+    Err.Clear
+    On Error GoTo 0
+    result = result & Assert(raised, "SEEDING WITHOUT A DECK PERIOD RAISES rather than writing blank quarters")
+
+    Test_RegisterSeed_CadenceDecidesTheQuarter = result
 End Function

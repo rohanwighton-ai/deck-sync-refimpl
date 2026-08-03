@@ -613,3 +613,50 @@ seed the register's `Quarter` column, so classification happens once, in the gri
 already being filled in. Same shape as the instance-key fix (45 prompts → one
 grid) and the marking grid after it: *the answer was already given; the tool
 just never used it.*
+
+### Measured: the rig's register already uses the distinction
+
+Read straight off `deck-sync-e2e\register.xlsx` (220 rows, 43 entities, 5 fields),
+2026-08-02:
+
+| FieldID | Quarter | Rows |
+|---|---|---|
+| ABOUT_BODY | **ALL** | 43 |
+| PROJECT_CODE | **ALL** | 43 |
+| PROJECT_NAME | **ALL** | 43 |
+| KEY_EVENTS_BODY | FY26Q4 | 43 |
+| PROJECT_STATUS | FY26Q4 (+5 FY27Q1) | 48 |
+
+**`ABOUT_BODY` is `Quarter = ALL` on every one of the 43 rows, today.** The
+sheet-level version of the rollover guard would have wiped its drafting on this
+rig the first time a period rolled. Not a hypothetical, and not something any of
+the 139 tests could have said — it took reading the actual register.
+
+### Nothing in this tool has ever written a register row
+
+Found while starting the "wire the marking answer into the Quarter column" work,
+which assumed there was a writer to wire it into. There is not:
+
+- `WorkbookBridge.RegisterSheet` **raises** when the sheet is missing; it never
+  creates one.
+- `E2EField.ReseedFromSlides` only *repairs* rows that already exist, matching
+  on EntityCode+FieldID.
+- `BatchOnboardFlow` does not reference the register at all.
+
+So all 220 rows in the rig were built outside the add-in. For the real deck that
+is ~33 fields x 14 projects — **around 460 rows to hand-build in Excel**, after
+the marking work is already finished, with the cadence answer retyped by hand
+into a column nobody had explained.
+
+`RegisterSeed.bas` is the start of closing that: `PlanSeedRows` decides which
+rows are needed and what Quarter each one carries — static -> `ALL`, variable ->
+the deck's period, unclassified -> variable (the safe default; extra typing if
+wrong, versus an ALL row silently carrying one quarter's value into all of them).
+It refuses to add a static row where a period row already exists, and names the
+clash rather than counting it.
+
+**Deliberately NOT built yet: the executor and the button.** The planner is pure
+and tested; harvesting values and writing them to the sheet is not, and shipping
+an unexercised writer would break this project's own rule — *don't infer a link
+works from the two ends looking consistent.* It is not usable until that is
+built and watched working once.
