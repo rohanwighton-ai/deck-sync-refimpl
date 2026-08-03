@@ -394,6 +394,56 @@ Private Function JoinCollection(coll As Collection) As String
     JoinCollection = result
 End Function
 
+' Read `ws` as the deck's declared period, and say why the result must NOT be
+' used -- `problem` is "" only when it is safe.
+'
+' THE SYNC PATH MUST USE THIS, NOT ReadSheet. Every sync-side read in RibbonUI
+' called the unfiltered ReadSheet, which was correct while a sheet held one row
+' per slide and became wrong the moment rows started accumulating per period:
+' the same slide now appears once per period, the unfiltered read keeps
+' whichever sits higher, and the rest land in DuplicateInstances -- a counter
+' nothing looked at. A deck would render one period's rows mixed with a
+' silently-discarded period's, and report a clean sync.
+'
+' Two ways a read is wrong while looking fine, and this project has paid for
+' both already:
+'
+'   - TWO ROWS FOR ONE SLIDE. Whichever sat lower used to win silently. Counted
+'     by ReadSheetForPeriod; refused here.
+'   - THE SHEET HAS ROWS AND NONE OF THEM MATCH. Zero rows is a legal state that
+'     reads as a clean sync of nothing -- the exact failure that cost two
+'     evenings when a register was read by tab position. Detected by comparing
+'     against the unfiltered read, which is only meaningful in this direction:
+'     a sheet with no Quarter column is never filtered, so the two are equal and
+'     this stays silent. It fires only when filtering genuinely happened and
+'     matched nothing.
+'
+' `problem` is a STRING rather than a Boolean because the caller has to be able
+' to tell a person which sheet, and why.
+Public Function ReadSheetForDeckPeriod(ws As Object, deckPeriod As String, _
+                                       ByRef problem As String) As Sheet
+    Dim wanted As Sheet
+    wanted = ReadSheetForPeriod(ws, deckPeriod)
+    problem = ""
+
+    If wanted.DuplicateInstances > 0 Then
+        problem = wanted.DuplicateInstances & " row(s) repeat a slide already read for '" & _
+            deckPeriod & "'. One row per slide per period is the whole model, so this " & _
+            "sheet cannot be synced until the repeats are removed -- otherwise whichever " & _
+            "row sits higher wins and nothing says so."
+    ElseIf wanted.InstanceOrder.count = 0 Then
+        Dim everything As Sheet
+        everything = ReadSheetForPeriod(ws, "")
+        If everything.InstanceOrder.count > 0 Then
+            problem = "the sheet holds " & everything.InstanceOrder.count & " slide(s), but not " & _
+                "one of them is stamped '" & deckPeriod & "'. Reading zero rows is a legal " & _
+                "state and would report as a clean sync of nothing, so it is refused instead."
+        End If
+    End If
+
+    ReadSheetForDeckPeriod = wanted
+End Function
+
 ' Copies every row for `fromPeriod` into a new set of rows stamped `toPeriod`.
 '
 ' THIS IS WHAT REPLACES Quarter = ALL. The sentinel existed so a project name

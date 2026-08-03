@@ -53,6 +53,26 @@ Public Function RunAllTests() As String
     AppendResult report, "HeaderRow_ReservesColumnAForInstanceId", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ReadForDeckPeriod_KeepsOnlyThatPeriodsRows()
+    AppendResult report, "ReadForDeckPeriod_KeepsOnlyThatPeriodsRows", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ReadForDeckPeriod_RefusesTwoRowsForOneSlideInOnePeriod()
+    AppendResult report, "ReadForDeckPeriod_RefusesTwoRowsForOneSlideInOnePeriod", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ReadForDeckPeriod_RefusesAPeriodTheSheetDoesNotHave()
+    AppendResult report, "ReadForDeckPeriod_RefusesAPeriodTheSheetDoesNotHave", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ReadForDeckPeriod_SilentOnASheetWithNoQuarterColumn()
+    AppendResult report, "ReadForDeckPeriod_SilentOnASheetWithNoQuarterColumn", r
+    On Error GoTo 0
+
     RunAllTests = report
 End Function
 
@@ -239,4 +259,108 @@ Private Function Test_HeaderRow_ReservesColumnAForInstanceId() As String
     result = result & Assert(CStr(ws.Cells(2, 1).Value) = "slide-1", "A2 holds the first instance id")
 
     Test_HeaderRow_ReservesColumnAForInstanceId = result
+End Function
+
+' --- ReadSheetForDeckPeriod: the sync path's guarded read ------------------
+'
+' Built by hand rather than through CreateSheet/UpsertRow, because neither of
+' those writes a Quarter yet -- these describe the shape the sync path must
+' cope with TODAY, which is a sheet a person or a migration produced.
+
+Private Function WideSheet() As Object
+    Dim ws As Object
+    Set ws = NewBlankSheet()
+    ws.Cells(1, 1).Value = ExcelOutput.INSTANCE_ID_HEADER
+    ws.Cells(1, 2).Value = ExcelOutput.QUARTER_HEADER
+    ws.Cells(1, 3).Value = "PROJECT_STATUS"
+    Set WideSheet = ws
+End Function
+
+Private Sub WideRow(ws As Object, r As Long, instanceId As String, quarter As String, status As String)
+    ws.Cells(r, 1).Value = instanceId
+    ws.Cells(r, 2).Value = quarter
+    ws.Cells(r, 3).Value = status
+End Sub
+
+Private Function Test_ReadForDeckPeriod_KeepsOnlyThatPeriodsRows() As String
+    Dim ws As Object
+    Set ws = WideSheet()
+    WideRow ws, 2, "P1", "FY26Q4", "In Progress"
+    WideRow ws, 3, "P1", "FY27Q1", "Not Started"
+    WideRow ws, 4, "P2", "FY26Q4", "Project Closed"
+
+    Dim problem As String
+    Dim s As Sheet
+    s = ExcelOutput.ReadSheetForDeckPeriod(ws, "FY26Q4", problem)
+
+    Dim result As String
+    result = result & Assert(problem = "", "a clean two-period sheet raises no problem, got: " & problem)
+    result = result & Assert(s.InstanceOrder.count = 2, "FY26Q4 has 2 slides, got " & s.InstanceOrder.count)
+    ' The discriminator: a read that ignored the period would say In Progress
+    ' for P1 either way, because FY26Q4's row sits higher. The OTHER period is
+    ' what proves the filter ran.
+    result = result & Assert(s.Rows("P1")("PROJECT_STATUS") = "In Progress", "P1 @ FY26Q4 is In Progress")
+
+    s = ExcelOutput.ReadSheetForDeckPeriod(ws, "FY27Q1", problem)
+    result = result & Assert(problem = "", "FY27Q1 raises no problem, got: " & problem)
+    result = result & Assert(s.InstanceOrder.count = 1, "FY27Q1 has 1 slide, got " & s.InstanceOrder.count)
+    result = result & Assert(s.Rows("P1")("PROJECT_STATUS") = "Not Started", "P1 @ FY27Q1 is Not Started")
+
+    ws.Delete
+    Test_ReadForDeckPeriod_KeepsOnlyThatPeriodsRows = result
+End Function
+
+Private Function Test_ReadForDeckPeriod_RefusesTwoRowsForOneSlideInOnePeriod() As String
+    Dim ws As Object
+    Set ws = WideSheet()
+    WideRow ws, 2, "P1", "FY26Q4", "In Progress"
+    WideRow ws, 3, "P1", "FY26Q4", "Project Closed"
+
+    Dim problem As String
+    Dim s As Sheet
+    s = ExcelOutput.ReadSheetForDeckPeriod(ws, "FY26Q4", problem)
+
+    Dim result As String
+    result = result & Assert(problem <> "", "two rows for one slide in one period must be refused")
+    result = result & Assert(InStr(problem, "repeat") > 0, "the refusal says what is wrong, got: " & problem)
+
+    ws.Delete
+    Test_ReadForDeckPeriod_RefusesTwoRowsForOneSlideInOnePeriod = result
+End Function
+
+Private Function Test_ReadForDeckPeriod_RefusesAPeriodTheSheetDoesNotHave() As String
+    Dim ws As Object
+    Set ws = WideSheet()
+    WideRow ws, 2, "P1", "FY26Q4", "In Progress"
+
+    Dim problem As String
+    Dim s As Sheet
+    s = ExcelOutput.ReadSheetForDeckPeriod(ws, "FY28Q3", problem)
+
+    Dim result As String
+    result = result & Assert(s.InstanceOrder.count = 0, "nothing matches FY28Q3")
+    result = result & Assert(problem <> "", "an empty filtered read of a non-empty sheet must be refused, not returned as success")
+
+    ws.Delete
+    Test_ReadForDeckPeriod_RefusesAPeriodTheSheetDoesNotHave = result
+End Function
+
+Private Function Test_ReadForDeckPeriod_SilentOnASheetWithNoQuarterColumn() As String
+    ' Every sheet this tool wrote before 2026-08-03. It has one row per slide
+    ' and no opinion about periods, so a deck declaring one must still read it.
+    Dim ws As Object
+    Set ws = NewBlankSheet()
+    ExcelOutput.CreateSheet ws, "deck-v1"
+    ExcelOutput.UpsertRow ws, "P1", DictOf1("PROJECT_STATUS", "In Progress")
+
+    Dim problem As String
+    Dim s As Sheet
+    s = ExcelOutput.ReadSheetForDeckPeriod(ws, "FY26Q4", problem)
+
+    Dim result As String
+    result = result & Assert(problem = "", "an old-shape sheet is not refused, got: " & problem)
+    result = result & Assert(s.InstanceOrder.count = 1, "its row is still read, got " & s.InstanceOrder.count)
+
+    ws.Delete
+    Test_ReadForDeckPeriod_SilentOnASheetWithNoQuarterColumn = result
 End Function

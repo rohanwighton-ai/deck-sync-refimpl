@@ -107,6 +107,14 @@ Private Sub SyncNowCore()
     ' comes from that same collapsed index.
     If Not WarnOnDuplicateKeys("Sync Now", types, lo, hi) Then Exit Sub
 
+    ' THE DECK DECLARES THE PERIOD AND THE SHEET IS READ AS THAT PERIOD.
+    ' Rows accumulate per period now, so an unfiltered read takes one row per
+    ' slide out of several and files the rest in a counter nobody looks at.
+    Dim deckPeriod As String
+    deckPeriod = DeckRegistry.GetDeckPeriod(pres)
+    Dim problem As String
+    Dim refusals As String
+
     ' Build every type's queue first, so the decision covers the whole deck
     ' rather than the first type only -- the same reason SyncNowCore used to
     ' plan all types before confirming.
@@ -120,23 +128,39 @@ Private Sub SyncNowCore()
         Dim wsName As String
         If DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
             Dim sheet As Sheet
-            sheet = ExcelOutput.ReadSheet(WorkbookBridge.GetOrAddWorksheet(wb, wsName))
+            sheet = ExcelOutput.ReadSheetForDeckPeriod( _
+                WorkbookBridge.GetOrAddWorksheet(wb, wsName), deckPeriod, problem)
 
-            Dim q As ReviewQueueSet
-            q = ReviewQueue.BuildQueue(sheet, types(i))
-            Dim n As Long
-            For n = 1 To q.Count
-                combined.Count = combined.Count + 1
-                ReDim Preserve combined.Items(1 To combined.Count)
-                combined.Items(combined.Count) = q.Items(n)
-                ' Labels are per-type; prefix so two types' batches cannot
-                ' collide into one apparent decision in the combined view.
-                If combined.Items(combined.Count).BatchLabel <> "" Then
-                    combined.Items(combined.Count).BatchLabel = types(i) & ":" & q.Items(n).BatchLabel
-                End If
-            Next n
+            If problem <> "" Then
+                refusals = refusals & "  " & types(i) & " -- " & problem & vbCrLf & vbCrLf
+            Else
+                Dim q As ReviewQueueSet
+                q = ReviewQueue.BuildQueue(sheet, types(i))
+                Dim n As Long
+                For n = 1 To q.Count
+                    combined.Count = combined.Count + 1
+                    ReDim Preserve combined.Items(1 To combined.Count)
+                    combined.Items(combined.Count) = q.Items(n)
+                    ' Labels are per-type; prefix so two types' batches cannot
+                    ' collide into one apparent decision in the combined view.
+                    If combined.Items(combined.Count).BatchLabel <> "" Then
+                        combined.Items(combined.Count).BatchLabel = types(i) & ":" & q.Items(n).BatchLabel
+                    End If
+                Next n
+            End If
         End If
     Next i
+
+    ' THE WHOLE RUN STOPS, not just the offending type. Sync Now writes, and
+    ' syncing the readable types while one was refused is a partial write
+    ' reported as a success -- the failure mode this codebase keeps paying for.
+    If refusals <> "" Then
+        MsgBox "Sync Now stopped. The deck declares period '" & deckPeriod & _
+            "' and at least one Data sheet cannot be read for it:" & vbCrLf & vbCrLf & refusals & _
+            "Nothing has been written. Fix the sheet, or set the deck's period, then run again.", _
+            vbExclamation, "Sync Now"
+        Exit Sub
+    End If
 
     If combined.Count = 0 Then
         MsgBox ReviewQueue.FastPathRefusalText(combined), vbInformation, "Sync Now"
@@ -177,7 +201,12 @@ Private Sub SyncNowCore()
         Dim dataWsName As String
         If DeckRegistry.LookupType(pres, types(i), tmplSld, dataWsName) Then
             Dim dataSheet As Sheet
-            dataSheet = ExcelOutput.ReadSheet(WorkbookBridge.GetOrAddWorksheet(wb, dataWsName))
+            ' Read the same way the queue was built. The loop above already
+            ' refused anything unreadable, so `problem` cannot be set here --
+            ' but reading it unfiltered would apply a different set of rows
+            ' than the human just approved, which is worse than refusing.
+            dataSheet = ExcelOutput.ReadSheetForDeckPeriod( _
+                WorkbookBridge.GetOrAddWorksheet(wb, dataWsName), deckPeriod, problem)
 
             Dim tq As ReviewQueueSet
             tq = ReviewQueue.BuildQueue(dataSheet, types(i))
@@ -399,20 +428,31 @@ Private Sub ReviewChangesCore(approveAll As Boolean)
             Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
 
             Dim sheet As Sheet
-            sheet = ExcelOutput.ReadSheet(ws)
+            Dim problem As String
+            sheet = ExcelOutput.ReadSheetForDeckPeriod(ws, DeckRegistry.GetDeckPeriod(pres), problem)
 
-            Dim q As ReviewQueueSet
-            q = ReviewQueue.BuildQueue(sheet, types(i))
-            totalQueued = totalQueued + q.Count
+            If problem <> "" Then
+                ' Reported and skipped rather than stopping the run: this builds
+                ' a review sheet and writes nothing to a slide, so the other
+                ' types' queues are still worth having. The refusal is the point
+                ' -- an empty queue for this type would otherwise read as
+                ' "nothing to change".
+                fullReport = fullReport & "=== " & types(i) & " ===" & vbCrLf & _
+                    "REFUSED at period '" & DeckRegistry.GetDeckPeriod(pres) & "': " & problem & vbCrLf & vbCrLf
+            Else
+                Dim q As ReviewQueueSet
+                q = ReviewQueue.BuildQueue(sheet, types(i))
+                totalQueued = totalQueued + q.Count
 
-            Dim reviewWs As Object
-            Set reviewWs = WorkbookBridge.GetOrAddWorksheet(wb, ReviewQueue.ReviewSheetNameFor(types(i)))
-            ReviewQueue.WriteQueueSheet reviewWs, q
-            If approveAll Then ReviewQueue.ApproveAllInSheet reviewWs
-            If firstSheet Is Nothing Then Set firstSheet = reviewWs
+                Dim reviewWs As Object
+                Set reviewWs = WorkbookBridge.GetOrAddWorksheet(wb, ReviewQueue.ReviewSheetNameFor(types(i)))
+                ReviewQueue.WriteQueueSheet reviewWs, q
+                If approveAll Then ReviewQueue.ApproveAllInSheet reviewWs
+                If firstSheet Is Nothing Then Set firstSheet = reviewWs
 
-            fullReport = fullReport & "=== " & types(i) & " ===" & vbCrLf & _
-                ReviewQueue.QueueSummaryText(q) & vbCrLf
+                fullReport = fullReport & "=== " & types(i) & " ===" & vbCrLf & _
+                    ReviewQueue.QueueSummaryText(q) & vbCrLf
+            End If
         Else
             fullReport = fullReport & "SKIPPED " & types(i) & ": registered type's template slide no longer resolves (was it deleted?)" & vbCrLf
         End If
@@ -512,13 +552,24 @@ Private Sub ApplyApprovedCore()
                 Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
 
                 Dim sheet As Sheet
-                sheet = ExcelOutput.ReadSheet(ws)
+                Dim problem As String
+                sheet = ExcelOutput.ReadSheetForDeckPeriod(ws, DeckRegistry.GetDeckPeriod(pres), problem)
 
-                Dim reviewWs As Object
-                Set reviewWs = WorkbookBridge.GetOrAddWorksheet(wb, reviewName)
+                If problem <> "" Then
+                    ' This one WRITES TO SLIDES. The review sheet a human ticked
+                    ' was built from a period-filtered read; applying a sheet
+                    ' that can no longer be read that way would write a
+                    ' different set of rows than the one they approved.
+                    fullReport = fullReport & "=== " & types(i) & " ===" & vbCrLf & _
+                        "REFUSED at period '" & DeckRegistry.GetDeckPeriod(pres) & "': " & problem & vbCrLf & _
+                        "Nothing was written for this type." & vbCrLf & vbCrLf
+                Else
+                    Dim reviewWs As Object
+                    Set reviewWs = WorkbookBridge.GetOrAddWorksheet(wb, reviewName)
 
-                fullReport = fullReport & _
-                    ReviewQueue.ApplyApproved(sheet, types(i), reviewWs, logWs) & vbCrLf
+                    fullReport = fullReport & _
+                        ReviewQueue.ApplyApproved(sheet, types(i), reviewWs, logWs) & vbCrLf
+                End If
             End If
         Else
             fullReport = fullReport & "SKIPPED " & types(i) & ": registered type's template slide no longer resolves (was it deleted?)" & vbCrLf

@@ -119,6 +119,33 @@ its own input, and the migration went to a new file.
 
 **Item 9 has NOT moved.** This makes the sheet real; it is not a quarter of content.
 
+## The sync path now reads the deck's period — compiled, not yet exercised
+
+`ExcelOutput.ReadSheetForDeckPeriod(ws, deckPeriod, problem)` replaces the unfiltered
+`ReadSheet` at all four sync-side reads in `RibbonUI` (Sync Now's queue build and its
+apply, Review Changes, Apply Approved). It refuses two ways, and **each refusal was
+watched failing before it was trusted** — the filter was broken on purpose, then the
+guards were, and the suite caught both:
+
+- two rows for one slide in the read → whichever sat higher used to win silently
+- the sheet has rows and none carry the deck's period → zero rows is a legal state
+  that reports as a clean sync of nothing
+
+Sync Now stops the **whole run** on a refusal rather than syncing the readable types;
+Review Changes and Apply Approved report and skip the type. 145 VBA tests pass.
+
+**Not yet run once.** No test executes `RibbonUI`, and `run_vba_tests.ps1` does not
+compile — it never has. The project compiles clean through `field_e2e.ps1` and the
+wide read still works afterwards (a compile failure makes PowerPoint deaf to COM, so
+that is real evidence), but the four changed call sites have not been executed. The
+add-in was deliberately NOT rebuilt: shipping a build whose changed paths have never
+run once is the "don't infer a link works from the two ends looking consistent" trap
+this project already wrote down.
+
+`RibbonUI.bas:761` still reads unfiltered. That is `New Period` → `RunPeriodRollover`,
+the deck-accumulates model Rohan rejected on 2026-08-02. It is on the removal list,
+not the fix list.
+
 ## What is now knowingly half-wired
 
 `CreateSheet` still does not write the `Quarter` header, and this is the reason the

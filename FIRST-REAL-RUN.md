@@ -715,3 +715,32 @@ on instance AND period, or syncing FY27Q1 overwrites the FY26Q4 row.
 
 `PROJECT_STATUS` at FY27Q1 reads `Not started`; the sheet's own validation list says
 `Not Started`. Five rows, in the source register, predating this migration.
+
+### The fix, same session: sync reads the deck's period
+
+`ExcelOutput.ReadSheetForDeckPeriod(ws, deckPeriod, ByRef problem)` — a filtered read
+that returns a reason string rather than a quietly wrong `Sheet`. All four sync-side
+reads in `RibbonUI` now use it, passing `DeckRegistry.GetDeckPeriod(pres)`.
+
+**Both guards were made to fail before being trusted**, and the way they failed is the
+part worth keeping:
+
+- **Break A — period ignored** (`ReadSheetForPeriod(ws, "")`). The FY26Q4 assertions
+  in `KeepsOnlyThatPeriodsRows` **still passed**: two instances either way, because
+  FY26Q4's row sits higher. Only the FY27Q1 assertions caught it. Third time on this
+  project that the other period was the one doing the work, and the first time the
+  test was built knowing it.
+- **Break B — both refusals neutered**. Caught by the two refusal tests, as designed.
+
+Behaviour worth knowing: a deck that declares **no** period against a sheet holding
+several now refuses, because the unfiltered read collapses the periods and the
+collapse is what gets counted. A deck with no period against an old single-period
+sheet is unaffected — nothing collapses, so nothing fires. The rig deck declares
+`FY26Q4`, read off the file, so it reads 43 rows and 0 duplicates.
+
+**Not exercised.** No test executes `RibbonUI`, and `run_vba_tests.ps1` does not
+compile — grep it, there is no compile step, which is the same gap that let a
+non-compiling project report 135 passing tests all day on 2026-08-01. The project does
+force-compile through `field_e2e.ps1`, and the wide read succeeded after it, which is
+real evidence the edits compile. It is not evidence that Sync Now works. The `.ppam`
+was deliberately not rebuilt for that reason.
