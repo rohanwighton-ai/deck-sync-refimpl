@@ -423,8 +423,26 @@ End Function
 Public Function ReadSheetForDeckPeriod(ws As Object, deckPeriod As String, _
                                        ByRef problem As String) As Sheet
     Dim wanted As Sheet
-    wanted = ReadSheetForPeriod(ws, deckPeriod)
     problem = ""
+
+    ' A1 empty means this worksheet has never been through CreateSheet -- it is
+    ' not "a Data sheet with nothing synced yet", it is GetOrAddWorksheet having
+    ' just CREATED a blank tab under a name nothing set up. That is exactly what
+    ' happens when a registered type's worksheet name (e.g. "q") does not match
+    ' the sheet a person actually built (e.g. "Register"): the read silently
+    ' succeeds against an empty sheet it just invented. Checked before reading,
+    ' because an empty read of THIS sheet and an empty read of a genuinely
+    ' freshly-onboarded one are indistinguishable once both come back as zero
+    ' rows -- only the header row tells them apart.
+    If IsEmpty(ws.Cells(1, 1).Value) Then
+        problem = "worksheet '" & ws.Name & "' has never been set up (A1 is empty) -- " & _
+            "this is not a Data sheet with nothing on it yet, it looks like the wrong " & _
+            "sheet was resolved and an empty one was created in its place."
+        ReadSheetForDeckPeriod = wanted
+        Exit Function
+    End If
+
+    wanted = ReadSheetForPeriod(ws, deckPeriod)
 
     If wanted.DuplicateInstances > 0 Then
         problem = wanted.DuplicateInstances & " row(s) repeat a slide already read for '" & _

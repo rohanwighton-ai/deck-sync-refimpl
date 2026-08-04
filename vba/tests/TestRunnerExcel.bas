@@ -73,6 +73,11 @@ Public Function RunAllTests() As String
     AppendResult report, "ReadForDeckPeriod_SilentOnASheetWithNoQuarterColumn", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ReadForDeckPeriod_RefusesANeverInitializedSheet()
+    AppendResult report, "ReadForDeckPeriod_RefusesANeverInitializedSheet", r
+    On Error GoTo 0
+
     RunAllTests = report
 End Function
 
@@ -363,4 +368,24 @@ Private Function Test_ReadForDeckPeriod_SilentOnASheetWithNoQuarterColumn() As S
 
     ws.Delete
     Test_ReadForDeckPeriod_SilentOnASheetWithNoQuarterColumn = result
+End Function
+
+Private Function Test_ReadForDeckPeriod_RefusesANeverInitializedSheet() As String
+    ' Mirrors WorkbookBridge.GetOrAddWorksheet creating a brand-new tab because
+    ' the name it looked up didn't exist -- the exact shape of the wrong-sheet
+    ' hazard (a registered type's worksheet name not matching the sheet a
+    ' person actually built). A1 is empty because CreateSheet never ran.
+    Dim ws As Object
+    Set ws = NewBlankSheet()
+
+    Dim problem As String
+    Dim s As Sheet
+    s = ExcelOutput.ReadSheetForDeckPeriod(ws, "FY26Q4", problem)
+
+    Dim result As String
+    result = result & Assert(problem <> "", "a never-initialized sheet must be refused, not read as a clean empty sync")
+    result = result & Assert(InStr(problem, "never been set up") > 0, "the refusal says what is wrong, got: " & problem)
+
+    ws.Delete
+    Test_ReadForDeckPeriod_RefusesANeverInitializedSheet = result
 End Function

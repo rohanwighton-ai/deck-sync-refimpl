@@ -12,10 +12,12 @@ param(
     [string]$DeckPath = "C:\Users\rohan\deck-sync-e2e\e2e-deck.pptx",
     [string]$RegisterPath = "C:\Users\rohan\deck-sync-e2e\register.xlsx",
     [string]$Period = "FY26Q4",
-    [ValidateSet("migrate","dryrun","apply","reseed","verifyharvest","deleteentities","draft","copyai","publish","timelinetest","discovertest","setperiod","setperiodvariant","readwide")][string]$Mode = "dryrun",
+    [ValidateSet("migrate","dryrun","apply","reseed","verifyharvest","deleteentities","draft","copyai","publish","timelinetest","discovertest","setperiod","setperiodvariant","readwide","repointworkbook","renameslidetype")][string]$Mode = "dryrun",
     [string]$Variant = "save",
     [string]$FieldId = "ABOUT_BODY",
     [string]$SheetName = "Register",
+    [string]$SlideType = "q",
+    [string]$NewSlideType = "",
     [string]$TsvPath = "C:\Users\rohan\deck-sync-e2e\field_values.tsv",
     [string]$Entities = "",
     # Publishing writes with -Write. It briefly reused $ApproveAll, which is a
@@ -24,6 +26,7 @@ param(
     # which made every publish run silently preview. Set-StrictMode below turns
     # that class of mistake into a failure instead of a wrong answer.
     [switch]$Write,
+    [string]$NewWorkbookPath = "",
     [string]$RepoRoot = $(Split-Path -Parent (Split-Path -Parent $PSScriptRoot)),
     [string]$OutFile = (Join-Path $env:TEMP "about_body_e2e_report.txt")
 )
@@ -108,7 +111,13 @@ try {
     # would-be runtime mystery into a compile error where it belongs.
     Write-Output ("compile: " + (Invoke-ForceCompile -App $ppt))
 
-    if ($Mode -eq "readwide") {
+    if ($Mode -eq "renameslidetype") {
+        $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
+            @([string]"E2EField.RenameSlideType",[string]$DeckPath,[string]$SlideType,[string]$NewSlideType,[string]$SheetName,[string]$Variant))
+    } elseif ($Mode -eq "repointworkbook") {
+        $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
+            @([string]"E2EField.RepointWorkbookVariant",[string]$DeckPath,[string]$NewWorkbookPath,[string]$Variant))
+    } elseif ($Mode -eq "readwide") {
         # Read-only. -Entities carries the instance to print in full, because a
         # count alone has never been enough evidence on this project.
         $sample = if ($Entities -ne "") { $Entities } else { "" }

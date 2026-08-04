@@ -226,6 +226,57 @@ it carried a stale count.* (`BatchOnboardFlow` and the `R13RealDeck` `gwb` sites
 *"Columns by header name, never by position"* directly beneath a line selecting the **sheet**
 by position. The rule was understood one level down and never lifted one level up.
 
+## 2026-08-04 — the copy is fully repointed to the wide model, and "q" is retired
+
+The PM checklist for "the sync path actually works" (see the deck-sync-pm agent brief):
+
+1. Drafting reads the wide sheet — still open, `DraftingUI.bas:231` reads long
+2. Period-aware `UpsertRow` — still open, the keystone
+3. Publish writes to the wide sheet — still open
+4. `CreateSheet` stamps `Quarter` — still open, depends on (2)
+5. Long register / Seed-Draft-Approved / `RunPeriodRollover` retired — still open
+
+None of those moved today. What did: a copy of the rig deck
+(`e2e-deck.wide-test.pptx` — the original `e2e-deck.pptx` untouched) is now fully wired to
+the wide model, closing the setup gap that was blocking Sync Now from ever being tried on it:
+
+- **`ExcelOutput.ReadSheetForDeckPeriod` closed an empty-sheet hole.** The guard added
+  2026-08-03 refused a sheet with rows that didn't match the period, but a freshly-created
+  **empty** sheet (the exact shape `GetOrAddWorksheet` produces when a worksheet name
+  resolves wrong) read as zero rows either way and passed as a clean sync of nothing. Now
+  checked directly (`IsEmpty(ws.Cells(1,1))`) before any read is attempted. Made to fail on
+  purpose first — disabling the guard broke exactly the new test and nothing else, 145/146.
+- **The copy's workbook pairing was pointed at `register-wide.xlsx`**, off
+  `SAAFE-Projects-Data.xlsx` — a real file in Rohan's OneDrive the deck was still paired to.
+  `set_deck_workbook_path.py` (new, mirrors `set_deck_period.py`'s write/verify-offline/retry
+  shape) confirmed the property on disk before calling it done.
+- **The slide type "q" was renamed to `project-status`, atomically.** Three things were doing
+  one job under that one string — the deck's type registration, its worksheet pointer
+  (wrongly `"q"`, should be `"Register"`), and a hardcoded literal in `DraftingUI.bas:231`
+  filtering the long register's `SlideType` column. Renamed the first two together (a
+  worksheet-only repoint would have left every slide's tag saying `"q"` while the
+  registration said something else — exactly the shape of the live incident
+  `BatchOnboardFlow.bas:937` already records, where a retype without a matching worksheet
+  fix stranded an entire Data sheet). `rename_slide_type.py` (new) retags all 43 slides,
+  re-registers, deletes the stale property, and verifies FOUR things independently against
+  the file's own bytes (new registration, old registration gone, zero straggler tags, new
+  tags present) before reporting success. The third "q" — the `DraftingUI.bas` literal —
+  was deliberately NOT touched; it lives inside checklist item 1 above and gets fixed once,
+  there, not patched twice.
+- **Real taxonomy, from Rohan directly:** the deck's slides are Output (program level),
+  Milestone, Project Status, Project Progress. Only `project-status` is registered anywhere
+  today. **Open, handed to Opus:** whether decks close in style but distinct in program
+  (research / kickstart / student) should be the same slide type or different ones sharing
+  one register workbook — the spec history (`Round8.md` §6) already argues for one workbook,
+  many decks, with `SlideType` as a column, but that reasoning predates the wide-sheet pivot
+  and `migrate_register_to_wide.py` currently REFUSES mixed slide types in one sheet. Also
+  open: whether onboarding should offer a dropdown of slide "prototypes" with a human suffix,
+  once the above is settled — UX for a decision that hasn't been made yet.
+
+Sync Now itself is still **not exercised** — that needs a human at the keyboard (18 `MsgBox`
+calls in the sync paths mean a headless run hangs). The copy is now in the state where that
+run is actually meaningful to attempt.
+
 ## Not on this list, deliberately
 
 The other 38 fields. The GUID key redesign. R13's full review subsystem (built, parked).

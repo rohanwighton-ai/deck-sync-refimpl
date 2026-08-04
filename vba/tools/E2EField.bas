@@ -1105,3 +1105,116 @@ Public Function ReadWidePeriod(registerPath As String, sheetName As String, _
     xl.Quit
     ReadWidePeriod = r
 End Function
+
+' Re-point a deck's paired workbook path, the same unreliable-write-made-
+' reliable shape as SetPeriodVariant -- SaveAs on a large package regenerates
+' docProps/custom.xml; a plain Save sometimes does not (measured 2026-08-01,
+' see set_deck_period.py's header). Verification happens OUT OF PROCESS, in
+' the Python wrapper that drives this, by reading the saved file's own bytes.
+Public Function RepointWorkbookVariant(deckPath As String, newWorkbookPath As String, _
+                                       saveVariant As String) As String
+    Dim pres As Object
+    Set pres = Application.Presentations.Open(deckPath, msoFalse, msoFalse, msoTrue)
+    pres.Windows(1).Activate
+
+    Dim old As String
+    old = DeckRegistry.GetWorkbookPath(pres)
+
+    Dim r As String
+    r = "variant=" & saveVariant & "  from='" & old & "' to='" & newWorkbookPath & "'" & vbCrLf & _
+        "  opened:   " & pres.fullName & vbCrLf & _
+        "  ReadOnly: " & pres.ReadOnly & vbCrLf
+
+    ' RepointWorkbook, not SetWorkbookPath: it raises if the target does not
+    ' exist, which is the guard that stops a typo silently pairing a deck with
+    ' a workbook nobody can open later.
+    DeckRegistry.RepointWorkbook pres, newWorkbookPath
+
+    On Error Resume Next
+    Select Case LCase(saveVariant)
+        Case "saveas"
+            pres.SaveAs pres.fullName, ppSaveAsDefault
+        Case Else   ' "save"
+            pres.Save
+    End Select
+    If Err.Number <> 0 Then r = r & "  *** write RAISED: " & Err.Number & " " & Err.Description & vbCrLf
+    On Error GoTo 0
+
+    r = r & "  pres.Saved after write: " & pres.Saved & vbCrLf
+
+    pres.Close
+    RepointWorkbookVariant = r
+End Function
+
+' Rename a registered slide type, end to end: retag every slide, register the
+' new name against the correct worksheet, and remove the stale registration --
+' all in the one saved write, because a rename split across two saves can land
+' between them and leave the deck answering to neither name.
+'
+' THIS IS EXACTLY THE SHAPE OF THE LIVE INCIDENT BatchOnboardFlow.bas:937
+' RECORDS: a practice bulk-onboard once retyped every slide from "q" to
+' "sandbox-test" without touching the registration, which stranded the old
+' type's entire Data sheet -- rows kept existing, no slide answered to them,
+' and the very next preview reported them all as new. This function exists so
+' a rename cannot do that: property and tags move together or not at all.
+'
+' Deletes the OLD property via CustomDocumentProperties(...).Delete rather than
+' leaving a ghost registration -- DeckRegistry.ListRegisteredTypes walks every
+' "DeckSyncType:" property, so an un-removed old one would make the deck
+' report two registered types where a human, and Sync Now, expect one.
+Public Function RenameSlideType(deckPath As String, oldType As String, newType As String, _
+                                newWorksheetName As String, saveVariant As String) As String
+    Dim pres As Object
+    Set pres = Application.Presentations.Open(deckPath, msoFalse, msoFalse, msoTrue)
+    pres.Windows(1).Activate
+
+    Dim templateSld As Object, oldWs As String
+    If Not DeckRegistry.LookupType(pres, oldType, templateSld, oldWs) Then
+        pres.Saved = msoTrue: pres.Close
+        RenameSlideType = "REFUSED: type '" & oldType & "' is not registered on this deck."
+        Exit Function
+    End If
+
+    Dim r As String
+    r = "variant=" & saveVariant & vbCrLf & _
+        "  rename:    '" & oldType & "' -> '" & newType & "'" & vbCrLf & _
+        "  worksheet: '" & oldWs & "' -> '" & newWorksheetName & "'" & vbCrLf & _
+        "  opened:    " & pres.fullName & vbCrLf & _
+        "  ReadOnly:  " & pres.ReadOnly & vbCrLf
+
+    ' Retag every slide answering to the old type. Case-insensitive on the tag
+    ' NAME lookup (Tags is case-insensitive by name), exact match on the VALUE
+    ' -- a slide tagged with some other type must not be touched.
+    Dim retagged As Long
+    Dim sld As Object
+    For Each sld In pres.Slides
+        If sld.Tags("slide_type") = oldType Then
+            sld.Tags.Add "slide_type", newType
+            retagged = retagged + 1
+        End If
+    Next sld
+    r = r & "  slides retagged: " & retagged & " of " & pres.Slides.count & vbCrLf
+
+    DeckRegistry.RegisterType pres, newType, templateSld, newWorksheetName
+
+    On Error Resume Next
+    pres.CustomDocumentProperties("DeckSyncType:" & oldType).Delete
+    Dim deleteErr As Long
+    deleteErr = Err.Number
+    On Error GoTo 0
+    r = r & "  old registration deleted: " & (deleteErr = 0) & vbCrLf
+
+    On Error Resume Next
+    Select Case LCase(saveVariant)
+        Case "saveas"
+            pres.SaveAs pres.fullName, ppSaveAsDefault
+        Case Else
+            pres.Save
+    End Select
+    If Err.Number <> 0 Then r = r & "  *** write RAISED: " & Err.Number & " " & Err.Description & vbCrLf
+    On Error GoTo 0
+
+    r = r & "  pres.Saved after write: " & pres.Saved & vbCrLf
+    pres.Close
+    RenameSlideType = r
+End Function
