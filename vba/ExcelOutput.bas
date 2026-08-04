@@ -98,7 +98,50 @@ Public Sub CreateSheet(ws As Object, deckReference As String)
     End If
 
     ws.Cells(1, 1).Value = INSTANCE_ID_HEADER
+    ' The period column is written HERE, at creation, and never retrofitted.
+    ' It cannot be added on its own: UpsertRow refuses to write a row into a
+    ' sheet that has this header without saying which period the row is for,
+    ' and a sheet carrying the header with blank period cells returns ZERO rows
+    ' from every filtered read -- reported as a clean sync of nothing. Header
+    ' and period-aware write are one change; see UpsertRow.
+    ws.Cells(1, 2).Value = QUARTER_HEADER
     WriteDeckReference ws.Parent, deckReference
+End Sub
+
+' Locate the sheet's two structural columns by header name.
+'
+' SHARED BY THE READER AND THE WRITER ON PURPOSE. They used to locate columns
+' separately -- the reader by name, the writer by hardcoded position 1 -- and a
+' reader and writer that disagree about which column means what is the failure
+' class this project has paid for repeatedly (the sheet read by tab position,
+' the register read by index). One function, one answer, both callers.
+'
+' `cQuarter` comes back 0 for a sheet built before 2026-08-03, which has no
+' period column and one row per slide. That is a legal shape and both callers
+' handle it; it is not an error.
+Private Sub LocateStructuralColumns(ws As Object, ByRef cInstance As Long, ByRef cQuarter As Long)
+    cInstance = 0
+    cQuarter = 0
+
+    Dim lastCol As Long
+    lastCol = LastUsedColumn(ws)
+
+    Dim c As Long
+    For c = 1 To lastCol
+        Dim h As String
+        h = Trim$(CStr(ws.Cells(1, c).Value))
+        If StrComp(h, INSTANCE_ID_HEADER, vbTextCompare) = 0 Then
+            cInstance = c
+        ElseIf StrComp(h, QUARTER_HEADER, vbTextCompare) = 0 Then
+            cQuarter = c
+        End If
+    Next c
+
+    ' A sheet whose first column is the instance but is not headed as such is
+    ' every sheet this tool wrote before headers were read by name. Falling back
+    ' to column 1 keeps those readable; it is not a guess about arbitrary sheets,
+    ' because CreateSheet has always written INSTANCE_ID_HEADER into A1.
+    If cInstance = 0 Then cInstance = 1
 End Sub
 
 ' ---------------------------------------------------------------------
@@ -147,23 +190,9 @@ Public Function ReadSheetForPeriod(ws As Object, deckPeriod As String) As Sheet
 
     ' Locate the two structural columns by name; everything else is a field.
     Dim cInstance As Long, cQuarter As Long
+    LocateStructuralColumns ws, cInstance, cQuarter
+
     Dim c As Long
-    For c = 1 To lastCol
-        Dim h As String
-        h = Trim$(CStr(ws.Cells(1, c).Value))
-        If StrComp(h, INSTANCE_ID_HEADER, vbTextCompare) = 0 Then
-            cInstance = c
-        ElseIf StrComp(h, QUARTER_HEADER, vbTextCompare) = 0 Then
-            cQuarter = c
-        End If
-    Next c
-
-    ' A sheet whose first column is the instance but is not headed as such is
-    ' every sheet this tool wrote before headers were read by name. Falling back
-    ' to column 1 keeps those readable; it is not a guess about arbitrary sheets,
-    ' because CreateSheet has always written INSTANCE_ID_HEADER into A1.
-    If cInstance = 0 Then cInstance = 1
-
     For c = 1 To lastCol
         If c <> cInstance And c <> cQuarter Then
             result.Fields.Add CStr(ws.Cells(1, c).Value)
@@ -301,26 +330,71 @@ End Function
 ' shown to a human (BatchOnboardFlow's Field Review grid), just not acted
 ' on here. Revisit only alongside making PlanRoutineSync's own comparison
 ' type-aware, not by touching this function in isolation.
-Public Sub UpsertRow(ws As Object, instanceId As String, values As Object)
+' `period` IS REQUIRED, AND THIS IS THE WHOLE POINT OF THE PARAMETER.
+'
+' A row is a SLIDE IN A PERIOD, so a slide's identity on this sheet is
+' (instance, period) and never instance alone. Matching on instance alone --
+' which is what this did until 2026-08-04 -- means syncing FY27Q1 finds
+' FY26Q4's row and OVERWRITES IT. That is a real quarter's approved text
+' destroyed silently, on rollover, which is the single most expensive thing
+' this code could do.
+'
+' Passing "" is refused rather than defaulted, on a sheet that has a period
+' column. A blank period cell is invisible to every filtered read, so the row
+' would exist, contain the right text, and never appear in a sync again --
+' reported as a clean sync of nothing. An Optional parameter defaulting to ""
+' would make that the failure a caller gets by FORGETTING, which is exactly
+' backwards for the one operation that can lose work.
+'
+' A sheet with NO period column (everything built before 2026-08-03) keeps the
+' old behaviour: one row per slide, matched on instance, `period` ignored. Such
+' a sheet has no opinion about periods and retrofitting one is a migration, not
+' something an upsert should do behind the caller's back.
+Public Sub UpsertRow(ws As Object, instanceId As String, values As Object, period As String)
+    Dim cInstance As Long, cQuarter As Long
+    LocateStructuralColumns ws, cInstance, cQuarter
+
+    If cQuarter > 0 And Trim$(period) = "" Then
+        Err.Raise vbObjectError + 4, "ExcelOutput.UpsertRow", _
+            "this sheet has a '" & QUARTER_HEADER & "' column, so every row must say which " & _
+            "period it belongs to. A row written with a blank period is invisible to every " & _
+            "filtered read and would report as a clean sync of nothing."
+    End If
+
     Dim rowNum As Long
-    rowNum = FindOrAppendInstanceRow(ws, instanceId)
+    rowNum = FindOrAppendInstanceRow(ws, instanceId, period, cInstance, cQuarter)
 
     Dim fieldName As Variant
     For Each fieldName In values.Keys
         Dim colNum As Long
-        colNum = FindOrAppendFieldColumn(ws, CStr(fieldName))
+        colNum = FindOrAppendFieldColumn(ws, CStr(fieldName), cInstance, cQuarter)
         ws.Cells(rowNum, colNum).Value = CStr(values(fieldName))
     Next fieldName
 End Sub
 
-Private Function FindOrAppendFieldColumn(ws As Object, fieldName As String) As Long
+' Refuses a field whose name collides with a structural column, rather than
+' writing a slide's text over the row's identity or its period. A slide really
+' can carry a field called "Quarter"; before this, that value went straight
+' into the period cell and the row vanished from every filtered read.
+Private Function FindOrAppendFieldColumn(ws As Object, fieldName As String, _
+                                         cInstance As Long, cQuarter As Long) As Long
+    If StrComp(Trim$(fieldName), INSTANCE_ID_HEADER, vbTextCompare) = 0 Or _
+       StrComp(Trim$(fieldName), QUARTER_HEADER, vbTextCompare) = 0 Then
+        Err.Raise vbObjectError + 5, "ExcelOutput.UpsertRow", _
+            "'" & fieldName & "' is the name of a structural column on this sheet, not a " & _
+            "field. Writing a slide's value into it would overwrite the row's identity or " & _
+            "the period it belongs to."
+    End If
+
     Dim lastCol As Long
     lastCol = LastUsedColumn(ws)
     Dim c As Long
-    For c = 2 To lastCol
-        If CStr(ws.Cells(1, c).Value) = fieldName Then
-            FindOrAppendFieldColumn = c
-            Exit Function
+    For c = 1 To lastCol
+        If c <> cInstance And c <> cQuarter Then
+            If CStr(ws.Cells(1, c).Value) = fieldName Then
+                FindOrAppendFieldColumn = c
+                Exit Function
+            End If
         End If
     Next c
 
@@ -328,19 +402,34 @@ Private Function FindOrAppendFieldColumn(ws As Object, fieldName As String) As L
     ws.Cells(1, lastCol + 1).Value = fieldName
 End Function
 
-Private Function FindOrAppendInstanceRow(ws As Object, instanceId As String) As Long
+' The row for THIS slide IN THIS PERIOD, or a new one carrying both.
+'
+' Instance is matched exactly (Trim only) to agree with the reader, whose
+' Dictionary keys are case-sensitive -- two keys differing by case are two
+' slides, and merging them here would silently join two projects' rows. Period
+' is matched case-insensitively, also to agree with the reader's filter, so
+' "fy26q4" and "FY26Q4" resolve to one row rather than quietly becoming two.
+Private Function FindOrAppendInstanceRow(ws As Object, instanceId As String, period As String, _
+                                         cInstance As Long, cQuarter As Long) As Long
     Dim lastRow As Long
     lastRow = LastUsedRow(ws)
+
     Dim r As Long
     For r = 2 To lastRow
-        If CStr(ws.Cells(r, 1).Value) = instanceId Then
-            FindOrAppendInstanceRow = r
-            Exit Function
+        If Trim$(CStr(ws.Cells(r, cInstance).Value)) = Trim$(instanceId) Then
+            If cQuarter = 0 Then
+                FindOrAppendInstanceRow = r
+                Exit Function
+            ElseIf StrComp(Trim$(CStr(ws.Cells(r, cQuarter).Value)), Trim$(period), vbTextCompare) = 0 Then
+                FindOrAppendInstanceRow = r
+                Exit Function
+            End If
         End If
     Next r
 
     FindOrAppendInstanceRow = lastRow + 1
-    ws.Cells(lastRow + 1, 1).Value = instanceId
+    ws.Cells(lastRow + 1, cInstance).Value = instanceId
+    If cQuarter > 0 Then ws.Cells(lastRow + 1, cQuarter).Value = period
 End Function
 
 ' ---------------------------------------------------------------------

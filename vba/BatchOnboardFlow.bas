@@ -2363,7 +2363,10 @@ Public Function CommitBatch(plan As BatchOnboardPlan, templateSld As Object, oth
             sld.Tags.Add "slide_type", slideType
             sld.Tags.Add "instance_key", instanceKey
 
-            ExcelOutput.UpsertRow ws, instanceKey, harvested
+            ' See DeckAdoption's matching call: the period comes from the deck
+            ' the template slide lives in, not from this function's signature.
+            ExcelOutput.UpsertRow ws, instanceKey, harvested, _
+                DeckRegistry.GetDeckPeriod(templateSld.Parent)
 
             If VerifyBatchLink(sld, harvested) Then
                 result.LinkedCount = result.LinkedCount + 1

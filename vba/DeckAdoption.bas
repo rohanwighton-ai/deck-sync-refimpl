@@ -305,7 +305,13 @@ Public Function CommitAdoption(plans() As AdoptionSlidePlan, slidesToAdopt() As 
                     If plans(i).MatchedKeylessRowId <> "" Then
                         ws.Cells(CLng(plans(i).MatchedKeylessRowId), 1).Value = instanceKey
                     End If
-                    ExcelOutput.UpsertRow ws, instanceKey, harvestedValues(i)
+                    ' Period from the deck the template lives in (Slide.Parent
+                    ' is that Presentation -- probed against real PowerPoint
+                    ' 2026-08-04, and asserted by a test so it stays true),
+                    ' rather than threaded through this function's signature.
+                    ' The deck cannot disagree with itself; a parameter can.
+                    ExcelOutput.UpsertRow ws, instanceKey, harvestedValues(i), _
+                        DeckRegistry.GetDeckPeriod(templateSld.Parent)
 
                     ' Verify the link, not just the write -- the same
                     ' inject_primitive no-op round trip onboard-slide-

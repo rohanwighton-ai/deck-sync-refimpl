@@ -277,6 +277,58 @@ Sync Now itself is still **not exercised** — that needs a human at the keyboar
 calls in the sync paths mean a headless run hangs). The copy is now in the state where that
 run is actually meaningful to attempt.
 
+## 2026-08-04 — the keystone: a row is (slide, period), and the writer knows it
+
+`UpsertRow` matched on instance ALONE until today. Syncing FY27Q1 found FY26Q4's row
+and overwrote it — a real quarter's approved text destroyed silently, on rollover.
+It now takes a **required** period and matches on (instance, period); `CreateSheet`
+writes the `Quarter` header; both landed together, because either alone is a
+regression (header without a period-aware write ⇒ blank period cells ⇒ every filtered
+read returns zero rows, reported as success).
+
+Also closed, all in the same change:
+
+- **A field named like a structural column is refused.** A slide really can carry a
+  field called "Quarter"; it used to go straight into the period cell and the row
+  vanished from every filtered read.
+- **Reader and writer now share one column locator.** They located columns
+  separately — reader by name, writer by hardcoded position 1 — which is the exact
+  disagreement class this project has paid for twice.
+- **Onboarding derives the period from the deck**, via `Slide.Parent`, rather than
+  taking it as a parameter. The codebase's own ruling (`E2EField.RunField`): a
+  supplied period is a habit, the deck's property was written deliberately. **Probed
+  against real PowerPoint and now asserted by a test**, because it is a COM
+  object-model claim.
+
+### The test harness was calling errored tests a pass
+
+Breaking `UpsertRow`'s matching on purpose produced `ERROR`, not `FAIL` — and
+`run_vba_tests.ps1` counted `^PASS` and `^FAIL` and **nothing else**, so the run
+summarised as *"148 passed, 0 failed"* and **exited 0**. Three tests were erroring
+invisibly. Now counted, reported, and exit 1.
+
+**That fix immediately caught a regression of mine**: requiring a period broke three
+onboarding tests whose scratch decks declare none. Under the old counter they would
+have reported clean and a broken onboarding path would have been committed.
+
+**Consequence worth knowing: a deck must declare its quarter BEFORE it can be
+onboarded.** That matches the toolbar already numbering it step 0, now enforced rather
+than suggested — but it currently surfaces as a raw error, not "set your quarter
+first". Named in `WORKFLOW.md`, not yet fixed.
+
+152 VBA pass / 0 failed / 0 errored, 80 Python pass.
+
+## `WORKFLOW.md` — the loop in English
+
+Written 2026-08-04 at Rohan's request, so the time-and-motion can be argued on paper
+instead of discovered in a UI. Derived from the toolbar and its handlers, not from
+memory. It records, per step, what a person does, what the tool does, what it touches,
+and whether it works today.
+
+**What it made obvious: the loop does not close.** Steps 1–3 (drafting, publish) read
+and write the LONG register; step 4 (Sync Now) reads the WIDE sheet. Two different
+files. That is the whole of the remaining work.
+
 ## Not on this list, deliberately
 
 The other 38 fields. The GUID key redesign. R13's full review subsystem (built, parked).

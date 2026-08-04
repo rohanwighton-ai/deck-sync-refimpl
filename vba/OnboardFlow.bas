@@ -263,7 +263,11 @@ Public Function CommitOnboarding(pres As Object, exampleSld As Object, fields() 
     If IsEmpty(ws.Cells(1, 1).Value) Then
         ExcelOutput.CreateSheet ws, workbookDeckId
     End If
-    ExcelOutput.UpsertRow ws, instanceKey, harvested
+    ' The harvested text is this deck as it stands, so the row belongs to the
+    ' period the deck declares. Read from the deck rather than passed in: a
+    ' supplied period is a caller's habit, the property was written when
+    ' somebody rolled the deck forward deliberately.
+    ExcelOutput.UpsertRow ws, instanceKey, harvested, DeckRegistry.GetDeckPeriod(pres)
 
     result.Ok = True
     CommitOnboarding = result

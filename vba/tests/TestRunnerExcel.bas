@@ -49,8 +49,33 @@ Public Function RunAllTests() As String
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_HeaderRow_ReservesColumnAForInstanceId()
-    AppendResult report, "HeaderRow_ReservesColumnAForInstanceId", r
+    r = Test_HeaderRow_ReservesColumnsAAndBForIdentityAndPeriod()
+    AppendResult report, "HeaderRow_ReservesColumnsAAndBForIdentityAndPeriod", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_UpsertRow_NextPeriodAppendsAndLeavesLastQuarterIntact()
+    AppendResult report, "UpsertRow_NextPeriodAppendsAndLeavesLastQuarterIntact", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_UpsertRow_SamePeriodUpdatesThatRowInPlace()
+    AppendResult report, "UpsertRow_SamePeriodUpdatesThatRowInPlace", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_UpsertRow_RefusesABlankPeriodOnAPeriodSheet()
+    AppendResult report, "UpsertRow_RefusesABlankPeriodOnAPeriodSheet", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_UpsertRow_RefusesAFieldNamedLikeAStructuralColumn()
+    AppendResult report, "UpsertRow_RefusesAFieldNamedLikeAStructuralColumn", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_UpsertRow_LegacySheetWithNoPeriodColumnStillMatchesOnInstance()
+    AppendResult report, "UpsertRow_LegacySheetWithNoPeriodColumnStillMatchesOnInstance", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -168,7 +193,7 @@ Private Function Test_UpsertRow_SeedsNewInstanceFromHarvestedValues() As String
     Set ws = NewBlankSheet()
     ExcelOutput.CreateSheet ws, "deck-v1"
 
-    ExcelOutput.UpsertRow ws, "slide-1", DictOf2("Title", "Q3 Revenue", "Date", "2026-07")
+    ExcelOutput.UpsertRow ws, "slide-1", DictOf2("Title", "Q3 Revenue", "Date", "2026-07"), "FY26Q4"
 
     Dim sheet As Sheet
     sheet = ExcelOutput.ReadSheet(ws)
@@ -185,9 +210,9 @@ Private Function Test_UpsertRow_NewFieldAppendsColumnWithoutTouchingExisting() A
     Dim ws As Object
     Set ws = NewBlankSheet()
     ExcelOutput.CreateSheet ws, "deck-v1"
-    ExcelOutput.UpsertRow ws, "slide-1", DictOf2("Title", "Q3 Revenue", "Date", "2026-07")
+    ExcelOutput.UpsertRow ws, "slide-1", DictOf2("Title", "Q3 Revenue", "Date", "2026-07"), "FY26Q4"
 
-    ExcelOutput.UpsertRow ws, "slide-1", DictOf1("Region", "APAC")
+    ExcelOutput.UpsertRow ws, "slide-1", DictOf1("Region", "APAC"), "FY26Q4"
 
     Dim sheet As Sheet
     sheet = ExcelOutput.ReadSheet(ws)
@@ -204,9 +229,9 @@ Private Function Test_UpsertRow_PartialUpdateMergesNotReplaces() As String
     Dim ws As Object
     Set ws = NewBlankSheet()
     ExcelOutput.CreateSheet ws, "deck-v1"
-    ExcelOutput.UpsertRow ws, "slide-1", DictOf2("Title", "Q3 Revenue", "Date", "2026-07")
+    ExcelOutput.UpsertRow ws, "slide-1", DictOf2("Title", "Q3 Revenue", "Date", "2026-07"), "FY26Q4"
 
-    ExcelOutput.UpsertRow ws, "slide-1", DictOf1("Title", "Q3 Revenue (revised)")
+    ExcelOutput.UpsertRow ws, "slide-1", DictOf1("Title", "Q3 Revenue (revised)"), "FY26Q4"
 
     Dim sheet As Sheet
     sheet = ExcelOutput.ReadSheet(ws)
@@ -221,8 +246,8 @@ Private Function Test_UpsertRow_NewInstanceDoesNotDisturbExistingRows() As Strin
     Dim ws As Object
     Set ws = NewBlankSheet()
     ExcelOutput.CreateSheet ws, "deck-v1"
-    ExcelOutput.UpsertRow ws, "slide-1", DictOf2("Title", "Q3 Revenue", "Date", "2026-07")
-    ExcelOutput.UpsertRow ws, "slide-2", DictOf1("Title", "Q4 Revenue")
+    ExcelOutput.UpsertRow ws, "slide-1", DictOf2("Title", "Q3 Revenue", "Date", "2026-07"), "FY26Q4"
+    ExcelOutput.UpsertRow ws, "slide-2", DictOf1("Title", "Q4 Revenue"), "FY26Q4"
 
     Dim sheet As Sheet
     sheet = ExcelOutput.ReadSheet(ws)
@@ -240,9 +265,9 @@ Private Function Test_ReadSheet_PreservesFieldAndInstanceOrderAcrossManyWrites()
     Set ws = NewBlankSheet()
     ExcelOutput.CreateSheet ws, "deck-v1"
 
-    ExcelOutput.UpsertRow ws, "slide-3", DictOf1("Zeta", "z")
-    ExcelOutput.UpsertRow ws, "slide-1", DictOf1("Alpha", "a")
-    ExcelOutput.UpsertRow ws, "slide-2", DictOf2("Zeta", "z2", "Alpha", "a2")
+    ExcelOutput.UpsertRow ws, "slide-3", DictOf1("Zeta", "z"), "FY26Q4"
+    ExcelOutput.UpsertRow ws, "slide-1", DictOf1("Alpha", "a"), "FY26Q4"
+    ExcelOutput.UpsertRow ws, "slide-2", DictOf2("Zeta", "z2", "Alpha", "a2"), "FY26Q4"
 
     Dim sheet As Sheet
     sheet = ExcelOutput.ReadSheet(ws)
@@ -252,18 +277,20 @@ Private Function Test_ReadSheet_PreservesFieldAndInstanceOrderAcrossManyWrites()
     Test_ReadSheet_PreservesFieldAndInstanceOrderAcrossManyWrites = result
 End Function
 
-Private Function Test_HeaderRow_ReservesColumnAForInstanceId() As String
+Private Function Test_HeaderRow_ReservesColumnsAAndBForIdentityAndPeriod() As String
     Dim result As String
     Dim ws As Object
     Set ws = NewBlankSheet()
     ExcelOutput.CreateSheet ws, "deck-v1"
-    ExcelOutput.UpsertRow ws, "slide-1", DictOf1("Title", "Q3 Revenue")
+    ExcelOutput.UpsertRow ws, "slide-1", DictOf1("Title", "Q3 Revenue"), "FY26Q4"
 
     result = result & Assert(CStr(ws.Cells(1, 1).Value) = ExcelOutput.INSTANCE_ID_HEADER, "A1 holds the Instance ID header, got '" & CStr(ws.Cells(1, 1).Value) & "'")
-    result = result & Assert(CStr(ws.Cells(1, 2).Value) = "Title", "B1 holds the first field name")
+    result = result & Assert(CStr(ws.Cells(1, 2).Value) = ExcelOutput.QUARTER_HEADER, "B1 holds the Quarter header, got '" & CStr(ws.Cells(1, 2).Value) & "'")
+    result = result & Assert(CStr(ws.Cells(1, 3).Value) = "Title", "C1 holds the first field name -- fields start AFTER both structural columns, got '" & CStr(ws.Cells(1, 3).Value) & "'")
     result = result & Assert(CStr(ws.Cells(2, 1).Value) = "slide-1", "A2 holds the first instance id")
+    result = result & Assert(CStr(ws.Cells(2, 2).Value) = "FY26Q4", "B2 holds the period the row was written for")
 
-    Test_HeaderRow_ReservesColumnAForInstanceId = result
+    Test_HeaderRow_ReservesColumnsAAndBForIdentityAndPeriod = result
 End Function
 
 ' --- ReadSheetForDeckPeriod: the sync path's guarded read ------------------
@@ -353,10 +380,17 @@ End Function
 Private Function Test_ReadForDeckPeriod_SilentOnASheetWithNoQuarterColumn() As String
     ' Every sheet this tool wrote before 2026-08-03. It has one row per slide
     ' and no opinion about periods, so a deck declaring one must still read it.
+    '
+    ' BUILT BY HAND, deliberately: CreateSheet now always writes a Quarter
+    ' header, so it can no longer produce this shape. The shape still exists on
+    ' disk in every workbook made before that change, which is exactly why it
+    ' still needs a test -- it is the one case that cannot be regenerated.
     Dim ws As Object
     Set ws = NewBlankSheet()
-    ExcelOutput.CreateSheet ws, "deck-v1"
-    ExcelOutput.UpsertRow ws, "P1", DictOf1("PROJECT_STATUS", "In Progress")
+    ws.Cells(1, 1).Value = ExcelOutput.INSTANCE_ID_HEADER
+    ws.Cells(1, 2).Value = "PROJECT_STATUS"
+    ws.Cells(2, 1).Value = "P1"
+    ws.Cells(2, 2).Value = "In Progress"
 
     Dim problem As String
     Dim s As Sheet
@@ -388,4 +422,151 @@ Private Function Test_ReadForDeckPeriod_RefusesANeverInitializedSheet() As Strin
 
     ws.Delete
     Test_ReadForDeckPeriod_RefusesANeverInitializedSheet = result
+End Function
+
+' --- UpsertRow keyed on (instance, period) --------------------------------
+
+' THE ONE THAT MATTERS. Until 2026-08-04 UpsertRow matched on instance alone,
+' so writing FY27Q1 for a project found its FY26Q4 row and overwrote it --
+' a real quarter's approved text destroyed silently, on rollover.
+'
+' Asserts BOTH directions, because a version that appended without matching
+' would also produce two rows: last quarter's values must still be readable
+' AT last quarter, and this quarter's at this quarter.
+Private Function Test_UpsertRow_NextPeriodAppendsAndLeavesLastQuarterIntact() As String
+    Dim result As String
+    Dim ws As Object
+    Set ws = NewBlankSheet()
+    ExcelOutput.CreateSheet ws, "deck-v1"
+
+    ExcelOutput.UpsertRow ws, "P1", DictOf1("PROJECT_STATUS", "In Progress"), "FY26Q4"
+    ExcelOutput.UpsertRow ws, "P1", DictOf1("PROJECT_STATUS", "Project Closed"), "FY27Q1"
+
+    Dim q4 As Sheet, q1 As Sheet
+    Dim problem As String
+    ' Presence is checked BEFORE dereferencing, so the regression this test
+    ' exists to catch reports as a FAIL with a readable message. Reading a
+    ' missing key straight out of a Scripting.Dictionary silently creates it as
+    ' Empty, and indexing into Empty raises Type mismatch -- which surfaced as
+    ' ERROR, not FAIL, when this was first broken on purpose.
+    q4 = ExcelOutput.ReadSheetForDeckPeriod(ws, "FY26Q4", problem)
+    result = result & Assert(problem = "", "FY26Q4 reads cleanly, got: " & problem)
+    result = result & Assert(q4.InstanceOrder.count = 1, "FY26Q4 has one row, got " & q4.InstanceOrder.count)
+    If Not q4.Rows.Exists("P1") Then
+        result = result & Assert(False, "P1 is missing from the FY26Q4 read -- last quarter's row was overwritten")
+    Else
+        result = result & Assert(q4.Rows("P1")("PROJECT_STATUS") = "In Progress", _
+            "LAST QUARTER'S TEXT SURVIVED -- got '" & q4.Rows("P1")("PROJECT_STATUS") & "'")
+    End If
+
+    q1 = ExcelOutput.ReadSheetForDeckPeriod(ws, "FY27Q1", problem)
+    result = result & Assert(problem = "", "FY27Q1 reads cleanly, got: " & problem)
+    result = result & Assert(q1.InstanceOrder.count = 1, "FY27Q1 has one row, got " & q1.InstanceOrder.count)
+    If Not q1.Rows.Exists("P1") Then
+        result = result & Assert(False, "P1 is missing from the FY27Q1 read -- no row was appended for the new period")
+    Else
+        result = result & Assert(q1.Rows("P1")("PROJECT_STATUS") = "Project Closed", _
+            "this quarter's text is its own -- got '" & q1.Rows("P1")("PROJECT_STATUS") & "'")
+    End If
+
+    ' Two rows on the sheet, not one overwritten and not three.
+    result = result & Assert(CStr(ws.Cells(3, 1).Value) = "P1" And CStr(ws.Cells(3, 2).Value) = "FY27Q1", _
+        "row 3 is P1 @ FY27Q1, got '" & CStr(ws.Cells(3, 1).Value) & "' / '" & CStr(ws.Cells(3, 2).Value) & "'")
+    result = result & Assert(IsEmpty(ws.Cells(4, 1).Value), "no fourth row was created")
+
+    ws.Delete
+    Test_UpsertRow_NextPeriodAppendsAndLeavesLastQuarterIntact = result
+End Function
+
+' The other half: re-syncing the SAME period must not accumulate rows.
+Private Function Test_UpsertRow_SamePeriodUpdatesThatRowInPlace() As String
+    Dim result As String
+    Dim ws As Object
+    Set ws = NewBlankSheet()
+    ExcelOutput.CreateSheet ws, "deck-v1"
+
+    ExcelOutput.UpsertRow ws, "P1", DictOf1("PROJECT_STATUS", "Not Started"), "FY26Q4"
+    ExcelOutput.UpsertRow ws, "P1", DictOf1("PROJECT_STATUS", "In Progress"), "FY26Q4"
+
+    Dim problem As String
+    Dim s As Sheet
+    s = ExcelOutput.ReadSheetForDeckPeriod(ws, "FY26Q4", problem)
+
+    result = result & Assert(problem = "", "no duplicate is reported, got: " & problem)
+    result = result & Assert(s.InstanceOrder.count = 1, "still one row, got " & s.InstanceOrder.count)
+    result = result & Assert(s.Rows("P1")("PROJECT_STATUS") = "In Progress", "the row was updated in place")
+    result = result & Assert(IsEmpty(ws.Cells(3, 1).Value), "no second row was appended")
+
+    ws.Delete
+    Test_UpsertRow_SamePeriodUpdatesThatRowInPlace = result
+End Function
+
+' A blank period on a period-bearing sheet writes a row no filtered read can
+' ever see -- present, correct, and invisible. Refused rather than defaulted.
+Private Function Test_UpsertRow_RefusesABlankPeriodOnAPeriodSheet() As String
+    Dim result As String
+    Dim ws As Object
+    Set ws = NewBlankSheet()
+    ExcelOutput.CreateSheet ws, "deck-v1"
+
+    Dim raised As Boolean
+    On Error Resume Next
+    Err.Clear
+    ExcelOutput.UpsertRow ws, "P1", DictOf1("PROJECT_STATUS", "In Progress"), ""
+    raised = (Err.Number <> 0)
+    Err.Clear
+    On Error GoTo 0
+
+    result = result & Assert(raised, "a blank period must be refused on a sheet that has a Quarter column")
+    result = result & Assert(IsEmpty(ws.Cells(2, 1).Value), "and nothing was written")
+
+    ws.Delete
+    Test_UpsertRow_RefusesABlankPeriodOnAPeriodSheet = result
+End Function
+
+' A slide really can carry a field called "Quarter". Before this it went
+' straight into the period cell and the row vanished from every filtered read.
+Private Function Test_UpsertRow_RefusesAFieldNamedLikeAStructuralColumn() As String
+    Dim result As String
+    Dim ws As Object
+    Set ws = NewBlankSheet()
+    ExcelOutput.CreateSheet ws, "deck-v1"
+    ExcelOutput.UpsertRow ws, "P1", DictOf1("PROJECT_STATUS", "In Progress"), "FY26Q4"
+
+    Dim raised As Boolean
+    On Error Resume Next
+    Err.Clear
+    ExcelOutput.UpsertRow ws, "P1", DictOf1("Quarter", "clobbered"), "FY26Q4"
+    raised = (Err.Number <> 0)
+    Err.Clear
+    On Error GoTo 0
+
+    result = result & Assert(raised, "a field named 'Quarter' must be refused, not written into the period column")
+    result = result & Assert(CStr(ws.Cells(2, 2).Value) = "FY26Q4", _
+        "the period cell is untouched, got '" & CStr(ws.Cells(2, 2).Value) & "'")
+
+    ws.Delete
+    Test_UpsertRow_RefusesAFieldNamedLikeAStructuralColumn = result
+End Function
+
+' Sheets built before 2026-08-03 have one row per slide and no period column.
+' UpsertRow must keep updating them in place rather than appending a row per
+' period into a sheet that cannot express periods.
+Private Function Test_UpsertRow_LegacySheetWithNoPeriodColumnStillMatchesOnInstance() As String
+    Dim result As String
+    Dim ws As Object
+    Set ws = NewBlankSheet()
+    ws.Cells(1, 1).Value = ExcelOutput.INSTANCE_ID_HEADER
+    ws.Cells(1, 2).Value = "PROJECT_STATUS"
+    ws.Cells(2, 1).Value = "P1"
+    ws.Cells(2, 2).Value = "Not Started"
+
+    ExcelOutput.UpsertRow ws, "P1", DictOf1("PROJECT_STATUS", "In Progress"), "FY26Q4"
+
+    result = result & Assert(CStr(ws.Cells(2, 2).Value) = "In Progress", _
+        "the existing row was updated, got '" & CStr(ws.Cells(2, 2).Value) & "'")
+    result = result & Assert(IsEmpty(ws.Cells(3, 1).Value), "no period row was appended to a sheet with no period column")
+
+    ws.Delete
+    Test_UpsertRow_LegacySheetWithNoPeriodColumnStillMatchesOnInstance = result
 End Function

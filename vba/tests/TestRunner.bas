@@ -618,6 +618,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "BatchOnboardFlow_ShouldForceSaveLeavesHealthyAutoSaveAlone", r
     r = Test_BatchOnboardFlow_LastSaveTimeOfReadsARealTimestamp()
     AppendResult report, "BatchOnboardFlow_LastSaveTimeOfReadsARealTimestamp", r
+    r = Test_DeckRegistry_PeriodIsReadableThroughSlideParent()
+    AppendResult report, "DeckRegistry_PeriodIsReadableThroughSlideParent", r
     r = Test_BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen()
     AppendResult report, "BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen", r
     r = Test_BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes()
@@ -4399,6 +4401,12 @@ Private Function Test_OnboardFlow_CommitAndVerifyOnboardingRoundTrip() As String
     Dim deckId As String
     deckId = DeckRegistry.GetOrCreateDeckId(pres)
 
+    ' Onboarding stamps every row it writes with the deck's period, and
+    ' UpsertRow refuses a blank one -- so a deck must declare its quarter
+    ' BEFORE it can be onboarded. That is the toolbar's own step 0
+    ' ("Start a Quarter"), now enforced rather than merely suggested.
+    DeckRegistry.SetDeckPeriod pres, "FY26Q4"
+
     Dim commitResult As OnboardingResult
     commitResult = OnboardFlow.CommitOnboarding(pres, sld, fields, "onboard-test-type", ws, deckId)
 
@@ -6129,6 +6137,10 @@ Private Function Test_BatchOnboardFlow_CommitBatchTagsLinksAndVerifies() As Stri
     confirmedKeys(1) = "batch-other-1"
 
     Dim commitResult As BatchCommitResult
+    ' The deck must declare its quarter before it can be onboarded -- every row
+    ' written carries a period and UpsertRow refuses a blank one. Toolbar step 0.
+    DeckRegistry.SetDeckPeriod Application.ActivePresentation, "FY26Q4"
+
     commitResult = BatchOnboardFlow.CommitBatch(plan, templateSld, otherSlides, 1, "batch-test-type", ws, confirmedKeys)
 
     result = result & Assert(commitResult.LinkedCount = 2, "both slides linked, got " & commitResult.LinkedCount)
@@ -6259,6 +6271,8 @@ Private Function Test_BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale() As 
     Next i
 
     Dim commitResult As BatchCommitResult
+    DeckRegistry.SetDeckPeriod Application.ActivePresentation, "FY26Q4"
+
     commitResult = BatchOnboardFlow.CommitBatch(plan, templateSld, otherSlides, otherCount, "batch-scale-test-type", ws, confirmedKeys)
 
     result = result & Assert(commitResult.LinkedCount = otherCount + 1, "all " & (otherCount + 1) & " slides (template + " & otherCount & " others) linked, got " & commitResult.LinkedCount)
@@ -6806,4 +6820,37 @@ Private Function Test_ExcelOutput_PeriodRowsAndRollForward() As String
     xl.Quit
     Set wb = Nothing: Set xl = Nothing
     Test_ExcelOutput_PeriodRowsAndRollForward = result
+End Function
+
+' Slide.Parent is the Presentation, and a deck property reads through it.
+'
+' NOT AN OBVIOUS TRUTH TO ASSUME -- it is a COM object-model claim, and this
+' project's own rule is that those get probed against real Office rather than
+' asserted from memory. DeckAdoption.CommitAdoption and
+' BatchOnboardFlow.CommitBatch both derive the period this way instead of
+' taking it as a parameter (a deck cannot disagree with itself; a parameter
+' can), so if this ever stopped holding, onboarding would stamp every row with
+' an empty period -- which UpsertRow now refuses, loudly, but only at run time.
+' This turns that into a test failure instead.
+Private Function Test_DeckRegistry_PeriodIsReadableThroughSlideParent() As String
+    Dim result As String
+
+    Dim testPres As Object
+    Set testPres = Application.Presentations.Add
+    testPres.Slides.Add 1, 12   ' ppLayoutBlank
+
+    DeckRegistry.SetDeckPeriod testPres, "FY26Q4"
+
+    Dim sld As Object
+    Set sld = testPres.Slides(1)
+
+    result = result & Assert(DeckRegistry.GetDeckPeriod(sld.Parent) = "FY26Q4", _
+        "the deck's period reads back through Slide.Parent, got '" & DeckRegistry.GetDeckPeriod(sld.Parent) & "'")
+    result = result & Assert(sld.Parent.Slides.count = testPres.Slides.count, _
+        "Slide.Parent is the presentation the slide lives in")
+
+    testPres.Saved = True
+    testPres.Close
+
+    Test_DeckRegistry_PeriodIsReadableThroughSlideParent = result
 End Function

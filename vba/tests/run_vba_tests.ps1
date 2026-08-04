@@ -360,9 +360,22 @@ if (-not $env:DECK_SYNC_KEEP_STAGING) {
 $allOutput = "$pptReport`n$excelReport"
 $passCount = ([regex]::Matches($allOutput, '(?m)^PASS')).Count
 $failCount = ([regex]::Matches($allOutput, '(?m)^FAIL')).Count
+# A test that RAISES reports as "ERROR <name>" and was counted as neither a
+# pass nor a failure until 2026-08-04 -- so a blown-up test printed its error
+# line and the run still summarised as "N passed, 0 failed" and exited 0.
+# Found by breaking UpsertRow's row matching on purpose: the test that exists
+# to catch that regression errored, and the summary line called it clean.
+# Same "silence is not success" rule as the empty-result check below; it had
+# simply never been applied to this case.
+$errorCount = ([regex]::Matches($allOutput, '(?m)^ERROR')).Count
 
 Write-Output ""
-Write-Output "=== $passCount passed, $failCount failed ==="
+if ($errorCount -gt 0) {
+    Write-Output "=== $passCount passed, $failCount failed, $errorCount ERRORED ==="
+    Write-Output "    An ERRORED test raised before it could assert. It is NOT a pass."
+} else {
+    Write-Output "=== $passCount passed, $failCount failed ==="
+}
 
 if ($pptError -or $excelError) {
     Write-Output "=== DRIVER ERROR (see above) ==="
@@ -377,5 +390,5 @@ if ($passCount -eq 0) {
     Write-Output "  dialog names the offending line directly."
     exit 2
 }
-if ($failCount -gt 0) { exit 1 }
+if ($failCount -gt 0 -or $errorCount -gt 0) { exit 1 }
 exit 0
