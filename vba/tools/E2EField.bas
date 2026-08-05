@@ -92,6 +92,45 @@ Public Function RunField(deckPath As String, registerPath As String, _
         "Slides:   " & pres.Slides.count & vbCrLf & vbCrLf & _
         IIf(mismatch <> "", mismatch & vbCrLf & vbCrLf, "")
 
+    ' BACK THE DECK UP BEFORE ANYTHING WRITES TO IT.
+    '
+    ' This driver had NO backup while the RibbonUI apply path takes one -- two
+    ' routes to the same destructive act with different safety, which is the
+    ' shape of defect this project keeps paying for. Found 2026-08-05 the honest
+    ' way: "the tooling takes its own .pre-apply backup" was said out loud, and
+    ' was true of the other driver and not this one, after this one had already
+    ' written a deck.
+    '
+    ' Covers MIGRATE as well as APPLY. Migrate renames role tags and saves --
+    ' it changes no slide text, which is exactly why it reads as harmless and
+    ' is not: it rewrites the labels every later match depends on.
+    '
+    ' SaveCopyAs, not a file copy: the deck is open, and copying an open .pptx
+    ' off disk can catch it mid-write.
+    '
+    ' A FAILED BACKUP ABORTS THE RUN. A backup that silently did not happen is
+    ' worse than none, because the run proceeds believing it is reversible.
+    If doWrite Or doMigrate Then
+        Dim bakPath As String
+        bakPath = deckPath & ".pre-" & IIf(doMigrate, "migrate", "apply") & "-" & _
+                  Format(Now, "yyyymmdd-hhnnss") & ".bak.pptx"
+        On Error Resume Next
+        pres.SaveCopyAs bakPath
+        If Err.Number <> 0 Then
+            Dim bakWhy As String
+            bakWhy = Err.Description
+            On Error GoTo 0
+            pres.Saved = msoTrue: pres.Close
+            RunField = r & vbCrLf & "STOPPED before writing anything." & vbCrLf & _
+                "Could not back the deck up to:" & vbCrLf & "  " & bakPath & vbCrLf & _
+                "  (" & bakWhy & ")" & vbCrLf & vbCrLf & _
+                "A run that writes without a backup is not offered."
+            Exit Function
+        End If
+        On Error GoTo 0
+        r = r & "Backup:   " & bakPath & vbCrLf & vbCrLf
+    End If
+
     ' --- Tag migration, exactly as the delivering run did it ---------------
     ' Idempotent: already-correct tags count as AlreadyDone, not as work. This
     ' step is why the earlier R13 run found nothing -- it was skipped, so every
