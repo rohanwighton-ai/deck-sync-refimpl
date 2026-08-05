@@ -37,6 +37,55 @@ Public Function RegisterSheet(wb As Object) As Object
         "The register is located by name, not by tab position."
 End Function
 
+' The worksheet a slide type is REGISTERED against, or Nothing with a reason.
+'
+' THE ONE ANSWER TO "WHICH SHEET IS THIS TYPE'S REGISTER", for drafting,
+' publish and sync alike. They used to answer it differently and that is a
+' silent-wrong-answer bug, not an inconsistency:
+'
+'   sync     asked DeckRegistry for the worksheet name registered per slide type
+'   drafting asked for a sheet literally NAMED "Register", and only fell back to
+'            the registered name when no such sheet existed
+'
+' A workbook can easily have both -- a sheet called "Register" left by an early
+' onboarding, plus a type registered against "Research Project Status". Publish
+' then wrote one sheet while Sync Now read the other, and BOTH reported success.
+' The text was really published and the slides really synced; they just were not
+' the same text. The rig could never show it, because the rig's registered name
+' IS "Register", so the two paths happened to coincide.
+'
+' IT REFUSES A MISSING SHEET RATHER THAN CREATING ONE. GetOrAddWorksheet creates,
+' which is right when onboarding is establishing the pairing and catastrophic
+' when something is merely looking the register up: a freshly invented blank
+' sheet reads as a register with nothing in it, which is a clean sync of
+' nothing. Creating a register is an act of onboarding, never of resolution.
+Public Function WorksheetForSlideType(pres As Object, wb As Object, slideType As String, _
+                                      ByRef problem As String) As Object
+    problem = ""
+
+    Dim templateSld As Object
+    Dim wsName As String
+    If Not DeckRegistry.LookupType(pres, slideType, templateSld, wsName) Then
+        problem = "this deck has no slide type registered as '" & slideType & "'."
+        Exit Function
+    End If
+
+    If Trim$(wsName) = "" Then
+        problem = "slide type '" & slideType & "' is registered, but with no worksheet name."
+        Exit Function
+    End If
+
+    If Not WorksheetExists(wb, wsName) Then
+        problem = "slide type '" & slideType & "' is registered against a worksheet named '" & _
+            wsName & "', and this workbook has no such sheet. Refusing to create it -- an " & _
+            "invented blank sheet reads as a register with nothing in it, which reports as a " & _
+            "clean run of nothing. Check the deck and workbook are the pair you meant."
+        Exit Function
+    End If
+
+    Set WorksheetForSlideType = GetOrAddWorksheet(wb, wsName)
+End Function
+
 ' Small shared primitive both RibbonUI.bas (Sync Now) and OnboardFlow.bas
 ' (Onboard New Slide Type, which establishes the pairing in the first
 ' place) need: given a workbook path, get a live Workbook object -- reusing

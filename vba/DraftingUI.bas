@@ -33,31 +33,65 @@ Option Explicit
 '
 ' Returns Nothing rather than raising, because every caller here wants to say
 ' something useful to a person rather than show them an error dialog.
-Private Function ResolveRegisterSheet(pres As Object, wb As Object) As Object
-    On Error Resume Next
-    Set ResolveRegisterSheet = WorkbookBridge.RegisterSheet(wb)
-    On Error GoTo 0
-    If Not ResolveRegisterSheet Is Nothing Then Exit Function
+Private Function ResolveRegisterSheet(pres As Object, wb As Object, ByRef problem As String) As Object
+    problem = ""
 
     Dim types() As String
     types = DeckRegistry.ListRegisteredTypes(pres)
 
-    Dim lo As Long
+    Dim lo As Long, hi As Long
     On Error Resume Next
-    lo = LBound(types)
+    lo = LBound(types): hi = UBound(types)
     If Err.Number <> 0 Then
         On Error GoTo 0
+        problem = "this deck has no slide type registered yet, so there is no register to draft " & _
+                  "against. Onboard a slide type first."
         Exit Function
     End If
     On Error GoTo 0
 
-    Dim templateSld As Object
-    Dim wsName As String
-    If DeckRegistry.LookupType(pres, types(lo), templateSld, wsName) Then
-        If WorkbookBridge.WorksheetExists(wb, wsName) Then
-            Set ResolveRegisterSheet = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
+    Dim chosen As String
+    If hi = lo Then
+        chosen = types(lo)
+    Else
+        ' MORE THAN ONE TYPE IS A QUESTION, NOT A DEFAULT. This used to take
+        ' types(LBound) -- the first registered, in whatever order the custom
+        ' properties happened to enumerate -- and draft against that type's
+        ' register without ever saying which one it picked. On a deck carrying
+        ' several of Rohan's eight slide types that is a coin toss deciding
+        ' which sheet a quarter's writing lands in.
+        Dim menu As String, i As Long
+        For i = lo To hi
+            menu = menu & "  " & (i - lo + 1) & ". " & types(i) & vbCrLf
+        Next i
+
+        Dim pick As String
+        pick = Trim(InputBox("This deck has more than one slide type registered." & vbCrLf & _
+            "Each has its own register sheet, so drafting has to know which one." & vbCrLf & vbCrLf & _
+            menu & vbCrLf & "Type the NUMBER of the one you are drafting:", "Which slide type?"))
+        If pick = "" Then
+            problem = "cancelled -- no slide type chosen."
+            Exit Function
         End If
+        If Not IsNumeric(pick) Then
+            problem = "'" & pick & "' is not one of the numbers listed."
+            Exit Function
+        End If
+        Dim n As Long
+        n = CLng(pick)
+        If n < 1 Or n > (hi - lo + 1) Then
+            problem = "there is no slide type number " & n & " on that list."
+            Exit Function
+        End If
+        chosen = types(lo + n - 1)
     End If
+
+    ' THE SAME ANSWER SYNC USES. This function used to prefer a sheet literally
+    ' named "Register" and fall back to the registered name only if none
+    ' existed -- so a workbook holding both put publish on one sheet and Sync
+    ' Now on another, each reporting success. See
+    ' WorkbookBridge.WorksheetForSlideType for the full account.
+    Set ResolveRegisterSheet = WorkbookBridge.WorksheetForSlideType(pres, wb, chosen, problem)
 End Function
 
 ' Shared opening move for all three buttons: get the deck, its workbook, and
@@ -83,11 +117,11 @@ Private Function Resolve(caption As String, ByRef pres As Object, ByRef wb As Ob
         Exit Function
     End If
 
-    Set regWs = ResolveRegisterSheet(pres, wb)
+    Dim problem As String
+    Set regWs = ResolveRegisterSheet(pres, wb, problem)
     If regWs Is Nothing Then
-        MsgBox "Opened the workbook but could not find a register sheet in it." & vbCrLf & vbCrLf & _
-               "Expected a sheet named 'Register', or the sheet this deck's slide " & _
-               "type is registered against.", vbCritical, caption
+        MsgBox "Could not work out which register sheet to use." & vbCrLf & vbCrLf & _
+               problem, vbCritical, caption
         Exit Function
     End If
 

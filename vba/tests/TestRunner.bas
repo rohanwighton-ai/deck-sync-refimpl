@@ -208,6 +208,16 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_WorkbookBridge_RegisteredNameWinsOverASheetCalledRegister()
+    AppendResult report, "WorkbookBridge_RegisteredNameWinsOverASheetCalledRegister", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_WorkbookBridge_RefusesToInventAMissingRegisterSheet()
+    AppendResult report, "WorkbookBridge_RefusesToInventAMissingRegisterSheet", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_FieldSpec_ValidationAppliesDownTheControlledColumn()
     AppendResult report, "FieldSpec_ValidationAppliesDownTheControlledColumn", r
     On Error GoTo 0
@@ -2341,6 +2351,101 @@ Private Function Test_Drafting_OnlyTickedNonEmptyDraftsPublish() As String
     wb.Close False
     xl.Quit
     Test_Drafting_OnlyTickedNonEmptyDraftsPublish = result
+End Function
+
+' --- WorkbookBridge.WorksheetForSlideType ------------------------------
+'
+' The bug these exist for: drafting/publish resolved the register by looking
+' for a sheet literally NAMED "Register", while sync resolved it through the
+' worksheet name registered per slide type. A workbook with both put the two
+' halves of the loop on DIFFERENT SHEETS, each reporting success.
+Private Function Test_WorkbookBridge_RegisteredNameWinsOverASheetCalledRegister() As String
+    Dim result As String
+
+    Dim pres As Object
+    Set pres = Application.Presentations.Add
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+
+    ' A decoy named exactly what the old resolver preferred...
+    Dim decoy As Object
+    Set decoy = wb.Worksheets.Add
+    decoy.Name = "Register"
+    decoy.Cells(1, 1).Value = "DECOY"
+
+    ' ...and the sheet the deck is actually registered against.
+    Dim real As Object
+    Set real = wb.Worksheets.Add
+    real.Name = "Research Project Status"
+    real.Cells(1, 1).Value = "THE REAL ONE"
+
+    ' Presentations.Add gives a deck with ZERO slides, so a template slide has
+    ' to be made before RegisterType can key against one.
+    Dim tpl As Object
+    Set tpl = pres.Slides.Add(1, ppLayoutBlank)
+    DeckRegistry.RegisterType pres, "Research Project Status", tpl, "Research Project Status"
+
+    Dim problem As String
+    Dim got As Object
+    Set got = WorkbookBridge.WorksheetForSlideType(pres, wb, "Research Project Status", problem)
+
+    result = result & Assert(Not got Is Nothing, "a sheet was resolved at all; problem was '" & problem & "'")
+    If Not got Is Nothing Then
+        ' THE ASSERTION. The old resolver returned the decoy here.
+        result = result & Assert(got.Name = "Research Project Status", _
+            "resolves the REGISTERED sheet, not the one merely named 'Register', got '" & got.Name & "'")
+        result = result & Assert(CStr(got.Cells(1, 1).Value) = "THE REAL ONE", _
+            "...and it is really that sheet's content, got '" & got.Cells(1, 1).Value & "'")
+    End If
+
+    wb.Close False
+    xl.Quit
+    pres.Saved = msoTrue
+    pres.Close
+    Test_WorkbookBridge_RegisteredNameWinsOverASheetCalledRegister = result
+End Function
+
+Private Function Test_WorkbookBridge_RefusesToInventAMissingRegisterSheet() As String
+    Dim result As String
+
+    Dim pres As Object
+    Set pres = Application.Presentations.Add
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    ' Give the workbook a used sheet, so GetOrAddWorksheet's "rename the lone
+    ' blank sheet" path is not what is being measured.
+    wb.Worksheets(1).Cells(1, 1).Value = "something"
+
+    Dim before As Long
+    before = wb.Worksheets.count
+
+    ' Registered against a sheet that is NOT in this workbook -- the shape of a
+    ' deck paired to the wrong file.
+    Dim tpl As Object
+    Set tpl = pres.Slides.Add(1, ppLayoutBlank)
+    DeckRegistry.RegisterType pres, "Research Project Status", tpl, "Not In This Workbook"
+
+    Dim problem As String
+    Dim got As Object
+    Set got = WorkbookBridge.WorksheetForSlideType(pres, wb, "Research Project Status", problem)
+
+    result = result & Assert(got Is Nothing, "refuses rather than resolving something")
+    result = result & Assert(InStr(problem, "no such sheet") > 0, _
+        "says the workbook has no such sheet, got '" & problem & "'")
+    ' THE POINT. GetOrAddWorksheet would have CREATED it, and a blank invented
+    ' register reads as a register with nothing in it -- a clean run of nothing.
+    result = result & Assert(wb.Worksheets.count = before, _
+        "and does NOT create it: sheet count " & before & " -> " & wb.Worksheets.count)
+
+    wb.Close False
+    xl.Quit
+    pres.Saved = msoTrue
+    pres.Close
+    Test_WorkbookBridge_RefusesToInventAMissingRegisterSheet = result
 End Function
 
 ' --- FieldSpec.ApplyControlledValidation -------------------------------
