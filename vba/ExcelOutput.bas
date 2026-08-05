@@ -119,7 +119,12 @@ End Sub
 ' `cQuarter` comes back 0 for a sheet built before 2026-08-03, which has no
 ' period column and one row per slide. That is a legal shape and both callers
 ' handle it; it is not an error.
-Private Sub LocateStructuralColumns(ws As Object, ByRef cInstance As Long, ByRef cQuarter As Long)
+' PUBLIC since 2026-08-05, for FieldSpec.ApplyControlledValidation. It is the
+' third caller that needs to know which columns are structural and which are
+' fields, and the alternative was a third implementation of that answer --
+' which is the exact drift this function was made shared to prevent. Anything
+' that needs to tell a field column from a structural one comes here.
+Public Sub LocateStructuralColumns(ws As Object, ByRef cInstance As Long, ByRef cQuarter As Long)
     cInstance = 0
     cQuarter = 0
 
@@ -251,7 +256,7 @@ Public Function ReadSheetForPeriod(ws As Object, deckPeriod As String) As Sheet
     ReadSheetForPeriod = result
 End Function
 
-Private Function LastUsedColumn(ws As Object) As Long
+Public Function LastUsedColumn(ws As Object) As Long
     If IsEmpty(ws.Cells(1, 1).Value) Then
         LastUsedColumn = 0
         Exit Function
@@ -259,7 +264,7 @@ Private Function LastUsedColumn(ws As Object) As Long
     LastUsedColumn = ws.Cells(1, ws.Columns.count).End(XL_TO_LEFT).Column
 End Function
 
-Private Function LastUsedRow(ws As Object) As Long
+Public Function LastUsedRow(ws As Object) As Long
     If IsEmpty(ws.Cells(1, 1).Value) Then
         LastUsedRow = 0
         Exit Function

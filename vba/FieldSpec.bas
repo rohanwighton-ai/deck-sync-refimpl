@@ -317,53 +317,94 @@ Public Function ApplyControlledValidation(regWs As Object, specWs As Object) As 
         Exit Function
     End If
 
-    ' Columns by header name, never by position.
-    Dim hdr As Object
-    Set hdr = CreateObject("Scripting.Dictionary")
-    Dim c As Long
-    For c = 1 To 20
-        Dim h As String
-        h = Trim(CStr(regWs.Cells(1, c).Value))
-        If h <> "" Then hdr(h) = c
-    Next c
-    If Not hdr.Exists("FieldID") Or Not hdr.Exists("Value") Then
-        ApplyControlledValidation = "Validation: register has no FieldID/Value column."
+    ' A FIELD IS A COLUMN. This walked ROWS keyed by FieldID/Value until
+    ' 2026-08-05 -- the long register's shape. Against the wide sheet it found
+    ' no such headers and returned "register has no FieldID/Value column",
+    ' which is a sentence, not an error: the caller printed it and carried on,
+    ' so every controlled field lost its dropdown AND its out-of-vocabulary
+    ' check the moment the register went wide, and nothing said so.
+    '
+    ' It FAILED SOFT, which is why it survived. The whole point of this function
+    ' is to catch a value drifting out of its vocabulary; a version that
+    ' silently checks nothing reports exactly what a clean register reports.
+    Dim cInstance As Long, cQuarter As Long
+    ExcelOutput.LocateStructuralColumns regWs, cInstance, cQuarter
+
+    Dim lastCol As Long, lastRow As Long
+    lastCol = ExcelOutput.LastUsedColumn(regWs)
+    lastRow = ExcelOutput.LastUsedRow(regWs)
+
+    ' A sheet with a header row and no data rows is legal -- a freshly created
+    ' register. There is nothing to validate and nothing wrong.
+    If lastCol = 0 Or lastRow < 2 Then
+        ApplyControlledValidation = "Validation: no data rows on the register yet."
         Exit Function
     End If
 
-    Dim applied As Long, offending As String
-    Dim rr As Long
-    rr = 2
-    Do While Trim(CStr(regWs.Cells(rr, hdr("FieldID")).Value)) <> ""
-        Dim fid As String
-        fid = UCase(Trim(CStr(regWs.Cells(rr, hdr("FieldID")).Value)))
-        If vocab.Exists(fid) Then
-            Dim cell As Object
-            Set cell = regWs.Cells(rr, hdr("Value"))
+    Dim applied As Long, controlledCols As Long, offending As String
+    Dim c As Long
+    For c = 1 To lastCol
+        ' Structural columns are never fields and must never be given a
+        ' vocabulary -- writing a dropdown onto Instance ID or Quarter would
+        ' constrain the row's identity or its period.
+        If c <> cInstance And c <> cQuarter Then
+            Dim fid As String
+            fid = UCase(Trim(CStr(regWs.Cells(1, c).Value)))
 
-            ' Cosmetic-ish and must never break a caller: a workbook opened
-            ' read-only, or a protected sheet, will refuse validation.
-            On Error Resume Next
-            cell.Validation.Delete
-            cell.Validation.Add 3, 1, 1, CStr(vocab(fid))   ' xlValidateList, xlValidAlertStop, xlBetween
-            cell.Validation.IgnoreBlank = True
-            cell.Validation.InCellDropdown = True
-            If Err.Number = 0 Then applied = applied + 1
-            Err.Clear
-            On Error GoTo 0
+            If vocab.Exists(fid) Then
+                controlledCols = controlledCols + 1
 
-            Dim current As String
-            current = Trim(CStr(cell.Value))
-            If current <> "" Then
-                If Not InVocabulary(current, CStr(vocab(fid))) Then
-                    offending = offending & "  row " & rr & "  " & fid & " = """ & current & """" & vbCrLf
-                End If
+                ' The whole column's data cells in one call, rather than cell by
+                ' cell. Must never break a caller: a workbook opened read-only,
+                ' or a protected sheet, will refuse validation.
+                Dim rng As Object
+                Set rng = regWs.Range(regWs.Cells(2, c), regWs.Cells(lastRow, c))
+
+                On Error Resume Next
+                rng.Validation.Delete
+                rng.Validation.Add 3, 1, 1, CStr(vocab(fid))   ' xlValidateList, xlValidAlertStop, xlBetween
+                rng.Validation.IgnoreBlank = True
+                rng.Validation.InCellDropdown = True
+                If Err.Number = 0 Then applied = applied + (lastRow - 1)
+                Err.Clear
+                On Error GoTo 0
+
+                Dim rr As Long
+                For rr = 2 To lastRow
+                    Dim current As String
+                    current = Trim(CStr(regWs.Cells(rr, c).Value))
+                    If current <> "" Then
+                        If Not InVocabulary(current, CStr(vocab(fid))) Then
+                            ' Named by SLIDE and FIELD, not by row number. A row
+                            ' number is worthless on a sheet where the same
+                            ' project appears once per period -- the reader has
+                            ' to go and look up which row that was.
+                            Dim who As String
+                            who = Trim(CStr(regWs.Cells(rr, cInstance).Value))
+                            If cQuarter > 0 Then
+                                who = who & " (" & Trim(CStr(regWs.Cells(rr, cQuarter).Value)) & ")"
+                            End If
+                            offending = offending & "  " & who & "  " & fid & " = """ & current & """" & vbCrLf
+                        End If
+                    End If
+                Next rr
             End If
         End If
-        rr = rr + 1
-    Loop
+    Next c
 
-    ApplyControlledValidation = "Validation: dropdown on " & applied & " cell(s)."
+    ' SAYS WHEN IT DID NOTHING, and why. "dropdown on 0 cell(s)" reads as
+    ' success to anyone skimming, and reading it that way is exactly how this
+    ' function stayed broken. No controlled column on the register is a real
+    ' state worth naming -- it means the vocabulary exists on the Field Spec
+    ' but no column on the register carries that field.
+    If controlledCols = 0 Then
+        ApplyControlledValidation = "Validation: NO column on the register matches a field " & _
+            "with an allowed-value list, so nothing was checked."
+        Exit Function
+    End If
+
+    ApplyControlledValidation = "Validation: dropdown on " & applied & " cell(s) across " & _
+        controlledCols & " controlled column(s)."
     If offending <> "" Then
         ApplyControlledValidation = ApplyControlledValidation & vbCrLf & _
             "VALUES OUTSIDE THE ALLOWED LIST (left exactly as they are):" & vbCrLf & offending

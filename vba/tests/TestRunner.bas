@@ -208,6 +208,26 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_FieldSpec_ValidationAppliesDownTheControlledColumn()
+    AppendResult report, "FieldSpec_ValidationAppliesDownTheControlledColumn", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_FieldSpec_ValidationReportsValuesOutsideTheVocabulary()
+    AppendResult report, "FieldSpec_ValidationReportsValuesOutsideTheVocabulary", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_FieldSpec_ValidationSaysSoWhenNothingIsControlled()
+    AppendResult report, "FieldSpec_ValidationSaysSoWhenNothingIsControlled", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_FieldSpec_ValidationRefusesAVocabularyNamedLikeAStructuralColumn()
+    AppendResult report, "FieldSpec_ValidationRefusesAVocabularyNamedLikeAStructuralColumn", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_Drafting_PeriodRolloverDropsStaleSubmit()
     AppendResult report, "Drafting_PeriodRolloverDropsStaleSubmit", r
     On Error GoTo 0
@@ -2321,6 +2341,257 @@ Private Function Test_Drafting_OnlyTickedNonEmptyDraftsPublish() As String
     wb.Close False
     xl.Quit
     Test_Drafting_OnlyTickedNonEmptyDraftsPublish = result
+End Function
+
+' --- FieldSpec.ApplyControlledValidation -------------------------------
+'
+' THESE ARE THE TESTS THAT DID NOT EXIST, which is why the function could go
+' silently inert when the register went wide. It kept locating FieldID/Value
+' columns -- the long register's shape -- found none, and returned a polite
+' sentence the caller printed and ignored. Every controlled field lost its
+' dropdown and its out-of-vocabulary check, and nothing anywhere said so.
+'
+' Every one of these would FAIL against the pre-2026-08-05 implementation,
+' which is the property that makes them worth having.
+
+' Builds a Field Spec sheet declaring `fieldId` as controlled by `allowed`.
+Private Function SpecSheetWithVocabulary(wb As Object, fieldId As String, allowed As String) As Object
+    Dim ws As Object
+    Set ws = wb.Worksheets.Add
+    ws.Cells(FieldSpec.SPEC_HEADER_ROW, FieldSpec.COL_S_FIELDID).Value = "FieldID"
+    ws.Cells(FieldSpec.SPEC_HEADER_ROW, FieldSpec.COL_S_ALLOWED).Value = "Allowed"
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_S_FIELDID).Value = fieldId
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_S_ALLOWED).Value = allowed
+    Set SpecSheetWithVocabulary = ws
+End Function
+
+' The column whose header is `name`, or 0.
+'
+' BY HEADER, NEVER BY POSITION -- even in a test. The obvious version of these
+' tests wrote Cells(2, 3) for PROJECT_STATUS, which assumes UpsertRow appends
+' field columns in Scripting.Dictionary key order. ExcelOutput's own header
+' comment says that order is "de-facto-but-undocumented" and refuses to depend
+' on it; a test that depends on it is asserting something the code deliberately
+' does not promise, and would fail for a reason having nothing to do with
+' validation.
+Private Function ColumnNamed(ws As Object, name As String) As Long
+    Dim c As Long
+    For c = 1 To ExcelOutput.LastUsedColumn(ws)
+        If StrComp(Trim(CStr(ws.Cells(1, c).Value)), name, vbTextCompare) = 0 Then
+            ColumnNamed = c
+            Exit Function
+        End If
+    Next c
+End Function
+
+' Reports the validation Type of a cell, or -1 when it has none. Wrapped
+' because reading .Validation.Type on an unvalidated cell RAISES rather than
+' returning a "no validation" value.
+Private Function ValidationTypeOf(ws As Object, r As Long, c As Long) As Long
+    ValidationTypeOf = -1
+    On Error Resume Next
+    ValidationTypeOf = ws.Cells(r, c).Validation.Type
+    On Error GoTo 0
+End Function
+
+' A wide register: Instance ID | Quarter | PROJECT_STATUS | ABOUT_BODY
+Private Function WideRegisterForValidation(wb As Object) As Object
+    Dim ws As Object
+    Set ws = wb.Worksheets.Add
+    ExcelOutput.CreateSheet ws, "deck-v1"
+
+    Dim v As Object
+    Set v = CreateObject("Scripting.Dictionary")
+    v("PROJECT_STATUS") = "In Progress": v("ABOUT_BODY") = "about one"
+    ExcelOutput.UpsertRow ws, "P001", v, "FY26Q4"
+
+    Set v = CreateObject("Scripting.Dictionary")
+    v("PROJECT_STATUS") = "Not Started": v("ABOUT_BODY") = "about two"
+    ExcelOutput.UpsertRow ws, "P002", v, "FY26Q4"
+
+    Set WideRegisterForValidation = ws
+End Function
+
+Private Function Test_FieldSpec_ValidationAppliesDownTheControlledColumn() As String
+    Dim result As String
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+
+    Dim regWs As Object, specWs As Object
+    Set regWs = WideRegisterForValidation(wb)
+    Set specWs = SpecSheetWithVocabulary(wb, "PROJECT_STATUS", "Not Started,In Progress,Project Closed")
+
+    Dim rep As String
+    rep = FieldSpec.ApplyControlledValidation(regWs, specWs)
+
+    ' THE REGRESSION ITSELF. The old implementation returned this sentence
+    ' against a wide sheet and did nothing at all.
+    result = result & Assert(InStr(rep, "no FieldID/Value column") = 0, _
+        "does NOT bail out looking for the long register's columns, got '" & rep & "'")
+    result = result & Assert(InStr(rep, "1 controlled column") > 0, _
+        "reports the one controlled column it found, got '" & rep & "'")
+
+    ' The validation is really ON the cells -- asked of Excel, not of the
+    ' report, because the report is the thing under test.
+    Dim cStatus As Long, cAbout As Long
+    cStatus = ColumnNamed(regWs, "PROJECT_STATUS")
+    cAbout = ColumnNamed(regWs, "ABOUT_BODY")
+    result = result & Assert(cStatus > 0, "the register carries a PROJECT_STATUS column")
+    result = result & Assert(cAbout > 0, "the register carries an ABOUT_BODY column")
+
+    result = result & Assert(ValidationTypeOf(regWs, 2, cStatus) = 3, _
+        "the controlled column's first data cell carries a list validation (xlValidateList=3), got " & _
+        ValidationTypeOf(regWs, 2, cStatus))
+    result = result & Assert(ValidationTypeOf(regWs, 3, cStatus) = 3, _
+        "...and so does the second data row, got " & ValidationTypeOf(regWs, 3, cStatus))
+
+    ' A FIELD WITH NO VOCABULARY IS LEFT ALONE. ABOUT_BODY is prose; giving it
+    ' a dropdown would make the register unwritable for the flagship field.
+    result = result & Assert(ValidationTypeOf(regWs, 2, cAbout) <> 3, _
+        "the uncontrolled ABOUT_BODY column gets NO dropdown, got " & ValidationTypeOf(regWs, 2, cAbout))
+
+    ' NO ASSERTION HERE THAT THE STRUCTURAL COLUMNS ESCAPED A DROPDOWN.
+    '
+    ' There were two, and they were worthless. With only PROJECT_STATUS in the
+    ' vocabulary, the structural columns are skipped by the vocab lookup whether
+    ' the structural guard exists or not -- so both assertions passed with the
+    ' guard deliberately REMOVED, measured 2026-08-05. They read as care taken
+    ' and tested nothing.
+    '
+    ' The guard only bites when a vocabulary is declared for a field NAMED like
+    ' a structural column, so that is where the assertion belongs. See
+    ' Test_FieldSpec_ValidationRefusesAVocabularyNamedLikeAStructuralColumn.
+
+    wb.Close False
+    xl.Quit
+    Test_FieldSpec_ValidationAppliesDownTheControlledColumn = result
+End Function
+
+Private Function Test_FieldSpec_ValidationReportsValuesOutsideTheVocabulary() As String
+    Dim result As String
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+
+    Dim regWs As Object, specWs As Object
+    Set regWs = WideRegisterForValidation(wb)
+
+    ' Case drift, which is the exact thing InVocabulary is case-SENSITIVE to
+    ' catch: "Not started" against a vocabulary of "Not Started".
+    Dim cStatus As Long
+    cStatus = ColumnNamed(regWs, "PROJECT_STATUS")
+    regWs.Cells(3, cStatus).Value = "Not started"
+
+    Set specWs = SpecSheetWithVocabulary(wb, "PROJECT_STATUS", "Not Started,In Progress,Project Closed")
+
+    Dim rep As String
+    rep = FieldSpec.ApplyControlledValidation(regWs, specWs)
+
+    result = result & Assert(InStr(rep, "OUTSIDE THE ALLOWED LIST") > 0, _
+        "the out-of-vocabulary section appears, got '" & rep & "'")
+    result = result & Assert(InStr(rep, "Not started") > 0, _
+        "the offending VALUE is quoted, got '" & rep & "'")
+    ' Named by slide and period, not by row number -- a row number is worthless
+    ' on a sheet where one project appears once per period.
+    result = result & Assert(InStr(rep, "P002") > 0, _
+        "the offending row is named by SLIDE, got '" & rep & "'")
+    result = result & Assert(InStr(rep, "FY26Q4") > 0, _
+        "...and by its PERIOD, got '" & rep & "'")
+    ' P001 is "In Progress", which IS in the vocabulary.
+    result = result & Assert(InStr(rep, "P001") = 0, _
+        "a value that IS in the vocabulary is not reported, got '" & rep & "'")
+
+    ' REPORTED, NEVER CORRECTED. The register is the record; silently rewriting
+    ' somebody's value to the nearest legal one would be the tool editing data
+    ' it does not own.
+    result = result & Assert(regWs.Cells(3, cStatus).Value = "Not started", _
+        "the offending value is LEFT EXACTLY AS IT IS, got '" & regWs.Cells(3, cStatus).Value & "'")
+
+    wb.Close False
+    xl.Quit
+    Test_FieldSpec_ValidationReportsValuesOutsideTheVocabulary = result
+End Function
+
+' A vocabulary declared for a field NAMED LIKE A STRUCTURAL COLUMN.
+'
+' This is the only scenario in which the structural-column guard does anything,
+' and it exists because the first attempt to test that guard could not fail: with
+' only PROJECT_STATUS in the vocabulary, the Quarter and Instance ID columns are
+' skipped by the vocab lookup regardless, so removing the guard changed nothing
+' and the assertions passed anyway.
+'
+' What it protects: a dropdown written onto the Quarter column constrains which
+' PERIOD a row may belong to. Every row not matching the list becomes an Excel
+' validation error on the one column the whole model is keyed by, and
+' RollForwardPeriod writes periods that would not be on any list.
+'
+' UpsertRow already REFUSES a field named like a structural column, but nothing
+' stops somebody typing "Quarter" into the Field Spec sheet, which is a
+' hand-edited content surface owned by the RM rather than by the tool.
+Private Function Test_FieldSpec_ValidationRefusesAVocabularyNamedLikeAStructuralColumn() As String
+    Dim result As String
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+
+    Dim regWs As Object, specWs As Object
+    Set regWs = WideRegisterForValidation(wb)
+    Set specWs = SpecSheetWithVocabulary(wb, "Quarter", "FY26Q4,FY27Q1")
+
+    Dim cInst As Long, cQtr As Long
+    ExcelOutput.LocateStructuralColumns regWs, cInst, cQtr
+    ' Located for real, so the assertions below cannot pass by reading column 0.
+    result = result & Assert(cQtr > 0, "the Quarter column was actually located, got " & cQtr)
+    result = result & Assert(cInst > 0, "the Instance ID column was actually located, got " & cInst)
+
+    Dim rep As String
+    rep = FieldSpec.ApplyControlledValidation(regWs, specWs)
+
+    result = result & Assert(ValidationTypeOf(regWs, 2, cQtr) <> 3, _
+        "NO dropdown is written onto the Quarter column, got " & ValidationTypeOf(regWs, 2, cQtr))
+    result = result & Assert(ValidationTypeOf(regWs, 3, cQtr) <> 3, _
+        "...on any of its rows, got " & ValidationTypeOf(regWs, 3, cQtr))
+
+    ' And it is reported as having checked nothing, rather than claiming a
+    ' controlled column it must not have.
+    result = result & Assert(InStr(rep, "NO column") > 0, _
+        "reports that nothing on the register was controlled, got '" & rep & "'")
+
+    wb.Close False
+    xl.Quit
+    Test_FieldSpec_ValidationRefusesAVocabularyNamedLikeAStructuralColumn = result
+End Function
+
+Private Function Test_FieldSpec_ValidationSaysSoWhenNothingIsControlled() As String
+    Dim result As String
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+
+    Dim regWs As Object, specWs As Object
+    Set regWs = WideRegisterForValidation(wb)
+    ' A vocabulary for a field the register does not carry.
+    Set specWs = SpecSheetWithVocabulary(wb, "RISK_RATING", "Low,Medium,High")
+
+    Dim rep As String
+    rep = FieldSpec.ApplyControlledValidation(regWs, specWs)
+
+    ' "dropdown on 0 cell(s)" reads as success to anyone skimming, and reading
+    ' it that way is how this function stayed broken. Doing nothing has to be
+    ' stated as doing nothing.
+    result = result & Assert(InStr(rep, "NO column") > 0, _
+        "says plainly that nothing was checked, got '" & rep & "'")
+    result = result & Assert(InStr(rep, "dropdown on 0") = 0, _
+        "does NOT report a zero count that reads like success, got '" & rep & "'")
+
+    wb.Close False
+    xl.Quit
+    Test_FieldSpec_ValidationSaysSoWhenNothingIsControlled = result
 End Function
 
 ' Does the wide sheet have ANY row whose Instance ID is `instanceId`?
