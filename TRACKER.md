@@ -84,11 +84,53 @@ Review Changes and Apply Approved. Three hand-maintained module lists, nothing
 checking them. `vba/tools/check_module_lists.py` now does. **Run it before
 trusting a build.**
 
-Suite is green: 135 passed, 0 failed.
+Suite is green: **156 passed, 0 failed, BEHIND A COMPILE GATE** (2026-08-05). The
+gate is what makes the number mean anything: the suite previously reported "152
+passed, 0 failed", exit 0, against a project carrying a real compile error --
+proven by reintroducing the error deliberately. VBA compiles per procedure, on
+demand, so a Sub nothing calls is never compiled and its errors never surface.
 
 **Where item 9 stands: still zero.** Nothing about the real FY26Q4 content has
 moved. The tool is markedly more trustworthy than it was that morning and that
 is not the same thing.
+
+---
+
+## 2026-08-05 — the loop closes, and it has been run
+
+**Item 9 is STILL ZERO.** Six commits landed and the deliverable did not move. That
+is the honest headline and it goes first, because everything below is the tool
+getting more trustworthy, which is not the same thing.
+
+**What changed, all verified against real Office, not just in source:**
+
+- **The loop closes.** Drafting and publish moved from the LONG register to the WIDE
+  sheet; sync already read it. Ran end to end on `e2e-deck.wide-test.pptx`: drafting
+  sheet -> publish -> register -> sync -> deck, **43 slides matching / 0 mismatched**,
+  verified by reading the saved `.pptx` and `.xlsx` BYTES. (`f0fb983`)
+- **The suite can no longer pass on a project that will not start.** (`cb2c773`)
+- **Controlled-field validation was doing nothing** on the wide sheet -- it still
+  looked for the long register's `FieldID`/`Value` columns and failed soft. Fixed,
+  with the four tests it never had. (`6d03e51`)
+- **Publish and sync could address DIFFERENT SHEETS** and both report success:
+  drafting preferred a sheet named `Register`, sync used the per-type registered
+  name. One resolver now, and it refuses to invent a missing sheet. (`01198f1`)
+- **Period rollover removed** -- it duplicated a slide inside the deck, the model
+  rejected 2026-08-03. There was no button; its header falsely claimed one. (`035896e`)
+
+**`1_P010` is CLOSED, and it was not a data problem.** A dry run showed the register
+and slide disagreeing, and it was called a register defect here. Reading the whole
+row instead of one field: `PROJECT_CODE`, `PROJECT_NAME`, `PROJECT_STATUS`,
+`ABOUT_BODY` and `KEY_EVENTS_BODY` all describe one seafood/aquaculture project,
+correctly keyed. Rohan confirmed the slide is that project. **The slide was stale and
+the sync corrected it** -- the tool doing its job, diagnosed backwards from one field.
+
+**Stale-doc note.** The delivery-check agent recommended, as the single smallest step
+to move 0->1, running the loop live -- which had already happened hours earlier. It
+derived that from the repo, and the repo did not say so: `WORKFLOW.md` still read
+"not yet exercised in real Excel" and this file had not been touched since 08-04. The
+count was not wrong this time; the *record* was. Same failure as the "7 of 10" note
+at the top of this file, one level up.
 
 ## 2026-08-03 — the wide model stopped being theory
 

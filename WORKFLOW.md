@@ -56,7 +56,7 @@ column C, an empty box for your new wording in G, Copilot's prompt in L2.
 **Keeps your work:** a rebuild carries across the AI draft, your SUBMIT text, source
 IDs and notes. Only ORIGINAL and character counts are re-derived.
 **Status:** reads the **WIDE** sheet as of 2026-08-05, through the same guarded reader
-Sync Now uses. **Not yet exercised in real Excel.**
+Sync Now uses. **Exercised in real Excel 2026-08-05: 43 rows written.**
 **Changed with it:** a rollover no longer carries drafting work across. That protection
 moved rather than vanishing — `RollForwardPeriod` copies last period's rows, so the
 previous text arrives in the ORIGINAL column instead of in your draft box.
@@ -74,7 +74,8 @@ overwrites your own words.
 what that would change on the slides.
 **Touches:** the workbook. No slide by itself.
 **Status:** writes the **WIDE** sheet as of 2026-08-05, via period-aware `UpsertRow`.
-**Not yet exercised in real Excel.**
+**Exercised in real Excel 2026-08-05:** 2 rows published, 1 refused by name for having
+no row in the period. Verified by reading the saved `.xlsx` bytes, not from the report.
 **Two things went with the move:** there is no longer a Status column to write
 "Approved" into — your tick in column I is the only consent gate, which is what it
 always actually was. And publishing into a period where a slide has no row is
@@ -85,18 +86,28 @@ always actually was. And publishing into a period where a slide has no row is
 **Tool:** applies the register to the slides. If anything needs reading one at a time,
 it sends you to the review sheet instead of guessing.
 **Touches:** the deck.
-**Status:** ⚠️ **reads the WIDE sheet** (changed 2026-08-04). **Never run once.**
+**Status:** reads the **WIDE** sheet. **RUN 2026-08-05, dry run then apply, on
+`e2e-deck.wide-test.pptx`:** 43 slides, ABOUT_BODY found on all 43, 5 changed, `written
+and verified: 5`, `slides matching the register: 43`, `mismatched: 0`, deck saved.
+Confirmed independently by unzipping the saved deck and reading its slide XML.
 
-> **THE LOOP CLOSES IN SOURCE as of 2026-08-05** — steps 1, 3 and 4 now all address
-> the wide sheet. **It has not been run.** Nothing here has touched real Excel since
-> the change, so "closes" means the code says so, not that anybody has seen it work.
-> The simulation run is what turns that into a fact.
+> **THE LOOP CLOSED 2026-08-05, AND IT HAS BEEN RUN.** Steps 1, 3 and 4 all address the
+> wide sheet, and the whole loop went end to end on the 43-slide rig copy: drafting
+> sheet -> publish -> register -> sync -> deck, **43 slides matching / 0 mismatched**.
+> Both ends verified by reading the saved `.pptx` and `.xlsx` BYTES rather than by
+> trusting either tool's own report.
+>
+> That distinction matters here more than usual. "Green in source" has been claimed and
+> later found false twice on this project (2026-08-01, 2026-08-04), so the claim above
+> is deliberately stated as what was observed out of process, not as what the code says.
 >
 > Also fixed the same day: `ExcelOutput.ManualSmokeTest` still called `UpsertRow` with
 > three arguments after the period became required — *"Argument not optional"*, a
 > **compile** error, which stops the whole VBA project rather than just that Sub. The
-> suite could not see it: `run_vba_tests.ps1` has no compile step and reported 152
-> passed against a project that would not start. That gap is still open.
+> suite could not see it, and that was PROVEN by reintroducing the error: it still
+> printed "152 passed, 0 failed", exit 0. **VBA compiles per procedure, on demand**, so
+> a Sub nothing calls is never compiled. `vba/tests/compile_check.ps1` now gates the
+> suite and was made to fail before being trusted.
 
 ---
 
