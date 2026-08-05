@@ -132,14 +132,26 @@ Public Function RunField(deckPath As String, registerPath As String, _
     xl.DisplayAlerts = False
     Set wb = xl.Workbooks.Open(registerPath, 0, True)
 
-    Dim reg As RegisterRead
-    reg = Register.ReadRegister(WorkbookBridge.RegisterSheet(wb), period, "q")
+    ' THE WIDE SHEET, through the guarded reader -- the same read Sync Now uses.
+    '
+    ' This was Register.ReadRegister(..., period, "q") until 2026-08-05: the LONG
+    ' register, filtered to a slide type named "q" that no longer exists (the rig
+    ' was renamed to project-status in 80fe9af). Against a wide sheet it finds no
+    ' EntityCode/FieldID/Value/Status columns and returns nothing, so this
+    ' harness would have reported "nothing to sync" for a register that was
+    ' perfectly fine -- a stale HARNESS reading as a broken TOOL, which is worse
+    ' than no harness at all.
+    '
+    ' There is no Status filter to replace. On the wide sheet a row IS the
+    ' approved content; the tick on the drafting sheet is where consent happens.
+    Dim problem As String
+    Dim reg As Sheet
+    reg = ExcelOutput.ReadSheetForDeckPeriod(WorkbookBridge.RegisterSheet(wb), period, problem)
     r = r & "--- register ---" & vbCrLf & _
-        "  rows seen: " & reg.RowsSeen & "   accepted: " & reg.Accepted & vbCrLf & _
-        "  missing columns: '" & reg.MissingColumns & "'" & vbCrLf & _
-        "  " & Register.ReadDiagnostic(reg, period) & vbCrLf & vbCrLf
+        "  period: " & period & "   slides read: " & reg.InstanceOrder.count & vbCrLf & _
+        "  problem: '" & problem & "'" & vbCrLf & vbCrLf
 
-    If reg.MissingColumns <> "" Or reg.Accepted = 0 Then
+    If problem <> "" Or reg.InstanceOrder.count = 0 Then
         wb.Close False: xl.Quit
         pres.Saved = msoTrue: pres.Close
         RunField = r & "STOPPED: nothing usable read from the register."
@@ -167,14 +179,14 @@ Public Function RunField(deckPath As String, registerPath As String, _
     Dim changes As String
 
     Dim k As Variant
-    For Each k In reg.Data.Rows.Keys
+    For Each k In reg.Rows.Keys
         If Not keyToSlide.Exists(CStr(k)) Then
             nNoSlide = nNoSlide + 1
-        ElseIf Not reg.Data.Rows(k).Exists(fieldId) Then
+        ElseIf Not reg.Rows(k).Exists(fieldId) Then
             nNotInRegister = nNotInRegister + 1
         Else
             Dim want As String
-            want = CStr(reg.Data.Rows(k)(fieldId))
+            want = CStr(reg.Rows(k)(fieldId))
 
             Dim shp As Object
             Set shp = FindByRole(keyToSlide(CStr(k)).Shapes, fieldId)
@@ -276,12 +288,12 @@ Public Function RunField(deckPath As String, registerPath As String, _
     ' --- Write, one field, through the real injector -----------------------
     Dim wrote As Long, failed As Long
     Dim moved As Long, notRestored As String
-    For Each k In reg.Data.Rows.Keys
+    For Each k In reg.Rows.Keys
         If keyToSlide.Exists(CStr(k)) Then
-            If reg.Data.Rows(k).Exists(fieldId) Then
+            If reg.Rows(k).Exists(fieldId) Then
                 Dim res As InjectResult
                 res = InjectPrimitive.InjectPrimitive(keyToSlide(CStr(k)), fieldId, _
-                        CStr(reg.Data.Rows(k)(fieldId)), False)
+                        CStr(reg.Rows(k)(fieldId)), False)
                 If res.Found And res.Written Then
                     If res.Verified Then wrote = wrote + 1 Else failed = failed + 1
 
@@ -313,7 +325,7 @@ Public Function RunField(deckPath As String, registerPath As String, _
 
     ' --- Verify by re-reading the DECK, not by trusting the report ---------
     Dim vMatch As Long, vMiss As Long
-    For Each k In reg.Data.Rows.Keys
+    For Each k In reg.Rows.Keys
         If keyToSlide.Exists(CStr(k)) Then
             Dim vshp As Object
             Set vshp = FindByRole(keyToSlide(CStr(k)).Shapes, fieldId)
@@ -322,7 +334,7 @@ Public Function RunField(deckPath As String, registerPath As String, _
             ' approved row for THIS field would silently compare the slide
             ' against "" and be counted a mismatch. Harmless with one field in
             ' the register; wrong the moment there are three, which is now.
-            If Not vshp Is Nothing And reg.Data.Rows(k).Exists(fieldId) Then
+            If Not vshp Is Nothing And reg.Rows(k).Exists(fieldId) Then
                 ' THROUGH InjectPrimitive, not a hand-rolled comparison.
                 '
                 ' This block previously did `slideText = Replace(value,"||",CR)`
@@ -336,7 +348,7 @@ Public Function RunField(deckPath As String, registerPath As String, _
                 ' disagree neither number means anything. Ask the writer.
                 Dim vprobe As InjectResult
                 vprobe = InjectPrimitive.InjectPrimitive(keyToSlide(CStr(k)), fieldId, _
-                            CStr(reg.Data.Rows(k)(fieldId)), True)
+                            CStr(reg.Rows(k)(fieldId)), True)
                 If vprobe.Found And Not vprobe.WouldChange Then vMatch = vMatch + 1 Else vMiss = vMiss + 1
             End If
         End If
@@ -682,8 +694,19 @@ Public Function BuildDraftSheet(registerPath As String, period As String, fieldI
     xl.DisplayAlerts = False
     Set wb = xl.Workbooks.Open(registerPath)
 
-    Dim reg As RegisterRead
-    reg = Register.ReadRegisterAllStatuses(WorkbookBridge.RegisterSheet(wb), period, "q")
+    ' The wide sheet, through the guarded reader -- the same read the button and
+    ' Sync Now use. The harness reading the long register while the buttons read
+    ' the wide sheet would make this harness prove things about a path nobody
+    ' runs, which is worse than not testing it.
+    Dim problem As String
+    Dim reg As Sheet
+    reg = ExcelOutput.ReadSheetForDeckPeriod(WorkbookBridge.RegisterSheet(wb), period, problem)
+    If problem <> "" Then
+        wb.Close False
+        xl.Quit
+        BuildDraftSheet = "STOPPED: " & problem
+        Exit Function
+    End If
 
     Dim ws As Object
     Set ws = WorkbookBridge.GetOrAddWorksheet(wb, Drafting.DraftSheetNameFor(fieldId))
@@ -710,7 +733,7 @@ Public Function BuildDraftSheet(registerPath As String, period As String, fieldI
 
     Dim r As String
     r = specNote & vbCrLf & srcNote & vbCrLf & valNote & vbCrLf & _
-        Drafting.WriteDraftingSheet(ws, reg.Data, fieldId, specWs, period, reg.Cadence) & vbCrLf & vbCrLf & _
+        Drafting.WriteDraftingSheet(ws, reg, fieldId, specWs, period) & vbCrLf & vbCrLf & _
         "--- prompt to paste above the sheet ---" & vbCrLf & _
         FieldSpec.PromptFrom(FieldSpec.LookupGuidance(specWs, fieldId)) & vbCrLf
 
@@ -720,7 +743,11 @@ Public Function BuildDraftSheet(registerPath As String, period As String, fieldI
     BuildDraftSheet = r
 End Function
 
-Public Function PublishDraftSheet(registerPath As String, fieldId As String, mode As String) As String
+' `period` is required here for the same reason it is on PublishDrafts itself:
+' the harness has no deck to ask, so the caller must say which quarter it is
+' writing into. It was added 2026-08-05 with the move to the wide sheet.
+Public Function PublishDraftSheet(registerPath As String, period As String, _
+                                  fieldId As String, mode As String) As String
     Dim xl As Object, wb As Object
     Set xl = CreateObject("Excel.Application")
     xl.Visible = False
@@ -734,7 +761,7 @@ Public Function PublishDraftSheet(registerPath As String, fieldId As String, mod
     Set srcWs = WorkbookBridge.GetOrAddWorksheet(wb, Sources.SOURCES_SHEET_NAME)
 
     Dim r As String
-    r = Drafting.PublishDrafts(ws, WorkbookBridge.RegisterSheet(wb), fieldId, _
+    r = Drafting.PublishDrafts(ws, WorkbookBridge.RegisterSheet(wb), fieldId, period, _
                                (LCase(Trim(mode)) <> "apply"), srcWs)
 
     wb.Save

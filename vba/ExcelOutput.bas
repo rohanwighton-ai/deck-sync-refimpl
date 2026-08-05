@@ -441,24 +441,35 @@ End Function
 
 ' Run against a blank worksheet in the active workbook (e.g. add a new
 ' sheet first so A1 is genuinely empty).
+'
+' EVERY UPSERT NAMES ITS PERIOD, because CreateSheet above writes the Quarter
+' header and UpsertRow refuses a blank period on a sheet that has one. These
+' three calls passed three arguments until 2026-08-05 -- left behind when the
+' period became required -- which is "Argument not optional" at COMPILE time,
+' and a compile error in one module stops the whole project, not just the smoke
+' test. The suite could not see it: run_vba_tests.ps1 has no compile step, so it
+' reported 152 passed against a project that would not start. Same blind spot as
+' the Optional-Variant-into-ByRef-Object bug on 2026-08-01.
 Public Sub ManualSmokeTest(ws As Object)
+    Const SMOKE_PERIOD As String = "FY26Q4"
+
     CreateSheet ws, "deck-v1"
 
     Dim v1 As Object
     Set v1 = CreateObject("Scripting.Dictionary")
     v1("Title") = "Q3 Revenue"
     v1("Date") = "2026-07"
-    UpsertRow ws, "slide-1", v1
+    UpsertRow ws, "slide-1", v1, SMOKE_PERIOD
 
     Dim v2 As Object
     Set v2 = CreateObject("Scripting.Dictionary")
     v2("Region") = "APAC"
-    UpsertRow ws, "slide-1", v2 ' new field, existing instance -- appends a column, doesn't disturb Title/Date
+    UpsertRow ws, "slide-1", v2, SMOKE_PERIOD ' new field, existing instance -- appends a column, doesn't disturb Title/Date
 
     Dim v3 As Object
     Set v3 = CreateObject("Scripting.Dictionary")
     v3("Title") = "Q4 Revenue"
-    UpsertRow ws, "slide-2", v3 ' new instance -- new row, no Date/Region yet
+    UpsertRow ws, "slide-2", v3, SMOKE_PERIOD ' new instance -- new row, no Date/Region yet
 
     Dim sheet As Sheet
     sheet = ReadSheet(ws)

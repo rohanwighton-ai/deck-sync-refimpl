@@ -2224,15 +2224,26 @@ Private Function Test_Drafting_OnlyTickedNonEmptyDraftsPublish() As String
     Set dws = wb.Worksheets(1)
     Set rws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
 
-    ' A minimal register: four entities, one field, all Seed.
-    rws.Cells(1, 1).Value = "EntityCode": rws.Cells(1, 2).Value = "FieldID"
-    rws.Cells(1, 3).Value = "Value":      rws.Cells(1, 4).Value = "Status"
+    ' A minimal WIDE register: four slides, one field, all for FY26Q4. Built
+    ' through CreateSheet/UpsertRow rather than by hand, so the test cannot drift
+    ' from the shape the tool actually writes.
+    '
+    ' Layout after this: A = Instance ID, B = Quarter, C = ABOUT_BODY.
+    ' Rows 2..5 = P001..P004.
+    '
+    ' STATUS IS GONE FROM THIS TEST because it is gone from the sheet. The old
+    ' version asserted Seed -> Approved transitions in a long register; the wide
+    ' sheet has no Status column, and what it asserts now is the thing that
+    ' actually matters -- WHICH CELLS CHANGED. That is a stricter question than
+    ' the status one, because an unticked row whose value was overwritten used to
+    ' pass the Status assertion as long as the status stayed Seed.
+    ExcelOutput.CreateSheet rws, "deck-v1"
+    Dim seedVals As Object
     Dim i As Long
     For i = 1 To 4
-        rws.Cells(i + 1, 1).Value = "P00" & i
-        rws.Cells(i + 1, 2).Value = "ABOUT_BODY"
-        rws.Cells(i + 1, 3).Value = "old " & i
-        rws.Cells(i + 1, 4).Value = "Seed"
+        Set seedVals = CreateObject("Scripting.Dictionary")
+        seedVals("ABOUT_BODY") = "old " & i
+        ExcelOutput.UpsertRow rws, "P00" & i, seedVals, "FY26Q4"
     Next i
 
     ' The drafting sheet, covering every combination that decides publication.
@@ -2248,44 +2259,86 @@ Private Function Test_Drafting_OnlyTickedNonEmptyDraftsPublish() As String
     ' P005: an AI draft, TICKED, with SUBMIT left empty. Must NOT publish -- this
     ' is the whole reason the two columns are separate, and nothing asserted it.
     dws.Cells(Drafting.DRAFT_FIRST_ROW + 4, Drafting.COL_D_ENTITY).Value = "P005": dws.Cells(Drafting.DRAFT_FIRST_ROW + 4, Drafting.COL_D_DRAFT).Value = "AI WROTE THIS": dws.Cells(Drafting.DRAFT_FIRST_ROW + 4, Drafting.COL_D_APPROVED).Value = "Y"
+    ' P006: real SUBMIT text, ticked, and NO ROW in the register for this period.
+    ' New with the wide sheet 2026-08-05 -- UpsertRow would CREATE a row here,
+    ' which would mean publishing invents a slide nobody onboarded. Publish
+    ' refuses instead, and this is what holds that refusal in place.
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 5, Drafting.COL_D_ENTITY).Value = "P006": dws.Cells(Drafting.DRAFT_FIRST_ROW + 5, Drafting.COL_D_SUBMIT).Value = "orphan text": dws.Cells(Drafting.DRAFT_FIRST_ROW + 5, Drafting.COL_D_APPROVED).Value = "Y"
 
     Dim rep As String
-    rep = Drafting.PublishDrafts(dws, rws, "ABOUT_BODY", False)
+    rep = Drafting.PublishDrafts(dws, rws, "ABOUT_BODY", "FY26Q4", False)
 
     ' A DRAFT ALONE IS NOT CONSENT and A TICK ALONE IS NOT CONTENT.
-    result = result & Assert(rws.Cells(2, 4).Value = "Approved", "ticked + drafted publishes and becomes Approved, got '" & rws.Cells(2, 4).Value & "'")
-    result = result & Assert(rws.Cells(2, 3).Value = "new one", "the drafted text is what lands, got '" & rws.Cells(2, 3).Value & "'")
-    result = result & Assert(rws.Cells(3, 4).Value = "Seed", "DRAFTED BUT NOT TICKED stays Seed -- a draft is not an approval, got '" & rws.Cells(3, 4).Value & "'")
-    result = result & Assert(rws.Cells(3, 3).Value = "old 2", "an unticked row's value is untouched, got '" & rws.Cells(3, 3).Value & "'")
-    result = result & Assert(rws.Cells(4, 4).Value = "Seed", "TICKED BUT EMPTY publishes nothing -- a tick against no draft is a mis-click, got '" & rws.Cells(4, 4).Value & "'")
+    result = result & Assert(rws.Cells(2, 3).Value = "new one", "ticked + drafted publishes, and the drafted text is what lands, got '" & rws.Cells(2, 3).Value & "'")
+    result = result & Assert(rws.Cells(3, 3).Value = "old 2", "DRAFTED BUT NOT TICKED leaves the register value untouched -- a draft is not an approval, got '" & rws.Cells(3, 3).Value & "'")
+    result = result & Assert(rws.Cells(4, 3).Value = "old 3", "TICKED BUT EMPTY publishes nothing -- a tick against no draft is a mis-click, got '" & rws.Cells(4, 3).Value & "'")
     result = result & Assert(InStr(rep, "SUBMIT is empty") > 0, "the empty-but-ticked row is REPORTED, not silently dropped")
 
     ' THE POINT OF SPLITTING THE TWO COLUMNS. P005 has an AI draft and a tick,
     ' and nothing in SUBMIT. Publishing it would mean text the AI wrote reaching
     ' a slide because nobody stopped it, which is precisely the act the split
     ' exists to prevent -- and nothing asserted it until 2026-08-01.
-    result = result & Assert(rws.Cells(6, 4).Value <> "Approved", _
-        "AN AI DRAFT ALONE DOES NOT PUBLISH, even when ticked -- only SUBMIT does, got '" & rws.Cells(6, 4).Value & "'")
-    result = result & Assert(rws.Cells(6, 3).Value <> "AI WROTE THIS", _
-        "the AI's text never reaches the register on its own, got '" & rws.Cells(6, 3).Value & "'")
+    '
+    ' On the wide sheet the assertion is that NO ROW APPEARED for P005 at all --
+    ' stricter than the old status check, because UpsertRow creates rows and the
+    ' failure would now be a fabricated slide rather than a wrong status.
+    result = result & Assert(Not RowExistsForInstance(rws, "P005"), _
+        "AN AI DRAFT ALONE DOES NOT PUBLISH, even when ticked -- only SUBMIT does")
     result = result & Assert(InStr(rep, "there IS an AI draft") > 0, _
         "the report NAMES the AI-draft-without-submit case, so a person knows to run Copy AI to Submit")
+
+    ' PUBLISH DOES NOT INVENT SLIDES. P006 is ticked with real text and has no
+    ' row for FY26Q4.
+    result = result & Assert(Not RowExistsForInstance(rws, "P006"), _
+        "a ticked draft for a slide with NO register row does not create one -- publish would be inventing a slide")
+    result = result & Assert(InStr(rep, "NO REGISTER ROW for P006") > 0, _
+        "the missing row is REPORTED by name, not silently skipped")
 
     ' Line breaks become the register delimiter, the exact inverse of what
     ' InjectPrimitive does on the way out.
     result = result & Assert(rws.Cells(5, 3).Value = "a||b", "a real line break is stored as the || delimiter, got '" & rws.Cells(5, 3).Value & "'")
     result = result & Assert(InStr(rws.Cells(5, 3).Value, vbCr) = 0, "no carriage return survives into the register")
 
-    ' Only Approved is ever written here, and only for ticked rows.
-    Dim approvedCount As Long
-    For i = 2 To 5
-        If rws.Cells(i, 4).Value = "Approved" Then approvedCount = approvedCount + 1
+    ' EXACTLY TWO CELLS CHANGED. Counted against the seeded values rather than
+    ' against a status, so an unticked row that was silently overwritten fails
+    ' here -- the old status-based count could not see that.
+    Dim changed As Long
+    For i = 1 To 4
+        If rws.Cells(i + 1, 3).Value <> "old " & i Then changed = changed + 1
     Next i
-    result = result & Assert(approvedCount = 2, "exactly the two ticked-and-drafted rows became Approved, got " & approvedCount)
+    result = result & Assert(changed = 2, "exactly the two ticked-and-drafted rows changed, got " & changed)
+
+    ' The period column is still intact on every row -- a row whose period got
+    ' blanked is invisible to every filtered read and would report as a clean
+    ' sync of nothing.
+    Dim periodsOk As Boolean
+    periodsOk = True
+    For i = 2 To 5
+        If Trim(CStr(rws.Cells(i, 2).Value)) <> "FY26Q4" Then periodsOk = False
+    Next i
+    result = result & Assert(periodsOk, "publishing leaves every row's Quarter stamp intact")
 
     wb.Close False
     xl.Quit
     Test_Drafting_OnlyTickedNonEmptyDraftsPublish = result
+End Function
+
+' Does the wide sheet have ANY row whose Instance ID is `instanceId`?
+'
+' Deliberately ignores the period: the question these assertions ask is "did a
+' row get fabricated", and a row invented under the wrong period would be just
+' as wrong as one invented under the right one. Column A is safe to read
+' directly here because the sheet was built by CreateSheet three lines earlier.
+Private Function RowExistsForInstance(ws As Object, instanceId As String) As Boolean
+    Dim r As Long
+    r = 2
+    Do While Trim(CStr(ws.Cells(r, 1).Value)) <> ""
+        If Trim(CStr(ws.Cells(r, 1).Value)) = instanceId Then
+            RowExistsForInstance = True
+            Exit Function
+        End If
+        r = r + 1
+    Loop
 End Function
 
 Private Function Test_Register_BlankTypeAndCadenceCollision() As String

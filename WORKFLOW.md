@@ -55,8 +55,11 @@ column C, an empty box for your new wording in G, Copilot's prompt in L2.
 **Touches:** the workbook only. Never the deck.
 **Keeps your work:** a rebuild carries across the AI draft, your SUBMIT text, source
 IDs and notes. Only ORIGINAL and character counts are re-derived.
-**Status:** ⚠️ **reads the LONG register** (`DraftingUI.bas:231`). Does not yet read
-the migrated wide sheet. This is the blocker.
+**Status:** reads the **WIDE** sheet as of 2026-08-05, through the same guarded reader
+Sync Now uses. **Not yet exercised in real Excel.**
+**Changed with it:** a rollover no longer carries drafting work across. That protection
+moved rather than vanishing — `RollForwardPeriod` copies last period's rows, so the
+previous text arrives in the ORIGINAL column instead of in your draft box.
 
 ### 2. Copy AI to Submit *(optional)*
 **You:** click it, then edit column G and tick column I.
@@ -67,10 +70,15 @@ overwrites your own words.
 
 ### 3. Publish & Preview
 **You:** read the list of ticked rows, say go.
-**Tool:** writes them into the register as approved, then offers to preview what that
-would change on the slides.
+**Tool:** writes them into the register for the deck's period, then offers to preview
+what that would change on the slides.
 **Touches:** the workbook. No slide by itself.
-**Status:** ⚠️ writes to the **LONG** register.
+**Status:** writes the **WIDE** sheet as of 2026-08-05, via period-aware `UpsertRow`.
+**Not yet exercised in real Excel.**
+**Two things went with the move:** there is no longer a Status column to write
+"Approved" into — your tick in column I is the only consent gate, which is what it
+always actually was. And publishing into a period where a slide has no row is
+**refused**, not created: otherwise publishing would invent slides nobody onboarded.
 
 ### 4. Sync Now
 **You:** read what it will change, confirm.
@@ -79,9 +87,16 @@ it sends you to the review sheet instead of guessing.
 **Touches:** the deck.
 **Status:** ⚠️ **reads the WIDE sheet** (changed 2026-08-04). **Never run once.**
 
-> **THE LOOP DOES NOT CLOSE TODAY.** Steps 1–3 read and write the long register;
-> step 4 reads the wide sheet. They are two different files. Fixing that is the
-> current work.
+> **THE LOOP CLOSES IN SOURCE as of 2026-08-05** — steps 1, 3 and 4 now all address
+> the wide sheet. **It has not been run.** Nothing here has touched real Excel since
+> the change, so "closes" means the code says so, not that anybody has seen it work.
+> The simulation run is what turns that into a fact.
+>
+> Also fixed the same day: `ExcelOutput.ManualSmokeTest` still called `UpsertRow` with
+> three arguments after the period became required — *"Argument not optional"*, a
+> **compile** error, which stops the whole VBA project rather than just that Sub. The
+> suite could not see it: `run_vba_tests.ps1` has no compile step and reported 152
+> passed against a project that would not start. That gap is still open.
 
 ---
 

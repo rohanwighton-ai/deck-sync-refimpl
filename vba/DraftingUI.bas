@@ -227,8 +227,24 @@ Public Sub RefreshDraftingSheets()
         Exit Sub
     End If
 
-    Dim reg As RegisterRead
-    reg = Register.ReadRegisterAllStatuses(regWs, period, "q")
+    ' THE SAME READ SYNC NOW USES. This called Register.ReadRegisterAllStatuses
+    ' until 2026-08-05 -- the LONG register -- while Sync Now read the wide
+    ' sheet. Two files, so nothing drafted here could reach a slide.
+    '
+    ' The slide-type argument goes with it, and is not replaced. Type separation
+    ' on the wide sheet is the WORKSHEET: each slide type has its own, registered
+    ' per deck. Filtering within a sheet was the long register's answer to having
+    ' every type in one table. Worth noting what that argument had become -- it
+    ' was the literal "q", the rig's old type name, renamed to "project-status"
+    ' in 80fe9af. Every row would have been rejected as the wrong type.
+    Dim problem As String
+    Dim reg As Sheet
+    reg = ExcelOutput.ReadSheetForDeckPeriod(regWs, period, problem)
+    If problem <> "" Then
+        MsgBox "Cannot build drafting sheets from this register." & vbCrLf & vbCrLf & problem & _
+               vbCrLf & vbCrLf & "Nothing was written.", vbExclamation, CAP
+        Exit Sub
+    End If
 
     Dim parts As Variant
     parts = Split(fields, ",")
@@ -244,7 +260,14 @@ Public Sub RefreshDraftingSheets()
 
         Dim ws As Object
         Set ws = WorkbookBridge.GetOrAddWorksheet(wb, sName)
-        report = report & fid & ": " & Drafting.WriteDraftingSheet(ws, reg.Data, fid, specWs, period, reg.Cadence) & vbCrLf
+        ' No cadence argument. Cadence was the long register's Quarter = ALL
+        ' sentinel, and the wide sheet has no such row -- every row states one
+        ' period. Omitting it means a rollover drops the drafting sheet's
+        ' carried-over work, which is the safe direction and no longer the
+        ' damaging one: RollForwardPeriod COPIES last period's rows, so the
+        ' previous text arrives as this sheet's ORIGINAL column instead. The
+        ' protection moved; it did not disappear.
+        report = report & fid & ": " & Drafting.WriteDraftingSheet(ws, reg, fid, specWs, period) & vbCrLf
     Next i
 
     WorkbookBridge.WriteWorkbookIndex wb
@@ -369,6 +392,19 @@ Public Sub PublishDraftsForField()
     Dim srcWs As Object
     Set srcWs = WorkbookBridge.GetOrAddWorksheet(wb, Sources.SOURCES_SHEET_NAME)
 
+    ' The deck says which quarter it is, exactly as it does for drafting and for
+    ' sync. Asked here rather than defaulted, because publish now writes into one
+    ' period's rows and there is no safe guess -- writing the wrong period
+    ' overwrites a real quarter's text.
+    Dim period As String
+    period = DeckRegistry.GetDeckPeriod(pres)
+    If period = "" Then
+        MsgBox "This deck does not declare a period, so there is no way to know " & _
+               "which quarter's rows to publish into." & vbCrLf & vbCrLf & _
+               "Run '0. Start a Quarter' first.", vbExclamation, CAP
+        Exit Sub
+    End If
+
     ' Said BEFORE the confirmation, not after the write. A warning that arrives
     ' with the result is a warning about something already done.
     ' Covers read-only AND macro-enabled: both mean this write will not stick,
@@ -378,10 +414,10 @@ Public Sub PublishDraftsForField()
     If macroWarn <> "" Then macroWarn = macroWarn & vbCrLf & vbCrLf
 
     Dim preview As String
-    preview = Drafting.PublishDrafts(ws, regWs, fieldId, True, srcWs)
+    preview = Drafting.PublishDrafts(ws, regWs, fieldId, period, True, srcWs)
 
     If MsgBox(macroWarn & preview & vbCrLf & vbCrLf & _
-              "Write these into the register as Approved?" & vbCrLf & vbCrLf & _
+              "Write these into the register for " & period & "?" & vbCrLf & vbCrLf & _
               "This does NOT touch any slide -- run Sync Now or Preview Sync " & _
               "afterwards to get them onto the deck.", _
               vbYesNo + vbQuestion, CAP) <> vbYes Then
@@ -390,11 +426,11 @@ Public Sub PublishDraftsForField()
     End If
 
     Dim result As String
-    result = Drafting.PublishDrafts(ws, regWs, fieldId, False, srcWs)
+    result = Drafting.PublishDrafts(ws, regWs, fieldId, period, False, srcWs)
 
     ' SAVE. THE BUTTON PATH DID NOT.
     '
-    ' PublishDrafts writes Value and Status into the register in memory. The
+    ' PublishDrafts writes the field's value into the register in memory. The
     ' harness path (E2EField.PublishDraftSheet) has always called wb.Save; this
     ' button never did. So "published: 12" was true of Excel's buffer and of
     ' nothing on disk -- and a person who believes they have published is

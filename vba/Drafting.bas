@@ -501,7 +501,32 @@ End Function
 ' proven exact by VerifyHarvest on 46 of 46 multi-line values. Any cell still
 ' holding a carriage return after conversion FAILS rather than being written,
 ' per the field package's publish step.
+' PUBLISHES INTO THE WIDE SHEET, which is why `period` is required and not
+' Optional.
+'
+' Until 2026-08-05 this wrote the LONG register -- it located EntityCode/FieldID/
+' Value/Status columns and set Value + Status = Approved on the matching row.
+' Sync Now had already moved to the wide sheet, so publish and sync were reading
+' and writing two different files and the quarterly loop did not close: text
+' published here could never reach a slide.
+'
+' Three things go with the move, none of them optional:
+'
+'   - STATUS HAS NOWHERE TO GO. The wide sheet has no Status column, and adding
+'     one would make it a FIELD -- every field column on this sheet is something
+'     that lands on a slide, so a "Status" column would be injected as slide
+'     text. The tick in the drafting sheet's APPROVED column is now the only
+'     consent gate, which is what it always actually was; Status was a second
+'     copy of the same decision, recorded after the fact.
+'   - CharCount and UpdatedDate go for the same reason -- they were long-register
+'     bookkeeping columns and would become slide fields here. The drafting sheet
+'     already shows character counts.
+'   - A MISSING ROW IS STILL REFUSED. UpsertRow would happily CREATE a row for a
+'     slide that has no row in this period, which would mean publishing invents
+'     slides that were never onboarded. The read below is what makes the refusal
+'     possible, so it happens once, up front, rather than per row.
 Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, _
+                              period As String, _
                               Optional dryRun As Boolean = True, _
                               Optional sourcesWs As Variant) As String
     Dim report As String
@@ -519,22 +544,28 @@ Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, 
     End If
     Dim badRefs As String
 
-    Dim hdr As Object
-    Set hdr = CreateObject("Scripting.Dictionary")
-    Dim c As Long
-    For c = 1 To 20
-        Dim h As String
-        h = Trim(CStr(regWs.Cells(1, c).Value))
-        If h <> "" Then hdr(h) = c
-    Next c
+    ' Refused rather than defaulted, exactly as UpsertRow refuses a blank period:
+    ' a publish with no period would have to guess which quarter it is writing,
+    ' and the wrong guess overwrites a real quarter's text with no trace.
+    If Trim$(period) = "" Then
+        PublishDrafts = report & "STOPPED: no period given. Publish writes into one " & _
+            "quarter's rows and cannot pick which."
+        Exit Function
+    End If
 
-    Dim needed As Variant
-    For Each needed In Array("EntityCode", "FieldID", "Value", "Status")
-        If Not hdr.Exists(needed) Then
-            PublishDrafts = report & "STOPPED: register has no '" & needed & "' column."
-            Exit Function
-        End If
-    Next needed
+    ' ONE READ, THROUGH THE GUARDED READER THE SYNC USES. Not a convenience:
+    ' reading the sheet the same way Sync Now reads it is what makes "published"
+    ' and "will reach a slide" the same claim. It also inherits both refusals --
+    ' a repeated slide, and a sheet whose rows are all stamped some other period
+    ' (which would otherwise let every row report NO REGISTER ROW and read as a
+    ' drafting-sheet problem rather than a wrong-period one).
+    Dim problem As String
+    Dim reg As Sheet
+    reg = ExcelOutput.ReadSheetForDeckPeriod(regWs, period, problem)
+    If problem <> "" Then
+        PublishDrafts = report & "STOPPED: " & problem
+        Exit Function
+    End If
 
     Dim published As Long, skippedNoTick As Long, skippedEmpty As Long, failed As Long, noRow As Long
 
@@ -602,17 +633,23 @@ Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, 
                 failed = failed + 1
                 report = report & "  FAILED " & ent & " -- a line break or control character survived conversion" & vbCrLf
             Else
-                Dim target As Long
-                target = FindRegisterRow(regWs, hdr, ent, fieldId)
-                If target = 0 Then
+                ' Existence is asked of the READ, not of the sheet directly, so
+                ' publish and sync agree by construction about which rows are
+                ' this period's. A row for this slide in ANOTHER period is not a
+                ' row here, and must not be written to.
+                If Not reg.Rows.Exists(ent) Then
                     noRow = noRow + 1
-                    report = report & "  NO REGISTER ROW for " & ent & "/" & fieldId & vbCrLf
+                    report = report & "  NO REGISTER ROW for " & ent & " in " & period & vbCrLf
                 Else
                     If Not dryRun Then
-                        regWs.Cells(target, hdr("Value")).Value = encoded
-                        regWs.Cells(target, hdr("Status")).Value = Register.STATUS_APPROVED
-                        If hdr.Exists("CharCount") Then regWs.Cells(target, hdr("CharCount")).Value = CStr(Len(encoded))
-                        If hdr.Exists("UpdatedDate") Then regWs.Cells(target, hdr("UpdatedDate")).Value = Format(Now, "yyyy-mm-dd")
+                        ' One field at a time. UpsertRow MERGES into the row --
+                        ' it writes only the keys handed to it -- so publishing
+                        ' ABOUT_BODY cannot disturb the other fields sitting in
+                        ' that same row.
+                        Dim oneField As Object
+                        Set oneField = CreateObject("Scripting.Dictionary")
+                        oneField(fieldId) = encoded
+                        ExcelOutput.UpsertRow regWs, ent, oneField, period
                     End If
                     published = published + 1
                     report = report & "  " & IIf(dryRun, "would publish: ", "published: ") & ent & _
@@ -640,20 +677,12 @@ Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, 
     PublishDrafts = report
 End Function
 
-Private Function FindRegisterRow(regWs As Object, hdr As Object, entity As String, fieldId As String) As Long
-    Dim r As Long
-    r = 2
-    Do While Trim(CStr(regWs.Cells(r, hdr("EntityCode")).Value)) <> ""
-        If Trim(CStr(regWs.Cells(r, hdr("EntityCode")).Value)) = entity Then
-            If Trim(CStr(regWs.Cells(r, hdr("FieldID")).Value)) = fieldId Then
-                FindRegisterRow = r
-                Exit Function
-            End If
-        End If
-        r = r + 1
-    Loop
-    FindRegisterRow = 0
-End Function
+' FindRegisterRow was deleted 2026-08-05 with the move to the wide sheet. It
+' located a row by (EntityCode, FieldID) in the long register -- a second way of
+' addressing a register, living alongside ExcelOutput's. Two addressing schemes
+' for one sheet is the specific failure this codebase has paid for more than
+' once (the sheet read by tab position, the register read by index), so it goes
+' rather than sitting here unused waiting to be picked up again.
 
 ' Copy AI DRAFT into SUBMIT, for rows where SUBMIT is still empty.
 '
