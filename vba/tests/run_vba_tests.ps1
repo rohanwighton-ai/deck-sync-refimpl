@@ -220,6 +220,86 @@ foreach ($m in $excelModules) {
 }
 Copy-Item (Join-Path $fixturesSourceDir "shp-groupshape.pptx") -Destination $fixturesStaging
 
+# --- COMPILE GATE, before a single test runs -------------------------
+#
+# Added 2026-08-05 after this suite was PROVEN blind to a real compile error:
+# the 3-argument UpsertRow calls in ExcelOutput.ManualSmokeTest were
+# reintroduced on purpose and this script still printed "152 passed, 0 failed"
+# and exited 0. VBA compiles PER PROCEDURE, ON DEMAND -- ManualSmokeTest is
+# called by nothing, so it was never compiled and its error was never seen.
+# The "NO TESTS RAN" guard below only catches a compile error that happens to
+# sit on the call path to RunAllTests.
+#
+# A CHILD PROCESS, not an inline call, because a compile error opens a modal in
+# the VBE and the Execute() that raised it never returns. A blocking COM call
+# cannot be timed out from the thread that made it -- so the timeout goes on
+# the process instead, and a hang becomes the failure signal rather than a
+# mystery. (It cost an evening as a mystery on 2026-07-29.)
+#
+# NOTHING IS KILLED ON TIMEOUT. Rohan's call: the stuck PowerPoint keeps its
+# VBE dialog on screen, and that dialog names the offending line. This script
+# refuses to start while Office is running, so a left-open modal also blocks
+# the next run -- which is the intended pressure to go and look at it.
+$compileScript = Join-Path $staging "compile_check.ps1"
+Copy-Item (Join-Path $RepoRoot "vba\tests\compile_check.ps1") -Destination $compileScript
+$compileLog = Join-Path $staging "compile_check.log"
+$compileTimeoutSeconds = 180
+
+# THE POWERPOINT SET, and only it. Computed here rather than inside the
+# PowerPoint pass below, because the gate has to import exactly what that pass
+# imports -- the same value now feeds both.
+#
+# It matters that this is not "all the .bas files in staging": staging also
+# holds the EXCEL pass's TestRunnerExcel.bas, whose NewBlankSheet calls
+# Application.ActiveWorkbook. That is a compile error in a PowerPoint project
+# and has nothing to do with the code under test. The first version of this
+# gate did exactly that and reported a healthy project as broken.
+$pptImports = @("ExcelOutput.bas") + @($pptModules | ForEach-Object { Split-Path $_ -Leaf })
+
+$compileProc = Start-Process -FilePath "powershell.exe" -PassThru -WindowStyle Hidden `
+    -RedirectStandardOutput $compileLog `
+    -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $compileScript, `
+                    "-Staging", $staging, "-Modules", ($pptImports -join ","))
+
+if (-not $compileProc.WaitForExit($compileTimeoutSeconds * 1000)) {
+    Write-Output ""
+    Write-Output "=== COMPILE CHECK DID NOT RETURN after $compileTimeoutSeconds seconds. ==="
+    Write-Output "This is a FAILURE, not a slow machine. Debug > Compile VBAProject blocks on"
+    Write-Output "a modal dialog when the project does not compile, and that is the only way"
+    Write-Output "a compile failure can announce itself."
+    Write-Output ""
+    Write-Output "PowerPoint has been LEFT RUNNING on purpose. Switch to it: the VBE dialog"
+    Write-Output "names the offending line. Close it, fix the line, run this again."
+    Write-Output ""
+    Write-Output "NO TESTS WERE RUN."
+    exit 3
+}
+
+$compileOutput = if (Test-Path $compileLog) { (Get-Content $compileLog -Raw) } else { "" }
+Write-Output $compileOutput
+
+# THE VERDICT IS A LINE, NOT AN EXIT CODE, and the test is for the PASS marker
+# rather than against a failure one.
+#
+# $compileProc.ExitCode reads back EMPTY here however this waits on it --
+# Start-Process -PassThru does not retain the process handle. The first version
+# tested `-ne 0` against that empty value, which happened to be truthy and so
+# happened to fail closed; it printed "COMPILE GATE FAILED (exit )" and would
+# have blocked every run forever, including good ones. Right outcome, no
+# reasoning behind it.
+#
+# Requiring RESULT: OK means a crash, a hang, a killed child, an empty log or a
+# child that never got as far as printing anything all land on "did not
+# compile" -- which is the safe direction for a gate standing in front of a
+# test suite that is otherwise willing to report 152 passed on a dead project.
+if ($compileOutput -notmatch '(?m)^RESULT: OK\s*$') {
+    Write-Output ""
+    Write-Output "=== COMPILE GATE FAILED. NO TESTS WERE RUN. ==="
+    Write-Output "Every test below this point would have been meaningless: a project that does"
+    Write-Output "not compile can still pass every test whose code path avoids the bad line."
+    exit 3
+}
+
 $pptReport = ""
 $excelReport = ""
 $pptError = $null
@@ -244,7 +324,8 @@ try {
     # too (RunSync calls into it), so it is added here explicitly. Import order
     # does not affect compilation -- every module is in the project before
     # Application.Run is called.
-    $pptImports = @("ExcelOutput.bas") + @($pptModules | ForEach-Object { Split-Path $_ -Leaf })
+    # $pptImports is computed above, before the compile gate, so the gate and
+    # this pass cannot import different sets.
     foreach ($m in $pptImports) {
         $comp = $pres.VBProject.VBComponents.Import((Join-Path $staging $m))
         Write-Output ("Imported $m as component name: " + $comp.Name)
