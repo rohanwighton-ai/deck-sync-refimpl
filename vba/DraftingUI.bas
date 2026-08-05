@@ -50,41 +50,30 @@ Private Function ResolveRegisterSheet(pres As Object, wb As Object, ByRef proble
     End If
     On Error GoTo 0
 
+    ' ONE SLIDE TYPE PER DECK. Not a simplification -- the architecture. A child
+    ' deck carries one slide type and is where a human works; a composite deck is
+    ' a build output, generated one-way and never hand-edited (DECISIONS
+    ' 2026-07-26 and 2026-07-30). Drafting only ever runs on a child deck.
+    '
+    ' So more than one registered type is not a choice to offer, it is a deck in
+    ' a state the model says cannot happen -- most likely two onboardings against
+    ' the same file. Refused rather than resolved: this used to take types(LBound),
+    ' the first in whatever order the custom properties enumerate, and draft
+    ' against that type's register without saying which it had picked.
     Dim chosen As String
-    If hi = lo Then
-        chosen = types(lo)
-    Else
-        ' MORE THAN ONE TYPE IS A QUESTION, NOT A DEFAULT. This used to take
-        ' types(LBound) -- the first registered, in whatever order the custom
-        ' properties happened to enumerate -- and draft against that type's
-        ' register without ever saying which one it picked. On a deck carrying
-        ' several of Rohan's eight slide types that is a coin toss deciding
-        ' which sheet a quarter's writing lands in.
-        Dim menu As String, i As Long
+    If hi > lo Then
+        Dim names As String, i As Long
         For i = lo To hi
-            menu = menu & "  " & (i - lo + 1) & ". " & types(i) & vbCrLf
+            names = names & vbCrLf & "  - " & types(i)
         Next i
-
-        Dim pick As String
-        pick = Trim(InputBox("This deck has more than one slide type registered." & vbCrLf & _
-            "Each has its own register sheet, so drafting has to know which one." & vbCrLf & vbCrLf & _
-            menu & vbCrLf & "Type the NUMBER of the one you are drafting:", "Which slide type?"))
-        If pick = "" Then
-            problem = "cancelled -- no slide type chosen."
-            Exit Function
-        End If
-        If Not IsNumeric(pick) Then
-            problem = "'" & pick & "' is not one of the numbers listed."
-            Exit Function
-        End If
-        Dim n As Long
-        n = CLng(pick)
-        If n < 1 Or n > (hi - lo + 1) Then
-            problem = "there is no slide type number " & n & " on that list."
-            Exit Function
-        End If
-        chosen = types(lo + n - 1)
+        problem = "this deck has " & (hi - lo + 1) & " slide types registered:" & names & vbCrLf & vbCrLf & _
+            "A deck that gets drafted carries exactly one. Two usually means the deck " & _
+            "was onboarded twice. Sort out which type this deck is before drafting, " & _
+            "because each type has its own register sheet and picking the wrong one " & _
+            "puts a quarter's writing in the wrong place."
+        Exit Function
     End If
+    chosen = types(lo)
 
     ' THE SAME ANSWER SYNC USES. This function used to prefer a sheet literally
     ' named "Register" and fall back to the registered name only if none
