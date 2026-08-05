@@ -6,11 +6,14 @@ Option Explicit
 ' together with Resolve.bas). Dispatches per specs/sync-operations.md:
 ' cases 1 (no_change), 3 (new_record), and 4 (in_place_correction) from
 ' PlanRoutineSync; case 6 (unclassified_slide) is folded into the same
-' function, matching the Python original. Case 2 (period_rollover) is
-' PlanPeriodRollover, a distinct, separately-invoked function never
-' reachable from PlanRoutineSync -- never inferred from a value merely
-' looking different. Cases 5/7 are non-goals per specs/sync-operations.md
-' and are not produced anywhere in this file.
+' function, matching the Python original. Cases 5/7 are non-goals per
+' specs/sync-operations.md and are not produced anywhere in this file.
+'
+' CASE 2 (period_rollover) NO LONGER EXISTS HERE. It duplicated a slide
+' inside the deck to represent the next period -- the deck-accumulates
+' model, rejected 2026-08-03. A period now gets its own deck file and last
+' period's stays as the record, so rolling forward copies ROWS
+' (ExcelOutput.RollForwardPeriod), never slides. Removed 2026-08-05.
 '
 ' See SPIKE_NOTES_Resolve.md for the full divergence list -- most notably,
 ' this port skips resolve.py's separate field_shapes pre-resolution step
@@ -40,11 +43,6 @@ Public Type SyncAction
     Reason As String
 End Type
 
-Public Type PeriodRollover
-    SourceInstanceKey As String
-    NewValues As Object         ' Scripting.Dictionary fieldName -> String value
-    Reason As String
-End Type
 
 ' Dispatch cases 1/3/4/6 across `instances` (live Slide objects already
 ' believed to belong to one type -- gathering that set is the caller's job,
@@ -200,21 +198,6 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
     Next instanceId
 
     PlanRoutineSync = actions
-End Function
-
-' Case 2, per specs/sync-operations.md: only ever called explicitly against
-' one specific known instance, never dispatched from PlanRoutineSync.
-Public Function PlanPeriodRollover(instance As SlideInstance, newValues As Object) As PeriodRollover
-    If Not instance.HasInstanceKey Then
-        Err.Raise vbObjectError + 1, "SyncOperations.PlanPeriodRollover", _
-            "cannot roll over a period for an unclassified instance (no instance_key)"
-    End If
-
-    Dim result As PeriodRollover
-    result.SourceInstanceKey = instance.InstanceKey
-    Set result.NewValues = CloneStringDict(newValues)
-    result.Reason = "explicit period-rollover command"
-    PlanPeriodRollover = result
 End Function
 
 Private Function CloneStringDict(source As Object) As Object

@@ -9,7 +9,7 @@ Public Const PROP_DECK_PERIOD As String = "DeckSyncPeriod"
 ' button needs and no prior module provides -- "for this open deck, which
 ' workbook is paired with it, and where does each known slide type's
 ' template/worksheet live." Every existing engine entry point
-' (RunSync.RunRoutineSync/RunPeriodRollover, DeckAdoption's templateSld
+' (RunSync.RunRoutineSync, DeckAdoption's templateSld
 ' param) takes these as caller-supplied parameters, correct for a developer
 ' at the VBE but not for a button with no caller to ask.
 '

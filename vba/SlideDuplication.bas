@@ -2,9 +2,9 @@ Attribute VB_Name = "SlideDuplication"
 Option Explicit
 
 ' Implements specs/slide-duplication-trigger.md's DuplicateAndTag primitive
-' -- the "how" for sync_operations' case 2/3 duplication decisions. This
+' -- the "how" for sync_operations' case 3 duplication decisions. This
 ' module does not decide *whether* to duplicate (SyncOperations does, via
-' PlanRoutineSync/PlanPeriodRollover); it only implements what happens once
+' PlanRoutineSync); it only implements what happens once
 ' that decision is made. Deck-order placement (row order as a standing
 ' invariant) is deliberately NOT this module's job either -- per the spec,
 ' resequencing covers both new and already-existing slides uniformly each

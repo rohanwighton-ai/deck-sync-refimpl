@@ -379,10 +379,6 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "RunSync_ConfirmSyncTextReportsUncreatableRows", r
     On Error GoTo 0
 
-    r = "": On Error Resume Next: Err.Clear
-    r = Test_RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched()
-    AppendResult report, "RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched", r
-    On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
     r = Test_DeckAdoption_AlreadyLinkedSlideSkipped()
@@ -519,10 +515,6 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "RibbonUI_ResolveTypeAnswerAcceptsNumberOrName", r
     On Error GoTo 0
 
-    r = "": On Error Resume Next: Err.Clear
-    r = Test_RibbonUI_ResolveRecordAnswerAcceptsNumberOnly()
-    AppendResult report, "RibbonUI_ResolveRecordAnswerAcceptsNumberOnly", r
-    On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
     r = Test_RibbonUI_BuildTypePickerPromptListsAllTypes()
@@ -3899,70 +3891,6 @@ Private Function Test_RunSync_ConfirmSyncTextReportsUncreatableRows() As String
     Test_RunSync_ConfirmSyncTextReportsUncreatableRows = result
 End Function
 
-' Case 2 (period rollover): duplicates the source instance's current slide
-' into a new period's slide, injecting new values -- and confirms the
-' source slide itself is left untouched as history (specs/sync-
-' operations.md's explicit case-2 requirement), not just that a duplicate
-' with the right values exists. Also confirms RunPeriodRollover's own
-' collision guard (via the existingInstances it gathers internally) refuses
-' to roll over onto an instance_key that already exists, same posture
-' SlideDuplication.DuplicateAndTag already enforces for case 3.
-Private Function Test_RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched() As String
-    Dim result As String
-
-    Dim sourceSld As Object
-    Set sourceSld = NewBlankSlide()
-    Dim titleShp As Object
-    Set titleShp = sourceSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
-    titleShp.TextFrame.TextRange.Text = "Q1 Value"
-    titleShp.Tags.Add "role", "Title"
-    sourceSld.Tags.Add "slide_type", "rollover-type"
-    sourceSld.Tags.Add "instance_key", "rollover-q1"
-
-    Dim newValues As Object
-    Set newValues = CreateObject("Scripting.Dictionary")
-    newValues.Add "Title", "Q2 Value"
-
-    Dim dr As DuplicateResult
-    dr = RunSync.RunPeriodRollover(sourceSld, "rollover-type", "rollover-q2", newValues)
-
-    result = result & Assert(dr.Ok, "rollover duplication succeeded: " & dr.Reason)
-
-    If dr.Ok Then
-        Dim newTitleShp As Object
-        Set newTitleShp = FindShapeByRole(dr.NewSlide, "Title")
-        Dim newText As String
-        If newTitleShp Is Nothing Then
-            newText = "<shape not found>"
-        Else
-            newText = newTitleShp.TextFrame.TextRange.Text
-        End If
-        result = result & Assert(newText = "Q2 Value", "new period's slide got the new value injected, got '" & newText & "'")
-
-        Dim newInst As SlideInstance
-        newInst = Resolve.ResolveSlideInstance(dr.NewSlide)
-        result = result & Assert(newInst.HasInstanceKey And newInst.InstanceKey = "rollover-q2", "new slide tagged with the new period's instance_key")
-    End If
-
-    Dim sourceTitleShp As Object
-    Set sourceTitleShp = FindShapeByRole(sourceSld, "Title")
-    Dim sourceText As String
-    If sourceTitleShp Is Nothing Then
-        sourceText = "<shape not found>"
-    Else
-        sourceText = sourceTitleShp.TextFrame.TextRange.Text
-    End If
-    result = result & Assert(sourceText = "Q1 Value", "source slide left untouched as history, got '" & sourceText & "'")
-
-    ' Collision guard: rolling over to an instance_key that already exists
-    ' (e.g. the just-created new period) must refuse, not double-create.
-    Dim dupDr As DuplicateResult
-    dupDr = RunSync.RunPeriodRollover(sourceSld, "rollover-type", "rollover-q2", newValues)
-    result = result & Assert(Not dupDr.Ok, "re-rolling over to an already-used instance_key is refused, not silently double-created")
-
-    Test_RunSync_RunPeriodRolloverDuplicatesLeavingSourceUntouched = result
-End Function
-
 ' ---------------------------------------------------------------------
 ' DeckAdoption
 ' ---------------------------------------------------------------------
@@ -4879,29 +4807,6 @@ Private Function Test_RibbonUI_ResolveTypeAnswerAcceptsNumberOrName() As String
     result = result & Assert(RibbonUI.ResolveTypeAnswer("", types) = "", "blank answer resolves to empty")
 
     Test_RibbonUI_ResolveTypeAnswerAcceptsNumberOrName = result
-End Function
-
-Private Function Test_RibbonUI_ResolveRecordAnswerAcceptsNumberOnly() As String
-    Dim result As String
-
-    Dim sld1 As Object, sld2 As Object
-    Set sld1 = NewBlankSlide()
-    Set sld2 = NewBlankSlide()
-    Dim instances(1 To 2) As Object
-    Set instances(1) = sld1
-    Set instances(2) = sld2
-
-    Dim picked As Object
-    Set picked = RibbonUI.ResolveRecordAnswer("2", instances)
-    result = result & Assert(Not picked Is Nothing And picked.SlideID = sld2.SlideID, "numeric answer resolves to the matching instance")
-
-    Set picked = RibbonUI.ResolveRecordAnswer("not-a-number", instances)
-    result = result & Assert(picked Is Nothing, "non-numeric answer resolves to Nothing")
-
-    Set picked = RibbonUI.ResolveRecordAnswer("99", instances)
-    result = result & Assert(picked Is Nothing, "out-of-range answer resolves to Nothing")
-
-    Test_RibbonUI_ResolveRecordAnswerAcceptsNumberOnly = result
 End Function
 
 Private Function Test_RibbonUI_BuildTypePickerPromptListsAllTypes() As String

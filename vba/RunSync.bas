@@ -11,11 +11,13 @@ Option Explicit
 ' identity_tags/matching/resolve/sync_operations/onboarding/excel_output/
 ' verification/slide_duplication into one real, runnable sync pass.
 '
-' Routine sync (cases 1/3/4/6) and period rollover (case 2, via
-' RunPeriodRollover below) are two distinct entry points, never conflated
-' -- case 2 stays explicitly-invoked-only per specs/sync-operations.md's
-' own "never inferred from routine sync" rule; RunRoutineSync itself never
-' calls into it. Cases 5/7 remain non-goals throughout this project.
+' Routine sync covers cases 1/3/4/6. Cases 5/7 remain non-goals.
+'
+' CASE 2 (period rollover) IS GONE, removed 2026-08-05. It duplicated a
+' slide within the deck for the next period, which is the deck-accumulates
+' model rejected on 2026-08-03: each period now gets its own deck file and
+' last period's stays as the record. Rolling forward is a ROW operation
+' (ExcelOutput.RollForwardPeriod), and no slide is created for it.
 
 ' ---------------------------------------------------------------------
 ' Gathering instances -- explicitly not SyncOperations' job (its own
@@ -487,39 +489,6 @@ Public Function ConfirmSyncText(correctCount As Long, createCount As Long, flagC
 
     s = s & vbCrLf & "Proceed?"
     ConfirmSyncText = s
-End Function
-
-' ---------------------------------------------------------------------
-' Period rollover (case 2) -- a distinct, explicitly-invoked entry point,
-' never reachable from RunRoutineSync above (SyncOperations.
-' PlanPeriodRollover's own "never inferred from routine sync" rule).
-' ---------------------------------------------------------------------
-
-' Executes an explicit period rollover for one named instance: resolves
-' `sourceSld` (the instance's own current slide) into a SlideInstance,
-' calls SyncOperations.PlanPeriodRollover to decide the rollover, then
-' duplicates `sourceSld` itself into a new slide tagged `newInstanceKey`
-' with `newValues` injected -- mirroring RunRoutineSync's own case-3
-' handling (SlideDuplication.DuplicateAndTag), but driven from an explicit
-' command against one known instance rather than an unmatched Data-sheet
-' row. `sourceSld` is left untouched as history, per specs/sync-
-' operations.md's case-2 requirement -- DuplicateAndTag never mutates its
-' source, only the new duplicate.
-'
-' `sourceSld` is accepted un-resolved (rather than requiring the caller to
-' pass an already-built SlideInstance) so a future picker UI can hand over
-' exactly the slide a user selected without resolving it first.
-Public Function RunPeriodRollover(sourceSld As Object, slideType As String, newInstanceKey As String, newValues As Object) As DuplicateResult
-    Dim instance As SlideInstance
-    instance = Resolve.ResolveSlideInstance(sourceSld)
-
-    Dim rollover As PeriodRollover
-    rollover = SyncOperations.PlanPeriodRollover(instance, newValues)
-
-    Dim existingInstances() As Object
-    existingInstances = GatherInstances(slideType)
-
-    RunPeriodRollover = SlideDuplication.DuplicateAndTag(sourceSld, slideType, newInstanceKey, rollover.NewValues, existingInstances)
 End Function
 
 ' ---------------------------------------------------------------------
