@@ -16,7 +16,13 @@ param(
     [string]$Variant = "save",
     [string]$FieldId = "ABOUT_BODY",
     [string]$SheetName = "Register",
-    [string]$SlideType = "q",
+    # NO DEFAULT. It defaulted to "q" -- the rig's original slide-type name,
+    # renamed to "project-status" on 2026-08-04 (80fe9af). The rename changed one
+    # deck property and left this default, so any run that did not pass
+    # -SlideType silently addressed a type that no longer exists. Same defect as
+    # DraftingUI's hardcoded "q", which had been rejecting every register row.
+    # A slide type is deck-specific: there is no sane default, so there is none.
+    [string]$SlideType = "",
     [string]$NewSlideType = "",
     [string]$TsvPath = "C:\Users\rohan\deck-sync-e2e\field_values.tsv",
     [string]$Entities = "",
@@ -112,6 +118,9 @@ try {
     Write-Output ("compile: " + (Invoke-ForceCompile -App $ppt))
 
     if ($Mode -eq "renameslidetype") {
+        if ([string]::IsNullOrWhiteSpace($SlideType)) {
+            throw "-SlideType is required for renameslidetype. It has no default: a slide type belongs to a deck, and guessing one silently addresses a type that may not exist."
+        }
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
             @([string]"E2EField.RenameSlideType",[string]$DeckPath,[string]$SlideType,[string]$NewSlideType,[string]$SheetName,[string]$Variant))
     } elseif ($Mode -eq "repointworkbook") {

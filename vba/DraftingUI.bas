@@ -26,10 +26,14 @@ Option Explicit
 
 ' The register worksheet for this deck.
 '
-' TWO WORKBOOK SHAPES EXIST AND BOTH ARE REAL. The e2e rig uses a single sheet
-' named "Register"; the live pairing registers a sheet name per slide type via
-' DeckRegistry. Rather than declare one of them wrong, look for the named
-' register first and fall back to the deck's registered sheet.
+' ONE SHAPE, NOT TWO. This comment used to say the opposite: that the e2e rig's
+' sheet named "Register" and the live pairing's per-slide-type registered name
+' were both real, so it looked for the first and fell back to the second.
+' Rather than declaring one wrong, it declared neither -- and a workbook with
+' both put publish on one sheet and Sync Now on the other, each reporting
+' success. There is one answer: the name the slide type is REGISTERED against.
+' The rig was never a second shape, it just happened to register the name
+' "Register", which is exactly why it could not show the bug.
 '
 ' Returns Nothing rather than raising, because every caller here wants to say
 ' something useful to a person rather than show them an error dialog.
@@ -568,10 +572,11 @@ Public Sub StartQuarter()
         MsgBox "Deck period is now " & readBack & "." & vbCrLf & vbCrLf & _
                "SAVE THE DECK before anything else -- the property is not on disk " & _
                "until you do, and this project has lost it that way before." & vbCrLf & vbCrLf & _
-               "STILL TO DO, and this tool does not do it for you: the register " & _
-               "needs rows for " & typed & ". Without them the drafting sheets will " & _
-               "be empty. Copy the previous period's rows forward in Excel and set " & _
-               "their Status to Seed.", vbInformation, CAP
+               "STILL TO DO: the register needs rows for " & typed & ". Without " & _
+               "them the drafting sheets will be empty." & vbCrLf & vbCrLf & _
+               "Copy the previous period's block of rows in Excel, and change the " & _
+               "Quarter cell on the copies to " & typed & ". One row per slide, " & _
+               "same as the period you copied from.", vbInformation, CAP
     Else
         MsgBox "THE PERIOD DID NOT TAKE." & vbCrLf & vbCrLf & _
                "Asked for: " & typed & vbCrLf & _
