@@ -780,7 +780,7 @@ Private Function AskForWorkbookPath(pres As Object) As String
     AskForWorkbookPath = InputBox( _
         "This deck has no paired workbook yet." & vbCrLf & vbCrLf & _
         "Enter a FULL path for the new Data workbook, e.g." & vbCrLf & _
-        "C:\Users\you\OneDrive\Claude\SAAFE-Projects-Data.xlsx" & vbCrLf & vbCrLf & _
+        "C:\Users\you\Documents\Project-Status-Data.xlsx" & vbCrLf & vbCrLf & _
         "Not a web address -- an https:// link won't work here.", _
         "Bulk Onboard Type -- Pair Workbook", suggested)
 End Function

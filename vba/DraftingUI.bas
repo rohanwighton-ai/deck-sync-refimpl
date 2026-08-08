@@ -313,11 +313,28 @@ Public Sub RefreshDraftingSheets()
 
     ShowSheet wb, firstSheet
 
-    MsgBox "Period: " & period & vbCrLf & vbCrLf & report & vbCrLf & valNote & vbCrLf & _
-           srcValidation & vbCrLf & vbCrLf & _
-           "Read column C, put your wording in column G (SUBMIT), type Y in column I." & vbCrLf & _
-           "The prompt for Copilot is in cell L2." & vbCrLf & vbCrLf & _
-           "Nothing reaches a slide until you publish and apply.", vbInformation, CAP
+    ' WHAT TO DO FIRST, DETAIL SECOND, AND NEVER SILENTLY CUT.
+    '
+    ' MsgBox truncates its prompt near 1024 characters without saying so, so a
+    ' long run report does not merely read badly -- it DROPS the warnings at the
+    ' bottom, which are the only part worth reading. Capped explicitly here and
+    ' the cut is announced.
+    Dim msg As String
+    msg = "Period: " & period & vbCrLf & vbCrLf & _
+          "Your wording goes in column G (SUBMIT). Type Y in column I to approve." & vbCrLf & _
+          "Column C is what the slide says now. Copilot's prompt is in cell L2." & vbCrLf & _
+          "Nothing reaches a slide until you publish and apply." & vbCrLf & vbCrLf & _
+          "----" & vbCrLf & report
+    If Trim(valNote) <> "" Then msg = msg & valNote & vbCrLf
+    If Trim(srcValidation) <> "" Then msg = msg & srcValidation & vbCrLf
+
+    Const MSG_CAP As Long = 900
+    If Len(msg) > MSG_CAP Then
+        msg = Left$(msg, MSG_CAP) & vbCrLf & vbCrLf & _
+              "[report shortened -- the full detail is on the sheets themselves]"
+    End If
+
+    MsgBox msg, vbInformation, CAP
     Exit Sub
 
 Failed:
@@ -580,15 +597,17 @@ Public Sub StartQuarter()
     readBack = DeckRegistry.GetDeckPeriod(pres)
 
     If StrComp(readBack, typed, vbTextCompare) = 0 Then
+        ' USER-FACING TEXT SAYS WHAT TO DO, NOT WHAT THIS PROJECT HAS LEARNED.
+        ' Rohan, 2026-08-08, on seeing "this project has lost it that way before"
+        ' in a modal: the reasoning belongs in the code and the repo. A dialog
+        ' narrating its own history reads as the tool talking about itself
+        ' instead of telling you the next action.
         MsgBox "Deck period is now " & readBack & "." & vbCrLf & vbCrLf & _
-               "SAVE THE DECK before anything else -- the property is not on disk " & _
-               "until you do, and this project has lost it that way before." & vbCrLf & vbCrLf & _
+               "SAVE THE DECK now -- the period is not on disk until you do." & vbCrLf & vbCrLf & _
                "STILL TO DO: the register needs rows for " & typed & ". Without " & _
                "them the drafting sheets will be empty." & vbCrLf & vbCrLf & _
                "Press 'Roll Forward' on the toolbar. It copies the previous period's " & _
-               "rows and stamps them " & typed & ", one row per slide." & vbCrLf & vbCrLf & _
-               "(This used to tell you to copy the rows by hand in Excel. The button " & _
-               "does it.)", vbInformation, CAP
+               "rows and stamps them " & typed & ", one row per slide.", vbInformation, CAP
     Else
         MsgBox "THE PERIOD DID NOT TAKE." & vbCrLf & vbCrLf & _
                "Asked for: " & typed & vbCrLf & _

@@ -341,7 +341,7 @@ Public Function ApplyControlledValidation(regWs As Object, specWs As Object) As 
         Exit Function
     End If
 
-    Dim applied As Long, controlledCols As Long, offending As String
+    Dim applied As Long, controlledCols As Long, offending As String, offendingCount As Long
     Dim c As Long
     For c = 1 To lastCol
         ' Structural columns are never fields and must never be given a
@@ -385,6 +385,7 @@ Public Function ApplyControlledValidation(regWs As Object, specWs As Object) As 
                                 who = who & " (" & Trim(CStr(regWs.Cells(rr, cQuarter).Value)) & ")"
                             End If
                             offending = offending & "  " & who & "  " & fid & " = """ & current & """" & vbCrLf
+                            offendingCount = offendingCount + 1
                         End If
                     End If
                 Next rr
@@ -406,8 +407,29 @@ Public Function ApplyControlledValidation(regWs As Object, specWs As Object) As 
     ApplyControlledValidation = "Validation: dropdown on " & applied & " cell(s) across " & _
         controlledCols & " controlled column(s)."
     If offending <> "" Then
+        ' COUNTED IN FULL, LISTED IN PART. This went into a MsgBox that truncates
+        ' near 1024 characters without saying so, so an unbounded list did not
+        ' just read badly -- past the cap it pushed everything after it out of
+        ' the dialog entirely. The count is the part that must always survive.
+        Dim shown As String, lines As Long, pos As Long, nextPos As Long
+        pos = 1
+        Do While pos <= Len(offending) And lines < 5
+            nextPos = InStr(pos, offending, vbCrLf)
+            If nextPos = 0 Then Exit Do
+            shown = shown & Mid$(offending, pos, nextPos - pos + 2)
+            lines = lines + 1
+            pos = nextPos + 2
+        Loop
+
+        Dim total As Long
+        total = offendingCount
+
         ApplyControlledValidation = ApplyControlledValidation & vbCrLf & _
-            "VALUES OUTSIDE THE ALLOWED LIST (left exactly as they are):" & vbCrLf & offending
+            total & " value(s) outside the allowed list (left exactly as they are):" & vbCrLf & shown
+        If total > lines Then
+            ApplyControlledValidation = ApplyControlledValidation & _
+                "  ... and " & (total - lines) & " more -- see the register." & vbCrLf
+        End If
     End If
 End Function
 

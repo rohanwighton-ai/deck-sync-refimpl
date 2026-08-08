@@ -378,7 +378,7 @@ Public Function ReadDiagnostic(r As RegisterRead, deckPeriod As String) As Strin
     ' in a list and never said what it meant. Caught by its own test.
     If r.RejectedBlankType > 0 Then
         warn = warn & "WARNING: " & r.RejectedBlankType & " row(s) have a BLANK SlideType and were skipped." & vbCrLf & _
-            "A blank type used to match every deck; it now matches none." & vbCrLf & vbCrLf
+            "A row must name the slide type it belongs to." & vbCrLf & vbCrLf
     End If
     If r.CadenceCollisions > 0 Then
         warn = warn & "WARNING: " & r.CadenceCollisions & " field(s) are supplied at TWO cadences" & vbCrLf & _

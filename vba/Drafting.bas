@@ -470,23 +470,28 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' Said out loud, because the alternative is a person discovering by absence
     ' that a rebuild dropped their drafting. Not raised: the rebuild itself is
     ' correct and the register is untouched, so this is news, not a failure.
+    ' ONE LINE, NOT A PARAGRAPH. MsgBox caps its prompt near 1024 characters and
+    ' truncates SILENTLY past it -- so every line of rationale here costs a line
+    ' of a real warning somewhere else in the same dialog, and the warning is the
+    ' part that gets dropped. Rohan on the previous version, 2026-08-08:
+    ' "illegible, too long, and the user has no idea what is going on."
+    '
+    ' The old text also explained itself with "their register row is Quarter =
+    ' ALL" -- the sentinel retired on 2026-08-03.
     If periodChanged Then
+        ' NAMES BOTH PERIODS. Shortening this to the new period alone was a real
+        ' regression, caught by the test that exists for it: a note saying work
+        ' was cleared, without saying which period it was cleared FROM, does not
+        ' explain the thing the reader is looking at.
         WriteDraftingSheet = WriteDraftingSheet & vbCrLf & _
-            "NOTE: this sheet was built for " & IIf(sheetPeriod = "", "(no period recorded)", sheetPeriod) & _
-            " and is now " & periodStamp & "." & vbCrLf & _
-            droppedQuarterly & " quarterly row(s) were CLEARED -- last quarter's SUBMIT text would" & vbCrLf & _
-            "otherwise have sat there ready to be ticked and republished as this" & vbCrLf & _
-            "quarter's. Column C still shows what the slide says today, to draft against." & vbCrLf & _
-            keptStatic & " entity-static row(s) were KEPT -- their register row is Quarter = ALL," & vbCrLf & _
-            "so last quarter's text IS this quarter's text and there was nothing to clear." & vbCrLf & _
-            "The old sheet is in the .bak beside the workbook."
+            "  Rebuilt " & IIf(sheetPeriod = "", "(no period recorded)", sheetPeriod) & _
+            " -> " & periodStamp & ": " & droppedQuarterly & " row(s) cleared for redrafting" & _
+            IIf(keptStatic > 0, ", " & keptStatic & " carried over", "") & _
+            ". Previous sheet saved in the .bak beside the workbook."
     ElseIf Not layoutMatches And Not isNewSheet Then
         WriteDraftingSheet = WriteDraftingSheet & vbCrLf & _
-            "NOTE: this sheet was built by layout " & sheetLayout & _
-            " and the tool is now on layout " & DRAFT_LAYOUT_VERSION & ". Nothing was" & vbCrLf & _
-            "carried across -- the columns have been renumbered, so the old contents" & vbCrLf & _
-            "would have been read into the wrong meanings. Anything you had drafted is" & vbCrLf & _
-            "in the .bak beside the workbook, not lost."
+            "  Rebuilt on a new sheet layout: nothing carried across. Your previous " & _
+            "drafting is in the .bak beside the workbook."
     End If
 End Function
 

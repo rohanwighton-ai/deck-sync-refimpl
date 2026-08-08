@@ -2597,8 +2597,13 @@ Private Function Test_FieldSpec_ValidationReportsValuesOutsideTheVocabulary() As
     Dim rep As String
     rep = FieldSpec.ApplyControlledValidation(regWs, specWs)
 
-    result = result & Assert(InStr(rep, "OUTSIDE THE ALLOWED LIST") > 0, _
+    ' The COUNT is now the load-bearing part: the list is capped at 5 entries so
+    ' it cannot push the rest of a MsgBox past the truncation limit, but the
+    ' total must always be stated, whether 1 value drifted or 40.
+    result = result & Assert(InStr(rep, "outside the allowed list") > 0, _
         "the out-of-vocabulary section appears, got '" & rep & "'")
+    result = result & Assert(InStr(rep, "1 value(s) outside") > 0, _
+        "and the report states HOW MANY drifted, got '" & rep & "'")
     result = result & Assert(InStr(rep, "Not started") > 0, _
         "the offending VALUE is quoted, got '" & rep & "'")
     ' Named by slide and period, not by row number -- a row number is worthless
@@ -7001,9 +7006,13 @@ Private Function Test_Drafting_RolloverKeepsEntityStaticRows() As String
 
     ' COUNTED OUT LOUD, both ways. "Nothing was carried across" was the old
     ' message and it would now be a lie on exactly the rows that matter.
-    result = result & Assert(InStr(rep, "1 quarterly row(s) were CLEARED") > 0, _
+    ' Asserts the COUNTS, not the prose. The wording changed on 2026-08-08 (the
+    ' old text explained itself in "Quarter = ALL" terms, retired 2026-08-03, and
+    ' ran to two paragraphs inside a MsgBox that truncates near 1024 characters).
+    ' What must not change is that both numbers are said out loud.
+    result = result & Assert(InStr(rep, "1 row(s) cleared") > 0, _
         "the report counts what it cleared, got '" & rep & "'")
-    result = result & Assert(InStr(rep, "1 entity-static row(s) were KEPT") > 0, _
+    result = result & Assert(InStr(rep, "1 carried over") > 0, _
         "and counts what it deliberately kept, got '" & rep & "'")
 
     ' UNKNOWN CADENCE STILL DROPS. A row the register cannot classify is treated
