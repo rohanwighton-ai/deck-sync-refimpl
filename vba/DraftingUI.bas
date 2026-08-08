@@ -336,8 +336,21 @@ Public Sub RefreshDraftingSheets()
               outOfVocab & " value(s) are not in their allowed list. Nothing was changed."
     End If
 
+    ' SAVED, AND SAID SO. Sync had this defect and was fixed on 2026-08-08;
+    ' drafting had it too and was missed, because the fix went in where the
+    ' failure was found rather than everywhere the same shape existed. A rebuild
+    ' that renumbers columns and is not written to disk is worse than one that
+    ' never ran: Excel holds the new layout, the file holds the old.
+    Dim saveProblem As String
+    saveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
+
     msg = msg & vbCrLf & vbCrLf & "Full detail is on the '" & _
           WorkbookBridge.RUN_LOG_SHEET_NAME & "' sheet."
+    If saveProblem = "" Then
+        msg = msg & vbCrLf & "Workbook saved."
+    Else
+        msg = msg & vbCrLf & vbCrLf & saveProblem
+    End If
 
     MsgBox msg, vbInformation, CAP
     Exit Sub
@@ -404,6 +417,14 @@ Public Sub CopyAiDraftsToSubmit()
 
     Dim note As String
     note = Drafting.CopyAiToSubmit(ws) & Drafting.RefreshSubmitCounts(ws)
+
+    Dim copySaveProblem As String
+    copySaveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
+    If copySaveProblem = "" Then
+        note = note & vbCrLf & "Workbook saved."
+    Else
+        note = note & vbCrLf & vbCrLf & copySaveProblem
+    End If
 
     ShowSheet wb, sheetName
     MsgBox note, vbInformation, CAP
@@ -672,6 +693,17 @@ Public Sub RollForwardUI()
 
     Dim outcome As String
     outcome = ExcelOutput.RollForwardPeriod(regWs, fromPeriod, toPeriod)
+
+    ' Rolling forward writes a whole period's rows. Leaving them unsaved would
+    ' lose an entire quarter's worth of register on a crash, silently.
+    Dim rollSaveProblem As String
+    rollSaveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
+    If rollSaveProblem = "" Then
+        outcome = outcome & vbCrLf & vbCrLf & "Workbook saved."
+    Else
+        outcome = outcome & vbCrLf & vbCrLf & rollSaveProblem
+    End If
+
     MsgBox outcome, vbInformation, CAP
     Exit Sub
 

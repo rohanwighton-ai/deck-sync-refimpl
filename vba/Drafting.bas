@@ -755,6 +755,19 @@ Public Function CopyAiToSubmit(ws As Object) As String
         r = r + 1
     Loop
 
+    ' NOTHING TO DO IS SAID OUT LOUD. Rohan, 2026-08-08: "copy ai to submit
+    ' didnt do anything". It was right -- column F was empty, so there was
+    ' nothing to copy -- but "0 copied, 0 left alone, 43 with no AI draft" reads
+    ' as a machine shrugging. A tool that does nothing must say why, or the
+    ' person is left deciding whether it is broken.
+    If copied = 0 And keptExisting = 0 Then
+        CopyAiToSubmit = "Nothing to copy: there are no AI drafts on this sheet yet." & vbCrLf & _
+            "Column F (AI DRAFT) is empty for all " & noAi & " row(s)." & vbCrLf & vbCrLf & _
+            "Paste Copilot's text into column F first -- the prompt is in cell L2 -- " & _
+            "or just type into column D (SUBMIT) yourself." & vbCrLf
+        Exit Function
+    End If
+
     CopyAiToSubmit = "Copy AI -> Submit: " & copied & " copied, " & _
         keptExisting & " left alone (you had already written something there), " & _
         noAi & " with no AI draft." & vbCrLf & _
