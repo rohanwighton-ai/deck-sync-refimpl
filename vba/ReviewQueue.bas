@@ -77,6 +77,24 @@ Public Type ReviewQueueSet
     RunStamp As String
     SlideType As String
     Consumed As Boolean
+
+    ' WHAT THE QUEUE DROPPED, CARRIED SO IT CANNOT VANISH SILENTLY.
+    '
+    ' BuildQueue keeps only in_place_correction -- correctly, because those are
+    ' the only actions a human can approve field by field. But new_record and
+    ' flagged were then dropped on the floor, and Count reached 0 with rows that
+    ' match no slide in the deck. Sync Now answers Count = 0 with "Nothing to
+    ' sync -- every linked slide already matches the workbook", which is FALSE in
+    ' exactly that case, and the condition was left visible only on Preview Sync.
+    '
+    ' Deliberately NOT extra Items. Items is what ApplyApproved writes from, and
+    ' a row that must never be written does not belong in the array the writer
+    ' walks -- keeping them out is structural, not a rule someone has to
+    ' remember. These are counts and text for reporting only.
+    OrphanCount As Long        ' rows whose instance key is on no slide
+    OrphanKeys As String       ' comma-separated, for naming them in a report
+    FlaggedCount As Long
+    FlaggedNotes As String
 End Type
 
 ' Grid layout. Row 1 is the banner, row 2 the headers, row 3 the first item.
@@ -358,6 +376,20 @@ Public Function BuildQueue(sheet As Sheet, slideType As String) As ReviewQueueSe
                     q.Items(q.Count).BatchLabel = ""
                     q.Items(q.Count).Approved = False
                 Next fieldName
+
+            ElseIf actions(i).Kind = "new_record" Then
+                ' Counted, named, never queued for writing. Sync Now cannot create
+                ' a slide any more (slide creation left the sync path 2026-07-31),
+                ' so the honest report is "this row reaches nothing", not a threat
+                ' to duplicate a template.
+                q.OrphanCount = q.OrphanCount + 1
+                If q.OrphanKeys <> "" Then q.OrphanKeys = q.OrphanKeys & ", "
+                q.OrphanKeys = q.OrphanKeys & actions(i).RowInstanceKey
+
+            ElseIf actions(i).Kind = "flagged" Then
+                q.FlaggedCount = q.FlaggedCount + 1
+                q.FlaggedNotes = q.FlaggedNotes & "  flagged: " & actions(i).Subject & _
+                    " (" & actions(i).FlagKind & ") -- " & actions(i).Reason & vbCrLf
             End If
         Next i
     End If
@@ -815,7 +847,29 @@ End Function
 ' Why the fast path was refused, in the words a human needs to act on it.
 Public Function FastPathRefusalText(q As ReviewQueueSet) As String
     If q.Count = 0 Then
-        FastPathRefusalText = "Nothing to sync -- every linked slide already matches the workbook."
+        ' "EVERY LINKED SLIDE MATCHES" IS A CLAIM ABOUT SLIDES THAT EXIST.
+        ' It was said unconditionally on Count = 0, including when dozens of rows
+        ' reached no slide at all -- the queue had dropped them, so the deck's
+        ' worst state and its healthiest state produced the same sentence.
+        If q.OrphanCount > 0 Or q.FlaggedCount > 0 Then
+            FastPathRefusalText = "Nothing can be synced, and that is NOT because the deck is up to date." & vbCrLf & vbCrLf
+            If q.OrphanCount > 0 Then
+                FastPathRefusalText = FastPathRefusalText & _
+                    q.OrphanCount & " register row(s) match no slide in this deck, so nothing " & _
+                    "carries their text:" & vbCrLf & "  " & q.OrphanKeys & vbCrLf & vbCrLf & _
+                    "Sync Now does not create slides. Either the slides are missing, or their " & _
+                    "instance keys disagree with the register." & vbCrLf & vbCrLf & _
+                    "There is no button for adding one yet -- copy the template slide by hand " & _
+                    "and tag it, or correct the key on the slide that should carry the row." & vbCrLf & vbCrLf
+            End If
+            If q.FlaggedCount > 0 Then
+                FastPathRefusalText = FastPathRefusalText & _
+                    q.FlaggedCount & " item(s) were flagged:" & vbCrLf & q.FlaggedNotes & vbCrLf
+            End If
+            FastPathRefusalText = FastPathRefusalText & "No slide was changed."
+        Else
+            FastPathRefusalText = "Nothing to sync -- every linked slide already matches the workbook."
+        End If
     ElseIf IndividualCount(q) > 0 Then
         FastPathRefusalText = IndividualCount(q) & " change(s) are not part of a uniform batch and" & vbCrLf & _
             "have to be read one at a time -- prose, or a one-off correction." & vbCrLf & vbCrLf & _
@@ -1137,7 +1191,21 @@ End Sub
 ' What is waiting to be reviewed, for the human who just pressed the button.
 Public Function QueueSummaryText(q As ReviewQueueSet) As String
     If q.Count = 0 Then
-        QueueSummaryText = "Nothing to review -- this deck already matches the register." & vbCrLf
+        ' Same claim, same fault as FastPathRefusalText above: "already matches"
+        ' is only true of slides that exist. Found by grepping for the SHAPE after
+        ' fixing Sync Now, not by tripping over it a second time.
+        If q.OrphanCount > 0 Or q.FlaggedCount > 0 Then
+            QueueSummaryText = "Nothing to review, and NOT because the deck is up to date." & vbCrLf
+            If q.OrphanCount > 0 Then
+                QueueSummaryText = QueueSummaryText & _
+                    "    " & q.OrphanCount & " register row(s) reach no slide: " & q.OrphanKeys & vbCrLf
+            End If
+            If q.FlaggedCount > 0 Then
+                QueueSummaryText = QueueSummaryText & q.FlaggedNotes
+            End If
+        Else
+            QueueSummaryText = "Nothing to review -- this deck already matches the register." & vbCrLf
+        End If
         Exit Function
     End If
 

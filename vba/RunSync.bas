@@ -323,7 +323,23 @@ End Function
 ' a mass slide duplication. That is not hypothetical -- it was the live state
 ' of the real deck on 2026-07-27 (43 orphaned rows against 46 slides), and
 ' only the button being absent from the toolbar prevented it.
-Public Function PreviewRoutineSync(ws As Object, slideType As String) As String
+' deckPeriod is REQUIRED, not optional with a "" default.
+'
+' It read the sheet through ExcelOutput.ReadSheet -- the UNFILTERED reader --
+' while every sync-side read used ReadSheetForDeckPeriod. ExcelOutput's own header
+' says in capitals "THE SYNC PATH MUST USE THIS, NOT ReadSheet"; that fix landed on
+' the four RibbonUI call sites and missed this one, because it lives inside another
+' module. So the preview read every period's rows at once, and where a project has
+' a row in two periods the unfiltered reader keeps whichever sits HIGHER and files
+' the rest in DuplicateInstances, which nothing here looked at.
+'
+' On the rig this currently gets the right answer by accident: all five projects
+' with two rows happen to have Q4F26 directly above Q1F27. Reorder them, or roll
+' forward so the new period lands first, and the preview silently starts previewing
+' a different period from the one Sync Now would write. A defect that agrees with
+' reality today is the kind testing now cannot catch -- hence a required argument
+' rather than a default that preserves the old behaviour for any caller that forgets.
+Public Function PreviewRoutineSync(ws As Object, slideType As String, deckPeriod As String) As String
     Dim report As String
     report = "=== PREVIEW (nothing written): " & slideType & " ===" & vbCrLf
 
@@ -339,7 +355,17 @@ Public Function PreviewRoutineSync(ws As Object, slideType As String) As String
     End If
 
     Dim sheet As Sheet
-    sheet = ExcelOutput.ReadSheet(ws)
+    Dim readProblem As String
+    sheet = ExcelOutput.ReadSheetForDeckPeriod(ws, deckPeriod, readProblem)
+    If readProblem <> "" Then
+        ' Reported and returned rather than previewed against a sheet that cannot
+        ' be trusted. A preview writes nothing, so this is not dangerous in itself
+        ' -- but a preview of the wrong rows is worse than no preview, because it
+        ' is the thing someone then approves a real sync from.
+        PreviewRoutineSync = report & "REFUSED at period '" & deckPeriod & "': " & _
+            readProblem & vbCrLf
+        Exit Function
+    End If
 
     Dim instances() As Object
     instances = GatherInstances(slideType)
@@ -379,7 +405,7 @@ Public Function PreviewRoutineSync(ws As Object, slideType As String) As String
 
                 Case "new_record"
                     wouldCreateCount = wouldCreateCount + 1
-                    report = report & "  WOULD CREATE A NEW SLIDE: " & actions(i).RowInstanceKey & _
+                    report = report & "  REACHES NO SLIDE: " & actions(i).RowInstanceKey & _
                         " -- no slide carries this row's instance key" & vbCrLf
 
                 Case "flagged"
@@ -390,19 +416,28 @@ Public Function PreviewRoutineSync(ws As Object, slideType As String) As String
     End If
 
     report = report & "Summary: " & noChangeCount & " unchanged, " & wouldCorrectCount & " would be corrected, " & _
-        wouldCreateCount & " new slide(s) would be created, " & flaggedCount & " flagged" & vbCrLf
+        wouldCreateCount & " row(s) reach no slide, " & flaggedCount & " flagged" & vbCrLf
 
     Dim outOfPosition As Long
     outOfPosition = ResequenceByRowOrder(slideType, sheet.InstanceOrder, True)
     report = report & outOfPosition & " slide(s) are not in Data-sheet row order." & vbCrLf
 
-    ' The loud one. Mass duplication is the only outcome here that is painful
-    ' to undo, so it gets called out on its own rather than left as a number
-    ' in a summary line someone skims.
+    ' THIS USED TO THREATEN MASS DUPLICATION, AND THAT IS NO LONGER TRUE.
+    '
+    ' It said "A real Sync Now would DUPLICATE the template slide once for each".
+    ' Slide creation left the sync path on 2026-07-31 (DECISIONS.md) -- nothing in
+    ' production calls RunRoutineSync any more, and ReviewQueue.BuildQueue never
+    ' queues a new_record. So the two buttons described each other wrongly in BOTH
+    ' directions: this one warned of a danger that cannot happen, while Sync Now
+    ' said "every linked slide already matches the workbook" over the very same
+    ' rows. Still called out on its own line, because a row that reaches nothing is
+    ' content silently missing from the deck -- just not for the old reason.
     If wouldCreateCount > 0 Then
         report = report & vbCrLf & "WARNING: " & wouldCreateCount & " Data row(s) match no slide in this deck." & vbCrLf & _
-            "A real Sync Now would DUPLICATE the template slide once for each." & vbCrLf & _
-            "If that is not what you want, fix the linkage before syncing." & vbCrLf
+            "Their text will NOT appear anywhere -- Sync Now does not create slides." & vbCrLf & _
+            "Either those slides are missing, or their instance keys disagree with the register." & vbCrLf & _
+            "There is no button for adding a missing slide yet: add it from the template" & vbCrLf & _
+            "by hand and tag it, or fix the key on the slide that should carry the row." & vbCrLf
     End If
 
     PreviewRoutineSync = report

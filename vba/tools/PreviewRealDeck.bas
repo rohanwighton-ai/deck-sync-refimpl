@@ -75,7 +75,7 @@ Public Function PreviewRealDeck(deckPath As String) As String
         Dim templateSld As Object
         Dim wsName As String
         If DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
-            report = report & RunSync.PreviewRoutineSync(wb.Worksheets(wsName), types(i)) & vbCrLf
+            report = report & RunSync.PreviewRoutineSync(wb.Worksheets(wsName), types(i), DeckRegistry.GetDeckPeriod(pres)) & vbCrLf
         Else
             report = report & "SKIPPED " & types(i) & ": registered type's template slide no longer resolves." & vbCrLf
         End If

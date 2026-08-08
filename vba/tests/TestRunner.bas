@@ -677,6 +677,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "RibbonUI_UnexpectedErrorTextTellsTheTruth", r
     r = Test_RibbonUI_CapReportKeepsTheQuestion()
     AppendResult report, "RibbonUI_CapReportKeepsTheQuestion", r
+    r = Test_ReviewQueue_EmptyQueueDoesNotClaimTheDeckMatches()
+    AppendResult report, "ReviewQueue_EmptyQueueDoesNotClaimTheDeckMatches", r
     r = Test_RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero()
     AppendResult report, "RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
@@ -3829,7 +3831,7 @@ Private Function Test_RunSync_PreviewReportsWithoutTouchingTheDeck() As String
     existingIndexBefore = existingSld.SlideIndex
 
     Dim report As String
-    report = RunSync.PreviewRoutineSync(ws, "preview-type")
+    report = RunSync.PreviewRoutineSync(ws, "preview-type", "")
 
     ' --- the deck must be exactly as it was ---
     result = result & Assert(Application.ActivePresentation.Slides.count = slideCountBefore, _
@@ -3863,12 +3865,22 @@ Private Function Test_RunSync_PreviewReportsWithoutTouchingTheDeck() As String
     ' matching loosely -- this is the one warning standing between a drifted
     ' deck and a mass slide duplication, and it must not be able to go quiet
     ' through a reword.
-    result = result & Assert(InStr(report, "WOULD CREATE A NEW SLIDE: preview-orphan-1") > 0, _
+    ' WAS "WOULD CREATE A NEW SLIDE", WHICH STOPPED BEING TRUE ON 2026-07-31.
+    ' Slide creation left the sync path that day, so the preview was threatening
+    ' something Sync Now cannot do -- while Sync Now, over the same rows, said
+    ' "every linked slide already matches the workbook". Both wrong, in opposite
+    ' directions. The test asserted the misleading half, which is how it survived.
+    result = result & Assert(InStr(report, "REACHES NO SLIDE: preview-orphan-1") > 0, _
         "report flags each orphaned row at the point it lists it -- report: " & report)
-    result = result & Assert(InStr(report, "would DUPLICATE the template slide") > 0, _
-        "report spells out the consequence in its own warning block -- report: " & report)
-    result = result & Assert(InStr(report, "2 new slide(s) would be created") > 0, _
-        "summary counts both would-be-created slides -- report: " & report)
+    result = result & Assert(InStr(report, "DUPLICATE the template") = 0, _
+        "and does NOT threaten duplication, which sync has not done since 2026-07-31")
+    result = result & Assert(InStr(report, "Their text will NOT appear anywhere") > 0, _
+        "report spells out the real consequence in its own warning block -- report: " & report)
+    result = result & Assert(InStr(report, "no button for adding a missing slide") > 0, _
+        "and says plainly that the remedy has no button yet, rather than naming one that " & _
+        "cannot be pressed -- report: " & report)
+    result = result & Assert(InStr(report, "2 row(s) reach no slide") > 0, _
+        "summary counts both orphaned rows -- report: " & report)
 
     wb.Close False
     xl.Quit
@@ -6129,6 +6141,59 @@ Private Function Test_RibbonUI_CapReportKeepsTheQuestion() As String
         "a report with no must-keep tail is still capped and announced")
 
     Test_RibbonUI_CapReportKeepsTheQuestion = result
+End Function
+
+' AN EMPTY QUEUE HAS TWO CAUSES AND THEY ARE OPPOSITES.
+'
+' BuildQueue keeps only in_place_correction, so new_record and flagged used to
+' leave Count at 0 -- and both messages answered Count = 0 with "every linked
+' slide already matches the workbook" / "this deck already matches the register".
+' A deck where every row reaches a slide and a deck where NO row reaches one
+' produced the same sentence, and Sync Now was the only place a person would
+' have looked. The condition survived solely on Preview Sync, which described it
+' wrongly in the other direction.
+Private Function Test_ReviewQueue_EmptyQueueDoesNotClaimTheDeckMatches() As String
+    Dim result As String
+
+    ' Genuinely up to date: nothing queued, nothing dropped. The reassuring
+    ' sentence is CORRECT here and must survive.
+    Dim clean As ReviewQueueSet
+    clean.Count = 0
+    result = result & Assert(InStr(ReviewQueue.FastPathRefusalText(clean), "already matches") > 0, _
+        "a truly clean run still says the deck matches")
+    result = result & Assert(InStr(ReviewQueue.QueueSummaryText(clean), "already matches") > 0, _
+        "and so does the per-type summary")
+
+    ' Orphans: same Count, opposite meaning.
+    Dim orphaned As ReviewQueueSet
+    orphaned.Count = 0
+    orphaned.OrphanCount = 43
+    orphaned.OrphanKeys = "1_K010, 1_K022"
+
+    Dim fast As String
+    fast = ReviewQueue.FastPathRefusalText(orphaned)
+    result = result & Assert(InStr(fast, "already matches") = 0, _
+        "43 orphaned rows must NOT be reported as the deck already matching -- got '" & fast & "'")
+    result = result & Assert(InStr(fast, "43") > 0, "it states how many rows reach no slide")
+    result = result & Assert(InStr(fast, "1_K010") > 0, "and names them")
+    result = result & Assert(InStr(fast, "does not create slides") > 0, _
+        "and says Sync Now will not create them, since it cannot")
+
+    Dim summary As String
+    summary = ReviewQueue.QueueSummaryText(orphaned)
+    result = result & Assert(InStr(summary, "already matches") = 0, _
+        "the per-type summary must not claim it either -- got '" & summary & "'")
+    result = result & Assert(InStr(summary, "1_K010") > 0, "and it names the rows too")
+
+    ' Flagged items alone are also not "up to date".
+    Dim flagged As ReviewQueueSet
+    flagged.Count = 0
+    flagged.FlaggedCount = 2
+    flagged.FlaggedNotes = "  flagged: 3_P001 (untagged) -- no role tag" & vbCrLf
+    result = result & Assert(InStr(ReviewQueue.FastPathRefusalText(flagged), "already matches") = 0, _
+        "flagged items alone are not a clean run either")
+
+    Test_ReviewQueue_EmptyQueueDoesNotClaimTheDeckMatches = result
 End Function
 
 Private Function CountOccurrences(haystack As String, needle As String) As Long

@@ -153,6 +153,28 @@ Private Sub SyncNowCore()
                         combined.Items(combined.Count).BatchLabel = types(i) & ":" & q.Items(n).BatchLabel
                     End If
                 Next n
+
+                ' AGGREGATED, or they would vanish exactly when there is more than
+                ' one slide type -- the case where a wrong "nothing to sync" is
+                ' hardest to notice. Only Items were merged before, and the loop
+                ' above runs zero times for a type whose rows all reach no slide.
+                '
+                ' THESE LINES MUST STAY INSIDE THIS Else, DIRECTLY AFTER THE
+                ' ASSIGNMENT ABOVE. VBA's Dim does not scope to a loop -- q is
+                ' procedure-scoped and keeps the PREVIOUS type's contents on any
+                ' iteration where BuildQueue is not reached (no registered type, or
+                ' a refused sheet). Moved out one level, this would silently add the
+                ' last type's orphans a second time. Nothing would raise; the count
+                ' would just be wrong, which is the failure this whole change is
+                ' about. (Rohan asked "is that the old q?" -- it is not, because
+                ' q = BuildQueue(...) copies every field of the UDT, but only here.)
+                combined.OrphanCount = combined.OrphanCount + q.OrphanCount
+                If q.OrphanKeys <> "" Then
+                    If combined.OrphanKeys <> "" Then combined.OrphanKeys = combined.OrphanKeys & ", "
+                    combined.OrphanKeys = combined.OrphanKeys & q.OrphanKeys
+                End If
+                combined.FlaggedCount = combined.FlaggedCount + q.FlaggedCount
+                combined.FlaggedNotes = combined.FlaggedNotes & q.FlaggedNotes
             End If
         End If
     Next i
@@ -701,7 +723,7 @@ Private Sub SyncPreviewCore()
         If DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
             Dim ws As Object
             Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
-            fullReport = fullReport & RunSync.PreviewRoutineSync(ws, types(i)) & vbCrLf
+            fullReport = fullReport & RunSync.PreviewRoutineSync(ws, types(i), DeckRegistry.GetDeckPeriod(pres)) & vbCrLf
         Else
             fullReport = fullReport & "SKIPPED " & types(i) & ": registered type's template slide no longer resolves (was it deleted?)" & vbCrLf
         End If
