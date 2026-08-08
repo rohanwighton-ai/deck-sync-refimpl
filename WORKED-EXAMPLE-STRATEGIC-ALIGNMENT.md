@@ -21,13 +21,40 @@ Transcribed from Prompt 18's locked definition, plus the four evidence columns.
 | **Length** | About two short paragraphs. Target 600–800 characters. |
 | **Own-job test** | Does it say why this MATTERS to SAAFE and Australia — without describing the technology (that is ABOUT) or setting out the sector gap (that is PROBLEM)? |
 | **Do NOT** | Describe the approach or technology in technical detail. Restate the sector gap. Present an inferred linkage as a declared one. Invent codes, figures, organisations or outcomes not in the workbook. |
-| **Evidence required** | Declared linkage codes, from an authoritative list |
+| **Evidence required** | Linkage codes, from the maintained codes list (see note below) |
 | **Cite at least** | 1 |
 | **Period rule** | Any period — strategic alignment is standing, not quarterly |
 | **When absent** | `[TBC]` and flag. Never infer a code. |
 
 The last four are the new part. They say what has to be *true* before this field can be
 published, not just how it should read.
+
+### Note on the codes list — and on the word "declared"
+
+**The list can be built by harvesting the codes off the existing slides.** Rohan's call,
+2026-08-08, and it is right: the register is the curated truth and sync obeys it, so a
+harvest that a person reviews is the same move as onboarding harvesting slide text into
+register rows. A human curates in the middle; the register governs afterwards; the slides
+become output rather than an independent thing being checked.
+
+What the harvest does NOT establish is that a code was ever *declared* in a contract. It
+establishes what the deck currently says. Those are two claims, and the field should only
+make the one it can support:
+
+- `Codes in use, curated by <owner>, as at <date>` — honest, and startable today.
+- `Declared Commonwealth linkage codes` — a stronger claim, needing the contractual list.
+
+Start with the first. If a contractual list later appears, reconcile against it — which is
+a real check, and only possible because the register never claimed to be it.
+
+**"Declared" is a word doing two jobs** (declared in a contract / what we have been using),
+which is the shape that has cost this project twice already — `static` meaning both "not
+authored by a person" and "does not change between periods". Keep the two apart in the
+column name, not just in your head.
+
+**Owner:** Rohan initially, a few selected colleagues later. Once there is more than one
+maintainer, `as at` stops being decoration, and the list probably wants to live outside
+the register workbook — which the tool rebuilds, clears sheets in, and never backs up.
 
 ---
 
