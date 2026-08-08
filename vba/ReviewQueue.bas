@@ -95,6 +95,23 @@ Public Type ReviewQueueSet
     OrphanKeys As String       ' comma-separated, for naming them in a report
     FlaggedCount As Long
     FlaggedNotes As String
+
+    ' PARITY IS BIDIRECTIONAL, AND ONLY ONE DIRECTION WAS EVER MEASURED.
+    '
+    ' SyncOperations.PlanRoutineSync walks the REGISTER's instanceOrder, so a
+    ' slide whose key has no row is never visited -- not corrected, not flagged,
+    ' not counted. It simply keeps whatever text it had, which after a rollover is
+    ' last period's, and every report says the run was clean.
+    '
+    ' Rohan, 2026-08-09: "I want the ppt <> excel to be at parity after a sync."
+    ' That cannot be stated, let alone reached, while one side of the comparison
+    ' is invisible. RowCount is here so the orphan count can be read as a
+    ' PROPORTION -- a handful of rows with no slide is new projects, most of them
+    ' is the wrong deck.
+    RowCount As Long           ' register rows for this period
+    SlideCount As Long         ' tagged slides of this type in the deck
+    SlideNoRowCount As Long    ' slides carrying a key the register has no row for
+    SlideNoRowKeys As String
 End Type
 
 ' Grid layout. Row 1 is the banner, row 2 the headers, row 3 the first item.
@@ -128,6 +145,28 @@ Public Const REVIEW_SHEET_NAME As String = "Sync Review"
 ' scrolling. Being wrong here costs a trip to the worksheet, which is the safe
 ' direction.
 Public Const MAX_BATCHES_IN_MODAL As Long = 12
+
+' Above this share of register rows having no slide, sync REFUSES to create
+' rather than creating.
+'
+' NOT A TOLERANCE FOR ORPHANS. It is the only discriminator available between
+' two situations the code cannot otherwise tell apart:
+'
+'   a few rows with no slide  -> new projects, create them
+'   most rows with no slide   -> the wrong deck, a hand-assembled pack, or
+'                                broken linkage, where creating is the disaster
+'
+' The second is not hypothetical. DECISIONS.md 2026-07-31: the real deck had 43
+' orphaned rows against 46 slides, and a board pack assembled by hand is missing
+' most entities by design -- so the old create-on-sync behaviour would have set
+' about duplicating the template at exactly the moment the content was finished
+' and about to be shown. That decision removed the capability outright. This
+' restores it bounded, which is the same protection expressed as a rule rather
+' than an absence.
+'
+' A judgement, not a measurement. Rohan set it at 25% on 2026-08-09. Being wrong
+' low costs a message; being wrong high costs a deck.
+Public Const MAX_ORPHAN_SHARE_TO_CREATE As Double = 0.25
 
 Private Const STATE_OPEN As String = "OPEN"
 Private Const STATE_CONSUMED As String = "CONSUMED"
@@ -344,6 +383,31 @@ Public Function BuildQueue(sheet As Sheet, slideType As String) As ReviewQueueSe
 
     Dim instances() As Object
     instances = RunSync.GatherInstances(slideType)
+
+    ' THE OTHER HALF OF PARITY, measured here because nothing downstream can.
+    ' PlanRoutineSync walks the register's rows, so a slide whose key has no row
+    ' produces no action of any kind and is invisible to every count below.
+    q.RowCount = sheet.InstanceOrder.count
+    Dim si As Long, sLo As Long, sHi As Long, hasSlides As Boolean
+    On Error Resume Next
+    sLo = LBound(instances)
+    sHi = UBound(instances)
+    hasSlides = (Err.Number = 0)
+    On Error GoTo 0
+    If hasSlides Then
+        For si = sLo To sHi
+            Dim ri As SlideInstance
+            ri = Resolve.ResolveSlideInstance(instances(si))
+            If ri.HasInstanceKey Then
+                q.SlideCount = q.SlideCount + 1
+                If Not sheet.Rows.Exists(ri.InstanceKey) Then
+                    q.SlideNoRowCount = q.SlideNoRowCount + 1
+                    If q.SlideNoRowKeys <> "" Then q.SlideNoRowKeys = q.SlideNoRowKeys & ", "
+                    q.SlideNoRowKeys = q.SlideNoRowKeys & ri.InstanceKey
+                End If
+            End If
+        Next si
+    End If
 
     Dim actions() As SyncAction
     actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows, True)
@@ -1228,4 +1292,42 @@ Public Function QueueSummaryText(q As ReviewQueueSet) As String
         "' sheet, put Y against what you approve, then run Apply Approved." & vbCrLf
 
     QueueSummaryText = s
+End Function
+
+' ---------------------------------------------------------------------
+' Parity
+' ---------------------------------------------------------------------
+
+
+
+' True when the orphans look like new projects rather than a misidentified deck.
+Public Function OrphansLookLikeNewProjects(q As ReviewQueueSet) As Boolean
+    If q.OrphanCount = 0 Then Exit Function
+    If q.RowCount <= 0 Then Exit Function
+    OrphansLookLikeNewProjects = ((q.OrphanCount / q.RowCount) <= MAX_ORPHAN_SHARE_TO_CREATE)
+End Function
+
+' One sentence on whether the deck and the register agree, and if not, which way.
+'
+' Stated in BOTH directions because only one of them was ever measured, and the
+' unmeasured one is the quiet failure: a slide with no row keeps last period's
+' text through every sync while every report says the run was clean.
+Public Function ParityText(q As ReviewQueueSet) As String
+    If q.OrphanCount = 0 And q.SlideNoRowCount = 0 Then
+        ParityText = "PARITY: the deck and the register agree -- " & q.SlideCount & _
+            " slide(s), " & q.RowCount & " row(s), every one matched."
+        Exit Function
+    End If
+
+    ParityText = "NOT AT PARITY:" & vbCrLf
+    If q.OrphanCount > 0 Then
+        ParityText = ParityText & "  " & q.OrphanCount & " row(s) have no slide: " & _
+            q.OrphanKeys & vbCrLf
+    End If
+    If q.SlideNoRowCount > 0 Then
+        ParityText = ParityText & "  " & q.SlideNoRowCount & " slide(s) have no row: " & _
+            q.SlideNoRowKeys & vbCrLf & _
+            "    These are NOT synced and keep whatever text they already carry --" & vbCrLf & _
+            "    after a rollover that is last period's. Add a row, or retag them." & vbCrLf
+    End If
 End Function

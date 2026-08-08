@@ -96,7 +96,12 @@ Failed:
     RibbonUI.ShowSyncResult "Sync Now", RibbonUI.UnexpectedErrorText("Sync Now", Err.Number, Err.Description, Err.Source)
 End Sub
 
-Private Sub SyncNowCore()
+' afterCreate caps the re-plan at ONE. Creating slides changes the deck under the
+' queue, so the run must re-plan -- but if creation silently produced nothing, the
+' orphans are still there and an unguarded re-entry would recurse forever, taking
+' PowerPoint down with it. A guard that can only be crossed once is the difference
+' between a re-plan and a loop.
+Private Sub SyncNowCore(Optional ByVal afterCreate As Boolean = False)
     Dim pres As Object
     Set pres = Application.ActivePresentation
 
@@ -127,6 +132,14 @@ Private Sub SyncNowCore()
     Dim combined As ReviewQueueSet
     combined.SlideType = "(all types)"
     combined.RunStamp = ReviewQueue.MakeRunStamp()
+
+    ' Collected per type so creation can be offered inside the ONE confirmation
+    ' this run already shows, rather than as a separate button.
+    Dim createTypes() As String
+    Dim createTemplates() As Object
+    Dim createSheets() As Sheet
+    Dim createTypeCount As Long
+    createTypeCount = 0
 
     Dim i As Long
     For i = lo To hi
@@ -175,6 +188,26 @@ Private Sub SyncNowCore()
                 End If
                 combined.FlaggedCount = combined.FlaggedCount + q.FlaggedCount
                 combined.FlaggedNotes = combined.FlaggedNotes & q.FlaggedNotes
+                combined.RowCount = combined.RowCount + q.RowCount
+                combined.SlideCount = combined.SlideCount + q.SlideCount
+                combined.SlideNoRowCount = combined.SlideNoRowCount + q.SlideNoRowCount
+                If q.SlideNoRowKeys <> "" Then
+                    If combined.SlideNoRowKeys <> "" Then combined.SlideNoRowKeys = combined.SlideNoRowKeys & ", "
+                    combined.SlideNoRowKeys = combined.SlideNoRowKeys & q.SlideNoRowKeys
+                End If
+
+                ' Remembered per type, because creation needs THIS type's template
+                ' slide and worksheet, and the confirmation below is for the whole
+                ' deck. Only the types that actually have orphans are collected.
+                If q.OrphanCount > 0 Then
+                    createTypeCount = createTypeCount + 1
+                    ReDim Preserve createTypes(1 To createTypeCount)
+                    ReDim Preserve createTemplates(1 To createTypeCount)
+                    ReDim Preserve createSheets(1 To createTypeCount)
+                    createTypes(createTypeCount) = types(i)
+                    Set createTemplates(createTypeCount) = templateSld
+                    createSheets(createTypeCount) = sheet
+                End If
             End If
         End If
     Next i
@@ -190,8 +223,55 @@ Private Sub SyncNowCore()
         Exit Sub
     End If
 
+    ' CREATION IS PART OF SYNC AGAIN, BOUNDED RATHER THAN ABSENT.
+    '
+    ' It was removed from the sync path on 2026-07-31 because the real deck had 43
+    ' orphaned rows against 46 slides and one click would have duplicated the
+    ' template 43 times -- and a hand-assembled board pack is missing most entities
+    ' by design, so the old behaviour would have started creating at exactly the
+    ' moment the content was finished. "Removing the capability beats warning about
+    ' it" was right while the capability was unbounded.
+    '
+    ' Rohan, 2026-08-09: "why createmissingslides when it could be a function of
+    ' sync? we need to simplify" -- and "I want the ppt <> excel to be at parity
+    ' after a sync". Both are satisfied by bounding it instead of hiding it behind
+    ' a button that never existed: a few orphans are new projects and get created
+    ' inside the confirmation you already read; a lot of them mean this is not the
+    ' deck you think it is, and the run refuses.
+    Dim createdReport As String
+    If combined.OrphanCount > 0 And Not afterCreate Then
+        If Not ReviewQueue.OrphansLookLikeNewProjects(combined) Then
+            MsgBox "Sync Now stopped -- this does not look like the right deck." & vbCrLf & vbCrLf & _
+                combined.OrphanCount & " of " & combined.RowCount & " register row(s) match no slide." & vbCrLf & vbCrLf & _
+                "A few unmatched rows are new projects. This many means the deck, the " & _
+                "period, or the instance keys disagree with the register -- and creating " & _
+                "a slide for each would duplicate the template across the deck." & vbCrLf & vbCrLf & _
+                "Nothing was created and nothing was written." & vbCrLf & vbCrLf & _
+                ReviewQueue.ParityText(combined), vbExclamation, "Sync Now"
+            Exit Sub
+        End If
+
+        If MsgBox(combined.OrphanCount & " register row(s) have no slide:" & vbCrLf & vbCrLf & _
+                  "    " & combined.OrphanKeys & vbCrLf & vbCrLf & _
+                  "Create a slide for each, copied from the template and tagged?" & vbCrLf & vbCrLf & _
+                  "Say No to sync the existing slides only and leave these for later.", _
+                  vbYesNo + vbQuestion, "Sync Now -- new slides") = vbYes Then
+            Dim ci As Long
+            For ci = 1 To createTypeCount
+                createdReport = createdReport & RunSync.CreateMissingSlides( _
+                    createSheets(ci), createTypes(ci), createTemplates(ci), False) & vbCrLf
+            Next ci
+            ' Re-plan: the deck has changed underneath the queue, and the rows that
+            ' were orphans now have slides whose fields need filling. Trusting the
+            ' queue built before creation would sync the old set and report success.
+            SyncNowCore True
+            Exit Sub
+        End If
+    End If
+
     If combined.Count = 0 Then
-        MsgBox ReviewQueue.FastPathRefusalText(combined), vbInformation, "Sync Now"
+        MsgBox ReviewQueue.FastPathRefusalText(combined) & vbCrLf & vbCrLf & _
+               ReviewQueue.ParityText(combined), vbInformation, "Sync Now"
         Exit Sub
     End If
 
@@ -280,6 +360,45 @@ Private Sub SyncNowCore()
             End If
         End If
     Next i
+
+    ' PARITY IS STATED, NOT LEFT TO BE INFERRED FROM AN ABSENCE OF COMPLAINTS.
+    '
+    ' Measured AFTER the writes, from a fresh comparison, so it describes the deck
+    ' as it now is rather than as it was planned to be. Both directions: rows with
+    ' no slide, and slides with no row -- the second was invisible to every count
+    ' this tool had, because the planner walks the register and simply never
+    ' visits a slide the register does not mention.
+    Dim parity As ReviewQueueSet
+    Dim pj As Long
+    For pj = lo To hi
+        Dim pTemplate As Object
+        Dim pWsName As String
+        If DeckRegistry.LookupType(pres, types(pj), pTemplate, pWsName) Then
+            Dim pProblem As String
+            Dim pSheet As Sheet
+            pSheet = ExcelOutput.ReadSheetForDeckPeriod( _
+                WorkbookBridge.GetOrAddWorksheet(wb, pWsName), deckPeriod, pProblem)
+            If pProblem = "" Then
+                Dim pq As ReviewQueueSet
+                pq = ReviewQueue.BuildQueue(pSheet, types(pj))
+                parity.RowCount = parity.RowCount + pq.RowCount
+                parity.SlideCount = parity.SlideCount + pq.SlideCount
+                parity.OrphanCount = parity.OrphanCount + pq.OrphanCount
+                parity.SlideNoRowCount = parity.SlideNoRowCount + pq.SlideNoRowCount
+                If pq.OrphanKeys <> "" Then
+                    If parity.OrphanKeys <> "" Then parity.OrphanKeys = parity.OrphanKeys & ", "
+                    parity.OrphanKeys = parity.OrphanKeys & pq.OrphanKeys
+                End If
+                If pq.SlideNoRowKeys <> "" Then
+                    If parity.SlideNoRowKeys <> "" Then parity.SlideNoRowKeys = parity.SlideNoRowKeys & ", "
+                    parity.SlideNoRowKeys = parity.SlideNoRowKeys & pq.SlideNoRowKeys
+                End If
+            End If
+        End If
+    Next pj
+    fullReport = fullReport & vbCrLf & ReviewQueue.ParityText(parity) & vbCrLf
+
+    If createdReport <> "" Then fullReport = createdReport & vbCrLf & fullReport
 
     fullReport = fullReport & PersistBothFiles(pres, wb)
     WorkbookBridge.WriteRunLog wb, "Sync Now -- full report", fullReport

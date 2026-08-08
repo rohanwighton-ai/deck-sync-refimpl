@@ -637,6 +637,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "ReviewQueue_EmptyQueueDoesNotClaimTheDeckMatches", r
     r = Test_CommandBarUI_EveryDeclaredCapabilityHasAButton()
     AppendResult report, "CommandBarUI_EveryDeclaredCapabilityHasAButton", r
+    r = Test_ReviewQueue_ParityAndTheCreateThreshold()
+    AppendResult report, "ReviewQueue_ParityAndTheCreateThreshold", r
     r = Test_RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero()
     AppendResult report, "RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
@@ -5837,6 +5839,74 @@ Private Function Test_CommandBarUI_EveryDeclaredCapabilityHasAButton() As String
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_EveryDeclaredCapabilityHasAButton = result
+End Function
+
+' The threshold is a DISCRIMINATOR, not a tolerance -- it separates "a few new
+' projects" from "this is not the deck you think it is". Both sides are pinned,
+' because a rule that only ever answers one way is not a rule.
+Private Function Test_ReviewQueue_ParityAndTheCreateThreshold() As String
+    Dim result As String
+
+    ' 2 of 43 -- new projects. Create.
+    Dim few As ReviewQueueSet
+    few.RowCount = 43: few.OrphanCount = 2
+    result = result & Assert(ReviewQueue.OrphansLookLikeNewProjects(few), _
+        "2 orphans in 43 rows reads as new projects")
+
+    ' 43 of 46 -- the 2026-07-31 deck, and the board-pack case. Refuse.
+    Dim many As ReviewQueueSet
+    many.RowCount = 46: many.OrphanCount = 43
+    result = result & Assert(Not ReviewQueue.OrphansLookLikeNewProjects(many), _
+        "43 orphans in 46 rows does NOT -- this is the case that would duplicate " & _
+        "the template across a hand-assembled pack")
+
+    ' Exactly on the line is allowed; just over is not.
+    Dim onLine As ReviewQueueSet
+    onLine.RowCount = 40: onLine.OrphanCount = 10
+    result = result & Assert(ReviewQueue.OrphansLookLikeNewProjects(onLine), _
+        "exactly 25% is allowed")
+    Dim overLine As ReviewQueueSet
+    overLine.RowCount = 40: overLine.OrphanCount = 11
+    result = result & Assert(Not ReviewQueue.OrphansLookLikeNewProjects(overLine), _
+        "just over 25% is not")
+
+    ' No orphans is not "looks like new projects" -- there is nothing to create.
+    Dim none As ReviewQueueSet
+    none.RowCount = 43: none.OrphanCount = 0
+    result = result & Assert(Not ReviewQueue.OrphansLookLikeNewProjects(none), _
+        "no orphans means nothing to create, not a green light")
+
+    ' An empty register must never divide by zero into a yes.
+    Dim noRows As ReviewQueueSet
+    noRows.RowCount = 0: noRows.OrphanCount = 5
+    result = result & Assert(Not ReviewQueue.OrphansLookLikeNewProjects(noRows), _
+        "orphans against a register with no rows is refused, not divided by zero")
+
+    ' Parity, both directions.
+    Dim clean As ReviewQueueSet
+    clean.RowCount = 43: clean.SlideCount = 43
+    result = result & Assert(InStr(ReviewQueue.ParityText(clean), "PARITY: the deck and the register agree") > 0, _
+        "a matched deck states parity outright")
+
+    Dim rowsNoSlide As ReviewQueueSet
+    rowsNoSlide.RowCount = 43: rowsNoSlide.OrphanCount = 2: rowsNoSlide.OrphanKeys = "3_P009"
+    result = result & Assert(InStr(ReviewQueue.ParityText(rowsNoSlide), "NOT AT PARITY") > 0 _
+        And InStr(ReviewQueue.ParityText(rowsNoSlide), "3_P009") > 0, _
+        "rows with no slide are named")
+
+    ' The direction nothing measured before: a slide the register never mentions
+    ' is never visited by the planner, so it keeps last period's text silently.
+    Dim slideNoRow As ReviewQueueSet
+    slideNoRow.RowCount = 43: slideNoRow.SlideCount = 44
+    slideNoRow.SlideNoRowCount = 1: slideNoRow.SlideNoRowKeys = "1_K099"
+    Dim pt As String
+    pt = ReviewQueue.ParityText(slideNoRow)
+    result = result & Assert(InStr(pt, "NOT AT PARITY") > 0 And InStr(pt, "1_K099") > 0, _
+        "slides with no row are named too -- got '" & pt & "'")
+    result = result & Assert(InStr(pt, "keep whatever text they already carry") > 0, _
+        "and the consequence is spelled out, since this one is silent by nature")
+
+    Test_ReviewQueue_ParityAndTheCreateThreshold = result
 End Function
 
 Private Function CountOccurrences(haystack As String, needle As String) As Long
