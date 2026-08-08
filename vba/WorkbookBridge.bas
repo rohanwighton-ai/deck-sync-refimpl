@@ -89,7 +89,7 @@ Public Function WorksheetForSlideType(pres As Object, wb As Object, slideType As
 End Function
 
 ' Small shared primitive both RibbonUI.bas (Sync Now) and OnboardFlow.bas
-' (Onboard New Slide Type, which establishes the pairing in the first
+' (Setup B: Onboard Slides, which establishes the pairing in the first
 ' place) need: given a workbook path, get a live Workbook object -- reusing
 ' an already-open instance if one matches, otherwise driving Excel via COM
 ' the same way this project's engine already does everywhere else (per

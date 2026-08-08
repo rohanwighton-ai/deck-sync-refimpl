@@ -12,7 +12,7 @@ Option Explicit
 '
 ' Per DeckAdoption.bas's own documented precondition, this flow requires an
 ' ALREADY-REGISTERED type (the greenfield "pick a template from scratch" path
-' is explicitly out of scope for adoption -- use Onboard New Slide Type
+' is explicitly out of scope for adoption -- use Setup B: Onboard Slides
 ' first, same boundary DeckAdoption.bas's header comment draws).
 
 ' Validates the current selection is >= 2 slides (a template plus at least
@@ -137,7 +137,7 @@ End Function
 ' Ribbon entry point. Requires the selection to include an already-registered
 ' type's template (via DeckRegistry) plus the slides to adopt -- greenfield
 ' (no template yet) is out of scope here, per DeckAdoption.bas's own
-' precondition; use Onboard New Slide Type first.
+' precondition; use Setup B: Onboard Slides first.
 Public Function PromptAdoptExistingSlides() As String
     Dim pres As Object
     Set pres = Application.ActivePresentation
@@ -151,7 +151,7 @@ Public Function PromptAdoptExistingSlides() As String
     On Error GoTo 0
 
     If Not hasTypes Then
-        PromptAdoptExistingSlides = "This deck has no registered slide types yet -- use 'Onboard New Slide Type' on one example slide first, then Adopt the rest."
+        PromptAdoptExistingSlides = "This deck has no registered slide types yet -- use 'Setup A: Mark Fields' then 'Setup B: Onboard Slides' on one example slide first, then Adopt the rest."
         Exit Function
     End If
 

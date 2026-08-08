@@ -196,10 +196,6 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     r = Test_InjectPrimitive_TrailingBreaksAreNotADifference()
     AppendResult report, "InjectPrimitive_TrailingBreaksAreNotADifference", r
     On Error GoTo 0
-
-    r = "": On Error Resume Next: Err.Clear
-    r = Test_Register_SeedIsNotApproved()
-    AppendResult report, "Register_SeedIsNotApproved", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -246,10 +242,6 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     r = Test_Drafting_RolloverKeepsEntityStaticRows()
     AppendResult report, "Drafting_RolloverKeepsEntityStaticRows", r
     On Error GoTo 0
-
-    r = "": On Error Resume Next: Err.Clear
-    r = Test_RegisterSeed_CadenceDecidesTheQuarter()
-    AppendResult report, "RegisterSeed_CadenceDecidesTheQuarter", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -270,10 +262,6 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     r = Test_DiscoverUI_MarksOnlyTickedAndNamedRows()
     AppendResult report, "DiscoverUI_MarksOnlyTickedAndNamedRows", r
     On Error GoTo 0
-
-    r = "": On Error Resume Next: Err.Clear
-    r = Test_Register_BlankTypeAndCadenceCollision()
-    AppendResult report, "Register_BlankTypeAndCadenceCollision", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -305,20 +293,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     r = Test_PlaceholderCheck_MarkerDistinguishesStale()
     AppendResult report, "PlaceholderCheck_MarkerDistinguishesStale", r
     On Error GoTo 0
-
-    r = "": On Error Resume Next: Err.Clear
-    r = Test_Register_FiltersByStatusPeriodAndType()
-    AppendResult report, "Register_FiltersByStatusPeriodAndType", r
     On Error GoTo 0
-
-    r = "": On Error Resume Next: Err.Clear
-    r = Test_Register_MistypedPeriodIsDistinguishable()
-    AppendResult report, "Register_MistypedPeriodIsDistinguishable", r
     On Error GoTo 0
-
-    r = "": On Error Resume Next: Err.Clear
-    r = Test_Register_MissingStatusColumnRefuses()
-    AppendResult report, "Register_MissingStatusColumnRefuses", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -484,30 +460,10 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     r = Test_WorkbookBridge_IsDirtyDetectsUnsavedEdits()
     AppendResult report, "WorkbookBridge_IsDirtyDetectsUnsavedEdits", r
     On Error GoTo 0
-
-    r = "": On Error Resume Next: Err.Clear
-    r = Test_OnboardFlow_PlanOnboardingFindsCandidatesAndHarvestsText()
-    AppendResult report, "OnboardFlow_PlanOnboardingFindsCandidatesAndHarvestsText", r
     On Error GoTo 0
-
-    r = "": On Error Resume Next: Err.Clear
-    r = Test_OnboardFlow_ApplyFieldReviewAnswerRenamesOrExcludes()
-    AppendResult report, "OnboardFlow_ApplyFieldReviewAnswerRenamesOrExcludes", r
     On Error GoTo 0
-
-    r = "": On Error Resume Next: Err.Clear
-    r = Test_OnboardFlow_ApplyPeriodKeyAnswerMarksExactlyOneField()
-    AppendResult report, "OnboardFlow_ApplyPeriodKeyAnswerMarksExactlyOneField", r
     On Error GoTo 0
-
-    r = "": On Error Resume Next: Err.Clear
-    r = Test_OnboardFlow_DeriveSeedInstanceKeyUsesPeriodKeyOrEvergreen()
-    AppendResult report, "OnboardFlow_DeriveSeedInstanceKeyUsesPeriodKeyOrEvergreen", r
     On Error GoTo 0
-
-    r = "": On Error Resume Next: Err.Clear
-    r = Test_OnboardFlow_CommitAndVerifyOnboardingRoundTrip()
-    AppendResult report, "OnboardFlow_CommitAndVerifyOnboardingRoundTrip", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -2200,73 +2156,6 @@ Private Function Test_InjectPrimitive_TrailingBreaksAreNotADifference() As Strin
     Test_InjectPrimitive_TrailingBreaksAreNotADifference = result
 End Function
 
-Private Function Test_Register_SeedIsNotApproved() As String
-    Dim result As String
-
-    Dim xl As Object, wb As Object, ws As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    Set wb = xl.Workbooks.Add
-    Set ws = wb.Worksheets(1)
-
-    ws.Cells(1, 1).Value = "Quarter":    ws.Cells(1, 2).Value = "EntityCode"
-    ws.Cells(1, 3).Value = "SlideType":  ws.Cells(1, 4).Value = "FieldID"
-    ws.Cells(1, 5).Value = "Value":      ws.Cells(1, 6).Value = "Status"
-
-    ' One of each, so the counters have to discriminate rather than just tally.
-    ws.Cells(2, 1).Value = "ALL": ws.Cells(2, 2).Value = "P001": ws.Cells(2, 3).Value = "q"
-    ws.Cells(2, 4).Value = "ABOUT_BODY": ws.Cells(2, 5).Value = "Approved text": ws.Cells(2, 6).Value = "Approved"
-
-    ws.Cells(3, 1).Value = "ALL": ws.Cells(3, 2).Value = "P002": ws.Cells(3, 3).Value = "q"
-    ws.Cells(3, 4).Value = "ABOUT_BODY": ws.Cells(3, 5).Value = "Copied off the slide": ws.Cells(3, 6).Value = "Seed"
-
-    ws.Cells(4, 1).Value = "ALL": ws.Cells(4, 2).Value = "P003": ws.Cells(4, 3).Value = "q"
-    ws.Cells(4, 4).Value = "ABOUT_BODY": ws.Cells(4, 5).Value = "Drafted, not agreed": ws.Cells(4, 6).Value = "Draft"
-
-    ws.Cells(5, 1).Value = "ALL": ws.Cells(5, 2).Value = "P004": ws.Cells(5, 3).Value = "q"
-    ws.Cells(5, 4).Value = "ABOUT_BODY": ws.Cells(5, 5).Value = "Typo in status": ws.Cells(5, 6).Value = "Aproved"
-
-    ' A PERIOD-MATCHED approved row, so AcceptedPeriod > 0 and ReadDiagnostic
-    ' takes its HEALTHY-READ branch.
-    '
-    ' Without this every fixture row was Quarter = ALL, so AcceptedPeriod was 0
-    ' and the diagnostic fell through to the no-rows-matched branch -- which
-    ' also prepends the warning, so the assertion below passed while never
-    ' exercising the path it names. The refactor it guards ("returning early on
-    ' AcceptedPeriod > 0 would hide the warning behind runs that look fine") was
-    ' therefore untested by its own test. Found by review 2026-07-31.
-    ws.Cells(6, 1).Value = "FY26Q4": ws.Cells(6, 2).Value = "P005": ws.Cells(6, 3).Value = "q"
-    ws.Cells(6, 4).Value = "PROJECT_STATUS": ws.Cells(6, 5).Value = "In Progress": ws.Cells(6, 6).Value = "Approved"
-
-    Dim r As RegisterRead
-    r = Register.ReadRegister(ws, "FY26Q4", "q")
-
-    result = result & Assert(r.Accepted = 2, "only the two Approved rows are accepted, got " & r.Accepted)
-    result = result & Assert(r.Data.Rows.Exists("P001"), "the approved entity is present")
-    result = result & Assert(Not r.Data.Rows.Exists("P002"), "A SEED ROW IS NEVER WRITABLE -- seeding is not approving")
-    result = result & Assert(Not r.Data.Rows.Exists("P003"), "a Draft row is not writable")
-    result = result & Assert(Not r.Data.Rows.Exists("P004"), "a row with a misspelt status is not writable")
-
-    ' The counters must DISCRIMINATE. "3 rows not approved" is true of all three
-    ' and useless -- one is the system working, one is a hold, one is a typo.
-    result = result & Assert(r.RejectedStatus = 3, "three rows rejected on status, got " & r.RejectedStatus)
-    result = result & Assert(r.RejectedSeed = 1, "one counted as Seed, got " & r.RejectedSeed)
-    result = result & Assert(r.RejectedDraft = 1, "one counted as Draft, got " & r.RejectedDraft)
-    result = result & Assert(r.RejectedUnknownStatus = 1, "one counted as UNRECOGNISED, got " & r.RejectedUnknownStatus)
-
-    ' A typo must be loud even though this read otherwise succeeded -- that is
-    ' the case an early return would have hidden.
-    Dim diag As String
-    diag = Register.ReadDiagnostic(r, "FY26Q4")
-    result = result & Assert(r.AcceptedPeriod > 0, "the fixture reaches the HEALTHY-READ branch, got AcceptedPeriod=" & r.AcceptedPeriod)
-    result = result & Assert(InStr(diag, "WARNING") > 0, "an unrecognised status warns even on a healthy read")
-    result = result & Assert(InStr(diag, "seeding is not approving") > 0, "held-back seed rows are stated, not silently dropped")
-
-    wb.Close False
-    xl.Quit
-    Test_Register_SeedIsNotApproved = result
-End Function
-
 Private Function Test_Drafting_OnlyTickedNonEmptyDraftsPublish() As String
     Dim result As String
 
@@ -2749,58 +2638,6 @@ Private Function RowExistsForInstance(ws As Object, instanceId As String) As Boo
     Loop
 End Function
 
-Private Function Test_Register_BlankTypeAndCadenceCollision() As String
-    Dim result As String
-
-    Dim xl As Object, wb As Object, ws As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    Set wb = xl.Workbooks.Add
-    Set ws = wb.Worksheets(1)
-
-    ws.Cells(1, 1).Value = "Quarter":   ws.Cells(1, 2).Value = "EntityCode"
-    ws.Cells(1, 3).Value = "SlideType": ws.Cells(1, 4).Value = "FieldID"
-    ws.Cells(1, 5).Value = "Value":     ws.Cells(1, 6).Value = "Status"
-
-    ' A BLANK SlideType must match NOTHING. It used to match everything.
-    ws.Cells(2, 1).Value = "ALL": ws.Cells(2, 2).Value = "P001": ws.Cells(2, 3).Value = ""
-    ws.Cells(2, 4).Value = "ABOUT_BODY": ws.Cells(2, 5).Value = "blank type": ws.Cells(2, 6).Value = "Approved"
-
-    ' CADENCE COLLISION, ALL first then the period row -- the period row wins.
-    ws.Cells(3, 1).Value = "ALL": ws.Cells(3, 2).Value = "P002": ws.Cells(3, 3).Value = "q"
-    ws.Cells(3, 4).Value = "ABOUT_BODY": ws.Cells(3, 5).Value = "static value": ws.Cells(3, 6).Value = "Approved"
-    ws.Cells(4, 1).Value = "FY26Q4": ws.Cells(4, 2).Value = "P002": ws.Cells(4, 3).Value = "q"
-    ws.Cells(4, 4).Value = "ABOUT_BODY": ws.Cells(4, 5).Value = "period value": ws.Cells(4, 6).Value = "Approved"
-
-    ' The SAME collision in the OPPOSITE row order. Precedence must not depend
-    ' on which row sits lower in the sheet -- that was the whole defect.
-    ws.Cells(5, 1).Value = "FY26Q4": ws.Cells(5, 2).Value = "P003": ws.Cells(5, 3).Value = "q"
-    ws.Cells(5, 4).Value = "ABOUT_BODY": ws.Cells(5, 5).Value = "period value": ws.Cells(5, 6).Value = "Approved"
-    ws.Cells(6, 1).Value = "ALL": ws.Cells(6, 2).Value = "P003": ws.Cells(6, 3).Value = "q"
-    ws.Cells(6, 4).Value = "ABOUT_BODY": ws.Cells(6, 5).Value = "static value": ws.Cells(6, 6).Value = "Approved"
-
-    Dim r As RegisterRead
-    r = Register.ReadRegister(ws, "FY26Q4", "q")
-
-    result = result & Assert(Not r.Data.Rows.Exists("P001"), "a BLANK SlideType matches nothing -- it used to match every deck")
-    result = result & Assert(r.RejectedBlankType = 1, "the blank-type row is counted, got " & r.RejectedBlankType)
-
-    result = result & Assert(r.Data.Rows("P002")("ABOUT_BODY") = "period value", _
-        "period row beats ALL when it comes second, got '" & r.Data.Rows("P002")("ABOUT_BODY") & "'")
-    result = result & Assert(r.Data.Rows("P003")("ABOUT_BODY") = "period value", _
-        "period row beats ALL when it comes FIRST too -- precedence is declared, not row order, got '" & r.Data.Rows("P003")("ABOUT_BODY") & "'")
-    result = result & Assert(r.CadenceCollisions = 2, "both collisions counted, got " & r.CadenceCollisions)
-
-    Dim diag As String
-    diag = Register.ReadDiagnostic(r, "FY26Q4")
-    result = result & Assert(InStr(diag, "BLANK SlideType") > 0, "the blank type is reported, not silently dropped")
-    result = result & Assert(InStr(diag, "TWO cadences") > 0, "the cadence clash is reported even though precedence resolved it")
-
-    wb.Close False
-    xl.Quit
-    Test_Register_BlankTypeAndCadenceCollision = result
-End Function
-
 Private Function Test_RunSync_CreateMissingRefusesWhileSlidesAreUnclassified() As String
     Dim result As String
 
@@ -3126,118 +2963,6 @@ Private Sub SeedRegister(ws As Object)
         Next j
     Next i
 End Sub
-
-' The four filters, and the entity-static ALL sentinel, in one pass.
-Private Function Test_Register_FiltersByStatusPeriodAndType() As String
-    Dim result As String
-
-    Dim xl As Object, wb As Object, ws As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    Set wb = xl.Workbooks.Add
-    Set ws = wb.Worksheets(1)
-    SeedRegister ws
-
-    Dim r As RegisterRead
-    r = Register.ReadRegister(ws, "Q4 FY26", "q")
-
-    result = result & Assert(r.MissingColumns = "", "all required columns located BY NAME despite non-standard order, missing: '" & r.MissingColumns & "'")
-    result = result & Assert(r.RowsSeen = 6, "blank spacer row not counted as a row, got " & r.RowsSeen)
-    result = result & Assert(r.RejectedType = 1, "one row dropped for wrong SlideType, got " & r.RejectedType)
-    result = result & Assert(r.RejectedStatus = 1, "one Draft row dropped, got " & r.RejectedStatus)
-    result = result & Assert(r.RejectedPeriod = 1, "one prior-quarter row dropped, got " & r.RejectedPeriod)
-    result = result & Assert(r.Accepted = 3, "three rows accepted, got " & r.Accepted)
-
-    ' The funnel must account for every row, or the diagnostics mislead.
-    result = result & Assert(r.RejectedType + r.RejectedStatus + r.RejectedPeriod + r.Accepted = r.RowsSeen, _
-        "rejection counts + accepted = rows seen (the counts are a funnel, not overlapping tallies)")
-
-    ' The entity-static case: Quarter = ALL carries into this period.
-    result = result & Assert(r.Data.Rows.Exists("P001"), "P001 present")
-    If r.Data.Rows.Exists("P001") Then
-        result = result & Assert(r.Data.Rows("P001")("PROJECT_STATUS") = "In Progress", "quarterly value is THIS quarter's, got '" & r.Data.Rows("P001")("PROJECT_STATUS") & "'")
-        result = result & Assert(r.Data.Rows("P001")("PROJECT_NAME") = "Alpha Project", "Quarter=ALL row carried forward, got '" & r.Data.Rows("P001")("PROJECT_NAME") & "'")
-    End If
-
-    ' The Draft row must not leak P002's unapproved value; its Approved row wins.
-    If r.Data.Rows.Exists("P002") Then
-        result = result & Assert(r.Data.Rows("P002")("PROJECT_STATUS") = "Closed", "the Approved row was used, not the Draft one, got '" & r.Data.Rows("P002")("PROJECT_STATUS") & "'")
-    End If
-
-    result = result & Assert(Not r.Data.Rows.Exists("P003"), "the wrong-slide-type entity is absent entirely")
-
-    wb.Close False
-    xl.Quit
-    Test_Register_FiltersByStatusPeriodAndType = result
-End Function
-
-' The trap this module was shaped around: a mistyped period returns zero rows,
-' which by row count alone is identical to an empty quarter. One of those is a
-' typo and the tool must say so.
-Private Function Test_Register_MistypedPeriodIsDistinguishable() As String
-    Dim result As String
-
-    Dim xl As Object, wb As Object, ws As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    Set wb = xl.Workbooks.Add
-    Set ws = wb.Worksheets(1)
-    SeedRegister ws
-
-    Dim r As RegisterRead
-    r = Register.ReadRegister(ws, "Q4FY26", "q")     ' missing space -- a plausible typo
-
-    ' NOT "accepts nothing" -- that was the first version of this assertion and
-    ' it failed, correctly. Quarter = ALL rows match ANY period, so a mistyped
-    ' period still accepts the entity-static ones. The real failure is therefore
-    ' a PARTIAL sync that looks successful, not an empty one that looks like a
-    ' quiet quarter. The design was changed to match; this is the assertion that
-    ' found it.
-    result = result & Assert(r.AcceptedPeriod = 0, "no PERIOD-specific rows accepted, got " & r.AcceptedPeriod)
-    result = result & Assert(r.AcceptedStatic > 0, "entity-static rows DID still match -- which is exactly why 'Accepted > 0' is the wrong test, got " & r.AcceptedStatic)
-
-    Dim msg As String
-    msg = Register.ReadDiagnostic(r, "Q4FY26")
-    result = result & Assert(InStr(msg, "NO ROWS") > 0, "the diagnostic leads with the fact")
-    result = result & Assert(InStr(msg, "partial") > 0, "it warns that a sync would still write the static fields -- a partial update that reads as success")
-    result = result & Assert(InStr(msg, "Q4 FY26") > 0, "it NAMES the periods actually present -- which is what turns a silent no-op into an obvious typo")
-    result = result & Assert(InStr(msg, "spelling mismatch") > 0, "it says outright that this is probably a mismatch, not an empty quarter")
-
-    ' And the happy path must NOT carry that warning -- a caveat that always
-    ' fires is one nobody reads.
-    Dim ok As RegisterRead
-    ok = Register.ReadRegister(ws, "Q4 FY26", "q")
-    result = result & Assert(InStr(Register.ReadDiagnostic(ok, "Q4 FY26"), "NO ROWS") = 0, "the warning is ABSENT when rows matched")
-
-    wb.Close False
-    xl.Quit
-    Test_Register_MistypedPeriodIsDistinguishable = result
-End Function
-
-' A register missing Status must refuse, not default to "everything is
-' approved" -- that would publish drafts, which is the worst available failure.
-Private Function Test_Register_MissingStatusColumnRefuses() As String
-    Dim result As String
-
-    Dim xl As Object, wb As Object, ws As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    Set wb = xl.Workbooks.Add
-    Set ws = wb.Worksheets(1)
-    SeedRegister ws
-    ws.Cells(1, 1).Value = "NotStatus"      ' break the Status header
-
-    Dim r As RegisterRead
-    r = Register.ReadRegister(ws, "Q4 FY26", "q")
-
-    result = result & Assert(InStr(r.MissingColumns, "Status") > 0, "the missing column is named, got '" & r.MissingColumns & "'")
-    result = result & Assert(r.Accepted = 0, "NOTHING was read -- it did not fall back to treating rows as approved, got " & r.Accepted)
-    result = result & Assert(InStr(Register.ReadDiagnostic(r, "Q4 FY26"), "missing required column") > 0, "the diagnostic explains it")
-
-    wb.Close False
-    xl.Quit
-    Test_Register_MissingStatusColumnRefuses = result
-End Function
 
 ' ---------------------------------------------------------------------
 ' TagMigration -- V1, the FieldID rename
@@ -4693,172 +4418,6 @@ Private Function Test_WorkbookBridge_SanitizeSheetNameStripsInvalidCharsAndTrunc
     result = result & Assert(WorkbookBridge.SanitizeSheetName("") = "Data", "blank name falls back to 'Data', got '" & WorkbookBridge.SanitizeSheetName("") & "'")
 
     Test_WorkbookBridge_SanitizeSheetNameStripsInvalidCharsAndTruncates = result
-End Function
-
-' ---------------------------------------------------------------------
-' OnboardFlow
-' ---------------------------------------------------------------------
-
-Private Function Test_OnboardFlow_PlanOnboardingFindsCandidatesAndHarvestsText() As String
-    Dim result As String
-
-    Dim sld As Object
-    Set sld = NewBlankSlide()
-    Dim titleShp As Object
-    Set titleShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
-    titleShp.Name = "ph_title"
-    titleShp.TextFrame.TextRange.Text = "Q1 2026"
-    Dim decorShp As Object
-    Set decorShp = sld.Shapes.AddShape(msoShapeRectangle, 300, 50, 50, 50)
-    decorShp.TextFrame.TextRange.Text = ""
-
-    Dim fields() As PendingField
-    fields = OnboardFlow.PlanOnboarding(sld)
-
-    Dim lo As Long, hi As Long, hasFields As Boolean
-    On Error Resume Next
-    lo = LBound(fields): hi = UBound(fields): hasFields = (Err.Number = 0)
-    On Error GoTo 0
-
-    result = result & Assert(hasFields And (hi - lo + 1) = 1, "only the text-bearing shape is a candidate field (blank decoration excluded), got " & IIf(hasFields, hi - lo + 1, 0))
-    If hasFields Then
-        result = result & Assert(fields(lo).ProposedName = "ph_title", "proposed name reuses the shape's existing ph_ name, got '" & fields(lo).ProposedName & "'")
-        result = result & Assert(fields(lo).HarvestedValue = "Q1 2026", "harvested value matches the shape's current text, got '" & fields(lo).HarvestedValue & "'")
-        result = result & Assert(Not fields(lo).Excluded, "field starts un-excluded")
-    End If
-
-    Test_OnboardFlow_PlanOnboardingFindsCandidatesAndHarvestsText = result
-End Function
-
-Private Function Test_OnboardFlow_ApplyFieldReviewAnswerRenamesOrExcludes() As String
-    Dim result As String
-
-    Dim sld As Object
-    Set sld = NewBlankSlide()
-    Dim shp As Object
-    Set shp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
-    shp.TextFrame.TextRange.Text = "value"
-
-    Dim fields(1 To 3) As PendingField
-    Dim i As Long
-    For i = 1 To 3
-        Set fields(i).Shape = shp
-        fields(i).ProposedName = "ph_default" & i
-        fields(i).HarvestedValue = "value"
-    Next i
-
-    OnboardFlow.ApplyFieldReviewAnswer fields, 1, ""
-    result = result & Assert(fields(1).ProposedName = "ph_default1" And Not fields(1).Excluded, "blank answer keeps the proposed name, got '" & fields(1).ProposedName & "'")
-
-    OnboardFlow.ApplyFieldReviewAnswer fields, 2, "ph_renamed"
-    result = result & Assert(fields(2).ProposedName = "ph_renamed" And Not fields(2).Excluded, "non-blank answer renames, got '" & fields(2).ProposedName & "'")
-
-    OnboardFlow.ApplyFieldReviewAnswer fields, 3, "skip"
-    result = result & Assert(fields(3).Excluded, "'skip' (any case) excludes the field")
-
-    Test_OnboardFlow_ApplyFieldReviewAnswerRenamesOrExcludes = result
-End Function
-
-Private Function Test_OnboardFlow_ApplyPeriodKeyAnswerMarksExactlyOneField() As String
-    Dim result As String
-
-    Dim fields(1 To 3) As PendingField
-    fields(1).ProposedName = "ph_a"
-    fields(2).ProposedName = "ph_b"
-    fields(3).ProposedName = "ph_c"
-    fields(3).Excluded = True
-
-    Dim ok As Boolean
-    ok = OnboardFlow.ApplyPeriodKeyAnswer(fields, "2")
-    result = result & Assert(ok, "answer '2' is accepted")
-    result = result & Assert(Not fields(1).IsPeriodKey And fields(2).IsPeriodKey, "only field 2 is marked as the period key")
-
-    ok = OnboardFlow.ApplyPeriodKeyAnswer(fields, "")
-    result = result & Assert(Not ok, "blank answer returns False (evergreen)")
-    result = result & Assert(Not fields(1).IsPeriodKey And Not fields(2).IsPeriodKey And Not fields(3).IsPeriodKey, "a blank answer clears every prior mark")
-
-    ok = OnboardFlow.ApplyPeriodKeyAnswer(fields, "3")
-    result = result & Assert(Not ok, "an excluded field's number is rejected")
-
-    Test_OnboardFlow_ApplyPeriodKeyAnswerMarksExactlyOneField = result
-End Function
-
-Private Function Test_OnboardFlow_DeriveSeedInstanceKeyUsesPeriodKeyOrEvergreen() As String
-    Dim result As String
-
-    Dim withKey(1 To 2) As PendingField
-    withKey(1).ProposedName = "ph_a"
-    withKey(2).ProposedName = "ph_quarter"
-    withKey(2).HarvestedValue = "Q1 2026"
-    withKey(2).IsPeriodKey = True
-
-    result = result & Assert(OnboardFlow.DeriveSeedInstanceKey(withKey) = "Q1-2026", "period-key value becomes the seed instance key (spaces to dashes), got '" & OnboardFlow.DeriveSeedInstanceKey(withKey) & "'")
-
-    Dim evergreen(1 To 1) As PendingField
-    evergreen(1).ProposedName = "ph_a"
-
-    result = result & Assert(OnboardFlow.DeriveSeedInstanceKey(evergreen) = "evergreen", "no period-key field falls back to 'evergreen', got '" & OnboardFlow.DeriveSeedInstanceKey(evergreen) & "'")
-
-    Test_OnboardFlow_DeriveSeedInstanceKeyUsesPeriodKeyOrEvergreen = result
-End Function
-
-Private Function Test_OnboardFlow_CommitAndVerifyOnboardingRoundTrip() As String
-    Dim result As String
-
-    Dim sld As Object
-    Set sld = NewBlankSlide()
-    Dim titleShp As Object
-    Set titleShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
-    titleShp.Name = "ph_title"
-    titleShp.TextFrame.TextRange.Text = "Onboard Test Title"
-
-    Dim fields() As PendingField
-    fields = OnboardFlow.PlanOnboarding(sld)
-
-    Dim xl As Object, wb As Object, ws As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    xl.DisplayAlerts = False
-    Set wb = xl.Workbooks.Add()
-    Set ws = wb.Worksheets(1)
-
-    Dim pres As Object
-    Set pres = Application.ActivePresentation
-
-    Dim deckId As String
-    deckId = DeckRegistry.GetOrCreateDeckId(pres)
-
-    ' Onboarding stamps every row it writes with the deck's period, and
-    ' UpsertRow refuses a blank one -- so a deck must declare its quarter
-    ' BEFORE it can be onboarded. That is the toolbar's own step 0
-    ' ("Start a Quarter"), now enforced rather than merely suggested.
-    DeckRegistry.SetDeckPeriod pres, "FY26Q4"
-
-    Dim commitResult As OnboardingResult
-    commitResult = OnboardFlow.CommitOnboarding(pres, sld, fields, "onboard-test-type", ws, deckId)
-
-    result = result & Assert(commitResult.Ok, "commit reports Ok")
-    result = result & Assert(commitResult.FieldCount = 1, "1 field committed, got " & commitResult.FieldCount)
-    result = result & Assert(titleShp.Tags("role") = "ph_title", "shape was tagged with its role, got '" & titleShp.Tags("role") & "'")
-
-    Dim instance As SlideInstance
-    instance = Resolve.ResolveSlideInstance(sld)
-    result = result & Assert(instance.HasTypeTag And instance.TypeTag = "onboard-test-type", "example slide carries the new slide_type tag")
-    result = result & Assert(instance.HasInstanceKey And instance.InstanceKey = commitResult.InstanceKey, "example slide also became instance #1")
-
-    Dim foundTemplate As Object
-    Dim foundWs As String
-    Dim registered As Boolean
-    registered = DeckRegistry.LookupType(pres, "onboard-test-type", foundTemplate, foundWs)
-    result = result & Assert(registered And Not foundTemplate Is Nothing And foundTemplate.SlideID = sld.SlideID, "type was registered in DeckRegistry pointing back at this slide")
-
-    result = result & Assert(ws.Cells(2, 1).Value = commitResult.InstanceKey, "seed row's Instance ID cell matches, got '" & ws.Cells(2, 1).Value & "'")
-
-    Dim verifyReport As String
-    verifyReport = OnboardFlow.VerifyOnboarding(sld, fields)
-    result = result & Assert(InStr(verifyReport, "All fields verified") > 0, "verify-the-link pass reports every field on the no-op path, got: " & verifyReport)
-
-    Test_OnboardFlow_CommitAndVerifyOnboardingRoundTrip = result
 End Function
 
 ' ---------------------------------------------------------------------
@@ -7452,96 +7011,6 @@ Private Function Test_Drafting_RolloverKeepsEntityStaticRows() As String
     xl.Quit
     Set wb = Nothing: Set xl = Nothing
     Test_Drafting_RolloverKeepsEntityStaticRows = result
-End Function
-
-' SEEDING TURNS THE MARKING ANSWER INTO REGISTER ROWS, and the cadence mapping
-' is the whole point of it: static -> ONE row at Quarter = ALL, variable -> one
-' row per period. Get that backwards and either the person retypes every project
-' name each quarter, or one quarter's status silently becomes every quarter's.
-'
-' Pure -- no Office. That is deliberate: this is the decision, and this project's
-' rules only ever get asserted twice when the assertion does not need PowerPoint.
-Private Function Test_RegisterSeed_CadenceDecidesTheQuarter() As String
-    Dim result As String
-
-    Dim entities As Collection, fields As Collection
-    Set entities = New Collection
-    entities.Add "P001": entities.Add "P002"
-    Set fields = New Collection
-    fields.Add "PROJECT_NAME": fields.Add "PROJECT_STATUS"
-
-    Dim cadence As Object
-    Set cadence = CreateObject("Scripting.Dictionary")
-    cadence("PROJECT_NAME") = "static"
-    cadence("PROJECT_STATUS") = "variable"
-
-    Dim existing As Object
-    Set existing = CreateObject("Scripting.Dictionary")
-
-    Dim p As SeedPlan
-    p = RegisterSeed.PlanSeedRows(entities, fields, cadence, existing, "FY26Q4")
-
-    result = result & Assert(p.ToAdd = 4, "2 entities x 2 fields = 4 rows to add, got " & p.ToAdd)
-
-    Dim i As Long, staticQ As String, varQ As String
-    For i = LBound(p.Rows) To UBound(p.Rows)
-        If p.Rows(i).EntityCode = "P001" And p.Rows(i).FieldID = "PROJECT_NAME" Then staticQ = p.Rows(i).Quarter
-        If p.Rows(i).EntityCode = "P001" And p.Rows(i).FieldID = "PROJECT_STATUS" Then varQ = p.Rows(i).Quarter
-    Next i
-
-    result = result & Assert(staticQ = Register.QUARTER_ALL, _
-        "A STATIC FIELD GETS Quarter = ALL, so it is typed once and never again, got '" & staticQ & "'")
-    result = result & Assert(varQ = "FY26Q4", _
-        "a variable field gets the deck's own period, got '" & varQ & "'")
-
-    ' UNKNOWN CADENCE DEFAULTS TO VARIABLE, matching NormalizeFieldVolatility.
-    ' Variable is the safe guess: extra typing if wrong, versus a wrong ALL row
-    ' quietly carrying one quarter's value into every quarter after it.
-    Dim fields2 As Collection
-    Set fields2 = New Collection
-    fields2.Add "NEVER_CLASSIFIED"
-    Dim p2 As SeedPlan
-    p2 = RegisterSeed.PlanSeedRows(entities, fields2, cadence, existing, "FY26Q4")
-    result = result & Assert(p2.Rows(1).Quarter = "FY26Q4", _
-        "AN UNCLASSIFIED FIELD IS TREATED AS VARIABLE, not silently made ALL, got '" & p2.Rows(1).Quarter & "'")
-
-    ' Already there -> nothing to do, and counted as such rather than duplicated.
-    existing(RegisterSeed.RowKey("P001", "PROJECT_NAME", "ALL")) = True
-    Dim p3 As SeedPlan
-    p3 = RegisterSeed.PlanSeedRows(entities, fields, cadence, existing, "FY26Q4")
-    result = result & Assert(p3.ToAdd = 3 And p3.SkippedExisting = 1, _
-        "an existing row is skipped, not duplicated -- got ToAdd=" & p3.ToAdd & " skipped=" & p3.SkippedExisting)
-
-    ' THE CADENCE CLASH. A field marked static whose entity already carries a
-    ' period row: adding an ALL row beside it passes every register filter,
-    ' counts as a CadenceCollision, and sits permanently shadowed by the period
-    ' row -- until the next period, when it silently becomes the value. Refuse.
-    Dim existing2 As Object
-    Set existing2 = CreateObject("Scripting.Dictionary")
-    existing2(RegisterSeed.RowKey("P002", "PROJECT_NAME", "FY26Q4")) = True
-    Dim p4 As SeedPlan
-    p4 = RegisterSeed.PlanSeedRows(entities, fields, cadence, existing2, "FY26Q4")
-    result = result & Assert(p4.SkippedCadenceClash = 1, _
-        "A STATIC FIELD IS REFUSED WHERE A PERIOD ROW ALREADY EXISTS, got " & p4.SkippedCadenceClash)
-
-    Dim diag As String
-    diag = RegisterSeed.PlanDiagnostic(p4, "FY26Q4")
-    result = result & Assert(InStr(diag, "P002") > 0 And InStr(diag, "PROJECT_NAME") > 0, _
-        "the clash is NAMED, not just counted -- a count is not something a person can act on, got '" & diag & "'")
-
-    ' NO PERIOD, NO SEEDING. A variable row would have nothing to be stamped
-    ' with, and a blank Quarter matches no period at all -- it would read as a
-    ' successful seed that syncs nothing.
-    Dim raised As Boolean
-    On Error Resume Next
-    Dim p5 As SeedPlan
-    p5 = RegisterSeed.PlanSeedRows(entities, fields, cadence, existing, "")
-    raised = (Err.Number <> 0)
-    Err.Clear
-    On Error GoTo 0
-    result = result & Assert(raised, "SEEDING WITHOUT A DECK PERIOD RAISES rather than writing blank quarters")
-
-    Test_RegisterSeed_CadenceDecidesTheQuarter = result
 End Function
 
 ' THE WIDE SHEET CARRIES ITS OWN PERIOD -- one row per slide per period, rows

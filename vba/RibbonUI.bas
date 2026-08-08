@@ -308,7 +308,7 @@ Private Function ResolveSyncContext(title As String, pres As Object, ByRef wb As
     Dim workbookPath As String
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath = "" Then
-        MsgBox "This deck has no paired workbook yet -- use 'Onboard New Slide Type' first.", vbExclamation, title
+        MsgBox "This deck has no paired workbook yet -- use 'Setup B: Onboard Slides' first.", vbExclamation, title
         Exit Function
     End If
 
@@ -321,7 +321,7 @@ Private Function ResolveSyncContext(title As String, pres As Object, ByRef wb As
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet -- use 'Onboard New Slide Type' first.", vbExclamation, title
+        MsgBox "This deck has no registered slide types yet -- use 'Setup B: Onboard Slides' first.", vbExclamation, title
         Exit Function
     End If
 
@@ -426,7 +426,7 @@ Private Sub ReviewChangesCore(approveAll As Boolean)
     Dim workbookPath As String
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath = "" Then
-        MsgBox "This deck has no paired workbook yet -- use 'Onboard New Slide Type' first.", vbExclamation, title
+        MsgBox "This deck has no paired workbook yet -- use 'Setup B: Onboard Slides' first.", vbExclamation, title
         Exit Sub
     End If
 
@@ -440,7 +440,7 @@ Private Sub ReviewChangesCore(approveAll As Boolean)
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet -- use 'Onboard New Slide Type' first.", vbExclamation, title
+        MsgBox "This deck has no registered slide types yet -- use 'Setup B: Onboard Slides' first.", vbExclamation, title
         Exit Sub
     End If
 
@@ -830,7 +830,7 @@ Private Sub AuditFieldsCore()
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet -- use 'Onboard New Slide Type' first.", vbExclamation, "Audit Fields"
+        MsgBox "This deck has no registered slide types yet -- use 'Setup B: Onboard Slides' first.", vbExclamation, "Audit Fields"
         Exit Sub
     End If
 
@@ -1007,7 +1007,7 @@ Private Sub CreateTemplateSlideCore()
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet -- use 'Onboard New Slide Type' first.", vbExclamation, "Create Template Slide"
+        MsgBox "This deck has no registered slide types yet -- use 'Setup B: Onboard Slides' first.", vbExclamation, "Create Template Slide"
         Exit Sub
     End If
 
@@ -1131,96 +1131,6 @@ Public Function ResolveTypeAnswer(answer As String, types() As String) As String
 
     ResolveTypeAnswer = ""
 End Function
-
-' ---------------------------------------------------------------------
-' Onboard New Slide Type / Resolve Unmatched Fields -- thin wrappers over
-' OnboardFlow.bas / ResolveFields.bas, the only new pieces being the
-' DeckRegistry lookup Resolve Unmatched Fields needs to find its template
-' (ribbon-ui.md's spec text assumed a caller would supply templateSld;
-' DeckRegistry is that caller now).
-' ---------------------------------------------------------------------
-
-' Toolbar entry point. The real work is in OnboardNewTypeCore; this exists only to
-' catch anything that escapes it.
-'
-' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
-' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
-' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
-' inline handler would be switched off by the first of them and read as
-' protection while providing none. Putting the handler in a separate frame
-' means nothing inside the body can turn it off, now or after a later edit.
-Public Sub OnboardNewType()
-    On Error GoTo Failed
-    OnboardNewTypeCore
-    Exit Sub
-Failed:
-    RibbonUI.ShowSyncResult "Onboard New Slide Type", RibbonUI.UnexpectedErrorText("Onboard New Slide Type", Err.Number, Err.Description, Err.Source)
-End Sub
-
-Private Sub OnboardNewTypeCore()
-    Dim report As String
-    report = OnboardFlow.PromptOnboardNewSlideType()
-    If report <> "" Then
-        ShowSyncResult "Onboard New Slide Type", report
-    End If
-End Sub
-
-' Toolbar entry point. The real work is in ResolveUnmatchedFieldsCore; this exists only to
-' catch anything that escapes it.
-'
-' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
-' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
-' these bodies are full of "On Error Resume Next / On Error GoTo 0" pairs -- an
-' inline handler would be switched off by the first of them and read as
-' protection while providing none. Putting the handler in a separate frame
-' means nothing inside the body can turn it off, now or after a later edit.
-Public Sub ResolveUnmatchedFields()
-    On Error GoTo Failed
-    ResolveUnmatchedFieldsCore
-    Exit Sub
-Failed:
-    RibbonUI.ShowSyncResult "Resolve Unmatched Fields", RibbonUI.UnexpectedErrorText("Resolve Unmatched Fields", Err.Number, Err.Description, Err.Source)
-End Sub
-
-Private Sub ResolveUnmatchedFieldsCore()
-    Dim pres As Object
-    Set pres = Application.ActivePresentation
-
-    Dim sel As Object
-    Set sel = Application.ActiveWindow.Selection
-    If sel.Type <> ppSelectionShapes Or sel.ShapeRange.count <> 1 Then
-        MsgBox "Select exactly one shape on the slide first.", vbExclamation, "Resolve Unmatched Fields"
-        Exit Sub
-    End If
-
-    ' .Parent is the containing Slide only for a top-level shape -- a shape
-    ' selected from inside a group would resolve to the GroupShape instead.
-    ' Not handled here: field shapes are expected to be top-level per this
-    ' project's existing discovery convention (Discovery.bas recurses into
-    ' groups to find candidates, but a human directly clicking one they
-    ' want to resolve is the common case this flow targets); flagged as a
-    ' known gap rather than a silently wrong assumption.
-    Dim sld As Object
-    Set sld = sel.ShapeRange(1).Parent
-
-    Dim instance As SlideInstance
-    instance = Resolve.ResolveSlideInstance(sld)
-    If Not instance.HasTypeTag Then
-        MsgBox "This slide has no slide type tag -- Resolve Unmatched Fields only applies to a slide already matched to a type.", vbExclamation, "Resolve Unmatched Fields"
-        Exit Sub
-    End If
-
-    Dim templateSld As Object
-    Dim wsName As String
-    If Not DeckRegistry.LookupType(pres, instance.TypeTag, templateSld, wsName) Then
-        MsgBox "Could not find a registered template for type '" & instance.TypeTag & "'.", vbExclamation, "Resolve Unmatched Fields"
-        Exit Sub
-    End If
-
-    Dim result As String
-    result = ResolveFields.PromptResolveUnmatchedField(templateSld)
-    MsgBox result, vbInformation, "Resolve Unmatched Fields"
-End Sub
 
 ' ---------------------------------------------------------------------
 ' Shared result reporting -- ribbon-ui.md's "one shared result form...

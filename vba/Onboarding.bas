@@ -164,7 +164,7 @@ End Function
 ' itself (verify_structure and other callers still need the full,
 ' unfiltered shape list).
 ' Public (was Private through Priority 22): OnboardFlow.bas (Priority 23,
-' the "Onboard New Slide Type" ribbon flow) needs the identical first-time-
+' the "Setup B: Onboard Slides" flow (was OnboardFlow.bas, deleted 2026-08-09)) needs the identical first-time-
 ' onboarding candidate filter this module already applies to *subsequent*-
 ' slide matching -- specs/onboard-slide-type.md's Step 2 explicitly reuses
 ' shape-identity-and-matching.md's same signal (has text, or is a picture)

@@ -55,8 +55,8 @@ $vbaSourceDir = Join-Path $RepoRoot "vba"
 $productionModules = @(
     "Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas",
     "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas",
-    "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "Register.bas", "RegisterSeed.bas", "PlaceholderCheck.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas",
-    "DeckRegistry.bas", "WorkbookBridge.bas", "OnboardFlow.bas", "RibbonUI.bas",
+    "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "PlaceholderCheck.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas",
+    "DeckRegistry.bas", "WorkbookBridge.bas", "RibbonUI.bas",
     "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas",
     # ReviewQueue was MISSING from this list while RibbonUI.SyncNow called it in
     # nine places. An undefined module reference is a COMPILE error in VBA, and a
