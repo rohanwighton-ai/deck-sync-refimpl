@@ -5087,14 +5087,37 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
 
     CommandBarUI.ShowToolbar
 
+    ' THREE BARS since 2026-08-08 -- sixteen buttons did not fit one row and the
+    ' last four were unreachable behind an overflow chevron. The count that
+    ' matters is still sixteen buttons in total, and every one of them visible.
+    Dim allBars As Collection
+    Set allBars = New Collection
+    Dim nm As Variant
+    For Each nm In CommandBarUI.ToolbarNames()
+        Dim oneBar As Object
+        Set oneBar = Nothing
+        On Error Resume Next
+        Set oneBar = Application.CommandBars(CStr(nm))
+        On Error GoTo 0
+        result = result & Assert(Not oneBar Is Nothing, "bar '" & CStr(nm) & "' exists after ShowToolbar")
+        If Not oneBar Is Nothing Then
+            result = result & Assert(oneBar.Visible, "bar '" & CStr(nm) & "' is VISIBLE")
+            allBars.Add oneBar
+        End If
+    Next nm
+
+    Dim totalButtons As Long
+    Dim bb As Variant
+    For Each bb In allBars
+        totalButtons = totalButtons + bb.Controls.count
+    Next bb
+    result = result & Assert(totalButtons = 16, "16 buttons across all bars, got " & totalButtons)
+
     Dim bar As Object
-    Set bar = Application.CommandBars(CommandBarUI.ToolbarName())
-    result = result & Assert(Not bar Is Nothing, "the toolbar exists after ShowToolbar")
-    result = result & Assert(bar.Controls.count = 16, "toolbar has 16 buttons, got " & bar.Controls.count)
+    Set bar = allBars(1)
     ' A bar that exists, is fully wired, and is NOT VISIBLE is the exact state
     ' shipped in addin40 and found on 2026-08-08. Every other assertion in this
     ' test passed against it. Without this line the suite calls that a pass.
-    result = result & Assert(bar.Visible, "the toolbar is VISIBLE after ShowToolbar")
 
     Dim seenPreview As Boolean
     Dim seenSyncNow As Boolean
@@ -5130,9 +5153,11 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     expectedActions = "|SyncPreview|SyncNow|ReviewChanges|ReviewChangesApproveAll|ApplyApprovedChanges|CreateTemplateSlide|AuditFields|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|DiscoverFields|RefreshDraftingSheets|CopyAiDraftsToSubmit|PublishDraftsForField|StartQuarter|RollForwardUI|RepointWorkbookUI|"
 
     Dim i As Long
-    For i = 1 To bar.Controls.count
+    Dim eachBar As Variant
+    For Each eachBar In allBars
+    For i = 1 To eachBar.Controls.count
         Dim ctrl As Object
-        Set ctrl = bar.Controls.Item(i)
+        Set ctrl = eachBar.Controls.Item(i)
         Dim afterBang As String
         Dim bangPos As Long
         bangPos = InStr(ctrl.OnAction, "!")
@@ -5156,6 +5181,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
         If subName = "CreateTemplateSlide" Then seenCreateTemplate = True
         If subName = "AuditFields" Then seenAuditFields = True
     Next i
+    Next eachBar
 
     result = result & Assert(seenPreview, "Preview Sync is actually ON the toolbar -- the read-only action, and the safe first thing to run on an unfamiliar machine")
     result = result & Assert(seenReview, "Review Changes is actually ON the toolbar -- R13's gate, and unreachable without a button")
@@ -5180,10 +5206,18 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
     CommandBarUI.ShowToolbar
     CommandBarUI.ShowToolbar  ' must not raise "toolbar already exists" or leave duplicates
 
-    Dim bar As Object
-    Set bar = Application.CommandBars(CommandBarUI.ToolbarName())
-    result = result & Assert(Not bar Is Nothing, "toolbar still exists after calling ShowToolbar twice")
-    result = result & Assert(bar.Controls.count = 16, "still exactly 16 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
+    Dim total2 As Long
+    Dim nm2 As Variant
+    For Each nm2 In CommandBarUI.ToolbarNames()
+        Dim b2 As Object
+        Set b2 = Nothing
+        On Error Resume Next
+        Set b2 = Application.CommandBars(CStr(nm2))
+        On Error GoTo 0
+        result = result & Assert(Not b2 Is Nothing, "bar '" & CStr(nm2) & "' still exists after calling ShowToolbar twice")
+        If Not b2 Is Nothing Then total2 = total2 + b2.Controls.count
+    Next nm2
+    result = result & Assert(total2 = 16, "still exactly 16 buttons across all bars, got " & total2)
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarIsIdempotent = result
@@ -5195,11 +5229,15 @@ Private Function Test_CommandBarUI_HideToolbarRemovesIt() As String
     CommandBarUI.ShowToolbar
     CommandBarUI.HideToolbar
 
-    Dim bar As Object
-    On Error Resume Next
-    Set bar = Application.CommandBars(CommandBarUI.ToolbarName())
-    On Error GoTo 0
-    result = result & Assert(bar Is Nothing, "toolbar no longer exists after HideToolbar")
+    Dim nm3 As Variant
+    For Each nm3 In CommandBarUI.ToolbarNames()
+        Dim b3 As Object
+        Set b3 = Nothing
+        On Error Resume Next
+        Set b3 = Application.CommandBars(CStr(nm3))
+        On Error GoTo 0
+        result = result & Assert(b3 Is Nothing, "bar '" & CStr(nm3) & "' no longer exists after HideToolbar")
+    Next nm3
 
     ' Calling HideToolbar again with nothing to remove must not raise.
     CommandBarUI.HideToolbar

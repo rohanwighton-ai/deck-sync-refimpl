@@ -47,6 +47,22 @@ Option Explicit
 Private Const TOOLBAR_BUILD As String = "40"
 Private Const TOOLBAR_NAME As String = "Deck Sync " & TOOLBAR_BUILD
 
+' THREE BARS, NOT ONE, because sixteen buttons do not fit a row.
+'
+' 2026-08-08: the last four -- Apply Approved, Review + Approve All, Repoint
+' Workbook and half of Review Changes -- sat behind an overflow chevron, which
+' means they could not be found by someone who did not already know they
+' existed. Hover help does not reach a button you cannot see.
+'
+' Shortening the captions was the other option and was rejected: the caption is
+' the only instruction this tool gives before somebody clicks. The split follows
+' the division the code already makes -- setup runs once per slide type, the
+' numbered steps run every period, and the careful route is what you use when
+' step 4 is too blunt.
+Private Const BAR_SETUP As String = "Deck Sync " & TOOLBAR_BUILD & " -- Setup"
+Private Const BAR_STEPS As String = "Deck Sync " & TOOLBAR_BUILD & " -- Each period"
+Private Const BAR_CAREFUL As String = "Deck Sync " & TOOLBAR_BUILD & " -- One at a time"
+
 ' The toolbar's name, for anything that needs to find it.
 '
 ' Exposed because three tests hardcoded the literal "Deck Sync" and broke the
@@ -105,7 +121,7 @@ Public Sub ShowToolbar()
     HideToolbar
 
     Dim bar As Object
-    Set bar = Application.CommandBars.Add(Name:=TOOLBAR_NAME, Position:=1, Temporary:=True)  ' msoBarTop = 1
+    Set bar = NewBar(BAR_SETUP)
 
     ' ---------------------------------------------------------------------
     ' ORDERED BY THE WORK, AND NUMBERED. Rohan, 2026-08-01: "The ribbon should
@@ -143,6 +159,7 @@ Public Sub ShowToolbar()
         "Use to discard all marking and start again. Cannot remove just one."
 
     ' --- THE QUARTERLY LOOP ---------------------------------------------
+    Set bar = NewBar(BAR_STEPS)
     AddButton bar, "0. Start a Quarter", "DraftingUI.StartQuarter", 297, _
         "Use to tell this deck which period it reports. Saves the deck and confirms it landed.", True
     AddButton bar, "0b. Roll Forward", "DraftingUI.RollForwardUI", 1017, _
@@ -157,6 +174,7 @@ Public Sub ShowToolbar()
         "Use to put the register's text onto the slides. Shows you what will change first."
 
     ' --- The careful route to slides, when step 4 is too blunt -----------
+    Set bar = NewBar(BAR_CAREFUL)
     AddButton bar, "Preview Sync", "RibbonUI.SyncPreview", 1090, _
         "Use to see what would change. Writes nothing.", True
     AddButton bar, "Review Changes", "RibbonUI.ReviewChanges", 1090, _
@@ -179,14 +197,32 @@ Public Sub ShowToolbar()
     ' The three toolbar tests could not catch it. They assert the bar exists, has
     ' 15 controls, and that every button resolves to the right Sub -- all true of
     ' a bar nobody can see.
-    bar.Visible = True
 End Sub
+
+' One bar, created visible. CommandBars.Add makes a bar HIDDEN; forgetting the
+' Visible line is what made the whole toolbar disappear on 2026-08-08.
+Private Function NewBar(barName As String) As Object
+    Dim b As Object
+    Set b = Application.CommandBars.Add(Name:=barName, Position:=1, Temporary:=True)  ' msoBarTop = 1
+    b.Visible = True
+    Set NewBar = b
+End Function
+
+' Every bar we own, so a caller can find or check them all.
+Public Function ToolbarNames() As Variant
+    ToolbarNames = Array(BAR_SETUP, BAR_STEPS, BAR_CAREFUL)
+End Function
 
 Public Sub HideToolbar()
     On Error Resume Next
-    ' By our own exact name only. Deleting anything that merely looks like ours
-    ' is how the collision above worked.
+    ' By our own exact names only. Deleting anything that merely looks like ours
+    ' is how the collision above worked. The pre-split single bar is removed too,
+    ' so upgrading from an older build does not leave an orphan.
     Application.CommandBars(TOOLBAR_NAME).Delete
+    Dim n As Variant
+    For Each n In ToolbarNames()
+        Application.CommandBars(CStr(n)).Delete
+    Next n
     On Error GoTo 0
 End Sub
 
