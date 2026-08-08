@@ -1,0 +1,729 @@
+<title>deck-sync — use cases through the toolset</title>
+
+<style>
+  :root {
+    --ground: #F2F5F3;
+    --panel: #FBFCFB;
+    --ink: #16211F;
+    --ink-soft: #4A5C57;
+    --rule: #C9D4D0;
+    --flow: #0E7C6B;
+    --gate: #A06B10;
+    --stop: #A63A2B;
+    --shadow: 0 1px 0 rgba(22,33,31,.05), 0 8px 24px -18px rgba(22,33,31,.5);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0E1413; --panel: #161E1C; --ink: #E3EAE7; --ink-soft: #93A5A0;
+      --rule: #2C3936; --flow: #3FBBA3; --gate: #D8A33C; --stop: #E2705C;
+      --shadow: 0 1px 0 rgba(0,0,0,.3), 0 10px 28px -20px #000;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0E1413; --panel: #161E1C; --ink: #E3EAE7; --ink-soft: #93A5A0;
+    --rule: #2C3936; --flow: #3FBBA3; --gate: #D8A33C; --stop: #E2705C;
+    --shadow: 0 1px 0 rgba(0,0,0,.3), 0 10px 28px -20px #000;
+  }
+  :root[data-theme="light"] {
+    --ground: #F2F5F3; --panel: #FBFCFB; --ink: #16211F; --ink-soft: #4A5C57;
+    --rule: #C9D4D0; --flow: #0E7C6B; --gate: #A06B10; --stop: #A63A2B;
+    --shadow: 0 1px 0 rgba(22,33,31,.05), 0 8px 24px -18px rgba(22,33,31,.5);
+  }
+
+  body {
+    background: var(--ground); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px; line-height: 1.6; margin: 0; padding: 0 1.25rem 6rem;
+  }
+  .wrap { max-width: 62rem; margin: 0 auto; }
+
+  h1, h2, h3 {
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    font-weight: 600; text-wrap: balance; letter-spacing: -0.01em; margin: 0;
+  }
+  h1 { font-size: clamp(2rem, 4.5vw, 3rem); line-height: 1.12; }
+  h2 { font-size: 1.5rem; line-height: 1.25; }
+  p { max-width: 63ch; margin: 0; }
+
+  code, .mono {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    font-size: 0.88em;
+  }
+  code { background: color-mix(in srgb, var(--flow) 10%, transparent);
+         padding: 0.1em 0.35em; border-radius: 3px; }
+
+  header.masthead {
+    border-bottom: 2px solid var(--ink); padding: 4rem 0 1.5rem;
+    display: flex; flex-direction: column; gap: 1.1rem;
+  }
+  .eyebrow {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .lede { font-size: 1.12rem; color: var(--ink-soft); max-width: 58ch; }
+
+  .keys { display: grid; gap: 1.4rem; margin-top: 2.5rem;
+          grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+  .keybox { border-top: 1px solid var(--rule); padding-top: 0.9rem;
+            display: flex; flex-direction: column; gap: 0.5rem; }
+  .keybox h3 { font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem;
+               letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); font-weight: 400; }
+  .keyrow { display: flex; align-items: center; gap: 0.6rem;
+            font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; color: var(--ink-soft); }
+  .swatch { width: 1.4rem; height: 3px; border-radius: 2px; flex: none; }
+
+  .hdot { width: 12px; height: 12px; flex: none; }
+
+  section.case { margin-top: 3.5rem; display: flex; flex-direction: column; gap: 1rem; }
+  .case-head { display: flex; align-items: baseline; gap: 0.85rem; flex-wrap: wrap; }
+  .freq {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft);
+    border: 1px solid var(--rule); padding: 0.15rem 0.5rem; border-radius: 99px; white-space: nowrap;
+  }
+
+  figure {
+    margin: 0; background: var(--panel); border: 1px solid var(--rule);
+    border-radius: 6px; box-shadow: var(--shadow);
+    padding: 1.5rem 1.25rem 1.1rem; overflow-x: auto;
+  }
+  figure svg { display: block; max-width: 100%; height: auto; margin: 0 auto; color: var(--ink); }
+  figcaption { margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--rule);
+               font-size: 0.9rem; color: var(--ink-soft); max-width: 68ch; }
+
+  .note { border-left: 3px solid var(--gate); padding: 0.1rem 0 0.1rem 1rem;
+          color: var(--ink-soft); font-size: 0.95rem; }
+  .note.stop { border-left-color: var(--stop); }
+  .note strong { color: var(--ink); font-weight: 600; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); }
+  th, td { text-align: left; padding: 0.6rem 0.85rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
+       letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-soft); }
+  tr:last-child td { border-bottom: none; }
+  td.h { white-space: nowrap; }
+
+  footer { margin-top: 5rem; padding-top: 1.5rem; border-top: 1px solid var(--rule);
+           color: var(--ink-soft); font-size: 0.85rem; display:flex; flex-direction:column; gap:.6rem; }
+  a { color: var(--flow); }
+  a:focus-visible { outline: 2px solid var(--flow); outline-offset: 3px; }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="eyebrow">deck-sync · system conversation piece · verified against <span class="mono">main</span> @ 9 Aug 2026</div>
+  <h1>Six ways through the toolset</h1>
+  <p class="lede">
+    Every path a person can take from a PowerPoint deck to a filled-in slide, the gates
+    that stop each one, and how far each step has actually been proven. The gates are the
+    design; the buttons are just the order they come in.
+  </p>
+</header>
+
+<div class="keys">
+  <div class="keybox">
+    <h3>Lines — is this path live?</h3>
+    <div class="keyrow">
+      <svg class="hdot" style="width:1.6rem" viewBox="0 0 26 8" aria-hidden="true"><line x1="1" y1="4" x2="25" y2="4" stroke="var(--flow)" stroke-width="1.8"/></svg>
+      solid · walked on the real deck
+    </div>
+    <div class="keyrow">
+      <svg class="hdot" style="width:1.6rem" viewBox="0 0 26 8" aria-hidden="true"><line x1="1" y1="4" x2="25" y2="4" stroke="var(--flow)" stroke-width="1.8" stroke-dasharray="5 3"/></svg>
+      dashed · reachable, never walked
+    </div>
+    <div class="keyrow">
+      <svg class="hdot" style="width:1.6rem" viewBox="0 0 26 8" aria-hidden="true"><line x1="1" y1="4" x2="25" y2="4" stroke="currentColor" stroke-opacity=".4" stroke-width="1.8" stroke-dasharray="1 3"/></svg>
+      dotted · no route to it at all
+    </div>
+    <div class="keyrow"><span class="swatch" style="background:var(--gate)"></span> a gate you must pass</div>
+    <div class="keyrow"><span class="swatch" style="background:var(--stop)"></span> a refusal</div>
+  </div>
+  <div class="keybox">
+    <h3>Health of each step</h3>
+    <div class="keyrow">
+      <svg class="hdot" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="var(--flow)"/></svg>
+      run for real on the rig deck
+    </div>
+    <div class="keyrow">
+      <svg class="hdot" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.4" fill="none" stroke="var(--flow)" stroke-width="1.6"/></svg>
+      tested, never run for real
+    </div>
+    <div class="keyrow">
+      <svg class="hdot" viewBox="0 0 12 12" aria-hidden="true"><polygon points="6,1 11,10.5 1,10.5" fill="none" stroke="var(--gate)" stroke-width="1.5"/></svg>
+      open decision or known limit
+    </div>
+    <div class="keyrow">
+      <svg class="hdot" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2 L10 10 M10 2 L2 10" stroke="var(--stop)" stroke-width="1.8" fill="none"/></svg>
+      not built
+    </div>
+  </div>
+</div>
+
+<!-- ============================================ THE MACHINE -->
+<section class="case">
+  <div class="case-head"><h2>What each side owns</h2></div>
+  <p>
+    Two files and a toolbar. The deck knows <em>which slide is which</em> and
+    <em>what period it reports</em>; the workbook knows <em>what the words are</em> and
+    <em>how each field should be written</em>. Neither is a copy of the other, and every
+    button below moves something across that line.
+  </p>
+
+  <figure>
+    <svg viewBox="0 0 900 300" role="img"
+         aria-label="The deck holds slide tags and a period property; the workbook holds the register, field recipes and sources; the toolbar moves text from workbook to deck only.">
+      <defs>
+        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--flow)"/>
+        </marker>
+      </defs>
+      <rect x="20" y="40" width="230" height="220" rx="5" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+      <text x="35" y="66" font-size="12" font-family="ui-monospace,monospace" letter-spacing="1.4" fill="currentColor" opacity=".6">THE DECK · .pptx</text>
+      <line x1="20" y1="78" x2="250" y2="78" stroke="currentColor" stroke-opacity=".25"/>
+      <text x="35" y="106" font-size="13" fill="currentColor">slide_type tag</text>
+      <text x="35" y="130" font-size="13" fill="currentColor">instance_key tag</text>
+      <text x="35" y="154" font-size="13" fill="currentColor">role tag, per shape</text>
+      <text x="35" y="186" font-size="13" fill="var(--flow)">DeckSyncPeriod</text>
+      <text x="35" y="204" font-size="11" fill="currentColor" opacity=".55">the period it reports</text>
+      <text x="35" y="234" font-size="13" fill="var(--flow)">DeckSyncWorkbookPath</text>
+      <text x="35" y="252" font-size="11" fill="currentColor" opacity=".55">which workbook it is paired to</text>
+
+      <rect x="330" y="95" width="240" height="110" rx="5" fill="none" stroke="var(--flow)" stroke-width="1.5"/>
+      <text x="450" y="122" font-size="12" font-family="ui-monospace,monospace" letter-spacing="1.4" text-anchor="middle" fill="var(--flow)">THE TOOLBAR</text>
+      <text x="450" y="150" font-size="13" text-anchor="middle" fill="currentColor">16 buttons</text>
+      <text x="450" y="172" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">the only interface at work —</text>
+      <text x="450" y="188" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">no Python, no scripting, no AI</text>
+
+      <rect x="650" y="40" width="230" height="220" rx="5" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+      <text x="665" y="66" font-size="12" font-family="ui-monospace,monospace" letter-spacing="1.4" fill="currentColor" opacity=".6">THE WORKBOOK · .xlsx</text>
+      <line x1="650" y1="78" x2="880" y2="78" stroke="currentColor" stroke-opacity=".25"/>
+      <text x="665" y="106" font-size="13" fill="var(--flow)">Register</text>
+      <text x="665" y="124" font-size="11" fill="currentColor" opacity=".55">one row per slide per period</text>
+      <text x="665" y="154" font-size="13" fill="var(--flow)">Field Spec</text>
+      <text x="665" y="172" font-size="11" fill="currentColor" opacity=".55">the recipe: purpose, voice, length</text>
+      <text x="665" y="202" font-size="13" fill="currentColor">Sources</text>
+      <text x="665" y="220" font-size="11" fill="currentColor" opacity=".55">where the words came from</text>
+      <text x="665" y="246" font-size="13" fill="currentColor">TPL_ drafting sheets</text>
+
+      <line x1="255" y1="128" x2="325" y2="140" stroke="var(--flow)" stroke-width="1.5" marker-end="url(#a1)"/>
+      <text x="290" y="120" font-size="10.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--flow)">reads tags</text>
+      <line x1="575" y1="140" x2="645" y2="128" stroke="var(--flow)" stroke-width="1.5" marker-end="url(#a1)"/>
+      <text x="610" y="120" font-size="10.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--flow)">reads rows</text>
+      <line x1="645" y1="182" x2="575" y2="170" stroke="var(--flow)" stroke-width="1.5" marker-end="url(#a1)"/>
+      <line x1="325" y1="170" x2="255" y2="182" stroke="var(--flow)" stroke-width="1.5" marker-end="url(#a1)"/>
+      <text x="450" y="228" font-size="10.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--flow)">writes text onto tagged shapes</text>
+    </svg>
+    <figcaption>
+      Text only ever travels workbook&nbsp;→&nbsp;deck. The deck's tags say <em>where</em>
+      it goes; nothing in a slide is ever read back as truth.
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ============================================ CASE 1 -->
+<section class="case">
+  <div class="case-head">
+    <h2>1 · A slide type you have never used</h2>
+    <span class="freq">once per type, ever</span>
+  </div>
+  <p>
+    Teaching the tool what a slide of this kind looks like. Nothing here repeats each
+    quarter — get it wrong and you redo this, not the quarter.
+  </p>
+
+  <figure>
+    <svg viewBox="0 0 900 200" role="img"
+         aria-label="Setup runs left to right: discover fields, onboard the other slides, check coverage. All three have been run for real on the rig deck. Coverage is re-runnable at any time.">
+      <defs>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--flow)"/>
+        </marker>
+      </defs>
+      <rect x="20" y="55" width="170" height="60" rx="4" fill="none" stroke="var(--flow)" stroke-width="1.5"/>
+      <circle cx="36" cy="71" r="5" fill="var(--flow)"/>
+      <text x="112" y="80" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">Setup A2:</text>
+      <text x="112" y="97" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">Discover Fields</text>
+      <text x="105" y="137" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">tag every field on one</text>
+      <text x="105" y="152" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">example slide, in a grid</text>
+
+      <line x1="196" y1="85" x2="256" y2="85" stroke="var(--flow)" stroke-width="1.5" marker-end="url(#a2)"/>
+
+      <rect x="262" y="55" width="170" height="60" rx="4" fill="none" stroke="var(--flow)" stroke-width="1.5"/>
+      <circle cx="278" cy="71" r="5" fill="var(--flow)"/>
+      <text x="354" y="80" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">Setup B:</text>
+      <text x="354" y="97" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">Onboard Slides</text>
+      <text x="347" y="137" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">link the other 42 slides</text>
+      <text x="347" y="152" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">— reviewed in Excel first</text>
+
+      <line x1="438" y1="85" x2="498" y2="85" stroke="var(--flow)" stroke-width="1.5" marker-end="url(#a2)"/>
+
+      <rect x="504" y="55" width="170" height="60" rx="4" fill="none" stroke="var(--gate)" stroke-width="1.5"/>
+      <circle cx="520" cy="71" r="5" fill="var(--flow)"/>
+      <text x="596" y="80" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">Setup C:</text>
+      <text x="596" y="97" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">Check Coverage</text>
+      <text x="589" y="137" font-size="11" text-anchor="middle" fill="var(--gate)">what am I NOT tracking?</text>
+      <text x="589" y="152" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">writes a checklist, changes nothing</text>
+
+      <line x1="680" y1="85" x2="740" y2="85" stroke="var(--flow)" stroke-width="1.5" marker-end="url(#a2)"/>
+      <text x="820" y="80" font-size="13" text-anchor="middle" fill="currentColor">the quarterly</text>
+      <text x="820" y="98" font-size="13" text-anchor="middle" fill="currentColor">loop, case 2</text>
+
+      <path d="M 589 128 Q 589 180 347 180 Q 105 180 105 128" fill="none" stroke="var(--gate)" stroke-width="1.2" stroke-dasharray="4 4"/>
+      <text x="347" y="177" font-size="10.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--gate)">re-runnable whenever a slide is redesigned</text>
+    </svg>
+    <figcaption>
+      All three run for real: the rig deck's 43 slides were onboarded this way. Coverage
+      is deliberately a button and not just a step, because <em>“what am I not
+      tracking?”</em> is asked again every time a slide changes.
+    </figcaption>
+  </figure>
+
+  <div class="note">
+    <strong>The estimate here has been wrong before.</strong> An eyeball count put one
+    real slide at ~25 trackable fields; the audit found <strong>52</strong>. That 3× gap
+    is the whole argument for <code>Setup C</code> existing.
+  </div>
+</section>
+
+<!-- ============================================ CASE 2 -->
+<section class="case">
+  <div class="case-head">
+    <h2>2 · A new quarter</h2>
+    <span class="freq">the main event · 4× a year</span>
+  </div>
+  <p>
+    The numbered path. Everything before <code>3. Publish</code> is reversible;
+    everything after it is verified against the file on disk rather than what PowerPoint
+    believes.
+  </p>
+
+  <figure>
+    <svg viewBox="0 0 900 480" role="img"
+         aria-label="The quarterly loop runs top to bottom: set the period, roll rows forward, build drafting sheets, move the AI draft, publish the ticked rows, then sync onto slides. Every step except Roll Forward has been run for real. Three gates sit in the chain.">
+      <defs>
+        <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--flow)"/>
+        </marker>
+      </defs>
+      <line x1="150" y1="40" x2="150" y2="95" stroke="var(--flow)" stroke-width="1.5" stroke-opacity=".35"/>
+      <line x1="150" y1="95" x2="150" y2="150" stroke="var(--flow)" stroke-width="1.5" stroke-opacity=".55" stroke-dasharray="6 4"/>
+      <line x1="150" y1="150" x2="150" y2="440" stroke="var(--flow)" stroke-width="1.5" stroke-opacity=".35"/>
+
+      <circle cx="150" cy="50" r="6" fill="var(--flow)"/>
+      <text x="180" y="46" font-size="13.5" font-family="ui-monospace,monospace" fill="currentColor">0. Start a Quarter</text>
+      <text x="180" y="64" font-size="11.5" fill="currentColor" opacity=".6">writes the period, saves, re-opens the file to confirm</text>
+      <rect x="600" y="32" width="278" height="24" rx="3" fill="none" stroke="var(--gate)" stroke-width="1.2"/>
+      <text x="739" y="48" font-size="11" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--gate)">GATE · confirmed in the saved file</text>
+
+      <circle cx="150" cy="120" r="5.2" fill="none" stroke="var(--flow)" stroke-width="1.8"/>
+      <text x="180" y="116" font-size="13.5" font-family="ui-monospace,monospace" fill="currentColor">0b. Roll Forward</text>
+      <text x="180" y="134" font-size="11.5" fill="currentColor" opacity=".6">copies last period's rows and stamps them with the new one</text>
+      <text x="600" y="124" font-size="11" font-family="ui-monospace,monospace" fill="var(--ink-soft)">tested; not yet run on a real rollover</text>
+
+      <circle cx="150" cy="190" r="6" fill="var(--flow)"/>
+      <text x="180" y="186" font-size="13.5" font-family="ui-monospace,monospace" fill="currentColor">1. Drafting Sheets</text>
+      <text x="180" y="204" font-size="11.5" fill="currentColor" opacity=".6">one sheet per field, carrying the recipe into cell L2</text>
+
+      <circle cx="150" cy="260" r="6" fill="var(--flow)"/>
+      <text x="180" y="256" font-size="13.5" font-family="ui-monospace,monospace" fill="currentColor">2. Copy AI to Submit</text>
+      <text x="180" y="274" font-size="11.5" fill="currentColor" opacity=".6">moves Copilot's column F draft into D — never over your own words</text>
+      <rect x="600" y="242" width="278" height="24" rx="3" fill="none" stroke="var(--gate)" stroke-width="1.2"/>
+      <text x="739" y="258" font-size="11" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--gate)">GATE · tick column E to select</text>
+
+      <circle cx="150" cy="330" r="6" fill="var(--flow)"/>
+      <text x="180" y="326" font-size="13.5" font-family="ui-monospace,monospace" fill="currentColor">3. Publish</text>
+      <text x="180" y="344" font-size="11.5" fill="currentColor" opacity=".6">ticked rows go to the register. No slide is touched.</text>
+      <rect x="600" y="312" width="278" height="24" rx="3" fill="none" stroke="var(--gate)" stroke-width="1.2"/>
+      <text x="739" y="328" font-size="11" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--gate)">GATE · the consent step</text>
+
+      <circle cx="150" cy="400" r="6" fill="var(--flow)"/>
+      <text x="180" y="396" font-size="13.5" font-family="ui-monospace,monospace" fill="currentColor">4. Sync Now</text>
+      <text x="180" y="414" font-size="11.5" fill="currentColor" opacity=".6">register text onto the slides, then a parity statement</text>
+      <polygon points="600,392 610,410 590,410" fill="none" stroke="var(--gate)" stroke-width="1.4"/>
+      <text x="620" y="408" font-size="11" font-family="ui-monospace,monospace" fill="var(--gate)">its new create-and-parity path is untested in the wild</text>
+
+      <line x1="150" y1="440" x2="150" y2="462" stroke="var(--flow)" stroke-width="1.5" marker-end="url(#a3)"/>
+      <text x="180" y="466" font-size="12" font-family="ui-monospace,monospace" fill="var(--flow)">deck and register agree</text>
+    </svg>
+    <figcaption>
+      The tick and the publish confirmation are two different things. The tick is a
+      <em>selection</em> — it says which rows you mean. The confirmation is the
+      <em>consent</em> — the last screen before anything is written.
+    </figcaption>
+  </figure>
+
+  <div class="note">
+    <strong>Why step 0 re-opens the file.</strong> It used to write the period, read it
+    straight back through PowerPoint, and report success — which reads a cache and
+    confirms its own write. On 8 Aug it said <em>“Deck period is now Q4F26”</em> against a
+    file untouched for three days.
+  </div>
+</section>
+
+<!-- ============================================ CASE 3 -->
+<section class="case">
+  <div class="case-head">
+    <h2>3 · A project joins mid-quarter</h2>
+    <span class="freq">the growth case</span>
+  </div>
+  <p>
+    You add a row to the register for a project that has no slide yet. There is no
+    separate button for this — sync notices, and asks.
+  </p>
+
+  <figure>
+    <svg viewBox="0 0 900 310" role="img"
+         aria-label="Sync Now counts rows with no slide. At or below a quarter of all rows it offers to create them from the template and re-plans; above that share it refuses on the grounds that this is the wrong deck. Both branches are tested but neither has been run for real.">
+      <defs>
+        <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--flow)"/>
+        </marker>
+        <marker id="a4s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--stop)"/>
+        </marker>
+      </defs>
+      <rect x="20" y="120" width="150" height="52" rx="4" fill="none" stroke="var(--flow)" stroke-width="1.5"/>
+      <circle cx="36" cy="136" r="5" fill="var(--flow)"/>
+      <text x="102" y="143" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">4. Sync Now</text>
+      <text x="95" y="161" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">counts orphan rows</text>
+
+      <line x1="176" y1="146" x2="236" y2="146" stroke="var(--flow)" stroke-width="1.5" marker-end="url(#a4)"/>
+
+      <polygon points="330,100 430,146 330,192 230,146" fill="none" stroke="var(--gate)" stroke-width="1.5"/>
+      <text x="330" y="140" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--gate)">rows with</text>
+      <text x="330" y="156" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--gate)">no slide?</text>
+
+      <line x1="430" y1="130" x2="500" y2="88" stroke="var(--flow)" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#a4)"/>
+      <text x="463" y="100" font-size="11" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--flow)">≤ 25%</text>
+
+      <rect x="506" y="58" width="190" height="58" rx="4" fill="none" stroke="var(--flow)" stroke-width="1.5"/>
+      <circle cx="522" cy="74" r="4.4" fill="none" stroke="var(--flow)" stroke-width="1.7"/>
+      <text x="608" y="82" font-size="12" text-anchor="middle" fill="currentColor">create each from</text>
+      <text x="601" y="99" font-size="12" text-anchor="middle" fill="currentColor">the template, tagged</text>
+
+      <line x1="702" y1="87" x2="746" y2="87" stroke="var(--flow)" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#a4)"/>
+      <text x="825" y="82" font-size="12" text-anchor="middle" fill="var(--flow)">re-plan, then</text>
+      <text x="825" y="99" font-size="12" text-anchor="middle" fill="var(--flow)">sync · parity</text>
+
+      <line x1="430" y1="162" x2="500" y2="215" stroke="var(--stop)" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#a4s)"/>
+      <text x="463" y="205" font-size="11" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--stop)">&gt; 25%</text>
+
+      <rect x="506" y="186" width="340" height="66" rx="4" fill="none" stroke="var(--stop)" stroke-width="1.5"/>
+      <circle cx="522" cy="202" r="4.4" fill="none" stroke="var(--flow)" stroke-width="1.7"/>
+      <text x="686" y="209" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--stop)">REFUSE — nothing created, nothing written</text>
+      <text x="676" y="228" font-size="11.5" text-anchor="middle" fill="currentColor" opacity=".7">“this does not look like the right deck”</text>
+      <text x="676" y="244" font-size="11" text-anchor="middle" fill="currentColor" opacity=".55">wrong period, wrong file, or broken instance keys</text>
+
+      <text x="450" y="290" font-size="11" text-anchor="middle" fill="currentColor" opacity=".55">
+        both branches are unit-tested; neither has yet fired on a real deck
+      </text>
+    </svg>
+    <figcaption>
+      The threshold is not a tolerance for orphans. It is a discriminator: a handful of
+      unmatched rows are new projects; most of them mean the deck, the period or the keys
+      disagree with the register — and creating a slide for each would duplicate the
+      template across the deck.
+    </figcaption>
+  </figure>
+
+  <div class="note stop">
+    <strong>This is a real deck, not a hypothetical.</strong> On 31 July the live deck had
+    <strong>43 orphaned rows against 46 slides</strong>. A hand-assembled board pack is
+    missing most entities by design — so unbounded creation would have fired at exactly
+    the moment the content was finished and about to be shown.
+  </div>
+</section>
+
+<!-- ============================================ CASE 4 -->
+<section class="case">
+  <div class="case-head">
+    <h2>4 · Reading every change before it lands</h2>
+    <span class="freq">when sync is too blunt</span>
+  </div>
+  <p>
+    The same write path, a different reading surface. Prose can never be batch-approved,
+    so 43 rewritten paragraphs come here rather than into a dialog.
+  </p>
+
+  <figure>
+    <svg viewBox="0 0 900 215" role="img"
+         aria-label="Preview Sync writes nothing, Review Changes builds a worksheet of every change, you tick what you accept, and Apply Approved writes only those after taking a verified backup. The backup abort is tested but not yet exercised for real.">
+      <defs>
+        <marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--flow)"/>
+        </marker>
+      </defs>
+      <rect x="20" y="50" width="155" height="56" rx="4" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+      <circle cx="36" cy="66" r="5" fill="var(--flow)"/>
+      <text x="100" y="74" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">Preview Sync</text>
+      <text x="97" y="93" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">writes nothing</text>
+
+      <line x1="181" y1="78" x2="226" y2="78" stroke="var(--flow)" stroke-width="1.5" marker-end="url(#a5)"/>
+
+      <rect x="232" y="50" width="165" height="56" rx="4" fill="none" stroke="var(--flow)" stroke-width="1.5"/>
+      <circle cx="248" cy="66" r="5" fill="var(--flow)"/>
+      <text x="318" y="74" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">Review Changes</text>
+      <text x="314" y="93" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">a worksheet, resumable</text>
+
+      <line x1="403" y1="78" x2="448" y2="78" stroke="var(--flow)" stroke-width="1.5" marker-end="url(#a5)"/>
+
+      <rect x="454" y="50" width="150" height="56" rx="4" fill="none" stroke="var(--gate)" stroke-width="1.5"/>
+      <text x="529" y="74" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--gate)">tick what you</text>
+      <text x="529" y="91" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--gate)">accept</text>
+
+      <line x1="610" y1="78" x2="655" y2="78" stroke="var(--flow)" stroke-width="1.5" marker-end="url(#a5)"/>
+
+      <rect x="661" y="50" width="185" height="56" rx="4" fill="none" stroke="var(--flow)" stroke-width="1.5"/>
+      <circle cx="677" cy="66" r="5" fill="var(--flow)"/>
+      <text x="758" y="74" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">Apply Approved</text>
+      <text x="756" y="93" font-size="11" text-anchor="middle" fill="currentColor" opacity=".6">writes only the ticked</text>
+
+      <line x1="753" y1="112" x2="753" y2="142" stroke="var(--gate)" stroke-width="1.2" stroke-dasharray="5 3"/>
+      <rect x="586" y="142" width="300" height="48" rx="4" fill="none" stroke="var(--gate)" stroke-width="1.2"/>
+      <circle cx="602" cy="158" r="4.4" fill="none" stroke="var(--flow)" stroke-width="1.7"/>
+      <text x="745" y="162" font-size="11.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--gate)">GATE · a backup must exist on disk</text>
+      <text x="736" y="179" font-size="11" text-anchor="middle" fill="currentColor" opacity=".65">no backup → nothing is written at all</text>
+
+      <text x="290" y="162" font-size="11.5" fill="currentColor" opacity=".6">A stale tick cannot fire: each row carries a hash</text>
+      <text x="290" y="179" font-size="11.5" fill="currentColor" opacity=".6">of the exact before-and-after you approved.</text>
+    </svg>
+    <figcaption>
+      The hash is what makes a review survive being left overnight. Approve a row on
+      Tuesday, hand-edit that slide on Wednesday, and Thursday's apply drops the row
+      rather than overwriting your edit.
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ============================================ CASE 5 -->
+<section class="case">
+  <div class="case-head">
+    <h2>5 · Parity — the question the whole thing answers</h2>
+    <span class="freq">stated on every sync</span>
+  </div>
+  <p>
+    After a sync, the deck and the register either agree or they do not, and the report
+    says which. Both directions are counted, because until today only one of them was.
+  </p>
+
+  <figure>
+    <svg viewBox="0 0 900 255" role="img"
+         aria-label="Parity has two failure directions. A register row with no slide is counted and named. A slide with no register row was silent: the planner walks the register, so such a slide was never visited and kept last period's text while the run reported clean.">
+      <defs>
+        <marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--stop)"/>
+        </marker>
+      </defs>
+      <text x="215" y="34" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" letter-spacing="1.2" fill="currentColor" opacity=".6">REGISTER</text>
+      <text x="685" y="34" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" letter-spacing="1.2" fill="currentColor" opacity=".6">DECK</text>
+
+      <rect x="120" y="52" width="190" height="26" rx="3" fill="none" stroke="var(--flow)" stroke-opacity=".8"/>
+      <text x="215" y="70" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">2_P004 · Q4F26</text>
+      <rect x="590" y="52" width="190" height="26" rx="3" fill="none" stroke="var(--flow)" stroke-opacity=".8"/>
+      <text x="685" y="70" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">slide 4</text>
+      <line x1="316" y1="65" x2="584" y2="65" stroke="var(--flow)" stroke-width="1.2"/>
+      <text x="450" y="59" font-size="10.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--flow)">matched · synced</text>
+
+      <rect x="120" y="112" width="190" height="26" rx="3" fill="none" stroke="var(--stop)"/>
+      <text x="215" y="130" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">3_P009 · Q4F26</text>
+      <line x1="316" y1="125" x2="560" y2="125" stroke="var(--stop)" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#a6)"/>
+      <text x="450" y="118" font-size="10.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--stop)">no slide carries this key</text>
+      <text x="450" y="142" font-size="10.5" text-anchor="middle" fill="currentColor" opacity=".55">counted, named, and offered for creation</text>
+
+      <rect x="590" y="185" width="190" height="26" rx="3" fill="none" stroke="var(--stop)"/>
+      <text x="685" y="203" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="currentColor">slide 17</text>
+      <line x1="584" y1="198" x2="340" y2="198" stroke="var(--stop)" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#a6)"/>
+      <text x="462" y="191" font-size="10.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--stop)">no row mentions this slide</text>
+      <text x="462" y="215" font-size="10.5" text-anchor="middle" fill="currentColor" opacity=".55">was never visited — kept last period's text, silently</text>
+
+      <circle cx="60" cy="198" r="4.4" fill="none" stroke="var(--flow)" stroke-width="1.7"/>
+      <text x="76" y="202" font-size="10.5" font-family="ui-monospace,monospace" fill="var(--ink-soft)">new today · tested, not yet run</text>
+
+      <line x1="40" y1="46" x2="40" y2="225" stroke="currentColor" stroke-opacity=".2"/>
+      <line x1="855" y1="46" x2="855" y2="225" stroke="currentColor" stroke-opacity=".2"/>
+    </svg>
+    <figcaption>
+      The lower case is the one worth the drawing. The planner walks the
+      <em>register's</em> rows, so a slide the register never mentions produced no action
+      of any kind — not corrected, not flagged, not counted — and every report called the
+      run clean.
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ============================================ CASE 6 -->
+<section class="case">
+  <div class="case-head">
+    <h2>6 · When something is wrong, and what is still missing</h2>
+    <span class="freq">rare, and rarely at a good moment</span>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>Health</th><th>Button</th><th>For</th><th>What it does</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="tested, not yet run for real"><circle cx="6" cy="6" r="4.4" fill="none" stroke="var(--flow)" stroke-width="1.6"/></svg></td>
+          <td><code>Repoint Workbook</code></td>
+          <td>the deck and its workbook got separated</td>
+          <td>Re-pairs them and confirms it in the saved file. Rewritten today — the old version confirmed against PowerPoint's cache.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="run for real"><circle cx="6" cy="6" r="5" fill="var(--flow)"/></svg></td>
+          <td><code>Setup C: Check Coverage</code></td>
+          <td>a slide was redesigned</td>
+          <td>Lists what on the slide is not tracked. Writes a checklist; changes nothing.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="tested, not yet run for real"><circle cx="6" cy="6" r="4.4" fill="none" stroke="var(--flow)" stroke-width="1.6"/></svg></td>
+          <td><code>Setup: Clear Marks</code></td>
+          <td>marking went wrong before a workbook existed</td>
+          <td>Discards all marking so you can start again. Cannot remove just one.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="open decision"><polygon points="6,1 11,10.5 1,10.5" fill="none" stroke="var(--gate)" stroke-width="1.5"/></svg></td>
+          <td><code>Field Spec</code> rows</td>
+          <td>Strategic Alignment, Problem, Project Progress</td>
+          <td>Three of the slide's five prose panels have no recipe and no tagged shape, so nothing tracks them.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="not built"><path d="M2 2 L10 10 M10 2 L2 10" stroke="var(--stop)" stroke-width="1.8" fill="none"/></svg></td>
+          <td>remove a slide</td>
+          <td>a project leaves the deck</td>
+          <td>No way to retire a slide or a project. Shows up only as a parity mismatch you resolve by hand.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="not built"><path d="M2 2 L10 10 M10 2 L2 10" stroke="var(--stop)" stroke-width="1.8" fill="none"/></svg></td>
+          <td>linkage codes list</td>
+          <td>Strategic Alignment cites codes</td>
+          <td>No maintained list exists yet, so the field correctly outputs <code>[TBC]</code> rather than asserting a code it cannot check.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================ ORPHANS -->
+<section class="case">
+  <div class="case-head">
+    <h2>7 · Orphaned code — built, still shipping, acts on nothing</h2>
+    <span class="freq">audited 9 Aug 2026</span>
+  </div>
+  <p>
+    Found by a static scan that reads the toolbar's real wiring and asks the reverse of
+    the usual question: not <em>does this button work</em>, but <em>can a person reach
+    this at all</em>. Two capabilities had been built, tested, and left unreachable
+    before it existed.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>Health</th><th>What</th><th>State</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="open decision"><polygon points="6,1 11,10.5 1,10.5" fill="none" stroke="var(--gate)" stroke-width="1.5"/></svg></td>
+          <td><code>cadence</code> — 6th parameter of <code>WriteDraftingSheet</code></td>
+          <td>Production passes five arguments, so it is permanently <code>Nothing</code>. Built for <code>Quarter = ALL</code>, retired 3 Aug. Every rollover therefore clears every drafting row.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="open decision"><polygon points="6,1 11,10.5 1,10.5" fill="none" stroke="var(--gate)" stroke-width="1.5"/></svg></td>
+          <td><code>FieldVolatility</code> — static / variable</td>
+          <td>You are asked this once per field during the most expensive interaction in the tool — roughly 52 times on a real deck — and <strong>nothing ever reads the answer</strong>.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="open decision"><polygon points="6,1 11,10.5 1,10.5" fill="none" stroke="var(--gate)" stroke-width="1.5"/></svg></td>
+          <td><code>FieldType</code> — text / number / currency / date</td>
+          <td>Collected, normalised, written to the grid, never acted on. Deliberately inert with a written reason, but it still costs a prompt per field.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="open decision"><polygon points="6,1 11,10.5 1,10.5" fill="none" stroke="var(--gate)" stroke-width="1.5"/></svg></td>
+          <td><code>"Quarter"</code> as the register's column header</td>
+          <td>A hardcoded literal in two places. Renaming it to <code>Period</code> — which is what everything else now calls it — needs a migration and a back-compat read.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="resolved"><circle cx="6" cy="6" r="5" fill="var(--flow)"/></svg></td>
+          <td>Removed today</td>
+          <td><code>Timeline.bas</code> (zero callers anywhere), <code>OnboardFlow.bas</code>, <code>Register.bas</code>, <code>RegisterSeed.bas</code>, and four buttonless entry points — about 1,100 lines that shipped in every build. With them went <code>Status</code>, <code>Seed/Draft/Approved</code>, <code>Quarter = ALL</code> and <code>Cadence</code> as things a person could still meet.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <strong>A question a column cannot answer is not a setting, it is a toll.</strong>
+    Two of the rows above are asked of a person during setup and read by nothing —
+    together they account for two of the three prompts per field, on ~52 fields.
+  </div>
+</section>
+
+<!-- ============================================ GAPS -->
+<section class="case">
+  <div class="case-head">
+    <h2>8 · Capability gaps — things a person still cannot do</h2>
+    <span class="freq">the honest list</span>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>Health</th><th>Gap</th><th>What happens instead</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="not built"><path d="M2 2 L10 10 M10 2 L2 10" stroke="var(--stop)" stroke-width="1.8" fill="none"/></svg></td>
+          <td>Retire a slide or a project</td>
+          <td>Nothing removes a slide the register no longer mentions. It shows as a parity mismatch and you fix it by hand — and until today it did not even show as that.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="not built"><path d="M2 2 L10 10 M10 2 L2 10" stroke="var(--stop)" stroke-width="1.8" fill="none"/></svg></td>
+          <td>Three of five prose panels</td>
+          <td>Strategic Alignment, Problem and Project Progress have no recipe and no tagged shape. They are hand-typed every quarter, and a stale one is invisible to every check the tool has.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="not built"><path d="M2 2 L10 10 M10 2 L2 10" stroke="var(--stop)" stroke-width="1.8" fill="none"/></svg></td>
+          <td>A maintained list of linkage codes</td>
+          <td>Strategic Alignment must cite codes it can check. With no list, the honest output is <code>[TBC]</code> — which is the recipe working, not failing.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="open decision"><polygon points="6,1 11,10.5 1,10.5" fill="none" stroke="var(--gate)" stroke-width="1.5"/></svg></td>
+          <td>Provenance that survives a rollover</td>
+          <td>Source citations live only on the drafting sheet, which is cleared at every period change. So the record answering “why does it say 90%?” has a lifespan of one quarter.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="open decision"><polygon points="6,1 11,10.5 1,10.5" fill="none" stroke="var(--gate)" stroke-width="1.5"/></svg></td>
+          <td>Anything but text</td>
+          <td>Pictures, shapes, tables and charts are named in the specs and out of scope in the code. Parked deliberately until one field has gone end to end with real content.</td>
+        </tr>
+        <tr>
+          <td class="h"><svg class="hdot" viewBox="0 0 12 12" aria-label="open decision"><polygon points="6,1 11,10.5 1,10.5" fill="none" stroke="var(--gate)" stroke-width="1.5"/></svg></td>
+          <td>A real quarter, produced</td>
+          <td>The one measure that matters, and still zero. Everything above is what stands between here and it.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <div>
+    <strong>Keeping this current.</strong> The source lives at
+    <span class="mono">docs/use-cases.html</span> in the deck-sync repo, next to the code
+    it describes. Any change to the toolbar, a gate, or a health state belongs in the
+    same commit as the change itself — a status page that lags is worse than none,
+    because it reads as verified.
+  </div>
+  <div>
+    Verified against <span class="mono">main</span> on 9 Aug 2026: 154 tests passing
+    behind a compile gate and a static gate, 30 modules, zero reachability gaps. Every
+    gate shown here exists because something got through without it first.
+  </div>
+</footer>
+
+</div>
