@@ -801,8 +801,15 @@ Public Function ConfirmBatchText(q As ReviewQueueSet) As String
             "opens straight afterwards." & vbCrLf
     End If
 
-    s = s & vbCrLf & "Apply the " & DistinctBatchCount(q) & " uniform change(s) above?"
+    s = s & vbCrLf & ConfirmBatchQuestion(q)
     ConfirmBatchText = s
+End Function
+
+' The question alone, so a caller can hand it to CapReport as the tail that must
+' survive truncation. One source: ConfirmBatchText appends exactly this, so the
+' capped dialog and the full one cannot ask different questions.
+Public Function ConfirmBatchQuestion(q As ReviewQueueSet) As String
+    ConfirmBatchQuestion = "Apply the " & DistinctBatchCount(q) & " uniform change(s) above?"
 End Function
 
 ' Why the fast path was refused, in the words a human needs to act on it.

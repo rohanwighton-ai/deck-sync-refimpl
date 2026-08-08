@@ -640,6 +640,59 @@ Public Function SetDeckPeriodVerified(pres As Object, period As String, ByVal at
     Next n
 End Function
 
+' The paired workbook path as it is stored IN THE SAVED FILE, or "" if absent.
+'
+' Deliberately NOT GetWorkbookPath. That resolver falls back to a workbook sitting
+' beside the deck when the stored path no longer exists, which is right for opening
+' the pair and WRONG for verification: it can return a path that was never written
+' and read as confirmation of the write. A verifier must answer "what is actually
+' recorded", not "what would we open".
+Public Function WorkbookPathOnDisk(deckPath As String, Optional ByRef trace As String) As String
+    WorkbookPathOnDisk = PropertyOnDisk(deckPath, WORKBOOK_PATH_PROPERTY_NAME, trace)
+End Function
+
+' Returns "" when the pairing is confirmed in the saved file, otherwise a message
+' saying exactly what happened. NEVER returns "" on an unverified write.
+'
+' Same shape and same reason as SetDeckPeriodVerified above. RepointWorkbookUI used
+' to write the property, read it straight back through the same Presentation object,
+' report "Paired workbook is now: <path>", and then tell the person to save the deck
+' themselves -- which is the 2026-08-08 Start-a-Quarter defect exactly, 130 lines
+' below the fixed version, with the remedy already sitting in this module. An
+' in-process read returns PowerPoint's cache and confirms the write whether or not a
+' byte moved; the instruction to "save it so this survives" is the very step that
+' silently did not happen when it was reported for the period.
+Public Function SetWorkbookPathVerified(pres As Object, newPath As String, ByVal attempts As Long) As String
+    If attempts < 1 Then attempts = 1
+
+    Dim path As String
+    path = pres.FullName
+
+    Dim n As Long
+    For n = 1 To attempts
+        On Error Resume Next
+        RepointWorkbook pres, newPath
+        pres.SaveAs path, 24            ' ppSaveAsOpenXMLPresentation -- forces a full rewrite
+        Dim writeErr As String
+        writeErr = ""
+        If Err.Number <> 0 Then writeErr = "Error " & Err.Number & ": " & Err.Description
+        Err.Clear
+        On Error GoTo 0
+
+        If StrComp(WorkbookPathOnDisk(path), newPath, vbTextCompare) = 0 Then Exit Function
+
+        If n = attempts Then
+            SetWorkbookPathVerified = "THE PAIRING DID NOT REACH THE FILE after " & attempts & _
+                " attempt(s)." & vbCrLf & vbCrLf & _
+                "Asked for: " & newPath & vbCrLf & _
+                "On disk:   " & IIf(WorkbookPathOnDisk(path) = "", "(nothing)", WorkbookPathOnDisk(path)) & _
+                IIf(writeErr = "", "", vbCrLf & writeErr) & vbCrLf & vbCrLf & _
+                "Do not draft or sync until this is right. A deck pointed at the wrong " & _
+                "workbook reads every field from the wrong register and reports success."
+        End If
+    Next n
+End Function
+
 ' A short pause that does not need a Windows API declaration -- kept separate
 ' so the wait in PeriodOnDisk reads as a wait rather than as arithmetic.
 Private Sub WaitAMoment()

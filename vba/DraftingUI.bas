@@ -586,13 +586,18 @@ Public Sub PublishDraftsForField()
     ' Reported, not assumed: the result says where it saved, and says loudly if
     ' the save did not take -- a read-only workbook (see FIRST-REAL-RUN finding
     ' 14) fails here silently otherwise.
+    ' Err.Number = 0 IS NOT EVIDENCE THE FILE MOVED. It was the check here while
+    ' the other three write paths in this module (:400, :487, :767) all used
+    ' SaveWorkbookVerified, which compares the file's DateLastModified before and
+    ' after. The gap matters most in exactly the case this block exists to catch:
+    ' WorkbookBridge documents a macro-enabled/managed-policy save that is SILENT
+    ' -- no error raised -- so Err.Number stays 0 and the register reports "SAVED"
+    ' against a file nothing was written to. This is the button that writes the
+    ' record, and it was the one still trusting the writer.
     Dim savedOk As Boolean
-    savedOk = False
-    On Error Resume Next
-    wb.Save
-    savedOk = (Err.Number = 0)
-    Err.Clear
-    On Error GoTo 0
+    Dim saveProblemText As String
+    saveProblemText = WorkbookBridge.SaveWorkbookVerified(wb)
+    savedOk = (saveProblemText = "")
 
     If savedOk Then
         result = result & vbCrLf & vbCrLf & "Register SAVED to:" & vbCrLf & wb.FullName
@@ -601,6 +606,7 @@ Public Sub PublishDraftsForField()
             "!! THE REGISTER COULD NOT BE SAVED !!" & vbCrLf & _
             "The rows above are in Excel's memory and NOT on disk. Do not close " & _
             "Excel without saving." & vbCrLf & vbCrLf & _
+            saveProblemText & vbCrLf & vbCrLf & _
             "Most likely the file is open read-only, or somewhere you cannot write:" & vbCrLf & _
             wb.FullName
     End If
@@ -806,14 +812,25 @@ Public Sub RepointWorkbookUI()
         CAP, current))
     If typed = "" Then Exit Sub
 
-    DeckRegistry.RepointWorkbook pres, typed
+    ' VERIFIED AGAINST THE FILE'S OWN BYTES, and it saves the deck itself.
+    '
+    ' This used to call RepointWorkbook, read the value straight back through
+    ' GetWorkbookPath on the same Presentation object, report success, and then ask
+    ' the person to save the deck. Two faults in one: the read-back is PowerPoint's
+    ' cache, so it confirmed the write regardless of what reached disk; and
+    ' GetWorkbookPath falls back to a workbook beside the deck, so it could report a
+    ' path that was never written at all.
+    Dim problem As String
+    problem = DeckRegistry.SetWorkbookPathVerified(pres, typed, 4)
 
-    Dim readBack As String
-    readBack = DeckRegistry.GetWorkbookPath(pres)
-    MsgBox "Paired workbook is now:" & vbCrLf & vbCrLf & readBack & vbCrLf & vbCrLf & _
-           "Save the deck so this survives closing it." & vbCrLf & vbCrLf & _
-           "Keep the deck and its workbook in the SAME FOLDER -- then the pairing " & _
-           "repairs itself when either moves.", vbInformation, CAP
+    If problem = "" Then
+        MsgBox "Paired workbook is now:" & vbCrLf & vbCrLf & typed & vbCrLf & vbCrLf & _
+               "Confirmed in the saved file -- the deck has been saved for you." & vbCrLf & vbCrLf & _
+               "Keep the deck and its workbook in the SAME FOLDER -- then the pairing " & _
+               "repairs itself when either moves.", vbInformation, CAP
+    Else
+        MsgBox problem, vbCritical, CAP
+    End If
     Exit Sub
 
 Failed:

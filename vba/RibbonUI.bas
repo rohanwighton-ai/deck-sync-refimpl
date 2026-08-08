@@ -192,7 +192,17 @@ Private Sub SyncNowCore()
     deckMacroWarn = WorkbookBridge.MacroEnabledWarning(pres.fullName)
     If deckMacroWarn <> "" Then deckMacroWarn = deckMacroWarn & vbCrLf & vbCrLf
 
-    If MsgBox(deckMacroWarn & ReviewQueue.ConfirmBatchText(combined), vbYesNo + vbQuestion, "Sync Now") <> vbYes Then
+    ' CAPPED, AND THE QUESTION IS THE PART THAT SURVIVES.
+    '
+    ' This was a raw MsgBox while CapReport's own header named it as one of the
+    ' eighteen callers left untouched. BatchSummaryText emits a before/after line
+    ' plus every member key per batch -- roughly 450 characters for one 43-member
+    ' batch -- so past about two batches this exceeded MsgBox's silent ~1024 limit.
+    ' It is the dialog that authorises writing to slides, which makes a silent cut
+    ' here the worst instance of the four this project has already fixed elsewhere.
+    If MsgBox(CapReport(deckMacroWarn & ReviewQueue.ConfirmBatchText(combined), _
+                        ReviewQueue.ConfirmBatchQuestion(combined)), _
+              vbYesNo + vbQuestion, "Sync Now") <> vbYes Then
         Exit Sub
     End If
 
@@ -337,8 +347,11 @@ Private Function WarnOnDuplicateKeys(title As String, types() As String, lo As L
         Dim dupReport As DuplicateKeyReport
         dupReport = IdentityCheck.FindDuplicateKeys(types(dupType))
         If dupReport.HasDuplicates Then
-            If MsgBox(IdentityCheck.DuplicateKeyWarningText(types(dupType), dupReport) & _
-                      vbCrLf & vbCrLf & "Continue anyway?", _
+            ' Capped for the same reason as Sync Now's confirmation, and with the
+            ' same tail preserved: this lists every duplicated key, so a deck with
+            ' many of them is exactly the case where the question would be cut.
+            If MsgBox(CapReport(IdentityCheck.DuplicateKeyWarningText(types(dupType), dupReport) & _
+                      vbCrLf & vbCrLf & "Continue anyway?", "Continue anyway?"), _
                       vbYesNo + vbExclamation + vbDefaultButton2, title) <> vbYes Then
                 Exit Function
             End If
@@ -699,7 +712,19 @@ Private Sub SyncPreviewCore()
     ' file is still a preview of something that might never be synced, and the
     ' whole worth of this report is that it can be trusted. Stated at the TOP:
     ' a caveat below a long report is a caveat nobody reads.
-    If WorkbookBridge.IsDirty(wb) Then
+    ' MEASURED ONCE, BEFORE THIS RUN DIRTIES ANYTHING ITSELF.
+    '
+    ' There used to be a second IsDirty test further down, after WriteRunLog. That
+    ' one could never be false: WriteRunLog clears and rewrites cells, so the
+    ' workbook is unsaved BECAUSE OF THIS RUN by the time it was asked. The single
+    ' warning that means "this preview cannot be trusted" was therefore shown on
+    ' every preview including clean ones -- which is how you train someone to click
+    ' past the one that will matter. Same shape as an always-true guard: it reads
+    ' as care taken and stops anyone re-checking.
+    Dim wbWasDirty As Boolean
+    wbWasDirty = WorkbookBridge.IsDirty(wb)
+
+    If wbWasDirty Then
         fullReport = "NOTE: the Data workbook has unsaved changes, so this preview " & _
             "reflects what is on screen in Excel, not what is in the file." & vbCrLf & _
             "Save it before syncing." & vbCrLf & vbCrLf & fullReport
@@ -720,7 +745,9 @@ Private Sub SyncPreviewCore()
         "' sheet in the workbook, untruncated." & vbCrLf & vbCrLf & _
         "Read it there, then run Sync Now."
 
-    If WorkbookBridge.IsDirty(wb) Then
+    ' wbWasDirty, NOT a fresh IsDirty -- WriteRunLog above has dirtied the workbook
+    ' by now, so re-asking would always answer yes. See the note at the first test.
+    If wbWasDirty Then
         shortReport = "NOTE: the Data workbook has unsaved changes, so this preview " & _
             "reflects what is on screen in Excel, not what is in the file." & vbCrLf & vbCrLf & _
             shortReport
@@ -1230,12 +1257,27 @@ End Function
 ' authorised: it ended mid-word at "would", with the summary below the cut.
 '
 ' Any dialog anywhere can now call this instead of inventing its own answer.
-Public Function CapReport(text As String) As String
+' mustKeep is a tail ALREADY PRESENT at the end of text that must survive the cut.
+' Pass the question on any dialog that asks permission. ConfirmBatchText appends
+' "Apply the N uniform change(s) above?" LAST, so a plain truncation removed the
+' question and left Yes/No buttons answering nothing -- the person is then agreeing
+' to a list they can only partly see, with no visible thing being agreed to.
+' Not duplicated when the text fits: under the cap the tail is already there and
+' the function returns early.
+Public Function CapReport(text As String, Optional mustKeep As String = "") As String
     CapReport = text
     If Len(text) <= REPORT_CAP Then Exit Function
-    CapReport = Left$(text, REPORT_CAP) & vbCrLf & vbCrLf & _
-        "[shortened -- the full list is on the '" & WorkbookBridge.RUN_LOG_SHEET_NAME & _
-        "' sheet in the workbook]"
+
+    Dim notice As String
+    notice = vbCrLf & vbCrLf & "[shortened -- the full list is on the '" & _
+        WorkbookBridge.RUN_LOG_SHEET_NAME & "' sheet in the workbook]"
+
+    Dim room As Long
+    room = REPORT_CAP - Len(notice) - Len(mustKeep)
+    If room < 200 Then room = 200      ' a floor, so a long tail cannot erase the body
+
+    CapReport = Left$(text, room) & notice
+    If mustKeep <> "" Then CapReport = CapReport & vbCrLf & vbCrLf & mustKeep
 End Function
 
 Public Sub ShowSyncResult(title As String, report As String)

@@ -675,6 +675,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "BatchOnboardFlow_InstanceKeyGridPrefillsAndCatchesClashes", r
     r = Test_RibbonUI_UnexpectedErrorTextTellsTheTruth()
     AppendResult report, "RibbonUI_UnexpectedErrorTextTellsTheTruth", r
+    r = Test_RibbonUI_CapReportKeepsTheQuestion()
+    AppendResult report, "RibbonUI_CapReportKeepsTheQuestion", r
     r = Test_RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero()
     AppendResult report, "RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
@@ -6084,6 +6086,59 @@ Private Function Test_RibbonUI_UnexpectedErrorTextTellsTheTruth() As String
         "a missing Err.Source still reads as a sentence, got '" & blankSource & "'")
 
     Test_RibbonUI_UnexpectedErrorTextTellsTheTruth = result
+End Function
+
+' THE PART A PERSON IS AGREEING TO MUST SURVIVE THE CUT.
+'
+' MsgBox truncates near 1024 characters silently. ConfirmBatchText appends
+' "Apply the N uniform change(s) above?" LAST, and Sync Now's confirmation was a
+' raw MsgBox -- so on a deck with more than about two batches the question was
+' the part that disappeared, leaving Yes/No buttons over a partial list with
+' nothing visibly being asked. Capping alone does not fix that; the tail has to
+' be carried past the cut deliberately.
+Private Function Test_RibbonUI_CapReportKeepsTheQuestion() As String
+    Dim result As String
+    Dim question As String
+    question = "Apply the 7 uniform change(s) above?"
+
+    ' Short text: returned untouched, and the tail is NOT doubled. The tail is
+    ' already inside the text -- appending it again would show the question twice.
+    Dim shortText As String
+    shortText = "Two changes." & vbCrLf & question
+    result = result & Assert(RibbonUI.CapReport(shortText, question) = shortText, _
+        "a report under the cap is returned unchanged")
+    result = result & Assert(CountOccurrences(RibbonUI.CapReport(shortText, question), question) = 1, _
+        "and the question is not duplicated")
+
+    ' Long text: body is cut, cut is announced, question still there and LAST.
+    Dim longText As String
+    longText = String(2000, "x") & vbCrLf & question
+    Dim capped As String
+    capped = RibbonUI.CapReport(longText, question)
+    result = result & Assert(Len(capped) < Len(longText), "an over-long report is actually shortened")
+    result = result & Assert(InStr(capped, "[shortened") > 0, "and the cut is announced, not silent")
+    result = result & Assert(InStr(capped, question) > 0, _
+        "and the QUESTION survives the cut -- got '" & Right$(capped, 80) & "'")
+    result = result & Assert(Right$(capped, Len(question)) = question, _
+        "and it is the last thing on screen")
+
+    ' Without a tail, the old behaviour is unchanged: capped and announced.
+    Dim plain As String
+    plain = RibbonUI.CapReport(String(2000, "y"))
+    result = result & Assert(Len(plain) < 2000 And InStr(plain, "[shortened") > 0, _
+        "a report with no must-keep tail is still capped and announced")
+
+    Test_RibbonUI_CapReportKeepsTheQuestion = result
+End Function
+
+Private Function CountOccurrences(haystack As String, needle As String) As Long
+    If needle = "" Then Exit Function
+    Dim p As Long
+    p = InStr(haystack, needle)
+    Do While p > 0
+        CountOccurrences = CountOccurrences + 1
+        p = InStr(p + Len(needle), haystack, needle)
+    Loop
 End Function
 
 ' Proves the wrapper pattern is load-bearing rather than decorative.
