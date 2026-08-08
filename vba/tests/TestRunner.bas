@@ -527,6 +527,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_PeriodOnDiskReadsTheSavedFile()
+    AppendResult report, "DeckRegistry_PeriodOnDiskReadsTheSavedFile", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_Sources_RefsForOtherPeriodCatchesTheWrongQuarter()
     AppendResult report, "Sources_RefsForOtherPeriodCatchesTheWrongQuarter", r
     On Error GoTo 0
@@ -4882,6 +4887,56 @@ End Function
 ' Both directions are driven here on purpose. A test that only proves the wrong
 ' quarter is caught would still pass if the function reported EVERY citation --
 ' which is the failure that trains you to ignore the report.
+' Reads the period out of a SAVED .pptx's bytes, sharing no process, no cache and
+' no code with the writer -- the only kind of verification that means anything
+' here, since an in-process read-back confirmed its own write against a file that
+' had not been touched for three days (2026-08-08).
+'
+' Written because the first VBA version returned "" against a file that provably
+' held the value: a PowerShell probe making the same COM calls read it correctly,
+' so the technique was sound and the VBA was not. Guessing at the difference is
+' exactly the habit this project keeps paying for, so it gets a test instead.
+Private Function Test_DeckRegistry_PeriodOnDiskReadsTheSavedFile() As String
+    Dim result As String
+
+    Dim testPath As String
+    testPath = Environ("TEMP") & "\deck_sync_test_period_" & Format(Now, "hhmmss") & ".pptx"
+
+    Dim testPres As Object
+    Set testPres = Application.Presentations.Add
+    testPres.SaveAs testPath
+
+    ' A period nobody would produce by accident, so a stale file cannot pass this.
+    Const PROBE_PERIOD As String = "ZZ9F99"
+    DeckRegistry.SetDeckPeriod testPres, PROBE_PERIOD
+    testPres.SaveAs testPath
+
+    Dim onDisk As String, trace As String
+    onDisk = DeckRegistry.PeriodOnDisk(testPath, trace)
+    result = result & Assert(onDisk = PROBE_PERIOD, _
+        "PeriodOnDisk reads the value from the saved file, got '" & onDisk & "' [" & trace & "]")
+
+    ' A deck that declares nothing must read as "" rather than erroring, because
+    ' the caller treats "" as "not confirmed" and retries.
+    Dim blankPath As String
+    blankPath = Environ("TEMP") & "\deck_sync_test_noperiod_" & Format(Now, "hhmmss") & ".pptx"
+    Dim blankPres As Object
+    Set blankPres = Application.Presentations.Add
+    blankPres.SaveAs blankPath
+    result = result & Assert(DeckRegistry.PeriodOnDisk(blankPath) = "", _
+        "a deck with no period reads as empty, not an error")
+
+    result = result & Assert(DeckRegistry.PeriodOnDisk(Environ("TEMP") & "\no_such_deck_here.pptx") = "", _
+        "a missing file reads as empty rather than raising")
+
+    testPres.Saved = True
+    testPres.Close
+    blankPres.Saved = True
+    blankPres.Close
+
+    Test_DeckRegistry_PeriodOnDiskReadsTheSavedFile = result
+End Function
+
 Private Function Test_Sources_RefsForOtherPeriodCatchesTheWrongQuarter() As String
     Dim result As String
 

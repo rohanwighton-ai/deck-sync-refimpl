@@ -407,12 +407,16 @@ End Sub
 ' always regenerate docProps/custom.xml, while SaveAs forces a full rewrite.
 ' That is the measured direction, not a guarantee -- hence write, verify,
 ' retry, and fail LOUDLY rather than return a wrong answer.
-Public Function PeriodOnDisk(deckPath As String) As String
+Public Function PeriodOnDisk(deckPath As String, Optional ByRef trace As String) As String
     On Error GoTo Failed
 
     Dim fso As Object
     Set fso = CreateObject("Scripting.FileSystemObject")
-    If Not fso.FileExists(deckPath) Then Exit Function
+    trace = "fso ok"
+    If Not fso.FileExists(deckPath) Then
+        trace = trace & " | file missing: " & deckPath
+        Exit Function
+    End If
 
     Dim work As String
     ' .Path spelled out: GetSpecialFolder returns a Folder object, and relying on
@@ -420,28 +424,64 @@ Public Function PeriodOnDisk(deckPath As String) As String
     ' behaviour that reads fine and breaks somewhere else.
     work = fso.BuildPath(fso.GetSpecialFolder(2).Path, "dsverify_" & Format(Now, "hhnnss") & Int(Rnd * 10000))
     fso.CreateFolder work
+    trace = trace & " | work=" & work
 
     Dim zipPath As String, outDir As String
     zipPath = fso.BuildPath(work, "deck.zip")
     outDir = fso.BuildPath(work, "out")
     fso.CreateFolder outDir
     fso.CopyFile deckPath, zipPath
+    trace = trace & " | copied"
 
     Dim sh As Object
     Set sh = CreateObject("Shell.Application")
 
+    ' VARIANT, NOT STRING, and this is the whole bug that made the first version
+    ' return "" against a file that provably held the value. Shell.Application's
+    ' Namespace takes a Variant; handed a String-typed VBA variable it returns
+    ' NOTHING rather than raising, so the next call died with error 91 and the
+    ' function reported "not on disk" for a perfectly good file. The identical
+    ' COM calls from PowerShell worked, which is exactly why the technique looked
+    ' proven and the code still failed.
+    Dim zipVar As Variant, outVar As Variant, propsVar As Variant
+    zipVar = zipPath
+    outVar = outDir
+
+    Dim zipNs As Object
+    Set zipNs = sh.Namespace(zipVar)
+    If zipNs Is Nothing Then
+        trace = trace & " | Namespace(zip) returned Nothing"
+        GoTo Cleanup
+    End If
+
     Dim props As Object
-    Set props = sh.Namespace(zipPath).ParseName("docProps")
-    If props Is Nothing Then GoTo Cleanup
+    Set props = zipNs.ParseName("docProps")
+    If props Is Nothing Then
+        trace = trace & " | docProps NOT FOUND"
+        GoTo Cleanup
+    End If
+    trace = trace & " | docProps=" & props.Path
+
+    propsVar = props.Path
+    Dim propsNs As Object
+    Set propsNs = sh.Namespace(propsVar)
+    If propsNs Is Nothing Then
+        trace = trace & " | Namespace(docProps) returned Nothing"
+        GoTo Cleanup
+    End If
 
     Dim customFile As Object
-    Set customFile = sh.Namespace(props.Path).ParseName("custom.xml")
-    If customFile Is Nothing Then GoTo Cleanup
+    Set customFile = propsNs.ParseName("custom.xml")
+    If customFile Is Nothing Then
+        trace = trace & " | custom.xml NOT FOUND"
+        GoTo Cleanup
+    End If
+    trace = trace & " | found custom.xml"
 
     ' 16 = "yes to all". CopyHere is ASYNCHRONOUS, so the file is waited for
     ' rather than assumed -- reading it immediately is a race, and a race that
     ' usually wins is worse than one that always loses.
-    sh.Namespace(outDir).CopyHere customFile, 16
+    sh.Namespace(outVar).CopyHere customFile, 16
 
     Dim extracted As String
     extracted = fso.BuildPath(outDir, "custom.xml")
@@ -451,14 +491,21 @@ Public Function PeriodOnDisk(deckPath As String) As String
         WaitAMoment
         waited = waited + 1
     Loop
-    If Not fso.FileExists(extracted) Then GoTo Cleanup
+    If Not fso.FileExists(extracted) Then
+        trace = trace & " | EXTRACT TIMED OUT after " & waited
+        GoTo Cleanup
+    End If
+    trace = trace & " | extracted"
 
     Dim xml As String
     xml = fso.OpenTextFile(extracted, 1).ReadAll
 
     Dim atProp As Long
     atProp = InStr(1, xml, PROP_DECK_PERIOD, vbTextCompare)
-    If atProp = 0 Then GoTo Cleanup
+    If atProp = 0 Then
+        trace = trace & " | property name not in xml (len=" & Len(xml) & ")"
+        GoTo Cleanup
+    End If
 
     Dim openTag As Long, closeTag As Long
     openTag = InStr(atProp, xml, "<vt:lpwstr>")
@@ -476,6 +523,7 @@ Cleanup:
     Exit Function
 
 Failed:
+    trace = trace & " | ERROR " & Err.Number & ": " & Err.Description
     On Error Resume Next
     If Not fso Is Nothing Then fso.DeleteFolder work, True
     On Error GoTo 0
