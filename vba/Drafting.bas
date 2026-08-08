@@ -54,15 +54,25 @@ Option Explicit
 ' it" are different acts, and the old single Draft column could not tell them
 ' apart. Copy AI -> Submit is one action away and fills only EMPTY Submit
 ' cells, so re-running it can never overwrite an edit you made.
+' READ, WRITE, TICK -- ADJACENT. Reordered 2026-08-08.
+'
+' ORIGINAL was column C and SUBMIT column G, with Chars, Sources and AI Draft
+' between them. Reading C then typing in G is the action repeated once per
+' project -- 43 times for one field -- and it meant crossing four columns each
+' time, or scrolling sideways on a narrower screen. Everything else on the sheet
+' is consulted occasionally; these three are the work.
+'
+' PROMPT stays at column 12 so Copilot's prompt is still in cell L2 -- that
+' address is written in the on-sheet instructions and in the toolbar tooltip.
 Public Const COL_D_ENTITY As Long = 1
 Public Const COL_D_NAME As Long = 2
-Public Const COL_D_CURRENT As Long = 3
-Public Const COL_D_CHARS As Long = 4
-Public Const COL_D_SOURCES As Long = 5
-Public Const COL_D_DRAFT As Long = 6
-Public Const COL_D_SUBMIT As Long = 7
-Public Const COL_D_SUBCHARS As Long = 8
-Public Const COL_D_APPROVED As Long = 9
+Public Const COL_D_CURRENT As Long = 3      ' C  ORIGINAL
+Public Const COL_D_SUBMIT As Long = 4       ' D  your text
+Public Const COL_D_APPROVED As Long = 5     ' E  the tick
+Public Const COL_D_DRAFT As Long = 6        ' F  AI draft
+Public Const COL_D_SOURCES As Long = 7
+Public Const COL_D_CHARS As Long = 8
+Public Const COL_D_SUBCHARS As Long = 9
 Public Const COL_D_NOTES As Long = 10
 Public Const COL_D_LAYOUT As Long = 11
 Public Const COL_D_PERIOD As Long = 13
@@ -81,7 +91,7 @@ Public Const COL_D_PROMPT As Long = 12
 ' did not match: "3 left alone (you had already written something there)" when
 ' only one row had been written. The number was the only evidence; nothing
 ' raised, and the sheet looked fine.
-Public Const DRAFT_LAYOUT_VERSION As Long = 2
+Public Const DRAFT_LAYOUT_VERSION As Long = 3
 
 ' The instruction block occupies rows 1-7, so the grid starts lower.
 '
@@ -278,10 +288,10 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Cells(2, 1).Value = "1.  Read column C (ORIGINAL) -- what the slide says today."
     ws.Cells(3, 1).Value = "2.  List the source IDs you are working from in column E. Add new ones on the Sources sheet first."
     ws.Cells(4, 1).Value = "3.  Ask Copilot for a draft (prompt is in L2). It writes into column F (AI DRAFT). F is never published."
-    ws.Cells(5, 1).Value = "4.  Run Copy AI to Submit, then EDIT column G (SUBMIT) until you are happy. G is what gets sent."
-    ws.Cells(6, 1).Value = "5.  Type  Y  in column I, save and CLOSE the file, then run Publish and Apply."
+    ws.Cells(5, 1).Value = "4.  Run Copy AI to Submit, then EDIT column D (SUBMIT) until you are happy. D is what gets sent."
+    ws.Cells(6, 1).Value = "5.  Type  Y  in column E, save and CLOSE the file, then run Publish and Apply."
 
-    ws.Cells(7, 1).Value = "Only column G is published -- nothing the AI writes reaches a slide unless you have put it in SUBMIT and ticked it. " & _
+    ws.Cells(7, 1).Value = "Only column D is published -- nothing the AI writes reaches a slide unless you have put it in SUBMIT and ticked it. " & _
                            "Column C is read-only: edit the register, not this sheet, to change what a slide says today."
     ws.Cells(7, 1).Font.Italic = True
 
@@ -298,11 +308,11 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Cells(DRAFT_HEADER_ROW, COL_D_NAME).Value = "Project name"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_CURRENT).Value = "C  --  ORIGINAL, what the slide says now (read-only)"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_CHARS).Value = "Chars"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_SOURCES).Value = "E  --  SOURCES (IDs from the Sources sheet, e.g. S01,S03)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_SOURCES).Value = "G  --  SOURCES (IDs from the Sources sheet, e.g. S01,S03)"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_DRAFT).Value = "F  --  AI DRAFT (Copilot writes here -- NEVER published)"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_SUBMIT).Value = "G  --  SUBMIT, your text (THIS is what gets sent)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_SUBMIT).Value = "D  --  SUBMIT, your text (THIS is what gets sent)"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_SUBCHARS).Value = "Chars"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_APPROVED).Value = "I  --  TYPE Y TO USE IT"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_APPROVED).Value = "E  --  TYPE Y TO USE IT"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES).Value = "J  --  your notes (optional)"
     ws.Rows(DRAFT_HEADER_ROW).Font.Bold = True
     ws.Rows(DRAFT_HEADER_ROW).WrapText = True
@@ -748,7 +758,7 @@ Public Function CopyAiToSubmit(ws As Object) As String
     CopyAiToSubmit = "Copy AI -> Submit: " & copied & " copied, " & _
         keptExisting & " left alone (you had already written something there), " & _
         noAi & " with no AI draft." & vbCrLf & _
-        "Nothing was overwritten. Edit column G, tick column I, then publish." & vbCrLf
+        "Nothing was overwritten. Edit column D, tick column E, then publish." & vbCrLf
 End Function
 
 ' Refresh the SUBMIT character counts without touching any text. Cheap, and it

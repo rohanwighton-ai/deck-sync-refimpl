@@ -165,7 +165,7 @@ Public Sub ShowToolbar()
     AddButton bar, "0b. Roll Forward", "DraftingUI.RollForwardUI", 1017, _
         "Use to copy last period's rows into this one. Refuses if this period already has rows."
     AddButton bar, "1. Drafting Sheets", "DraftingUI.RefreshDraftingSheets", 1697, _
-        "Use to build the sheets you write on. Your text goes in column G, the tick in column I.", True
+        "Use to build the sheets you write on. Your text goes in column D, the tick in column E.", True
     AddButton bar, "2. Copy AI to Submit", "DraftingUI.CopyAiDraftsToSubmit", 122, _
         "Use to move Copilot's drafts into the column that publishes. Never overwrites your own words."
     AddButton bar, "3. Publish & Preview", "DraftingUI.PublishDraftsForField", 3, _

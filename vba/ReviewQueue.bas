@@ -134,10 +134,20 @@ Public Const KIND_STATIC As String = "Static"           ' individually, but rare
 ' symptom would be approvals that quietly stopped existing. Naming per type
 ' costs one function and removes the failure entirely.
 Public Function ReviewSheetNameFor(slideType As String) As String
+    ' READABLE FIRST, UNIQUE SECOND. This produced
+    ' "Sync Review project-st-43212D3D" -- Rohan could not find it and asked
+    ' where the "sync review file" was, which is the name's fault: it reads like
+    ' a temp file and truncates the slide type mid-word.
+    '
+    ' "Review project-status-3D1B" fits Excel's 31-character cap with the type
+    ' intact. The tag shrinks from 8 hex digits to 4 and stays, because it is not
+    ' decoration: two slide types sharing a truncated prefix would otherwise
+    ' collapse onto ONE sheet, and WriteQueueSheet clears the sheet it writes --
+    ' silently destroying the other type's un-applied ticks.
     Dim tag As String
-    tag = Right("00000000" & Hex(TypeNameHash(slideType)), 8)
+    tag = Right("0000" & Hex(TypeNameHash(slideType)), 4)
     ReviewSheetNameFor = WorkbookBridge.SanitizeSheetName( _
-        Left(REVIEW_SHEET_NAME & " " & slideType, 22) & "-" & tag)
+        Left("Review " & slideType, 26) & "-" & tag)
 End Function
 
 ' Small non-cryptographic hash, only to keep truncated sheet names distinct.

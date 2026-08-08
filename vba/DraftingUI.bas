@@ -327,7 +327,7 @@ Public Sub RefreshDraftingSheets()
 
     Dim msg As String
     msg = period & " -- drafting sheets are ready." & vbCrLf & vbCrLf & _
-          "Your wording goes in column G (SUBMIT). Type Y in column I to approve." & vbCrLf & _
+          "Your wording goes in column D (SUBMIT). Type Y in column E to approve." & vbCrLf & _
           "Column C is what the slide says now. Copilot's prompt is in cell L2." & vbCrLf & _
           "Nothing reaches a slide until you publish and apply."
 
