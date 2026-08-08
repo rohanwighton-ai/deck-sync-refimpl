@@ -679,6 +679,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "RibbonUI_CapReportKeepsTheQuestion", r
     r = Test_ReviewQueue_EmptyQueueDoesNotClaimTheDeckMatches()
     AppendResult report, "ReviewQueue_EmptyQueueDoesNotClaimTheDeckMatches", r
+    r = Test_CommandBarUI_EveryDeclaredCapabilityHasAButton()
+    AppendResult report, "CommandBarUI_EveryDeclaredCapabilityHasAButton", r
     r = Test_RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero()
     AppendResult report, "RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
@@ -2500,10 +2502,14 @@ End Function
 ' on it; a test that depends on it is asserting something the code deliberately
 ' does not promise, and would fail for a reason having nothing to do with
 ' validation.
-Private Function ColumnNamed(ws As Object, name As String) As Long
+' headerText, NOT name: Name is a VBA statement (Name x As y), so using it as a
+' parameter is a compile-time Syntax error -- and headless that is a hang with no
+' output rather than a message. Flagged by check_vba_static.py; it had survived
+' because VBA compiles per procedure and nothing had forced this one to compile.
+Private Function ColumnNamed(ws As Object, headerText As String) As Long
     Dim c As Long
     For c = 1 To ExcelOutput.LastUsedColumn(ws)
-        If StrComp(Trim(CStr(ws.Cells(1, c).Value)), name, vbTextCompare) = 0 Then
+        If StrComp(Trim(CStr(ws.Cells(1, c).Value)), headerText, vbTextCompare) = 0 Then
             ColumnNamed = c
             Exit Function
         End If
@@ -6194,6 +6200,84 @@ Private Function Test_ReviewQueue_EmptyQueueDoesNotClaimTheDeckMatches() As Stri
         "flagged items alone are not a clean run either")
 
     Test_ReviewQueue_EmptyQueueDoesNotClaimTheDeckMatches = result
+End Function
+
+' THE OTHER DIRECTION. The existing toolbar test asserts every BUTTON resolves to
+' a real Sub. Nothing asserted that every CAPABILITY has a button -- so a function
+' could be built, tested, and unreachable by the only interface that exists on the
+' machine where the work happens.
+'
+' It has happened twice. RollForwardPeriod was built and tested with no button,
+' and StartQuarter told Rohan to hand-copy 43 rows in Excel because of it. Then
+' CreateMissingSlides: built, tested, no button, so a new project could not be
+' given a slide at all. Neither was a coding mistake -- tests call functions, a
+' person presses buttons, and nothing covered the gap between them.
+'
+' This is the DECLARED half and it blocks: losing a button for anything listed
+' here fails the suite. check_vba_static.py is the discovery half and only
+' reports, because whether an unlisted Public proc SHOULD be a capability is a
+' judgement, and a gate that is red for a judgement gets bypassed.
+'
+' Adding to this list is how you say "a person must be able to do this".
+Private Function Test_CommandBarUI_EveryDeclaredCapabilityHasAButton() As String
+    Dim result As String
+
+    Dim required As Variant
+    required = Array( _
+        "StartQuarter", "RollForwardUI", "RefreshDraftingSheets", _
+        "CopyAiDraftsToSubmit", "PublishDraftsForField", "SyncNow", _
+        "MarkFieldForBatch", "DiscoverFields", "BatchOnboardType", _
+        "AuditFields", "ClearMarkedFieldsForBatch", _
+        "SyncPreview", "ReviewChanges", "ApplyApprovedChanges", _
+        "ReviewChangesApproveAll", "RepointWorkbookUI")
+
+    ' Read from the LIVE toolbar, not from a list of what we think we built.
+    CommandBarUI.ShowToolbar
+    Dim wired As String
+    wired = "|"
+
+    Dim barNames As Variant
+    barNames = CommandBarUI.ToolbarNames
+    Dim nm As Variant
+    For Each nm In barNames
+        Dim bar As Object
+        Set bar = Application.CommandBars(CStr(nm))
+        Dim i As Long
+        For i = 1 To bar.Controls.count
+            Dim act As String
+            act = bar.Controls.Item(i).OnAction
+            ' Office reports OnAction as "Module.Sub" or "<Deck>!Sub" depending on
+            ' the run -- strip both, same as the sibling toolbar test.
+            Dim bangPos As Long
+            bangPos = InStr(act, "!")
+            If bangPos > 0 Then act = Mid(act, bangPos + 1)
+            Dim dotPos As Long
+            dotPos = InStrRev(act, ".")
+            If dotPos > 0 Then act = Mid(act, dotPos + 1)
+            wired = wired & act & "|"
+        Next i
+    Next nm
+
+    Dim missing As String
+    Dim k As Long
+    For k = LBound(required) To UBound(required)
+        If InStr(wired, "|" & CStr(required(k)) & "|") = 0 Then
+            missing = missing & CStr(required(k)) & " "
+        End If
+    Next k
+
+    result = result & Assert(missing = "", _
+        "every declared capability has a toolbar button -- MISSING: " & missing & _
+        "(wired: " & wired & ")")
+
+    ' The check must be able to fail. If the wiring string came back empty --
+    ' toolbar not built, names changed, Office reporting nothing -- every lookup
+    ' above would "pass" by finding nothing to contradict it.
+    result = result & Assert(Len(wired) > 20, _
+        "and the toolbar was actually read -- got wired='" & wired & "'")
+
+    CommandBarUI.HideToolbar
+    Test_CommandBarUI_EveryDeclaredCapabilityHasAButton = result
 End Function
 
 Private Function CountOccurrences(haystack As String, needle As String) As Long

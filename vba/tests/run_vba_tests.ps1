@@ -220,6 +220,64 @@ foreach ($m in $excelModules) {
 }
 Copy-Item (Join-Path $fixturesSourceDir "shp-groupshape.pptx") -Destination $fixturesStaging
 
+# --- STATIC CHECKS, ahead of the compile gate ------------------------
+#
+# check_vba_static.py finds in a second what the compile gate finds in minutes
+# and what Office attributes to the wrong module entirely. AGENTS.md said to run
+# it before every suite run -- which made it a thing to REMEMBER, and it was
+# forgotten often enough that a reserved-word parameter sat in TestRunner.bas
+# undetected until 2026-08-09.
+#
+# It also prints reachability notes: capabilities with no toolbar button. Those
+# are REPORTED and do not stop the run -- the enforcing half is the declared
+# roster in Test_CommandBarUI_EveryDeclaredCapabilityHasAButton, because whether
+# an unlisted Public proc should be a capability is a judgement, and a gate that
+# is red for a judgement is a gate people learn to bypass.
+#
+# Skipped, loudly, if python is absent -- this must never silently not run.
+# THE REPO LIVES IN WSL AND THE INTERPRETER LIVES THERE WITH IT.
+#
+# First attempt used Get-Command python on Windows. It "found" one -- the
+# Microsoft Store execution-alias shim, which resolves happily and then prints
+# "Python was not found" and exits non-zero. A check that locates a thing which
+# cannot run is worse than finding nothing, because the caller believes it ran.
+#
+# RepoRoot arrives as \\wsl.localhost\Ubuntu\home\... when invoked from WSL, so
+# the Linux path is recoverable from it. Verified by RUNNING the interpreter,
+# not by resolving its name.
+$staticOk = $false
+$staticRan = $false
+if ($RepoRoot -match '^\\\\wsl\.localhost\\[^\\]+\\(.+)$') {
+    $linuxRoot = '/' + ($Matches[1] -replace '\\', '/')
+    $linuxScript = "$linuxRoot/vba/tests/check_vba_static.py"
+    Write-Output "--- static checks ---"
+    & wsl.exe -- python3 $linuxScript
+    if ($LASTEXITCODE -eq 0) { $staticOk = $true }
+    $staticRan = $true
+}
+
+if (-not $staticRan) {
+    # Windows-hosted checkout: use a real interpreter, proven by running it.
+    foreach ($cand in @('python3', 'python')) {
+        $c = Get-Command $cand -ErrorAction SilentlyContinue
+        if (-not $c) { continue }
+        & $c.Source --version > $null 2>&1
+        if ($LASTEXITCODE -ne 0) { continue }        # the Store shim lands here
+        Write-Output "--- static checks ---"
+        & $c.Source (Join-Path $RepoRoot "vba\tests\check_vba_static.py")
+        if ($LASTEXITCODE -eq 0) { $staticOk = $true }
+        $staticRan = $true
+        break
+    }
+}
+
+if (-not $staticRan) {
+    Write-Output "=== STATIC CHECKS SKIPPED: no working python found. THIS IS NOT A PASS. ==="
+} elseif (-not $staticOk) {
+    Write-Output "=== STATIC CHECKS FAILED. NO TESTS WERE RUN. ==="
+    exit 4
+}
+
 # --- COMPILE GATE, before a single test runs -------------------------
 #
 # Added 2026-08-05 after this suite was PROVEN blind to a real compile error:

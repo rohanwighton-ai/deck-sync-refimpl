@@ -314,6 +314,112 @@ def check_structural_sanity(path: Path, lines: list[str]) -> list[str]:
     return findings
 
 
+
+# Modules whose Public procedures are USER-FACING CAPABILITIES -- things a person
+# does, as opposed to plumbing another module calls. A capability nothing can
+# reach is the failure this scan exists for.
+#
+# WHY: CreateMissingSlides was built, tested, and had no toolbar button, so on the
+# work machine -- where the toolbar is the whole interface -- there was no way to
+# add a slide for a new project. RollForwardPeriod was the same story a week
+# earlier: StartQuarter told Rohan to hand-copy 43 rows in Excel because the
+# function that did it could not be pressed.
+#
+# The suite could not catch either. TestRunner asserts every BUTTON resolves to a
+# real Sub; nothing asserts the reverse. Tests call functions directly, a person
+# presses buttons, and nothing covered the gap.
+UI_MODULES = {"RibbonUI.bas", "DraftingUI.bas", "DiscoverUI.bas", "BatchOnboardFlow.bas"}
+
+# Reached some other way, on purpose. Each needs a reason, so the list cannot
+# quietly become where inconvenient findings go to be silenced.
+REACHABLE_OTHERWISE = {
+    "ShowSyncResult": "shared reporting helper, called by every action",
+    "CapReport": "shared truncation helper",
+    "UnexpectedErrorText": "error text builder used by every wrapper",
+    "ShowToolbar": "called by the add-in's Auto_Open",
+    "HideToolbar": "called by ShowToolbar and Auto_Close",
+    "ToolbarName": "read by tests and by ShowToolbar",
+    "ToolbarNames": "read by tests and by HideToolbar",
+    "ResolveRegisterSheet": "resolver used by publish and drafting",
+    "DraftingPromptFor": "prompt builder used by the drafting sheet",
+}
+
+
+def check_unreachable_capabilities(files: list[Path], root: Path) -> list[str]:
+    """Public procedures in UI modules that no toolbar button fires and no other
+    module calls -- built, possibly tested, and unreachable by a person."""
+    # THE WIRING IS READ FROM RAW TEXT, NOT code_only OUTPUT.
+    #
+    # code_only blanks string contents, and every button is wired with a STRING:
+    #   AddButton bar, "4. Sync Now", "RibbonUI.SyncNow", 1004, "Use to ..."
+    # so scanning the processed text found no actions at all and reported all
+    # sixteen live buttons as unreachable. A check whose input cannot contain the
+    # evidence is the same shape as verifying a save against the writer's cache --
+    # it produces a confident answer about nothing.
+    #
+    # Parsed as the third argument of AddButton specifically, rather than by
+    # grepping for the name anywhere: a mention in a comment must not count as
+    # wired, or the scan goes quiet exactly where documentation is thickest.
+    wired: set[str] = set()
+    bodies: dict[str, str] = {}
+    public_procs: list[tuple[str, str, int]] = []
+
+    pub_re = re.compile(r"^Public\s+(?:Sub|Function)\s+(\w+)")
+    addbtn_re = re.compile(r'AddButton\s+\w+\s*,\s*"[^"]*"\s*,\s*"([^"]+)"')
+
+    for path in files:
+        name = path.name
+        raw = path.read_text(errors="replace")
+        bodies[name] = "\n".join(code_only(l) for l in raw.splitlines())
+        if name == "CommandBarUI.bas":
+            for action in addbtn_re.findall(raw):
+                wired.add(action.rsplit(".", 1)[-1])
+        if name in UI_MODULES:
+            for i, line in enumerate(bodies[name].splitlines(), 1):
+                m = pub_re.match(line)
+                if m:
+                    public_procs.append((name, m.group(1), i))
+
+    if not wired:
+        return [
+            "vba/tests/check_vba_static.py: parsed ZERO toolbar buttons from "
+            "CommandBarUI.bas -- the AddButton pattern no longer matches, so this "
+            "check would pass by seeing nothing. Fix the pattern before trusting it."
+        ]
+
+    findings = []
+    for mod, proc, lineno in public_procs:
+        if proc in REACHABLE_OTHERWISE or proc in wired:
+            continue
+        called_elsewhere = any(
+            other != mod and re.search(rf"\b{re.escape(proc)}\b", text)
+            for other, text in bodies.items()
+        )
+        if called_elsewhere:
+            continue
+
+        # Distinguished deliberately. "Unreachable" and "over-exposed" need
+        # different fixes, and reporting the wrong one is how a checker stops
+        # being read: a helper used ten lines below its own declaration is not a
+        # missing button, it is a missing Private.
+        own = bodies[mod]
+        uses_in_own = len(re.findall(rf"\b{re.escape(proc)}\b", own))
+        if uses_in_own > 1:
+            findings.append(
+                f"vba/{mod}:{lineno}: Public {proc} is used only inside its own module "
+                f"-- make it Private, or wire it to a button if it is meant to be a "
+                f"capability."
+            )
+        else:
+            findings.append(
+                f"vba/{mod}:{lineno}: Public {proc} is a UI capability with no toolbar "
+                f"button and no caller anywhere -- built and unreachable by a person. "
+                f"Wire a button, fold it into one that exists, or add it to "
+                f"REACHABLE_OTHERWISE with the reason."
+            )
+    return findings
+
+
 def main() -> int:
     root = Path(__file__).resolve().parent.parent
     files = sorted(root.glob("*.bas")) + sorted((root / "tests").glob("*.bas"))
@@ -336,14 +442,38 @@ def main() -> int:
         findings += check_function_returns(rel, lines)
         findings += check_structural_sanity(rel, lines)
 
+
+    # REACHABILITY IS REPORTED, NOT ENFORCED, AND THE ASYMMETRY IS DELIBERATE.
+    #
+    # Everything above is a pattern-matchable certainty -- a reserved word as a
+    # parameter IS a compile error. Whether a Public proc SHOULD be a capability
+    # is a judgement, and this file's own docstring says a checker that reports
+    # maybes trains you to ignore it. Blocking the suite on a judgement nobody
+    # will resolve today produces a gate people learn to bypass, which costs more
+    # than the finding is worth.
+    #
+    # The enforcing half lives in the suite instead:
+    # TestRunner.Test_CommandBarUI_EveryDeclaredCapabilityHasAButton fails when a
+    # capability we have DECLARED loses its button. Declared list blocks; scan
+    # discovers. Neither alone would have caught CreateMissingSlides being built,
+    # tested and unreachable.
+    reach = check_unreachable_capabilities(files, root)
+
+    exit_code = 0
     if findings:
         print(f"=== {len(findings)} static finding(s) ===")
         for f in findings:
             print(f"  {f}")
-        return 1
+        exit_code = 1
+    else:
+        print(f"static checks clean across {len(files)} module(s)")
 
-    print(f"static checks clean across {len(files)} module(s)")
-    return 0
+    if reach:
+        print(f"--- {len(reach)} reachability note(s) (reported, not blocking) ---")
+        for f in reach:
+            print(f"  {f}")
+
+    return exit_code
 
 
 if __name__ == "__main__":
