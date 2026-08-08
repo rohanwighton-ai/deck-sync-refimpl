@@ -2791,12 +2791,32 @@ Public Function PromptBatchOnboardType() As String
     ' genuinely reads back through DeckRegistry's own public lookup -- this
     ' is the real, durable link between the deck and its Data sheet, so it
     ' matters more here than anywhere else in this flow.
+    ' READ BACK FROM THE FILE, NOT FROM POWERPOINT.
+    '
+    ' This used to confirm the registration through DeckRegistry.LookupType(pres,
+    ' ...), which reads the live Presentation object -- PowerPoint's own cache.
+    ' It therefore confirmed the value the line above had just put there, whether
+    ' or not a single byte reached disk, and would have passed against a deck
+    ' saved three days ago. Same defect as Start a Quarter, 2026-08-08, in the
+    ' write this flow's own comment calls the one that actually matters.
     If pptSaveWarning = "" Then
-        Dim verifyTemplateSld As Object, verifyWsName As String
-        If Not DeckRegistry.LookupType(pres, slideType, verifyTemplateSld, verifyWsName) Then
-            pptSaveWarning = "WARNING: the deck was saved but its '" & slideType & "' type registration did not read back correctly afterward -- save it manually now and re-check before closing PowerPoint."
-        ElseIf verifyWsName <> ws.Name Then
-            pptSaveWarning = "WARNING: the deck was saved but its '" & slideType & "' type registration read back a different worksheet name (expected '" & ws.Name & "', got '" & verifyWsName & "') -- save it manually now and re-check before closing PowerPoint."
+        Dim onDisk As String
+        onDisk = DeckRegistry.PropertyOnDisk(pres.FullName, "DeckSyncType:" & slideType)
+
+        If onDisk = "" Then
+            pptSaveWarning = "WARNING: the deck reports it saved, but the file on disk carries no '" & _
+                slideType & "' type registration. The link between this deck and its Data sheet is " & _
+                "NOT on disk. Save the deck manually now and re-run this check before closing PowerPoint."
+        Else
+            Dim diskSlideId As Long, diskWsName As String
+            If Not DeckRegistry.ParseTypeRegistration(onDisk, diskSlideId, diskWsName) Then
+                pptSaveWarning = "WARNING: the '" & slideType & "' registration on disk is malformed ('" & _
+                    onDisk & "'). Save the deck manually and re-check before closing PowerPoint."
+            ElseIf diskWsName <> ws.Name Then
+                pptSaveWarning = "WARNING: the file on disk registers '" & slideType & "' against a " & _
+                    "different worksheet (expected '" & ws.Name & "', found '" & diskWsName & "'). " & _
+                    "Save the deck manually and re-check before closing PowerPoint."
+            End If
         End If
     End If
 

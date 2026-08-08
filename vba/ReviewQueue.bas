@@ -876,6 +876,26 @@ Public Function BackupBeforeWrite(pres As Object, ByRef backupPath As String) As
     End If
     On Error GoTo 0
 
+    ' A REPORTED BACKUP THAT IS NOT ON DISK IS WORSE THAN NO BACKUP: it is the
+    ' reason you feel safe running the destructive write that follows. SaveCopyAs
+    ' raising is checked above; SaveCopyAs returning quietly without producing a
+    ' file is not, and this project has measured Office reporting a successful
+    ' save that never landed.
+    Dim bfso As Object
+    Set bfso = CreateObject("Scripting.FileSystemObject")
+    If Not bfso.FileExists(candidate) Then
+        BackupBeforeWrite = "WARNING: the backup reported success but NO FILE was created at " & _
+            candidate & " -- NO BACKUP EXISTS. Do not apply changes until you have one."
+        Exit Function
+    End If
+    If bfso.GetFile(candidate).Size = 0 Then
+        BackupBeforeWrite = "WARNING: the backup file at " & candidate & " is EMPTY -- " & _
+            "treat it as no backup at all."
+        Exit Function
+    End If
+
+    On Error GoTo 0
+
     backupPath = candidate
     BackupBeforeWrite = "Backup: " & candidate
 End Function

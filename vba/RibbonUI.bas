@@ -1,6 +1,12 @@
 Attribute VB_Name = "RibbonUI"
 Option Explicit
 
+' Cap for every report shown through ShowSyncResult -- see that Sub. Declared
+' HERE because a module-level Const between two procedures is a syntax error
+' that stops the whole project (learned the hard way, twice, 2026-08-08).
+Public Const REPORT_CAP As Long = 900
+
+
 ' Action logic for specs/ribbon-ui.md's four buttons -- gather what the
 ' engine needs (via DeckRegistry lookups + WorkbookBridge), call an
 ' existing Sub, report the result. New Period's picker and Resolve
@@ -244,6 +250,7 @@ Private Sub SyncNowCore()
     Next i
 
     fullReport = fullReport & PersistBothFiles(pres, wb)
+    WorkbookBridge.WriteRunLog wb, "Sync Now -- full report", fullReport
     ShowSyncResult "Sync Now", fullReport
 
     ' The per-type rebuild above has already refreshed every sheet, so the
@@ -297,7 +304,19 @@ Private Function ResolveSyncContext(title As String, pres As Object, ByRef wb As
                   vbYesNo + vbExclamation, title) <> vbYes Then
             Exit Function
         End If
-        wb.Save
+
+        ' VERIFIED, because the whole point of this prompt is that the file and
+        ' the screen agree before anything reads the register. A Save that
+        ' reported nothing and moved nothing would leave us proceeding on exactly
+        ' the mismatch the prompt exists to prevent.
+        Dim promptSaveProblem As String
+        promptSaveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
+        If promptSaveProblem <> "" Then
+            MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
+                   "Stopping here rather than reading values that are not in the file.", _
+                   vbCritical, title
+            Exit Function
+        End If
     End If
 
     ResolveSyncContext = True
@@ -407,7 +426,19 @@ Private Sub ReviewChangesCore(approveAll As Boolean)
                   vbYesNo + vbExclamation, title) <> vbYes Then
             Exit Sub
         End If
-        wb.Save
+
+        ' VERIFIED, because the whole point of this prompt is that the file and
+        ' the screen agree before anything reads the register. A Save that
+        ' reported nothing and moved nothing would leave us proceeding on exactly
+        ' the mismatch the prompt exists to prevent.
+        Dim promptSaveProblem As String
+        promptSaveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
+        If promptSaveProblem <> "" Then
+            MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
+                   "Stopping here rather than reading values that are not in the file.", _
+                   vbCritical, title
+            Exit Sub
+        End If
     End If
 
     ' R9: duplicate identity tags, checked BEFORE planning. Kept from
@@ -530,7 +561,19 @@ Private Sub ApplyApprovedCore()
                   vbYesNo + vbExclamation, "Apply Approved") <> vbYes Then
             Exit Sub
         End If
-        wb.Save
+
+        ' VERIFIED, because the whole point of this prompt is that the file and
+        ' the screen agree before anything reads the register. A Save that
+        ' reported nothing and moved nothing would leave us proceeding on exactly
+        ' the mismatch the prompt exists to prevent.
+        Dim promptSaveProblem As String
+        promptSaveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
+        If promptSaveProblem <> "" Then
+            MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
+                   "Stopping here rather than reading values that are not in the file.", _
+                   vbCritical, "Apply Approved"
+            Exit Sub
+        End If
     End If
 
     Dim logWs As Object
@@ -578,6 +621,7 @@ Private Sub ApplyApprovedCore()
     Next i
 
     fullReport = fullReport & PersistBothFiles(pres, wb)
+    WorkbookBridge.WriteRunLog wb, "Apply Approved -- full report", fullReport
     ShowSyncResult "Apply Approved", fullReport
 End Sub
 
@@ -1164,8 +1208,26 @@ Private Function PersistBothFiles(pres As Object, wb As Object) As String
     End If
 End Function
 
+' EVERY REPORT THAT GOES THROUGH HERE IS CAPPED, AND THE CUT IS ANNOUNCED.
+'
+' MsgBox truncates near 1024 characters and says nothing about it. That was found
+' and fixed on the drafting dialog, then found again on Preview Sync -- and both
+' times the fix went in where the failure was seen, leaving the eighteen callers
+' of this Sub untouched, including Sync Now and Apply Approved with their full
+' accumulated reports. Apply Approved already lists one line per written field;
+' at 43 slides it would cut silently, and the summary lives at the BOTTOM.
+'
+' Capped here so it cannot recur in a caller nobody thought about. The callers
+' that have a workbook to hand also write their full detail to the Run Log sheet;
+' this is the floor under all of them, not a replacement for that.
 Public Sub ShowSyncResult(title As String, report As String)
-    MsgBox report, vbInformation, title
+    Dim shown As String
+    shown = report
+    If Len(shown) > REPORT_CAP Then
+        shown = Left$(shown, REPORT_CAP) & vbCrLf & vbCrLf & _
+                "[report shortened -- see the 'Run Log' sheet in the workbook for all of it]"
+    End If
+    MsgBox shown, vbInformation, title
 End Sub
 
 ' What the human sees when an action dies of something nobody anticipated.

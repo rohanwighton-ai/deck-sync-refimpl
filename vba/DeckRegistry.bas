@@ -407,7 +407,15 @@ End Sub
 ' always regenerate docProps/custom.xml, while SaveAs forces a full rewrite.
 ' That is the measured direction, not a guarantee -- hence write, verify,
 ' retry, and fail LOUDLY rather than return a wrong answer.
-Public Function PeriodOnDisk(deckPath As String, Optional ByRef trace As String) As String
+' Any custom document property, read from the SAVED FILE.
+'
+' Generalised from PeriodOnDisk on 2026-08-08 so onboarding can verify the slide
+' type registration the same way -- it was confirming that registration through
+' DeckRegistry.LookupType(pres, ...), which reads the live Presentation object,
+' i.e. PowerPoint's cache. That check passes against a deck that never saved,
+' which is the exact defect Start a Quarter had that morning, sitting in the flow
+' this module's own comment calls "the one write in this add-in that matters".
+Public Function PropertyOnDisk(deckPath As String, propertyName As String, Optional ByRef trace As String) As String
     On Error GoTo Failed
 
     Dim fso As Object
@@ -501,7 +509,7 @@ Public Function PeriodOnDisk(deckPath As String, Optional ByRef trace As String)
     xml = fso.OpenTextFile(extracted, 1).ReadAll
 
     Dim atProp As Long
-    atProp = InStr(1, xml, PROP_DECK_PERIOD, vbTextCompare)
+    atProp = InStr(1, xml, propertyName, vbTextCompare)
     If atProp = 0 Then
         trace = trace & " | property name not in xml (len=" & Len(xml) & ")"
         GoTo Cleanup
@@ -514,7 +522,7 @@ Public Function PeriodOnDisk(deckPath As String, Optional ByRef trace As String)
     closeTag = InStr(openTag, xml, "</vt:lpwstr>")
     If closeTag = 0 Then GoTo Cleanup
 
-    PeriodOnDisk = Mid$(xml, openTag, closeTag - openTag)
+    PropertyOnDisk = Mid$(xml, openTag, closeTag - openTag)
 
 Cleanup:
     On Error Resume Next
@@ -589,6 +597,13 @@ Public Function SaveDeckVerified(pres As Object) As String
 Failed:
     SaveDeckVerified = "Could not save the deck." & vbCrLf & _
         "Error " & Err.Number & ": " & Err.Description
+End Function
+
+
+' The deck's period, from the saved file. Kept as its own name because it is the
+' one every caller asks for.
+Public Function PeriodOnDisk(deckPath As String, Optional ByRef trace As String) As String
+    PeriodOnDisk = PropertyOnDisk(deckPath, PROP_DECK_PERIOD, trace)
 End Function
 
 ' Returns "" when the period is confirmed on disk, otherwise a message saying

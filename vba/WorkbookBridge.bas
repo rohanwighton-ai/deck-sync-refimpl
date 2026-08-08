@@ -195,9 +195,23 @@ Public Function CreateWorkbook(path As String) As Object
     Dim wb As Object
     Set wb = xl.Workbooks.Add()
 
+    ' THE ERROR WAS SWALLOWED ENTIRELY -- no Err check at all, so a failed
+    ' SaveAs let onboarding carry on as though the paired workbook existed.
     On Error Resume Next
     wb.SaveAs path
+    Dim createErr As String
+    If Err.Number <> 0 Then createErr = "Error " & Err.Number & ": " & Err.Description
+    Err.Clear
     On Error GoTo 0
+
+    Dim cfso As Object
+    Set cfso = CreateObject("Scripting.FileSystemObject")
+    If Not cfso.FileExists(path) Then
+        Err.Raise vbObjectError + 514, "WorkbookBridge.CreateWorkbookAt", _
+            "Could not create the workbook at " & path & _
+            IIf(createErr = "", "", " (" & createErr & ")") & _
+            ". Nothing downstream can rely on a workbook that is not there."
+    End If
 
     ' Dir() must be guarded too, and wasn't -- this is the line that actually
     ' raised on 2026-07-29, not the SaveAs above it. Dir() throws runtime error
