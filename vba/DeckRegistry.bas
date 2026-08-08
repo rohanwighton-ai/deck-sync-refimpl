@@ -529,6 +529,68 @@ Failed:
     On Error GoTo 0
 End Function
 
+' Saves the deck and CONFIRMS the file changed, or says why not.
+'
+' 2026-08-08, measured on the rig: Apply Approved reported "16 written, 0 failed",
+' took a backup, re-checked every change against its slide -- and the deck file
+' was untouched. Nothing in RibbonUI ever called pres.Save. Sixteen slide fields
+' of work sat in volatile memory behind a dialog that said it had succeeded, and
+' the workbook's review sheet with them.
+'
+' Verified by the file's MODIFICATION TIME advancing, which no in-process read
+' can fake. That is a weaker claim than reading the content back and it is the
+' honest one: it proves the file was rewritten, not that any particular value is
+' in it. Every field written here has already been re-read from its own shape by
+' the caller; what was missing was evidence the file moved at all.
+'
+' Falls back to SaveAs, which forces a full package rewrite: plain Save performs
+' an incremental one that this project has measured losing writes on this deck.
+Public Function SaveDeckVerified(pres As Object) As String
+    On Error GoTo Failed
+
+    Dim path As String
+    path = pres.FullName
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FileExists(path) Then
+        SaveDeckVerified = "The deck has never been saved to a file, so there is " & _
+            "nothing to save into. Use File > Save As first."
+        Exit Function
+    End If
+
+    Dim before As Date
+    before = fso.GetFile(path).DateLastModified
+
+    On Error Resume Next
+    pres.Save
+    Err.Clear
+    On Error GoTo 0
+
+    If fso.GetFile(path).DateLastModified > before Then Exit Function     ' "" = saved
+
+    ' Save reported nothing and moved nothing. Force the full rewrite.
+    Dim retryErr As String
+    On Error Resume Next
+    pres.SaveAs path, 24                          ' ppSaveAsOpenXMLPresentation
+    If Err.Number <> 0 Then retryErr = "Error " & Err.Number & ": " & Err.Description
+    Err.Clear
+    On Error GoTo 0
+
+    If fso.GetFile(path).DateLastModified > before Then Exit Function     ' "" = saved
+
+    SaveDeckVerified = "THE DECK WAS NOT SAVED." & vbCrLf & vbCrLf & _
+        path & vbCrLf & vbCrLf & _
+        "The changes are in PowerPoint's memory only. Save the deck yourself " & _
+        "before closing it, and check the change is there afterwards." & _
+        IIf(retryErr = "", "", vbCrLf & vbCrLf & retryErr)
+    Exit Function
+
+Failed:
+    SaveDeckVerified = "Could not save the deck." & vbCrLf & _
+        "Error " & Err.Number & ": " & Err.Description
+End Function
+
 ' Returns "" when the period is confirmed on disk, otherwise a message saying
 ' exactly what happened. NEVER returns "" on an unverified write.
 Public Function SetDeckPeriodVerified(pres As Object, period As String, ByVal attempts As Long) As String

@@ -243,6 +243,7 @@ Private Sub SyncNowCore()
         End If
     Next i
 
+    fullReport = fullReport & PersistBothFiles(pres, wb)
     ShowSyncResult "Sync Now", fullReport
 
     ' The per-type rebuild above has already refreshed every sheet, so the
@@ -576,6 +577,7 @@ Private Sub ApplyApprovedCore()
         End If
     Next i
 
+    fullReport = fullReport & PersistBothFiles(pres, wb)
     ShowSyncResult "Apply Approved", fullReport
 End Sub
 
@@ -1097,6 +1099,36 @@ End Sub
 ' Shared result reporting -- ribbon-ui.md's "one shared result form...
 ' reused after Sync Now, New Period, and the onboarding verify step."
 ' ---------------------------------------------------------------------
+
+
+' BOTH FILES, SAVED AND CONFIRMED, AT THE END OF EVERY PATH THAT WROTE.
+'
+' 2026-08-08 on the rig: Apply Approved reported "16 written, 0 failed", took a
+' backup, re-checked each change against its slide -- and the deck file was three
+' hours stale. Nothing in this module called pres.Save at all. The workbook's
+' review sheet had the same fate: the dialog said it had been "refreshed to match
+' the deck as it is now" and the saved file contained no such sheet.
+'
+' Appended to the report rather than raised: the writes really did happen, so
+' this is news about persistence, and a failure here must be impossible to miss
+' while never discarding the report of what was written.
+Private Function PersistBothFiles(pres As Object, wb As Object) As String
+    Dim trouble As String
+
+    Dim deckProblem As String
+    deckProblem = DeckRegistry.SaveDeckVerified(pres)
+    If deckProblem <> "" Then trouble = trouble & vbCrLf & deckProblem & vbCrLf
+
+    Dim wbProblem As String
+    If Not wb Is Nothing Then wbProblem = WorkbookBridge.SaveWorkbookVerified(wb)
+    If wbProblem <> "" Then trouble = trouble & vbCrLf & wbProblem & vbCrLf
+
+    If trouble = "" Then
+        PersistBothFiles = vbCrLf & "Deck and workbook both saved." & vbCrLf
+    Else
+        PersistBothFiles = vbCrLf & "---- NOT SAVED ----" & trouble
+    End If
+End Function
 
 Public Sub ShowSyncResult(title As String, report As String)
     MsgBox report, vbInformation, title

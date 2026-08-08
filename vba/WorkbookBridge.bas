@@ -290,6 +290,50 @@ End Function
 ' So the detail goes on a sheet, where it can be read at leisure, kept, and
 ' compared with the last run; the dialog keeps only what a person needs in the
 ' three seconds before they click OK.
+' Saves the workbook and CONFIRMS the file changed, or says why not.
+'
+' Same defect, same day, same evidence as DeckRegistry.SaveDeckVerified: the
+' sync path wrote a review sheet, told the user it had been "refreshed to match
+' the deck as it is now", and the saved workbook contained no such sheet. The
+' review the user is being asked to work from existed only on screen.
+Public Function SaveWorkbookVerified(wb As Object) As String
+    On Error GoTo Failed
+    If wb Is Nothing Then Exit Function
+
+    Dim path As String
+    path = wb.FullName
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FileExists(path) Then
+        SaveWorkbookVerified = "This workbook has never been saved to a file: " & path
+        Exit Function
+    End If
+
+    Dim before As Date
+    before = fso.GetFile(path).DateLastModified
+
+    On Error Resume Next
+    wb.Save
+    Dim saveErr As String
+    If Err.Number <> 0 Then saveErr = "Error " & Err.Number & ": " & Err.Description
+    Err.Clear
+    On Error GoTo 0
+
+    If fso.GetFile(path).DateLastModified > before Then Exit Function      ' "" = saved
+
+    SaveWorkbookVerified = "THE WORKBOOK WAS NOT SAVED." & vbCrLf & vbCrLf & _
+        path & vbCrLf & vbCrLf & _
+        "Anything written to it -- including the review sheet -- is on screen " & _
+        "only. Save it yourself before closing Excel." & _
+        IIf(saveErr = "", "", vbCrLf & vbCrLf & saveErr)
+    Exit Function
+
+Failed:
+    SaveWorkbookVerified = "Could not save the workbook." & vbCrLf & _
+        "Error " & Err.Number & ": " & Err.Description
+End Function
+
 Public Sub WriteRunLog(wb As Object, header As String, body As String)
     On Error GoTo Failed
 

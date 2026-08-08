@@ -532,6 +532,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_SaveDeckVerifiedProvesTheFileMoved()
+    AppendResult report, "DeckRegistry_SaveDeckVerifiedProvesTheFileMoved", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_Sources_RefsForOtherPeriodCatchesTheWrongQuarter()
     AppendResult report, "Sources_RefsForOtherPeriodCatchesTheWrongQuarter", r
     On Error GoTo 0
@@ -4896,6 +4901,60 @@ End Function
 ' held the value: a PowerShell probe making the same COM calls read it correctly,
 ' so the technique was sound and the VBA was not. Guessing at the difference is
 ' exactly the habit this project keeps paying for, so it gets a test instead.
+' Every sync path reported success against a deck file it never wrote to
+' (2026-08-08). Nothing called pres.Save at all, and no test could see that,
+' because no test asked the FILE anything.
+Private Function Test_DeckRegistry_SaveDeckVerifiedProvesTheFileMoved() As String
+    Dim result As String
+
+    Dim testPath As String
+    testPath = Environ("TEMP") & "\deck_sync_test_save_" & Format(Now, "hhmmss") & ".pptx"
+
+    Dim testPres As Object
+    Set testPres = Application.Presentations.Add
+    testPres.SaveAs testPath
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Dim before As Date
+    before = fso.GetFile(testPath).DateLastModified
+
+    ' A real change, and a pause: the check is "did the timestamp ADVANCE", and
+    ' NTFS would happily report the same second for two saves a moment apart --
+    ' which would make this test fail for a reason that has nothing to do with
+    ' the code. Waiting is the difference between testing the save and testing
+    ' the clock's resolution.
+    DeckRegistry.SetDeckPeriod testPres, "SAVETEST"
+    Dim waitUntil As Date
+    waitUntil = DateAdd("s", 2, Now)
+    Do While Now < waitUntil
+        DoEvents
+    Loop
+
+    Dim problem As String
+    problem = DeckRegistry.SaveDeckVerified(testPres)
+    result = result & Assert(problem = "", _
+        "a deck that can be saved reports no problem, got '" & problem & "'")
+    result = result & Assert(fso.GetFile(testPath).DateLastModified > before, _
+        "and the file on disk is genuinely newer than before the save")
+
+    ' A presentation that has never been written to a file must be REFUSED with
+    ' an explanation, not silently reported as saved.
+    Dim unsaved As Object
+    Set unsaved = Application.Presentations.Add
+    Dim unsavedProblem As String
+    unsavedProblem = DeckRegistry.SaveDeckVerified(unsaved)
+    result = result & Assert(unsavedProblem <> "", _
+        "a never-saved presentation is refused rather than reported as saved")
+
+    testPres.Saved = True
+    testPres.Close
+    unsaved.Saved = True
+    unsaved.Close
+
+    Test_DeckRegistry_SaveDeckVerifiedProvesTheFileMoved = result
+End Function
+
 Private Function Test_DeckRegistry_PeriodOnDiskReadsTheSavedFile() As String
     Dim result As String
 
