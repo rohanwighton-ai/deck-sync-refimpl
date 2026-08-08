@@ -235,6 +235,12 @@ Public Sub RefreshDraftingSheets()
     Set srcWs = WorkbookBridge.GetOrAddWorksheet(wb, Sources.SOURCES_SHEET_NAME)
     Sources.WriteSourcesSheet srcWs
 
+    ' The period gets PICKED on the Sources sheet, from the periods the register
+    ' actually holds. Called here because this runs on every drafting build, so
+    ' a period added since last time is offered next time without a separate step.
+    Dim srcValidation As String
+    srcValidation = Sources.ApplyPeriodValidation(srcWs, regWs)
+
     Dim fields As String
     fields = ProseFields(wb)
     If fields = "" Then
@@ -307,7 +313,8 @@ Public Sub RefreshDraftingSheets()
 
     ShowSheet wb, firstSheet
 
-    MsgBox "Period: " & period & vbCrLf & vbCrLf & report & vbCrLf & valNote & vbCrLf & vbCrLf & _
+    MsgBox "Period: " & period & vbCrLf & vbCrLf & report & vbCrLf & valNote & vbCrLf & _
+           srcValidation & vbCrLf & vbCrLf & _
            "Read column C, put your wording in column G (SUBMIT), type Y in column I." & vbCrLf & _
            "The prompt for Copilot is in cell L2." & vbCrLf & vbCrLf & _
            "Nothing reaches a slide until you publish and apply.", vbInformation, CAP
@@ -543,9 +550,13 @@ Public Sub StartQuarter()
     typed = Trim(InputBox( _
         "This deck currently reports its period as:" & vbCrLf & vbCrLf & _
         "    " & IIf(current = "", "(none set)", current) & vbCrLf & vbCrLf & _
-        "Type the period it should now be, e.g. FY27Q1." & vbCrLf & vbCrLf & _
+        IIf(current = "", _
+            "Type the period it should now be, worded exactly as your slides and " & _
+            "register word it.", _
+            "Type the period it should now be, in the same form as the one above.") & _
+        vbCrLf & vbCrLf & _
         "Nothing else changes: no slide is touched and no register row is created.", _
-        CAP, IIf(current = "", "FY27Q1", current)))
+        CAP, current))
     If typed = "" Then Exit Sub
 
     If StrComp(typed, current, vbTextCompare) = 0 Then
@@ -574,9 +585,10 @@ Public Sub StartQuarter()
                "until you do, and this project has lost it that way before." & vbCrLf & vbCrLf & _
                "STILL TO DO: the register needs rows for " & typed & ". Without " & _
                "them the drafting sheets will be empty." & vbCrLf & vbCrLf & _
-               "Copy the previous period's block of rows in Excel, and change the " & _
-               "Quarter cell on the copies to " & typed & ". One row per slide, " & _
-               "same as the period you copied from.", vbInformation, CAP
+               "Press 'Roll Forward' on the toolbar. It copies the previous period's " & _
+               "rows and stamps them " & typed & ", one row per slide." & vbCrLf & vbCrLf & _
+               "(This used to tell you to copy the rows by hand in Excel. The button " & _
+               "does it.)", vbInformation, CAP
     Else
         MsgBox "THE PERIOD DID NOT TAKE." & vbCrLf & vbCrLf & _
                "Asked for: " & typed & vbCrLf & _
@@ -588,6 +600,58 @@ Public Sub StartQuarter()
 
 Failed:
     MsgBox "Could not set the period." & vbCrLf & vbCrLf & _
+           "Error " & Err.Number & ": " & Err.Description, vbCritical, CAP
+End Sub
+
+' ---------------------------------------------------------------------------
+' BUTTON: Roll Forward
+' ---------------------------------------------------------------------------
+'
+' ExcelOutput.RollForwardPeriod has existed since the wide model landed and had
+' NO BUTTON -- so Start a Quarter told you to copy 43 rows by hand in Excel and
+' retype the Quarter cell on every copy. The function that does it correctly was
+' sitting right there, unreachable from the UI.
+'
+' THE DECK'S PERIOD IS THE DESTINATION, not something typed twice. You have just
+' told the deck what quarter it is; asking again invites the two spellings to
+' disagree, and this project has already established that two spellings of one
+' quarter match nothing and report as a clean run of zero rows.
+Public Sub RollForwardUI()
+    Const CAP As String = "Roll Forward"
+    On Error GoTo Failed
+
+    Dim pres As Object, wb As Object, regWs As Object
+    If Not Resolve(CAP, pres, wb, regWs) Then Exit Sub
+
+    Dim toPeriod As String
+    toPeriod = DeckRegistry.GetDeckPeriod(pres)
+    If Trim$(toPeriod) = "" Then
+        MsgBox "This deck does not say what period it is." & vbCrLf & vbCrLf & _
+               "Press '0. Start a Quarter' first. Roll Forward copies rows INTO " & _
+               "the period the deck declares, so it cannot run without one.", _
+               vbExclamation, CAP
+        Exit Sub
+    End If
+
+    Dim fromPeriod As String
+    fromPeriod = Trim(InputBox( _
+        "Copy the register's rows INTO " & toPeriod & "." & vbCrLf & vbCrLf & _
+        "Which period should they be copied FROM?" & vbCrLf & vbCrLf & _
+        "Every project's row is duplicated and stamped " & toPeriod & ". Last " & _
+        "period's rows are left exactly as they are -- nothing is moved or " & _
+        "overwritten, and no slide is touched.", CAP))
+    If fromPeriod = "" Then Exit Sub
+
+    If MsgBox("Copy every " & fromPeriod & " row into " & toPeriod & "?", _
+              vbQuestion + vbOKCancel, CAP) <> vbOK Then Exit Sub
+
+    Dim outcome As String
+    outcome = ExcelOutput.RollForwardPeriod(regWs, fromPeriod, toPeriod)
+    MsgBox outcome, vbInformation, CAP
+    Exit Sub
+
+Failed:
+    MsgBox "Could not roll the period forward." & vbCrLf & vbCrLf & _
            "Error " & Err.Number & ": " & Err.Description, vbCritical, CAP
 End Sub
 

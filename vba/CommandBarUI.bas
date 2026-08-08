@@ -44,7 +44,7 @@ Option Explicit
 ' BUMP THIS when building a new .ppam. It is deliberately manual: a version that
 ' derives itself from something automatic would drift out of step with the file
 ' the user actually loaded, which is the thing being disambiguated.
-Private Const TOOLBAR_BUILD As String = "39"
+Private Const TOOLBAR_BUILD As String = "40"
 Private Const TOOLBAR_NAME As String = "Deck Sync " & TOOLBAR_BUILD
 
 ' The toolbar's name, for anything that needs to find it.
@@ -145,6 +145,8 @@ Public Sub ShowToolbar()
     ' --- THE QUARTERLY LOOP ---------------------------------------------
     AddButton bar, "0. Start a Quarter", "DraftingUI.StartQuarter", 297, _
         "STEP 0, once a quarter. Tell the deck which period it is now. Everything after this filters on it -- skip it and you will draft against last quarter without being told. Verifies the change took. Touches no slide.", True
+    AddButton bar, "0b. Roll Forward", "DraftingUI.RollForwardUI", 1017, _
+        "AFTER Start a Quarter, on a NEW period only. Copies every project's register row from the period you name into the period this deck now declares, so the drafting sheets have rows to show. Refuses if the new period already has rows. Touches no slide."
     AddButton bar, "1. Drafting Sheets", "DraftingUI.RefreshDraftingSheets", 1697, _
         "STEP 1. Build or refresh the drafting sheets -- one per prose field, every project on a row, current text beside a box for your new wording, Copilot's prompt in L2. Keeps everything you have already written. Writes nothing to the deck.", True
     AddButton bar, "2. Copy AI to Submit", "DraftingUI.CopyAiDraftsToSubmit", 122, _
@@ -165,6 +167,19 @@ Public Sub ShowToolbar()
         "SCRATCH COPIES ONLY: builds the review sheet and ticks every row without individual review. Still writes nothing until you run Apply Approved."
     AddButton bar, "Repoint Workbook", "DraftingUI.RepointWorkbookUI", 23, _
         "Point this deck at a different Excel workbook. Only needed if the deck and its workbook have been separated -- keep them in the same folder and the pairing repairs itself.", True
+
+    ' CommandBars.Add CREATES THE BAR HIDDEN. Without this line the toolbar is
+    ' built correctly, wired correctly, and invisible -- and PowerPoint shows no
+    ' "Add-Ins" ribbon tab at all, because that tab only appears once a VISIBLE
+    ' custom bar exists. So the symptom is "the add-in did nothing", which sends
+    ' you looking at loading, macro security and trusted locations, none of which
+    ' are involved. Found 2026-08-08 by attaching to the live instance: the bar
+    ' was there with all 15 controls, Visible = False.
+    '
+    ' The three toolbar tests could not catch it. They assert the bar exists, has
+    ' 15 controls, and that every button resolves to the right Sub -- all true of
+    ' a bar nobody can see.
+    bar.Visible = True
 End Sub
 
 Public Sub HideToolbar()

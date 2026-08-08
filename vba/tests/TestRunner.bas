@@ -527,6 +527,16 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_Sources_RefsForOtherPeriodCatchesTheWrongQuarter()
+    AppendResult report, "Sources_RefsForOtherPeriodCatchesTheWrongQuarter", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_Sources_RefsForOtherPeriodIsSilentOnNeutralAndUnknown()
+    AppendResult report, "Sources_RefsForOtherPeriodIsSilentOnNeutralAndUnknown", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_CommandBarUI_ShowToolbarIsIdempotent()
     AppendResult report, "CommandBarUI_ShowToolbarIsIdempotent", r
     On Error GoTo 0
@@ -4861,6 +4871,58 @@ End Function
 ' version only checked each button resolved to one of the expected Subs, which
 ' would still pass if a button silently vanished and another were duplicated --
 ' a check that can't fail the way the thing it guards actually breaks.
+' The Sources module had ZERO tests before 2026-08-08, which is how a citation
+' check that only ever asked "does this ID exist" survived unexamined.
+'
+' Both directions are driven here on purpose. A test that only proves the wrong
+' quarter is caught would still pass if the function reported EVERY citation --
+' which is the failure that trains you to ignore the report.
+Private Function Test_Sources_RefsForOtherPeriodCatchesTheWrongQuarter() As String
+    Dim result As String
+
+    Dim applic As Object
+    Set applic = CreateObject("Scripting.Dictionary")
+    applic("S01") = UCase("Q3F26")
+    applic("S02") = UCase(Sources.APPLIES_ALL)
+
+    Dim got As String
+    got = Sources.RefsForOtherPeriod("S01", applic, "Q4F26")
+    result = result & Assert(InStr(got, "S01") > 0, _
+        "a source stamped Q3F26 is reported when publishing Q4F26, got '" & got & "'")
+    result = result & Assert(InStr(got, "Q3F26") > 0, _
+        "the report names the period the source actually belongs to, got '" & got & "'")
+
+    got = Sources.RefsForOtherPeriod("S01,S02", applic, "Q4F26")
+    result = result & Assert(InStr(got, "S02") = 0, _
+        "the period-neutral source is NOT dragged into the report, got '" & got & "'")
+
+    Test_Sources_RefsForOtherPeriodCatchesTheWrongQuarter = result
+End Function
+
+Private Function Test_Sources_RefsForOtherPeriodIsSilentOnNeutralAndUnknown() As String
+    Dim result As String
+
+    Dim applic As Object
+    Set applic = CreateObject("Scripting.Dictionary")
+    applic("S01") = UCase("Q4F26")
+    applic("S02") = UCase(Sources.APPLIES_ALL)
+
+    result = result & Assert(Sources.RefsForOtherPeriod("S01", applic, "Q4F26") = "", _
+        "a source stamped with THIS period is silent")
+    result = result & Assert(Sources.RefsForOtherPeriod("S02", applic, "Q4F26") = "", _
+        "a period-neutral source is silent")
+    result = result & Assert(Sources.RefsForOtherPeriod("", applic, "Q4F26") = "", _
+        "no citation is silent")
+    ' UnknownRefs already reports this one. Saying it twice for one typo reads
+    ' as two separate faults, so this function must stay quiet about it.
+    result = result & Assert(Sources.RefsForOtherPeriod("S99", applic, "Q4F26") = "", _
+        "an ID that is not on the sheet is left to UnknownRefs")
+    result = result & Assert(Sources.RefsForOtherPeriod("S01", applic, "") = "", _
+        "no period means no judgement, rather than every source being wrong")
+
+    Test_Sources_RefsForOtherPeriodIsSilentOnNeutralAndUnknown = result
+End Function
+
 Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     Dim result As String
 
@@ -4869,7 +4931,11 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     Dim bar As Object
     Set bar = Application.CommandBars(CommandBarUI.ToolbarName())
     result = result & Assert(Not bar Is Nothing, "the toolbar exists after ShowToolbar")
-    result = result & Assert(bar.Controls.count = 15, "toolbar has 15 buttons, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 16, "toolbar has 16 buttons, got " & bar.Controls.count)
+    ' A bar that exists, is fully wired, and is NOT VISIBLE is the exact state
+    ' shipped in addin40 and found on 2026-08-08. Every other assertion in this
+    ' test passed against it. Without this line the suite calls that a pass.
+    result = result & Assert(bar.Visible, "the toolbar is VISIBLE after ShowToolbar")
 
     Dim seenPreview As Boolean
     Dim seenSyncNow As Boolean
@@ -4902,7 +4968,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     ' pass. Tightened 2026-07-30 while adding SyncNow, whose name contains
     ' another entry's prefix.
     Dim expectedActions As String
-    expectedActions = "|SyncPreview|SyncNow|ReviewChanges|ReviewChangesApproveAll|ApplyApprovedChanges|CreateTemplateSlide|AuditFields|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|DiscoverFields|RefreshDraftingSheets|CopyAiDraftsToSubmit|PublishDraftsForField|StartQuarter|RepointWorkbookUI|"
+    expectedActions = "|SyncPreview|SyncNow|ReviewChanges|ReviewChangesApproveAll|ApplyApprovedChanges|CreateTemplateSlide|AuditFields|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|DiscoverFields|RefreshDraftingSheets|CopyAiDraftsToSubmit|PublishDraftsForField|StartQuarter|RollForwardUI|RepointWorkbookUI|"
 
     Dim i As Long
     For i = 1 To bar.Controls.count
@@ -4952,7 +5018,7 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
     Dim bar As Object
     Set bar = Application.CommandBars(CommandBarUI.ToolbarName())
     result = result & Assert(Not bar Is Nothing, "toolbar still exists after calling ShowToolbar twice")
-    result = result & Assert(bar.Controls.count = 15, "still exactly 15 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
+    result = result & Assert(bar.Controls.count = 16, "still exactly 16 buttons after calling ShowToolbar twice, got " & bar.Controls.count)
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarIsIdempotent = result

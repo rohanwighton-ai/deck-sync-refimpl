@@ -537,12 +537,15 @@ Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, 
     ' cost a whole session on 2026-08-01 -- the unit tests could not see it
     ' because it only exists where two modules meet.
     Dim knownSources As Object
+    Dim sourceApplies As Object
     If IsObject(sourcesWs) Then
         Dim srcSheet As Object
         Set srcSheet = sourcesWs
         Set knownSources = Sources.KnownSourceIds(srcSheet)
+        Set sourceApplies = Sources.SourceApplicability(srcSheet)
     End If
     Dim badRefs As String
+    Dim wrongPeriodRefs As String
 
     ' Refused rather than defaulted, exactly as UpsertRow refuses a blank period:
     ' a publish with no period would have to guess which quarter it is writing,
@@ -596,6 +599,20 @@ Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, 
             If rowBad <> "" Then
                 badRefs = badRefs & "  " & ent & " refers to " & rowBad & _
                     " -- not on the Sources sheet" & vbCrLf
+            End If
+        End If
+
+        ' A source that names a period, cited from a different period's text.
+        ' Publishing Q1F27 while citing last quarter's progress report is a
+        ' provenance error the existence check cannot see: the ID is perfectly
+        ' real, it just documents the wrong quarter.
+        If tick And Not sourceApplies Is Nothing Then
+            Dim rowWrongPeriod As String
+            rowWrongPeriod = Sources.RefsForOtherPeriod( _
+                CStr(ws.Cells(r, COL_D_SOURCES).Value), sourceApplies, period)
+            If rowWrongPeriod <> "" Then
+                wrongPeriodRefs = wrongPeriodRefs & "  " & ent & " cites " & rowWrongPeriod & _
+                    " while publishing " & period & vbCrLf
             End If
         End If
 
@@ -672,6 +689,12 @@ Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, 
     If badRefs <> "" Then
         report = report & vbCrLf & "SOURCE REFERENCES THAT DO NOT RESOLVE:" & vbCrLf & badRefs & _
             "The text still published. The provenance record for those rows is wrong." & vbCrLf
+    End If
+
+    If wrongPeriodRefs <> "" Then
+        report = report & vbCrLf & "SOURCES FROM ANOTHER PERIOD:" & vbCrLf & wrongPeriodRefs & _
+            "The text still published. Either the citation is wrong, or that source's " & _
+            "'Applies to' cell should say " & Sources.APPLIES_ALL & "." & vbCrLf
     End If
 
     PublishDrafts = report
