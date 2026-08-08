@@ -196,7 +196,7 @@ Private lastObservedSaveAt As Double
 ' ("Name|FieldName|Type|Volatility"), first line the marked slide's
 ' SlideID, vbCrLf-joined -- same small delimited-string convention
 ' DeckRegistry.bas's own BuildTypeRegistration already established.
-Public Function SerializeMarkingSession(slideId As Long, shapes As Collection, names As Object, types As Object, volatility As Object) As String
+Private Function SerializeMarkingSession(slideId As Long, shapes As Collection, names As Object, types As Object, volatility As Object) As String
     Dim lines As String
     lines = CStr(slideId)
     Dim i As Long
@@ -513,7 +513,7 @@ End Function
 ' read the same (unreliable) way. This gives a real, trustworthy way to
 ' check whether AutoSave/manual Ctrl+S is actually updating the deck's own
 ' save timestamp, independent of anything this add-in writes itself.
-Public Function GetSaveDiagnostic() As String
+Private Function GetSaveDiagnostic() As String
     Dim pres As Object
     Set pres = Application.ActivePresentation
 
@@ -2011,7 +2011,7 @@ End Function
 ' Short human-recognisable description of a slide, for the key grid. Without
 ' this the grid is a column of numbers and the human has to keep flipping back
 ' to PowerPoint to work out which slide row 14 is.
-Public Function SlidePreviewText(sld As Object) As String
+Private Function SlidePreviewText(sld As Object) As String
     Dim best As String
     best = ""
 
@@ -2483,7 +2483,7 @@ Public Function SuggestInstanceKey(plan As BatchOnboardPlan, slideIdx As Long) A
     If plan.HarvestedText.Exists(key) Then SuggestInstanceKey = CStr(plan.HarvestedText(key))
 End Function
 
-Public Function PromptBatchOnboardType() As String
+Private Function PromptBatchOnboardType() As String
     Dim pres As Object
     Set pres = Application.ActivePresentation
 

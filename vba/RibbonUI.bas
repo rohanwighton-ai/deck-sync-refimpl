@@ -942,7 +942,7 @@ End Sub
 ' `slides` minus `dropSld`, matched by SlideID rather than object identity --
 ' same reasoning as AdoptFlow.ExcludeTemplateSlide, whose shape this mirrors
 ' (two references to one slide are not guaranteed to compare equal).
-Public Function ExcludeSlide(slides() As Object, dropSld As Object) As Object()
+Private Function ExcludeSlide(slides() As Object, dropSld As Object) As Object()
     Dim result() As Object
     Dim n As Long
     n = 0
