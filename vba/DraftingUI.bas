@@ -130,11 +130,66 @@ End Function
 ' edited in the register or fed from upstream. Offering all forty equally would
 ' invite somebody to build forty drafting sheets, which is the failure this
 ' distinction exists to prevent.
+' CASE-INSENSITIVE, AND IT NAMES WHAT IT MEANT.
+'
+' 2026-08-08: Rohan typed "About_Body" -- Office capitalises the first letter of
+' an input box by habit -- and the tool answered "There is no drafting sheet for
+' About_Body yet. Run '1. Drafting Sheets' first." Following that advice would
+' have created a SECOND sheet, TPL_About_Body, alongside TPL_ABOUT_BODY: two
+' drafting sheets for one field, diverging quietly.
+'
+' Asking someone to defeat their own autocorrect is not a specification. The
+' typed text is matched against the Field Spec ignoring case and the CANONICAL
+' FieldID is returned, so everything downstream still deals in exact IDs.
+Private Function CanonicalFieldId(wb As Object, typed As String) As String
+    CanonicalFieldId = typed
+    If Trim(typed) = "" Then Exit Function
+    If Not WorkbookBridge.WorksheetExists(wb, FieldSpec.SPEC_SHEET_NAME) Then Exit Function
+
+    Dim ws As Object
+    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, FieldSpec.SPEC_SHEET_NAME)
+
+    Dim r As Long
+    r = FieldSpec.SPEC_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(r, FieldSpec.COL_S_FIELDID).Value)) <> ""
+        Dim fid As String
+        fid = Trim(CStr(ws.Cells(r, FieldSpec.COL_S_FIELDID).Value))
+        If StrComp(fid, Trim(typed), vbTextCompare) = 0 Then
+            CanonicalFieldId = fid
+            Exit Function
+        End If
+        r = r + 1
+    Loop
+End Function
+
+' Is this FieldID on the Field Spec sheet at all? A workbook with no Field Spec
+' cannot answer, so it says yes rather than blocking a legitimate run.
+Private Function FieldIsKnown(wb As Object, fieldId As String) As Boolean
+    If Not WorkbookBridge.WorksheetExists(wb, FieldSpec.SPEC_SHEET_NAME) Then
+        FieldIsKnown = True
+        Exit Function
+    End If
+
+    Dim ws As Object
+    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, FieldSpec.SPEC_SHEET_NAME)
+
+    Dim r As Long
+    r = FieldSpec.SPEC_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(r, FieldSpec.COL_S_FIELDID).Value)) <> ""
+        If StrComp(Trim(CStr(ws.Cells(r, FieldSpec.COL_S_FIELDID).Value)), fieldId, vbTextCompare) = 0 Then
+            FieldIsKnown = True
+            Exit Function
+        End If
+        r = r + 1
+    Loop
+End Function
+
 Private Function AskForField(caption As String, wb As Object) As String
     If Not WorkbookBridge.WorksheetExists(wb, FieldSpec.SPEC_SHEET_NAME) Then
-        AskForField = Trim(InputBox("Which field do you want to draft?" & vbCrLf & vbCrLf & _
+        AskForField = Trim(InputBox("Which field? (" & caption & ")" & vbCrLf & vbCrLf & _
             "(No 'Field Spec' sheet in this workbook yet, so there is no list to " & _
-            "choose from -- type the FieldID exactly, e.g. ABOUT_BODY.)", caption))
+            "choose from -- type the FieldID, e.g. ABOUT_BODY.)", caption))
+        AskForField = CanonicalFieldId(wb, AskForField)
         Exit Function
     End If
 
@@ -157,7 +212,7 @@ Private Function AskForField(caption As String, wb As Object) As String
     Loop
 
     Dim msg As String
-    msg = "Which field do you want to draft?" & vbCrLf & vbCrLf
+    msg = "Which field? (" & caption & ")" & vbCrLf & vbCrLf
     If prose <> "" Then
         msg = msg & "WORTH DRAFTING -- the words are the work:" & vbCrLf & prose & vbCrLf
     End If
@@ -165,9 +220,9 @@ Private Function AskForField(caption As String, wb As Object) As String
         msg = msg & "These do NOT need a drafting sheet. Their values are known, not" & vbCrLf & _
                     "written -- edit them in the register instead:" & vbCrLf & other & vbCrLf
     End If
-    msg = msg & "Type the FieldID exactly."
+    msg = msg & "Type the FieldID -- capitals do not matter."
 
-    AskForField = Trim(InputBox(msg, caption))
+    AskForField = CanonicalFieldId(wb, Trim(InputBox(msg, caption)))
 End Function
 
 ' Put the person in front of the sheet they just asked for. The whole point of
@@ -407,8 +462,18 @@ Public Sub CopyAiDraftsToSubmit()
     Dim sheetName As String
     sheetName = Drafting.DraftSheetNameFor(fieldId)
     If Not WorkbookBridge.WorksheetExists(wb, sheetName) Then
-        MsgBox "There is no drafting sheet for " & fieldId & " yet." & vbCrLf & vbCrLf & _
-               "Run '1. Drafting Sheets' first.", vbExclamation, CAP
+        ' "Run Drafting Sheets first" is the RIGHT advice for a real field with no
+        ' sheet yet, and the WRONG advice for a typo -- following it would build a
+        ' sheet for a FieldID that does not exist. So the two cases are separated.
+        If StrComp(CanonicalFieldId(wb, fieldId), fieldId, vbBinaryCompare) <> 0 Or _
+           Not FieldIsKnown(wb, fieldId) Then
+            MsgBox "There is no field called '" & fieldId & "' on the Field Spec sheet." & vbCrLf & vbCrLf & _
+                   "Check the spelling against the list, then try again. Nothing was created.", _
+                   vbExclamation, CAP
+        Else
+            MsgBox "There is no drafting sheet for " & fieldId & " yet." & vbCrLf & vbCrLf & _
+                   "Run '1. Drafting Sheets' first.", vbExclamation, CAP
+        End If
         Exit Sub
     End If
 
