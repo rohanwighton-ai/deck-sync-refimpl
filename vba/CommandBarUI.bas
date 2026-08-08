@@ -124,11 +124,11 @@ Public Sub ShowToolbar()
 
     ' --- SETUP: once per slide type -------------------------------------
     AddButton bar, "Setup A: Mark Fields", "BatchOnboardFlow.MarkFieldForBatch", 165, _
-        "SETUP, once per slide type. Click a field's shape on your template slide, then run this. Repeat for each field. Text shapes only -- pictures, icons and bars are not supported yet."
+        "Use to tag one field at a time by clicking its shape. SETUP, once per slide type: click the shape on your template slide, then run this, and repeat per field. Text shapes only -- pictures and icons are not supported yet."
     AddButton bar, "Setup A2: Discover Fields", "DiscoverUI.DiscoverFields", 1697, _
-        "SETUP, alternative to A. Lists every text shape on this slide in ONE Excel grid, in reading order -- tick and name the ones you want, all at once, instead of three dialogs per field. Marks nothing until you confirm. 'Setup A' still works and is unchanged."
+        "Use to tag every field on a slide at once, in one Excel grid. Lists every text shape in reading order -- tick and name the ones you want, instead of three dialogs per field. Marks nothing until you confirm. Setup A still works."
     AddButton bar, "Setup B: Onboard Slides", "BatchOnboardFlow.BatchOnboardType", 122, _
-        "SETUP, after marking. Finds the other slides of the same layout, shows every field in Excel for review, links the whole batch -- then offers to check what is NOT tracked and to create the hidden template slide."
+        "Use to link all the other slides of this layout to the register. Finds them, shows every field in Excel for review, links the batch -- then offers to check what is not tracked and to create the hidden template slide."
     ' KEPT AS A BUTTON, unlike Template Slide, and the distinction is real.
     ' Both were merged into onboarding on 2026-08-01 -- then the test suite
     ' pointed out both had become unreachable except by re-running onboarding.
@@ -138,35 +138,35 @@ Public Sub ShowToolbar()
     ' a read-only diagnostic you can only reach by re-running a setup step is
     ' one nobody will run. It is offered at onboarding AND available here.
     AddButton bar, "Setup C: Check Coverage", "RibbonUI.AuditFields", 1000, _
-        "Lists everything on a slide of this type that is NOT being tracked, ranked by how likely it is to be project data. Writes a checklist to a 'Template Audit' sheet; never changes the deck. Run it any time you wonder what you have missed."
+        "Use to find out what on the slide is NOT being tracked. Ranks everything untracked by how likely it is to be project data, and writes a checklist to a 'Template Audit' sheet. Never changes the deck."
     AddButton bar, "Setup: Clear Marks", "BatchOnboardFlow.ClearMarkedFieldsForBatch", 480, _
-        "Discard every field marked so far and start the marking over. Cannot remove just one."
+        "Use to throw away the marking so far and start again. Discard every field marked so far and start the marking over. Cannot remove just one."
 
     ' --- THE QUARTERLY LOOP ---------------------------------------------
     AddButton bar, "0. Start a Quarter", "DraftingUI.StartQuarter", 297, _
-        "STEP 0, once a quarter. Tell the deck which period it is now. Everything after this filters on it -- skip it and you will draft against last quarter without being told. Verifies the change took. Touches no slide.", True
+        "Use to tell this deck which period it now reports. Everything downstream -- drafting sheets, publish and sync -- then reads that period's rows only. Saves the deck and confirms the value reached the file.", True
     AddButton bar, "0b. Roll Forward", "DraftingUI.RollForwardUI", 1017, _
-        "AFTER Start a Quarter, on a NEW period only. Copies every project's register row from the period you name into the period this deck now declares, so the drafting sheets have rows to show. Refuses if the new period already has rows. Touches no slide."
+        "Use to copy last period's register rows into the new period. One row per slide, stamped with the period this deck declares. Refuses if that period already has rows. Touches no slide."
     AddButton bar, "1. Drafting Sheets", "DraftingUI.RefreshDraftingSheets", 1697, _
-        "STEP 1. Build or refresh the drafting sheets -- one per prose field, every project on a row, current text beside a box for your new wording, Copilot's prompt in L2. Keeps everything you have already written. Writes nothing to the deck.", True
+        "Use to build the sheets you write this period's text on. One per prose field: every project a row, current text in column C, your wording in G, the tick in I. Keeps work you have already done.", True
     AddButton bar, "2. Copy AI to Submit", "DraftingUI.CopyAiDraftsToSubmit", 122, _
-        "STEP 2, optional. Copy the AI's drafts into the SUBMIT column, filling ONLY cells you left empty. Never overwrites your own words. Then edit column G and tick column I."
+        "Use to move Copilot's drafts into the column that publishes. STEP 2, optional. Copy the AI's drafts into the SUBMIT column, filling ONLY cells you left empty. Never overwrites your own words. Then edit column G and tick column I."
     AddButton bar, "3. Publish & Preview", "DraftingUI.PublishDraftsForField", 3, _
-        "STEP 3. Show every ticked SUBMIT row, then on your say-so write them into the register as Approved -- and offer to preview what that would change on the slides. Touches no slide by itself."
+        "Use to send your ticked rows to the register. STEP 3. Show every ticked SUBMIT row, then on your say-so write them into the register as Approved -- and offer to preview what that would change on the slides. Touches no slide by itself."
     AddButton bar, "4. Sync Now", "RibbonUI.SyncNow", 1004, _
-        "STEP 4. Apply the register's changes to the slides. Shows exactly what it will change and asks first. If anything needs reading one at a time, it sends you to the review sheet instead."
+        "Use to put the register's text onto the slides. STEP 4. Apply the register's changes to the slides. Shows exactly what it will change and asks first. If anything needs reading one at a time, it sends you to the review sheet instead."
 
     ' --- The careful route to slides, when step 4 is too blunt -----------
     AddButton bar, "Preview Sync", "RibbonUI.SyncPreview", 1090, _
-        "Show everything the register would change in this deck. Reads only, writes nothing -- the safest thing on this toolbar, and the right first action on an unfamiliar machine.", True
+        "Use to see what would change, without changing anything. Show everything the register would change in this deck. Reads only, writes nothing -- the safest thing on this toolbar, and the right first action on an unfamiliar machine.", True
     AddButton bar, "Review Changes", "RibbonUI.ReviewChanges", 1090, _
-        "INSTEAD OF STEP 4, when you want to read each change. Builds a 'Sync Review' sheet showing current vs proposed per slide. Writes nothing to the deck."
+        "Use to read each proposed change one at a time. INSTEAD OF STEP 4, when you want to read each change. Builds a 'Sync Review' sheet showing current vs proposed per slide. Writes nothing to the deck."
     AddButton bar, "Apply Approved", "RibbonUI.ApplyApprovedChanges", 3, _
-        "After Review Changes. Writes the changes you ticked onto the slides. Takes a backup first, re-checks each change against the slide, and skips anything that has moved since you approved it."
+        "Use to write only the changes you ticked. After Review Changes. Writes the changes you ticked onto the slides. Takes a backup first, re-checks each change against the slide, and skips anything that has moved since you approved it."
     AddButton bar, "Review + Approve All", "RibbonUI.ReviewChangesApproveAll", 463, _
-        "SCRATCH COPIES ONLY: builds the review sheet and ticks every row without individual review. Still writes nothing until you run Apply Approved."
+        "Use to tick everything at once, on scratch copies only. SCRATCH COPIES ONLY: builds the review sheet and ticks every row without individual review. Still writes nothing until you run Apply Approved."
     AddButton bar, "Repoint Workbook", "DraftingUI.RepointWorkbookUI", 23, _
-        "Point this deck at a different Excel workbook. Only needed if the deck and its workbook have been separated -- keep them in the same folder and the pairing repairs itself.", True
+        "Use to point this deck at a different Excel workbook. Point this deck at a different Excel workbook. Only needed if the deck and its workbook have been separated -- keep them in the same folder and the pairing repairs itself.", True
 
     ' CommandBars.Add CREATES THE BAR HIDDEN. Without this line the toolbar is
     ' built correctly, wired correctly, and invisible -- and PowerPoint shows no
@@ -202,7 +202,21 @@ Private Sub AddButton(bar As Object, caption As String, onAction As String, face
     btn.OnAction = onAction
     btn.FaceId = faceId
     btn.Style = 2  ' msoButtonIconAndCaption
-    btn.TooltipText = tooltipText
+    ' OFFICE CAPS TooltipText AT 255 CHARACTERS, and a longer one does not get
+    ' trimmed -- it RAISES "Invalid procedure call or argument", which happens
+    ' part-way through building the bar and so takes the WHOLE TOOLBAR with it.
+    ' Adding one sentence to seven tooltips on 2026-08-08 did exactly that: the
+    ' add-in loaded, Auto_Open ran, and no toolbar appeared. Same symptom as the
+    ' invisible-toolbar bug earlier the same day, from an unrelated cause, which
+    ' is precisely why it must not be possible.
+    '
+    ' Truncated here rather than trusted to every future caller: this is a UI
+    ' that must not be destroyable by prose.
+    If Len(tooltipText) > 255 Then
+        btn.TooltipText = Left$(tooltipText, 252) & "..."
+    Else
+        btn.TooltipText = tooltipText
+    End If
     ' A separator bar before this button -- the CommandBars idiom for grouping.
     If beginGroup Then btn.BeginGroup = True
 End Sub

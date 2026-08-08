@@ -92,6 +92,13 @@ Private Const COL_BATCH As Long = 5
 Private Const COL_APPROVE As Long = 6
 Private Const COL_HASH As Long = 7        ' hidden; the row's identity
 
+' APPENDED, not inserted between Proposed and Batch where it reads better.
+' These constants are shared by the writer and the reader, so shifting Approve
+' from 6 to 7 would make every review sheet already on disk read its ticks out
+' of the wrong column -- silently, and in the direction of approving things
+' nobody approved. Placement is worth less than that.
+Private Const COL_DIFF As Long = 8
+
 Public Const REVIEW_SHEET_NAME As String = "Sync Review"
 
 ' Above this many distinct batches, the modal stops being readable and the fast
@@ -196,6 +203,65 @@ End Function
 ' Arithmetic in Double, not Long: VBA raises overflow on Long multiplication,
 ' and hash * 31 against a modulus near 1e9 exceeds Long's range every
 ' iteration. Double carries 53 bits of mantissa, so 1e9 * 31 stays exact.
+' What actually differs between two values, in words.
+'
+' 2026-08-08 on the rig: the review sheet showed
+'     now:  'Applying quantitative microbial risk assessment ... composts usage '
+'     new:  'Applying quantitative microbial risk assessment ... composts usage'
+' and asked for approval. 198 characters against 197 -- the slide had a TRAILING
+' SPACE. Two rows of eleven were like that. A reviewer cannot approve what they
+' cannot see, and a sheet that asks them to is training them to tick blind.
+'
+' Returns "" only when the difference is genuinely visible on its face.
+Public Function DescribeDifference(currentValue As String, proposedValue As String) As String
+    If currentValue = proposedValue Then Exit Function
+
+    ' Whitespace-only: the case that looks like no difference at all.
+    If Trim(currentValue) = Trim(proposedValue) Then
+        Dim note As String
+        If Len(currentValue) - Len(LTrim(currentValue)) <> Len(proposedValue) - Len(LTrim(proposedValue)) Then
+            note = "leading space"
+        End If
+        If Len(currentValue) - Len(RTrim(currentValue)) <> Len(proposedValue) - Len(RTrim(proposedValue)) Then
+            note = note & IIf(note = "", "", " and ") & "trailing space"
+        End If
+        If note = "" Then note = "spacing"
+        DescribeDifference = "INVISIBLE: " & note & " only (" & _
+            Len(currentValue) & " chars on the slide vs " & Len(proposedValue) & ")"
+        Exit Function
+    End If
+
+    If LCase(currentValue) = LCase(proposedValue) Then
+        DescribeDifference = "INVISIBLE at a glance: capitalisation only"
+        Exit Function
+    End If
+
+    ' Where they part company, and whether the character there is one you can see.
+    Dim i As Long, shorter As Long
+    shorter = Len(currentValue)
+    If Len(proposedValue) < shorter Then shorter = Len(proposedValue)
+    For i = 1 To shorter
+        If Mid(currentValue, i, 1) <> Mid(proposedValue, i, 1) Then Exit For
+    Next i
+
+    If i > shorter Then
+        DescribeDifference = "one is longer: the slide has " & Len(currentValue) & _
+            " chars, the register " & Len(proposedValue)
+        Exit Function
+    End If
+
+    Dim cNow As Long, cNew As Long
+    cNow = AscW(Mid(currentValue, i, 1))
+    cNew = AscW(Mid(proposedValue, i, 1))
+    If cNow < 33 Or cNew < 33 Or cNow = 160 Or cNew = 160 Or cNow > 8191 Or cNew > 8191 Then
+        DescribeDifference = "INVISIBLE: differs at character " & i & _
+            " (slide has code " & cNow & ", register has code " & cNew & ")"
+        Exit Function
+    End If
+
+    DescribeDifference = "differs from character " & i
+End Function
+
 Public Function ChangeHash(entityKey As String, fieldId As String, _
                            currentValue As String, proposedValue As String) As String
     Dim material As String
@@ -435,6 +501,7 @@ Public Sub WriteQueueSheet(ws As Object, q As ReviewQueueSet)
     ws.Cells(ROW_HEADER, COL_BATCH).Value = "Batch"
     ws.Cells(ROW_HEADER, COL_APPROVE).Value = "Approve (Y/N)"
     ws.Cells(ROW_HEADER, COL_HASH).Value = "Change ID (do not edit)"
+    ws.Cells(ROW_HEADER, COL_DIFF).Value = "What differs"
     ws.Rows(ROW_HEADER).Font.Bold = True
 
     Dim i As Long
@@ -449,6 +516,12 @@ Public Sub WriteQueueSheet(ws As Object, q As ReviewQueueSet)
         ' slide holds.
         ws.Cells(r, COL_CURRENT).Value = "'" & q.Items(i).CurrentValue
         ws.Cells(r, COL_PROPOSED).Value = "'" & q.Items(i).ProposedValue
+        ' NAMED, not left for the reader to spot. On 2026-08-08 two of eleven
+        ' rows differed only by a trailing space and displayed as identical
+        ' text -- 198 characters against 197. A reviewer cannot approve what
+        ' they cannot see.
+        ws.Cells(r, COL_DIFF).Value = DescribeDifference( _
+            q.Items(i).CurrentValue, q.Items(i).ProposedValue)
         ws.Cells(r, COL_BATCH).Value = q.Items(i).BatchLabel
         ws.Cells(r, COL_APPROVE).Value = IIf(q.Items(i).Approved, "Y", "")
         ws.Cells(r, COL_HASH).Value = q.Items(i).ChangeHash
@@ -463,6 +536,7 @@ Public Sub WriteQueueSheet(ws As Object, q As ReviewQueueSet)
     ws.Columns(COL_FIELDID).ColumnWidth = 20
     ws.Columns(COL_CURRENT).ColumnWidth = 55
     ws.Columns(COL_PROPOSED).ColumnWidth = 55
+    ws.Columns(COL_DIFF).ColumnWidth = 34
     ws.Columns(COL_BATCH).ColumnWidth = 8
     ws.Columns(COL_APPROVE).ColumnWidth = 14
     ws.Columns(COL_HASH).Hidden = True

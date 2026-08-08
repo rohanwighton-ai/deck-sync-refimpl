@@ -661,8 +661,42 @@ Private Sub SyncPreviewCore()
             "Save it before syncing." & vbCrLf & vbCrLf & fullReport
     End If
 
-    ShowSyncResult "Preview Sync (nothing written)", fullReport
+    ' THE DETAIL GOES ON A SHEET; THE DIALOG GETS THE HEADLINE.
+    '
+    ' 2026-08-08: this modal ended mid-word at "would c". MsgBox truncates its
+    ' prompt near 1024 characters and says nothing about it, so a preview of 27
+    ' changes showed an unknown fraction of them -- and a preview you approve
+    ' from, that is silently incomplete, is worse than no preview at all.
+    WorkbookBridge.WriteRunLog wb, "Preview Sync -- nothing was written", fullReport
+
+    Dim shortReport As String
+    shortReport = "PREVIEW ONLY -- nothing was written to any slide." & vbCrLf & vbCrLf & _
+        CountLines(fullReport, "would correct:") & " slide(s) would change." & vbCrLf & vbCrLf & _
+        "The full before-and-after is on the '" & WorkbookBridge.RUN_LOG_SHEET_NAME & _
+        "' sheet in the workbook, untruncated." & vbCrLf & vbCrLf & _
+        "Read it there, then run Sync Now."
+
+    If WorkbookBridge.IsDirty(wb) Then
+        shortReport = "NOTE: the Data workbook has unsaved changes, so this preview " & _
+            "reflects what is on screen in Excel, not what is in the file." & vbCrLf & vbCrLf & _
+            shortReport
+    End If
+
+    ShowSyncResult "Preview Sync (nothing written)", shortReport
 End Sub
+
+' How many times a marker appears in a report. Used for the preview headline
+' rather than a counter threaded through the loop above: the report is the
+' thing being summarised, so counting IT cannot drift away from what it says.
+Private Function CountLines(text As String, marker As String) As Long
+    If Len(marker) = 0 Then Exit Function
+    Dim pos As Long
+    pos = InStr(1, text, marker, vbTextCompare)
+    Do While pos > 0
+        CountLines = CountLines + 1
+        pos = InStr(pos + Len(marker), text, marker, vbTextCompare)
+    Loop
+End Function
 
 ' ---------------------------------------------------------------------
 ' Audit Fields -- "what on this slide is the tool not tracking?"

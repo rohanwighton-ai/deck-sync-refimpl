@@ -537,6 +537,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_ReviewQueue_DescribeDifferenceNamesTheInvisible()
+    AppendResult report, "ReviewQueue_DescribeDifferenceNamesTheInvisible", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_Sources_RefsForOtherPeriodCatchesTheWrongQuarter()
     AppendResult report, "Sources_RefsForOtherPeriodCatchesTheWrongQuarter", r
     On Error GoTo 0
@@ -4904,6 +4909,41 @@ End Function
 ' Every sync path reported success against a deck file it never wrote to
 ' (2026-08-08). Nothing called pres.Save at all, and no test could see that,
 ' because no test asked the FILE anything.
+' The review sheet showed two values that looked identical and asked for
+' approval; they differed by a single trailing space (2026-08-08, 2 rows of 11).
+'
+' Both directions are driven: a describer that shouted INVISIBLE at every row
+' would be as useless as one that stayed silent, because the word would stop
+' meaning anything.
+Private Function Test_ReviewQueue_DescribeDifferenceNamesTheInvisible() As String
+    Dim result As String
+
+    Dim d As String
+    d = ReviewQueue.DescribeDifference("composts usage ", "composts usage")
+    result = result & Assert(InStr(d, "INVISIBLE") > 0, _
+        "a trailing space is called invisible, got '" & d & "'")
+    result = result & Assert(InStr(d, "trailing") > 0, _
+        "and says WHICH end it is on, got '" & d & "'")
+
+    d = ReviewQueue.DescribeDifference(" leading", "leading")
+    result = result & Assert(InStr(d, "leading") > 0, _
+        "a leading space is named as leading, got '" & d & "'")
+
+    d = ReviewQueue.DescribeDifference("In progress", "In Progress")
+    result = result & Assert(InStr(d, "capitalisation") > 0, _
+        "a case-only difference is named, got '" & d & "'")
+
+    ' A plainly visible difference must NOT be called invisible.
+    d = ReviewQueue.DescribeDifference("Project Closed", "Project Open")
+    result = result & Assert(InStr(d, "INVISIBLE") = 0, _
+        "an obvious difference is not called invisible, got '" & d & "'")
+
+    result = result & Assert(ReviewQueue.DescribeDifference("same", "same") = "", _
+        "identical values produce no note at all")
+
+    Test_ReviewQueue_DescribeDifferenceNamesTheInvisible = result
+End Function
+
 Private Function Test_DeckRegistry_SaveDeckVerifiedProvesTheFileMoved() As String
     Dim result As String
 
@@ -5103,6 +5143,12 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
         subName = IIf(dotPos > 0, Mid(afterBang, dotPos + 1), afterBang)
         result = result & Assert(InStr(expectedActions, "|" & subName & "|") > 0, "button '" & ctrl.Caption & "' OnAction '" & ctrl.OnAction & "' resolves to one of the real action Subs")
         result = result & Assert(Len(ctrl.TooltipText) > 0, "button '" & ctrl.Caption & "' has a non-empty tooltip explainer")
+        ' 255 is Office's hard cap and it RAISES rather than trimming, taking
+        ' the whole toolbar with it mid-build (2026-08-08).
+        result = result & Assert(Len(ctrl.TooltipText) <= 255, _
+            "button '" & ctrl.Caption & "' tooltip is within Office's 255-char cap, got " & Len(ctrl.TooltipText))
+        result = result & Assert(Left$(ctrl.TooltipText, 7) = "Use to ", _
+            "button '" & ctrl.Caption & "' tooltip opens with 'Use to ', got '" & Left$(ctrl.TooltipText, 20) & "'")
         If subName = "SyncPreview" Then seenPreview = True
         If subName = "SyncNow" Then seenSyncNow = True
         If subName = "ReviewChanges" Then seenReview = True
