@@ -1,6 +1,8 @@
 Attribute VB_Name = "WorkbookBridge"
 Option Explicit
 
+Public Const RUN_LOG_SHEET_NAME As String = "Run Log"
+
 ' The sheet that explains the workbook. First tab, so it is what you land on.
 Public Const INDEX_SHEET_NAME As String = "START HERE"
 
@@ -276,6 +278,51 @@ End Function
 ' The LIFESPAN column is the part that matters and the part nobody could infer.
 ' "Permanent" and "rebuilt every round" look identical as tabs, and the
 ' difference decides whether it is safe to type in one.
+' A MODAL IS THE WRONG CONTAINER FOR A RUN REPORT.
+'
+' Rohan, twice on 2026-08-08: "illegible, too long, and the user has no idea what
+' is going on", then "still pretty hard to understand". Shortening the wording did
+' not fix it, because the problem is not the wording -- it is that a dialog you
+' must dismiss to continue is being used to deliver a page of detail you cannot
+' scroll, copy, or come back to. MsgBox also truncates near 1024 characters, so
+' the longer the report grows the more of it silently disappears.
+'
+' So the detail goes on a sheet, where it can be read at leisure, kept, and
+' compared with the last run; the dialog keeps only what a person needs in the
+' three seconds before they click OK.
+Public Sub WriteRunLog(wb As Object, header As String, body As String)
+    On Error GoTo Failed
+
+    Dim ws As Object
+    Set ws = GetOrAddWorksheet(wb, RUN_LOG_SHEET_NAME)
+
+    ' REPLACED each run, not appended. A log that grows forever becomes a file
+    ' nobody opens, and the question this answers is always "what just happened",
+    ' never "what happened in March".
+    ws.Cells.Clear
+
+    ws.Cells(1, 1).Value = header
+    ws.Cells(1, 1).Font.Bold = True
+    ws.Cells(2, 1).Value = "Run at " & Format(Now, "yyyy-mm-dd hh:nn:ss")
+
+    Dim lines As Variant
+    lines = Split(Replace(body, vbCrLf, vbLf), vbLf)
+
+    Dim i As Long, r As Long
+    r = 4
+    For i = LBound(lines) To UBound(lines)
+        ws.Cells(r, 1).Value = CStr(lines(i))
+        r = r + 1
+    Next i
+
+    ws.Columns(1).ColumnWidth = 110
+    ws.Cells.Font.Size = 9
+    Exit Sub
+
+Failed:
+    ' A run log that cannot be written must never stop the run it is describing.
+End Sub
+
 Public Sub WriteWorkbookIndex(wb As Object)
     Dim ws As Object
     Set ws = GetOrAddWorksheet(wb, INDEX_SHEET_NAME)

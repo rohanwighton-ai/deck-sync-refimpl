@@ -293,7 +293,7 @@ End Function
 ' Excel's own dropdown rather than a checker of our own: a constraint that can
 ' only be violated is worth less than one that is awkward to violate, and the
 ' cheapest place to stop a typo is the cell it would be typed into.
-Public Function ApplyControlledValidation(regWs As Object, specWs As Object) As String
+Public Function ApplyControlledValidation(regWs As Object, specWs As Object, Optional ByRef outOfVocabulary As Long) As String
     If regWs Is Nothing Or specWs Is Nothing Then
         ApplyControlledValidation = "Validation: skipped (no register or no Field Spec)."
         Exit Function
@@ -423,6 +423,7 @@ Public Function ApplyControlledValidation(regWs As Object, specWs As Object) As 
 
         Dim total As Long
         total = offendingCount
+        outOfVocabulary = total
 
         ApplyControlledValidation = ApplyControlledValidation & vbCrLf & _
             total & " value(s) outside the allowed list (left exactly as they are):" & vbCrLf & shown

@@ -309,30 +309,35 @@ Public Sub RefreshDraftingSheets()
     ' Dropdowns on the controlled fields, and a report of anything already in
     ' the register that the vocabulary does not allow.
     Dim valNote As String
-    valNote = FieldSpec.ApplyControlledValidation(regWs, specWs)
+    Dim outOfVocab As Long
+    valNote = FieldSpec.ApplyControlledValidation(regWs, specWs, outOfVocab)
 
     ShowSheet wb, firstSheet
 
-    ' WHAT TO DO FIRST, DETAIL SECOND, AND NEVER SILENTLY CUT.
+    ' THE DETAIL GOES ON A SHEET; THE DIALOG KEEPS FOUR LINES.
     '
-    ' MsgBox truncates its prompt near 1024 characters without saying so, so a
-    ' long run report does not merely read badly -- it DROPS the warnings at the
-    ' bottom, which are the only part worth reading. Capped explicitly here and
-    ' the cut is announced.
+    ' Trimming the wording was tried first and was not enough -- Rohan, twice:
+    ' "illegible, too long", then "still pretty hard to understand". The container
+    ' was the problem. A modal cannot be scrolled, kept, or returned to, and
+    ' MsgBox silently truncates past ~1024 characters, so the more the report had
+    ' to say the less of it survived.
+    WorkbookBridge.WriteRunLog wb, _
+        "Drafting sheets rebuilt for " & period, _
+        report & vbCrLf & valNote & vbCrLf & srcValidation
+
     Dim msg As String
-    msg = "Period: " & period & vbCrLf & vbCrLf & _
+    msg = period & " -- drafting sheets are ready." & vbCrLf & vbCrLf & _
           "Your wording goes in column G (SUBMIT). Type Y in column I to approve." & vbCrLf & _
           "Column C is what the slide says now. Copilot's prompt is in cell L2." & vbCrLf & _
-          "Nothing reaches a slide until you publish and apply." & vbCrLf & vbCrLf & _
-          "----" & vbCrLf & report
-    If Trim(valNote) <> "" Then msg = msg & valNote & vbCrLf
-    If Trim(srcValidation) <> "" Then msg = msg & srcValidation & vbCrLf
+          "Nothing reaches a slide until you publish and apply."
 
-    Const MSG_CAP As Long = 900
-    If Len(msg) > MSG_CAP Then
-        msg = Left$(msg, MSG_CAP) & vbCrLf & vbCrLf & _
-              "[report shortened -- the full detail is on the sheets themselves]"
+    If outOfVocab > 0 Then
+        msg = msg & vbCrLf & vbCrLf & _
+              outOfVocab & " value(s) are not in their allowed list. Nothing was changed."
     End If
+
+    msg = msg & vbCrLf & vbCrLf & "Full detail is on the '" & _
+          WorkbookBridge.RUN_LOG_SHEET_NAME & "' sheet."
 
     MsgBox msg, vbInformation, CAP
     Exit Sub
