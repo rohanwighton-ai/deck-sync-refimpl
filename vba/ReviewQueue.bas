@@ -786,8 +786,8 @@ Public Function ConfirmBatchText(q As ReviewQueueSet) As String
         " uniform change(s)." & vbCrLf & vbCrLf & _
         "Every change below is the SAME transformation applied to several slides:" & vbCrLf & vbCrLf & _
         BatchSummaryText(q) & vbCrLf & _
-        "A backup is taken first, and each change is re-checked against its slide" & vbCrLf & _
-        "immediately before writing." & vbCrLf
+        "A backup is taken first -- if one cannot be taken, NOTHING is written." & vbCrLf & _
+        "Each change is re-checked against its slide immediately before writing." & vbCrLf
 
     ' STATED BEFORE THE QUESTION, not after the run.
     '
@@ -949,7 +949,38 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
 
     ' Backup BEFORE the first write, not after the plan looks good.
     Dim backupPath As String
-    report = report & BackupBeforeWrite(Application.ActivePresentation, backupPath) & vbCrLf & vbCrLf
+    Dim backupNote As String
+    backupNote = BackupBeforeWrite(Application.ActivePresentation, backupPath)
+    report = report & backupNote & vbCrLf & vbCrLf
+
+    ' A FAILED BACKUP ABORTS THE RUN.
+    '
+    ' BackupBeforeWrite's result used to be concatenated into the report and never
+    ' looked at, so the write loop ran whether the backup succeeded, failed, was
+    ' impossible, produced no file, or produced an empty one. ConfirmBatchText --
+    ' shown BEFORE the person clicks Yes -- promised "a backup is taken first", so
+    ' the promise was buying consent it could not honour.
+    '
+    ' The cloud-hosted branch is the one that matters: a deck opened from SharePoint
+    ' has "://" in its FullName, no local backup is possible, and this proceeded to
+    ' overwrite slide fields anyway. That is the likely shape of the machine where
+    ' the real quarter gets produced.
+    '
+    ' backupPath is the discriminator, not the message text: BackupBeforeWrite sets
+    ' it ONLY on the fully verified path (file exists, non-empty) and leaves it ""
+    ' on all five failure paths. Matching on the string would break the moment
+    ' someone reworded a warning.
+    '
+    ' ecef320 established this rule and applied it to tools/E2EField.bas -- the
+    ' harness -- and not to the button a person actually presses.
+    If backupPath = "" Then
+        ApplyApproved = report & _
+            "STOPPED before writing: there is no backup of this deck." & vbCrLf & _
+            "Nothing was changed." & vbCrLf & vbCrLf & _
+            "To apply these changes, save a local copy of the deck first, then run " & _
+            "Apply Approved again." & vbCrLf
+        Exit Function
+    End If
 
     ' key -> live slide, the same resolve-and-index walk ResequenceByRowOrder does.
     Dim instances() As Object

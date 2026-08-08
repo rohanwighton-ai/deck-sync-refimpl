@@ -432,7 +432,7 @@ End Sub
 Public Function DescribeSheet(sheetName As String) As String
     If Left(sheetName, 4) = "TPL_" Then
         DescribeSheet = "Drafting sheet for " & Mid(sheetName, 5) & _
-            ". Read column C, type new wording in F, put Y in G. Instructions are on the sheet."
+            ". Read column C, type new wording in D, put Y in E. Instructions are on the sheet."
     ElseIf Left(sheetName, 11) = "Sync Review" Then
         DescribeSheet = "Every change waiting to be approved before it reaches a slide. " & _
             "Tick what you agree with, then run Apply Approved."
@@ -444,7 +444,7 @@ Public Function DescribeSheet(sheetName As String) As String
             "not to do. Edit this to change the instructions the AI is given. Yours, not the tool's."
     ElseIf sheetName = "Sources" Then
         DescribeSheet = "WHERE THE WORDS CAME FROM. One row per source, referenced by ID from " & _
-            "column E of a drafting sheet. Point at documents; do not paste them in here."
+            "column G of a drafting sheet. Point at documents; do not paste them in here."
     ElseIf sheetName = "Register" Then
         DescribeSheet = "THE RECORD. One row per project, field and quarter, with its text and " & _
             "whether a human approved it. Everything else in this workbook feeds it or reads it."

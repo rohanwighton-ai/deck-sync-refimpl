@@ -2918,8 +2918,28 @@ Private Function Test_WorkbookBridge_IndexExplainsEachSheet() As String
     Dim d As String
     d = WorkbookBridge.DescribeSheet("TPL_ABOUT_BODY")
     result = result & Assert(InStr(d, "ABOUT_BODY") > 0, "it names the field")
-    result = result & Assert(InStr(d, "column C") > 0 And InStr(d, "F") > 0 And InStr(d, "Y in G") > 0, _
-        "and says read C, type F, tick G -- got '" & d & "'")
+    ' THIS TEST WAS HOLDING THE DEFECT IN PLACE. It asserted "Y in G", which is
+    ' the layout 3de4be8 replaced when SUBMIT moved to D and the tick to E. So the
+    ' index went on telling people to type into F -- the AI DRAFT column, which is
+    ' never published -- and the suite defended it. Publish then reports five zeros
+    ' and no diagnostic, because a row with an empty D and an unticked E lands in
+    ' no bucket at all.
+    '
+    ' The old middle term was InStr(d, "F") > 0: a bare letter that also matches
+    ' "Instructions". It could not fail. Each term now matches its own phrase, and
+    ' the negative assertions below give it a way to fail on a regression -- a
+    ' check that only ever passes is the shape this project keeps paying for.
+    result = result & Assert(InStr(d, "column C") > 0 And InStr(d, "wording in D") > 0 _
+        And InStr(d, "Y in E") > 0, _
+        "the drafting index says read C, type D, tick E -- got '" & d & "'")
+    result = result & Assert(InStr(d, "Y in G") = 0 And InStr(d, "wording in F") = 0, _
+        "and does NOT name the pre-3de4be8 columns -- got '" & d & "'")
+
+    ' Sources is cited from column G, and the index used to say E -- the tick.
+    Dim srcDesc As String
+    srcDesc = WorkbookBridge.DescribeSheet("Sources")
+    result = result & Assert(InStr(srcDesc, "column G") > 0 And InStr(srcDesc, "column E") = 0, _
+        "the sources index cites column G, not the tick column -- got '" & srcDesc & "'")
 
     Test_WorkbookBridge_IndexExplainsEachSheet = result
 End Function

@@ -56,7 +56,7 @@ Public Function WriteSourcesSheet(ws As Object) As String
     ws.Cells(SRC_INTRO_ROW, 1).Font.Bold = True
     ws.Cells(SRC_INTRO_ROW, 1).Font.Size = 9
 
-    ws.Cells(2, 1).Value = "Add a row for anything you drafted from. Give it the next free ID, then put that ID in column E of the drafting sheet."
+    ws.Cells(2, 1).Value = "Add a row for anything you drafted from. Give it the next free ID, then put that ID in column G of the drafting sheet."
     ws.Cells(3, 1).Value = "One row per source, ever -- if 20 projects use the same report, they all reference the same ID. Do not paste document text in here; point at it."
 
     ws.Cells(4, 1).Value = "A drafting row referring to an ID that is not listed here is reported when you publish. It will not stop the publish, but it means the record is wrong."

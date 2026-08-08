@@ -286,7 +286,12 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Cells(DRAFT_INTRO_ROW, 1).Font.Size = 9
 
     ws.Cells(2, 1).Value = "1.  Read column C (ORIGINAL) -- what the slide says today."
-    ws.Cells(3, 1).Value = "2.  List the source IDs you are working from in column E. Add new ones on the Sources sheet first."
+    ' COLUMN G, NOT E. Step 5 below sends the tick to E, so this line named one
+    ' column for two things inside a single instruction block -- and E is the tick,
+    ' which is the consent gate. Stale since 3de4be8 moved SUBMIT to D and the tick
+    ' to E; that commit updated the header row and the toolbar tooltip and left
+    ' every prose instruction pointing at the old layout.
+    ws.Cells(3, 1).Value = "2.  List the source IDs you are working from in column G. Add new ones on the Sources sheet first."
     ws.Cells(4, 1).Value = "3.  Ask Copilot for a draft (prompt is in L2). It writes into column F (AI DRAFT). F is never published."
     ws.Cells(5, 1).Value = "4.  Run Copy AI to Submit, then EDIT column D (SUBMIT) until you are happy. D is what gets sent."
     ws.Cells(6, 1).Value = "5.  Type  Y  in column E, save and CLOSE the file, then run Publish and Apply."
@@ -493,15 +498,36 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
         ' regression, caught by the test that exists for it: a note saying work
         ' was cleared, without saying which period it was cleared FROM, does not
         ' explain the thing the reader is looking at.
+        ' NO WORKBOOK BACKUP EXISTS, AND THIS USED TO SAY THERE WAS ONE.
+        '
+        ' Until 2026-08-08 both messages in this function ended "Previous sheet
+        ' saved in the .bak beside the workbook." No code in this add-in has ever
+        ' written a workbook .bak. The only .bak taken anywhere is
+        ' ReviewQueue.BackupBeforeWrite, which does pres.SaveCopyAs -- the DECK,
+        ' at Apply time, named .r13-<stamp>.bak.pptx. A deck backup sitting in the
+        ' same folder is exactly what made the claim survive a glance.
+        '
+        ' ReviewQueue's own comment states the rule this broke: "A REPORTED BACKUP
+        ' THAT IS NOT ON DISK IS WORSE THAN NO BACKUP: it is the reason you feel
+        ' safe running the destructive write that follows."
+        '
+        ' Says what survives before what does not, because the register really does
+        ' still hold anything published and that is the actionable half.
         WriteDraftingSheet = WriteDraftingSheet & vbCrLf & _
             "  Rebuilt " & IIf(sheetPeriod = "", "(no period recorded)", sheetPeriod) & _
             " -> " & periodStamp & ": " & droppedQuarterly & " row(s) cleared for redrafting" & _
             IIf(keptStatic > 0, ", " & keptStatic & " carried over", "") & _
-            ". Previous sheet saved in the .bak beside the workbook."
+            ". Anything already published is safe in the register. Drafts, source IDs " & _
+            "and notes that were NOT published are gone -- this workbook is not backed up."
     ElseIf Not layoutMatches And Not isNewSheet Then
+        ' Same false claim as above, same fix -- see the comment there. Fixed in
+        ' both places at once because this is one defect with two call sites, and
+        ' fixing only where it was noticed is how the truncation bug came back
+        ' four times.
         WriteDraftingSheet = WriteDraftingSheet & vbCrLf & _
-            "  Rebuilt on a new sheet layout: nothing carried across. Your previous " & _
-            "drafting is in the .bak beside the workbook."
+            "  Rebuilt on a new sheet layout: nothing carried across. Anything already " & _
+            "published is safe in the register. Drafts, source IDs and notes that were " & _
+            "NOT published are gone -- this workbook is not backed up."
     End If
 End Function
 
