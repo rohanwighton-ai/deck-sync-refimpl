@@ -1220,14 +1220,26 @@ End Function
 ' Capped here so it cannot recur in a caller nobody thought about. The callers
 ' that have a workbook to hand also write their full detail to the Run Log sheet;
 ' this is the floor under all of them, not a replacement for that.
+' ONE PLACE THAT KNOWS ABOUT THE LIMIT.
+'
+' MsgBox truncates near 1024 characters and says nothing. That was fixed on the
+' drafting dialog, then again on Preview Sync, then again in ShowSyncResult --
+' three times, each only where the failure had been seen, and on 2026-08-08 it
+' bit a FOURTH time in the publish confirmation. That dialog is the one that asks
+' permission to write, so a silent cut there hides part of what is being
+' authorised: it ended mid-word at "would", with the summary below the cut.
+'
+' Any dialog anywhere can now call this instead of inventing its own answer.
+Public Function CapReport(text As String) As String
+    CapReport = text
+    If Len(text) <= REPORT_CAP Then Exit Function
+    CapReport = Left$(text, REPORT_CAP) & vbCrLf & vbCrLf & _
+        "[shortened -- the full list is on the '" & WorkbookBridge.RUN_LOG_SHEET_NAME & _
+        "' sheet in the workbook]"
+End Function
+
 Public Sub ShowSyncResult(title As String, report As String)
-    Dim shown As String
-    shown = report
-    If Len(shown) > REPORT_CAP Then
-        shown = Left$(shown, REPORT_CAP) & vbCrLf & vbCrLf & _
-                "[report shortened -- see the 'Run Log' sheet in the workbook for all of it]"
-    End If
-    MsgBox shown, vbInformation, title
+    MsgBox CapReport(report), vbInformation, title
 End Sub
 
 ' What the human sees when an action dies of something nobody anticipated.

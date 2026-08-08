@@ -558,7 +558,8 @@ Public Sub PublishDraftsForField()
     Dim preview As String
     preview = Drafting.PublishDrafts(ws, regWs, fieldId, period, True, srcWs)
 
-    If MsgBox(macroWarn & preview & vbCrLf & vbCrLf & _
+    WorkbookBridge.WriteRunLog wb, "Publish " & fieldId & " -- preview", preview
+    If MsgBox(RibbonUI.CapReport(macroWarn & preview) & vbCrLf & vbCrLf & _
               "Write these into the register for " & period & "?" & vbCrLf & vbCrLf & _
               "This does NOT touch any slide -- run Sync Now or Preview Sync " & _
               "afterwards to get them onto the deck.", _
@@ -613,7 +614,8 @@ Public Sub PublishDraftsForField()
     ' register and looking at what that would do to slides, so there is no
     ' decision for a button to mark. Offered rather than done, because it opens
     ' the deck and a person may not want that yet.
-    If MsgBox(result & vbCrLf & vbCrLf & _
+    WorkbookBridge.WriteRunLog wb, "Publish " & fieldId & " -- published", result
+    If MsgBox(RibbonUI.CapReport(result) & vbCrLf & vbCrLf & _
               "Show what this would change on the slides?" & vbCrLf & _
               "Preview only -- reads the deck, writes nothing.", _
               vbYesNo + vbQuestion, CAP) = vbYes Then
