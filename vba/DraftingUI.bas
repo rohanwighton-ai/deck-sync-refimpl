@@ -587,33 +587,34 @@ Public Sub StartQuarter()
               "After this, the drafting sheets and every sync will read " & typed & _
               " rows only.", vbYesNo + vbQuestion, CAP) <> vbYes Then Exit Sub
 
-    DeckRegistry.SetDeckPeriod pres, typed
+    ' VERIFIED AGAINST THE FILE'S OWN BYTES, and it saves the deck itself.
+    '
+    ' This used to write the property, read it straight back through the same
+    ' Presentation object, and report success -- which reads PowerPoint's cache,
+    ' so it confirmed its own write whether or not anything reached disk. On
+    ' 2026-08-08 it reported success against a file that had not been touched
+    ' for three days.
+    Dim problem As String
+    problem = DeckRegistry.SetDeckPeriodVerified(pres, typed, 4)
 
-    ' VERIFIED BY READING IT BACK, because deck-property writes on a large deck
-    ' are documented in this project as unreliable -- TRACKER item 7: Save loses
-    ' them, SaveAs is better and still not certain. An unverified period is worse
-    ' than none: every later step would filter confidently on the wrong quarter.
     Dim readBack As String
-    readBack = DeckRegistry.GetDeckPeriod(pres)
+    readBack = typed
 
-    If StrComp(readBack, typed, vbTextCompare) = 0 Then
+    If problem = "" Then
         ' USER-FACING TEXT SAYS WHAT TO DO, NOT WHAT THIS PROJECT HAS LEARNED.
         ' Rohan, 2026-08-08, on seeing "this project has lost it that way before"
         ' in a modal: the reasoning belongs in the code and the repo. A dialog
         ' narrating its own history reads as the tool talking about itself
         ' instead of telling you the next action.
-        MsgBox "Deck period is now " & readBack & "." & vbCrLf & vbCrLf & _
-               "SAVE THE DECK now -- the period is not on disk until you do." & vbCrLf & vbCrLf & _
+        ' No "save the deck" instruction any more: the verified write saves it,
+        ' and confirms the value in the saved file before saying this.
+        MsgBox "Deck period is now " & readBack & ", confirmed in the saved file." & vbCrLf & vbCrLf & _
                "STILL TO DO: the register needs rows for " & typed & ". Without " & _
                "them the drafting sheets will be empty." & vbCrLf & vbCrLf & _
                "Press 'Roll Forward' on the toolbar. It copies the previous period's " & _
                "rows and stamps them " & typed & ", one row per slide.", vbInformation, CAP
     Else
-        MsgBox "THE PERIOD DID NOT TAKE." & vbCrLf & vbCrLf & _
-               "Asked for: " & typed & vbCrLf & _
-               "Reads back: " & IIf(readBack = "", "(none)", readBack) & vbCrLf & vbCrLf & _
-               "Do not draft or sync until this is right -- everything downstream " & _
-               "filters on it.", vbCritical, CAP
+        MsgBox problem, vbCritical, CAP
     End If
     Exit Sub
 

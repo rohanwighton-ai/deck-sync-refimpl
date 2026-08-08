@@ -381,6 +381,152 @@ Public Sub SetDeckPeriod(pres As Object, period As String)
     WriteStringProperty pres, PROP_DECK_PERIOD, period
 End Sub
 
+' ---------------------------------------------------------------------------
+' Setting the period RELIABLY, on top of a write that is not reliable.
+' ---------------------------------------------------------------------------
+'
+' 2026-08-08, on the rig: Rohan set the period, the dialog said "Deck period is
+' now Q4F26", he saved, he closed PowerPoint -- and the file's timestamp was
+' still THREE DAYS OLD. Nothing reached disk. The old code verified by reading
+' the property back through the same Presentation object, which reads
+' PowerPoint's cache, so it confirmed its own write regardless of the file.
+'
+' That is the trap set_deck_period.py was written against and its rule is
+' explicit: verification "must stay OUT of process ... an in-process reopen
+' shares PowerPoint's cache with the writer and cannot be trusted in either
+' direction". The same rule has to hold inside the add-in, because at work
+' there is no Python and that script does not exist there.
+'
+' A .pptx IS A ZIP, and Windows' Shell can read inside one without Office. So
+' the file is copied, docProps/custom.xml extracted from the COPY, and the
+' value read from its bytes -- sharing no process, no cache and no code with
+' the writer. Probed against this 49MB deck before being relied on: extraction
+' returned in well under a second.
+'
+' SaveAs rather than Save: Save performs an incremental rewrite that does not
+' always regenerate docProps/custom.xml, while SaveAs forces a full rewrite.
+' That is the measured direction, not a guarantee -- hence write, verify,
+' retry, and fail LOUDLY rather than return a wrong answer.
+Public Function PeriodOnDisk(deckPath As String) As String
+    On Error GoTo Failed
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FileExists(deckPath) Then Exit Function
+
+    Dim work As String
+    ' .Path spelled out: GetSpecialFolder returns a Folder object, and relying on
+    ' its default property to coerce to a string is the kind of implicit
+    ' behaviour that reads fine and breaks somewhere else.
+    work = fso.BuildPath(fso.GetSpecialFolder(2).Path, "dsverify_" & Format(Now, "hhnnss") & Int(Rnd * 10000))
+    fso.CreateFolder work
+
+    Dim zipPath As String, outDir As String
+    zipPath = fso.BuildPath(work, "deck.zip")
+    outDir = fso.BuildPath(work, "out")
+    fso.CreateFolder outDir
+    fso.CopyFile deckPath, zipPath
+
+    Dim sh As Object
+    Set sh = CreateObject("Shell.Application")
+
+    Dim props As Object
+    Set props = sh.Namespace(zipPath).ParseName("docProps")
+    If props Is Nothing Then GoTo Cleanup
+
+    Dim customFile As Object
+    Set customFile = sh.Namespace(props.Path).ParseName("custom.xml")
+    If customFile Is Nothing Then GoTo Cleanup
+
+    ' 16 = "yes to all". CopyHere is ASYNCHRONOUS, so the file is waited for
+    ' rather than assumed -- reading it immediately is a race, and a race that
+    ' usually wins is worse than one that always loses.
+    sh.Namespace(outDir).CopyHere customFile, 16
+
+    Dim extracted As String
+    extracted = fso.BuildPath(outDir, "custom.xml")
+
+    Dim waited As Long
+    Do While Not fso.FileExists(extracted) And waited < 100
+        WaitAMoment
+        waited = waited + 1
+    Loop
+    If Not fso.FileExists(extracted) Then GoTo Cleanup
+
+    Dim xml As String
+    xml = fso.OpenTextFile(extracted, 1).ReadAll
+
+    Dim atProp As Long
+    atProp = InStr(1, xml, PROP_DECK_PERIOD, vbTextCompare)
+    If atProp = 0 Then GoTo Cleanup
+
+    Dim openTag As Long, closeTag As Long
+    openTag = InStr(atProp, xml, "<vt:lpwstr>")
+    If openTag = 0 Then GoTo Cleanup
+    openTag = openTag + Len("<vt:lpwstr>")
+    closeTag = InStr(openTag, xml, "</vt:lpwstr>")
+    If closeTag = 0 Then GoTo Cleanup
+
+    PeriodOnDisk = Mid$(xml, openTag, closeTag - openTag)
+
+Cleanup:
+    On Error Resume Next
+    fso.DeleteFolder work, True
+    On Error GoTo 0
+    Exit Function
+
+Failed:
+    On Error Resume Next
+    If Not fso Is Nothing Then fso.DeleteFolder work, True
+    On Error GoTo 0
+End Function
+
+' Returns "" when the period is confirmed on disk, otherwise a message saying
+' exactly what happened. NEVER returns "" on an unverified write.
+Public Function SetDeckPeriodVerified(pres As Object, period As String, ByVal attempts As Long) As String
+    If attempts < 1 Then attempts = 1
+
+    Dim path As String
+    path = pres.FullName
+
+    Dim n As Long
+    For n = 1 To attempts
+        On Error Resume Next
+        WriteStringProperty pres, PROP_DECK_PERIOD, period
+        pres.SaveAs path, 24            ' ppSaveAsOpenXMLPresentation -- forces a full rewrite
+        Dim writeErr As String
+        writeErr = ""
+        If Err.Number <> 0 Then writeErr = "Error " & Err.Number & ": " & Err.Description
+        Err.Clear
+        On Error GoTo 0
+
+        If PeriodOnDisk(path) = period Then Exit Function      ' "" = confirmed
+
+        If n = attempts Then
+            SetDeckPeriodVerified = "THE PERIOD DID NOT REACH THE FILE after " & attempts & _
+                " attempt(s)." & vbCrLf & vbCrLf & _
+                "Asked for: " & period & vbCrLf & _
+                "On disk:   " & IIf(PeriodOnDisk(path) = "", "(nothing)", PeriodOnDisk(path)) & _
+                IIf(writeErr = "", "", vbCrLf & writeErr) & vbCrLf & vbCrLf & _
+                "Do not draft or sync until this is right. Everything downstream " & _
+                "filters on the period, and a deck whose period is wrong reads as " & _
+                "a clean run of zero rows."
+        End If
+    Next n
+End Function
+
+' A short pause that does not need a Windows API declaration -- kept separate
+' so the wait in PeriodOnDisk reads as a wait rather than as arithmetic.
+Private Sub WaitAMoment()
+    ' NOT named "until": Until is a VBA keyword and using it as a variable is a
+    ' compile error -- which stops the WHOLE project, not just this Sub.
+    Dim deadline As Date
+    deadline = DateAdd("s", 1, Now)
+    Do While Now < deadline
+        DoEvents
+    Loop
+End Sub
+
 ' Rolling forward is an EXPLICIT act with a stated from-and-to, never inferred.
 ' Returns the text a caller should show; does not itself decide anything.
 Public Function AdvancePeriodText(oldPeriod As String, newPeriod As String) As String
