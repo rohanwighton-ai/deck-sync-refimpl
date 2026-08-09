@@ -1417,10 +1417,21 @@ Private Sub MarkFieldForBatchCore()
     ' Picture and icon fields are a real future requirement -- see
     ' FIRST-REAL-RUN.md finding 1. Until the tool can render them, saying so
     ' HERE costs one dialog; saying it at batch time costs the session's work.
+    ' PICTURES ARE MARKABLE FROM 2026-08-10. The refusal below was correct when
+    ' written -- its own comment gave the condition, "until the tool can render
+    ' them" -- and that condition ended when InjectPictureField landed. Leaving
+    ' the gate shut would have meant a built, tested, unreachable feature, which
+    ' is the user-level version of the orphan check_vba_static.py guards against.
+    '
+    ' It also settles a disagreement that was already there: Onboarding.
+    ' IsCandidateField accepts a picture ("picture" Or HasText), so discovery
+    ' offered one while marking refused it.
     Dim markable As Boolean
     markable = False
     On Error Resume Next
-    If shp.HasTextFrame Then
+    If InjectPrimitive.IsPictureShape(shp) Then
+        markable = True
+    ElseIf shp.HasTextFrame Then
         If shp.TextFrame.HasText Then markable = (Trim(shp.TextFrame.TextRange.Text) <> "")
     End If
     On Error GoTo 0
@@ -1428,7 +1439,7 @@ Private Sub MarkFieldForBatchCore()
     If Not markable Then
         RibbonUI.ShowSyncResult "Mark Field for Batch", _
             "'" & shp.Name & "' cannot be marked as a field." & vbCrLf & vbCrLf & _
-            "Only shapes that CONTAIN TEXT can be tracked. Pictures, icons, " & _
+            "Only shapes that contain TEXT, and PICTURES, can be tracked. Icons, " & _
             "graphics and progress bars are not supported yet -- marking one " & _
             "would fail later, at Bulk Onboard, and take the whole batch with it." & vbCrLf & vbCrLf & _
             "Nothing was marked. Your other marked fields are untouched."

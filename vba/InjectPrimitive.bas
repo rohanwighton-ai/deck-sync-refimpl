@@ -72,6 +72,9 @@ Private Const PPT_LINE_BREAK As String = vbCr
 ' turned "Linked: 0 / FAILED verification: 46" into a uniform, whole-batch
 ' failure rather than a handful of edge cases: the write always worked, the
 ' read-back never could, for exactly the shapes this deck actually uses.
+' What a picture field was last filled from, stamped on the shape itself.
+Public Const PICTURE_SOURCE_TAG As String = "picsrc"
+
 Private Function FindShapeByRoleTag(sld As Object, identityTag As String) As Object
     Dim match As Object
     Dim matchCount As Long
@@ -348,3 +351,187 @@ Public Sub ManualSmokeTest()
     If r.ErrorMessage <> "" Then msg = msg & " Error=" & r.ErrorMessage
     MsgBox msg
 End Sub
+
+' ---------------------------------------------------------------------
+' PICTURE FIELDS
+' ---------------------------------------------------------------------
+'
+' Rohan, 2026-08-10: project images "don't change quarterly, set once at project
+' start, I'd still like them set from link rather than played around with
+' manually."
+'
+' So this is a GIVEN field filled from a link, not a quarterly sync. Three
+' consequences shape the whole implementation:
+'
+' 1. WHETHER A FIELD IS A PICTURE IS DERIVED, NEVER DECLARED. The tagged shape
+'    either is a picture or it is not. No Field Spec column, nothing to
+'    configure, and nothing that can disagree with the deck -- the failure mode
+'    a declared type would add is a register that says Picture over a text box.
+'
+' 2. THE REGISTER CELL HOLDS A SOURCE ID, not a path. An image is
+'    evidence-shaped: it came from somewhere, that somewhere has an owner, and
+'    Sources already gives one row per thing with a locator and a period
+'    binding. A path per row would be 43 spellings of one folder with nothing
+'    checking any of them.
+'
+' 3. IDEMPOTENCE COMES FROM A STAMP, NOT FROM COMPARING IMAGES. The applied
+'    source ID is written into the new shape's own tags, so a later run compares
+'    two short strings. It fires once at project start, stays silent forever
+'    after, and re-fires by itself if the link is ever changed. Comparing pixels
+'    every quarter across 43 slides is the thing this avoids.
+'
+' ASPECT RATIO: FIT INSIDE, CENTRED, NEVER DISTORT, ALWAYS REPORT. Rohan has not
+' picked between letterbox / crop / refuse, so the default is the only one that
+' cannot lose information or lie about the subject: the image keeps its own
+' proportions, sits centred in the frame the slide already defines, and a
+' mismatch is REPORTED so the choice can be made against real photos rather than
+' in the abstract. Cropping silently decides what matters in someone's picture.
+
+Public Function IsPictureShape(shp As Object) As Boolean
+    On Error Resume Next
+    IsPictureShape = (shp.Type = msoPicture) Or (shp.Type = msoLinkedPicture)
+    On Error GoTo 0
+End Function
+
+' What this shape was last filled from, or "" if never.
+Public Function PictureSourceOf(shp As Object) As String
+    On Error Resume Next
+    PictureSourceOf = shp.Tags(PICTURE_SOURCE_TAG)
+    On Error GoTo 0
+End Function
+
+Public Function InjectPictureField(sld As Object, identityTag As String, _
+                                   sourceId As String, locator As String, _
+                                   Optional dryRun As Boolean = False) As InjectResult
+    Dim result As InjectResult
+    Dim shp As Object
+
+    Set shp = FindShapeByRoleTag(sld, identityTag)
+    If shp Is Nothing Then
+        result.ErrorMessage = "no single shape found tagged role=" & identityTag
+        InjectPictureField = result
+        Exit Function
+    End If
+    result.Found = True
+    result.CurrentValue = PictureSourceOf(shp)
+
+    ' ALREADY FILLED FROM THIS SOURCE. The whole point of the stamp.
+    If StrComp(result.CurrentValue, sourceId, vbTextCompare) = 0 Then
+        result.WouldChange = False
+        result.Verified = True
+        InjectPictureField = result
+        Exit Function
+    End If
+
+    result.WouldChange = True
+
+    If Trim(sourceId) = "" Then
+        result.ErrorMessage = "no source ID given for picture field " & identityTag
+        InjectPictureField = result
+        Exit Function
+    End If
+
+    ' A LOCATOR THAT IS NOT A READABLE FILE IS NOT A PICTURE. Refused before
+    ' anything is deleted -- the old image is the only copy on the slide, and
+    ' removing it before knowing the replacement exists is how a deck loses a
+    ' photo to a typo in a Sources row.
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Trim(locator) = "" Then
+        result.ErrorMessage = "source " & sourceId & " has no locator, so there is no image to place"
+        InjectPictureField = result
+        Exit Function
+    End If
+    If Not fso.FileExists(locator) Then
+        result.ErrorMessage = "source " & sourceId & " points at a file that is not there: " & locator
+        InjectPictureField = result
+        Exit Function
+    End If
+
+    If dryRun Then
+        result.Written = False
+        result.Verified = True
+        InjectPictureField = result
+        Exit Function
+    End If
+
+    ' The frame the slide already defines. Captured BEFORE anything changes.
+    Dim fL As Single, fT As Single, fW As Single, fH As Single, fZ As Long
+    fL = shp.Left: fT = shp.Top: fW = shp.Width: fH = shp.Height
+    On Error Resume Next
+    fZ = shp.ZOrderPosition
+    On Error GoTo 0
+
+    Dim newShp As Object
+    On Error Resume Next
+    ' -1, -1 = insert at the image's NATIVE size, so its true proportions are
+    ' known before anything is scaled.
+    Set newShp = sld.Shapes.AddPicture(locator, msoFalse, msoTrue, fL, fT, -1, -1)
+    If Err.Number <> 0 Or newShp Is Nothing Then
+        Dim e As String
+        e = Err.Description
+        On Error GoTo 0
+        result.ErrorMessage = "could not place " & locator & " (" & e & ")"
+        InjectPictureField = result
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    ' FIT INSIDE, CENTRED, PROPORTIONS KEPT.
+    '
+    ' THE NATIVE SIZE IS CAPTURED BEFORE ANYTHING IS ASSIGNED, and the aspect
+    ' lock is OFF while assigning. With the lock ON, setting Width makes
+    ' PowerPoint recompute Height underneath you, so a second line reading
+    ' .Height multiplies a value that has already changed -- which put a 40x20
+    ' image into a 300x150 frame at 300x300, twice as tall as the frame it was
+    ' supposed to fit inside. Caught by the test on its first run.
+    Dim natW As Single, natH As Single
+    natW = newShp.Width
+    natH = newShp.Height
+
+    Dim scaleFactor As Single
+    If natW <= 0 Or natH <= 0 Then
+        scaleFactor = 1
+    ElseIf (fW / natW) < (fH / natH) Then
+        scaleFactor = fW / natW
+    Else
+        scaleFactor = fH / natH
+    End If
+
+    Dim ratioNote As String
+    If natH > 0 And fH > 0 Then
+        If Abs((natW / natH) - (fW / fH)) > 0.02 Then
+            ratioNote = " (image proportions differ from the frame -- fitted inside and centred, nothing cropped)"
+        End If
+    End If
+
+    newShp.LockAspectRatio = msoFalse
+    newShp.Width = natW * scaleFactor
+    newShp.Height = natH * scaleFactor
+    newShp.Left = fL + (fW - newShp.Width) / 2
+    newShp.Top = fT + (fH - newShp.Height) / 2
+
+    ' The tags travel, or the field stops being a field.
+    newShp.Tags.Add "role", identityTag
+    newShp.Tags.Add PICTURE_SOURCE_TAG, sourceId
+
+    shp.Delete
+    On Error Resume Next
+    If fZ > 0 Then
+        Do While newShp.ZOrderPosition > fZ
+            newShp.ZOrder 3          ' msoSendBackward
+        Loop
+    End If
+    On Error GoTo 0
+
+    ' VERIFIED FROM THE NEW SHAPE, not from the fact that no error was raised.
+    result.Written = True
+    result.Verified = (StrComp(PictureSourceOf(newShp), sourceId, vbTextCompare) = 0)
+    If Not result.Verified Then
+        result.ErrorMessage = "the picture was placed but its source stamp did not stick -- a later run would replace it again"
+    Else
+        result.ErrorMessage = ratioNote
+    End If
+
+    InjectPictureField = result
+End Function

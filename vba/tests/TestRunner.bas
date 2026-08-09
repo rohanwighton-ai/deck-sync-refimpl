@@ -661,6 +661,10 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "Drafting_CitedSourceReachesThePromptCell", r
     r = Test_Drafting_Layout3SheetMigratesIntoLayout4Columns()
     AppendResult report, "Drafting_Layout3SheetMigratesIntoLayout4Columns", r
+    r = Test_InjectPicture_FillsStampsAndThenStaysSilent()
+    AppendResult report, "InjectPicture_FillsStampsAndThenStaysSilent", r
+    r = Test_InjectPicture_RefusesABadLocatorWithoutLosingTheOldImage()
+    AppendResult report, "InjectPicture_RefusesABadLocatorWithoutLosingTheOldImage", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -7955,4 +7959,163 @@ Private Function Test_Drafting_Layout3SheetMigratesIntoLayout4Columns() As Strin
     Set xl = Nothing
 
     Test_Drafting_Layout3SheetMigratesIntoLayout4Columns = result
+End Function
+
+' Writes a real 24-bit BMP of the given size. Self-contained on purpose: the
+' picture tests need an image PowerPoint will actually accept, and depending on
+' a committed fixture file would make them fail for a reason unrelated to the
+' thing under test.
+Private Function MakeTestBitmap(path As String, w As Long, h As Long) As String
+    Dim rowBytes As Long, padding As Long, pixelBytes As Long
+    rowBytes = w * 3
+    padding = (4 - (rowBytes Mod 4)) Mod 4
+    pixelBytes = (rowBytes + padding) * h
+
+    Dim b() As Byte
+    ReDim b(0 To 53 + pixelBytes - 1)
+
+    b(0) = 66: b(1) = 77                          ' "BM"
+    PutLong b, 2, 54 + pixelBytes                 ' file size
+    PutLong b, 10, 54                             ' pixel data offset
+    PutLong b, 14, 40                             ' DIB header size
+    PutLong b, 18, w
+    PutLong b, 22, h
+    b(26) = 1                                     ' planes
+    b(28) = 24                                    ' bits per pixel
+    PutLong b, 34, pixelBytes
+
+    Dim i As Long
+    For i = 54 To UBound(b)
+        b(i) = 200                                ' flat grey, content is irrelevant
+    Next i
+
+    Dim fnum As Integer
+    fnum = FreeFile
+    On Error Resume Next
+    Kill path
+    On Error GoTo 0
+    Open path For Binary Access Write As #fnum
+    Put #fnum, 1, b
+    Close #fnum
+
+    MakeTestBitmap = path
+End Function
+
+Private Sub PutLong(ByRef b() As Byte, at As Long, v As Long)
+    b(at) = v And &HFF
+    b(at + 1) = (v \ 256) And &HFF
+    b(at + 2) = (v \ 65536) And &HFF
+    b(at + 3) = (v \ 16777216) And &HFF
+End Sub
+
+' A picture field: filled from a link, stamped, and silent on the second run.
+'
+' The stamp is the whole design -- without it, idempotence would mean comparing
+' images across 43 slides every quarter. So the assertions are about the STAMP
+' and about what happens when it already matches, not about pixels.
+Private Function Test_InjectPicture_FillsStampsAndThenStaysSilent() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    ' A picture already on the slide, tagged as a field -- the frame whose
+    ' position and size the replacement must respect.
+    Dim seedPath As String
+    seedPath = MakeTestBitmap(Environ("TEMP") & "\dsseed.bmp", 40, 20)
+    Dim frame As Object
+    Set frame = sld.Shapes.AddPicture(seedPath, msoFalse, msoTrue, 100, 80, 300, 150)
+    frame.Tags.Add "role", "PHOTO"
+
+    Dim newPath As String
+    newPath = MakeTestBitmap(Environ("TEMP") & "\dsnew.bmp", 40, 20)
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectPictureField(sld, "PHOTO", "S20", newPath)
+
+    result = result & Assert(r.Found, "the tagged picture is found")
+    result = result & Assert(r.Written, "the picture is written [" & r.ErrorMessage & "]")
+    result = result & Assert(r.Verified, "and verified from the new shape's own stamp")
+
+    Dim placed As Object
+    Set placed = ShapeTaggedRole(sld, "PHOTO")
+    result = result & Assert(Not placed Is Nothing, "the replacement carries the role tag forward")
+    If Not placed Is Nothing Then
+        result = result & Assert(InjectPrimitive.PictureSourceOf(placed) = "S20", _
+            "and the source stamp, got '" & InjectPrimitive.PictureSourceOf(placed) & "'")
+        ' Fitted INSIDE the frame the slide defined -- never larger than it.
+        result = result & Assert(placed.Width <= 300.5 And placed.Height <= 150.5, _
+            "the image is fitted inside the frame, got " & placed.Width & "x" & placed.Height)
+        result = result & Assert(placed.Left >= 99 And placed.Top >= 79, _
+            "and sits within the frame's origin")
+    End If
+
+    ' THE SECOND RUN MUST DO NOTHING. This is the property that makes a picture
+    ' field cost nothing per quarter.
+    Dim r2 As InjectResult
+    r2 = InjectPrimitive.InjectPictureField(sld, "PHOTO", "S20", newPath)
+    result = result & Assert(Not r2.WouldChange, "a second run with the same source changes nothing")
+    result = result & Assert(Not r2.Written, "and writes nothing")
+
+    ' A CHANGED LINK RE-FIRES BY ITSELF.
+    Dim r3 As InjectResult
+    r3 = InjectPrimitive.InjectPictureField(sld, "PHOTO", "S21", newPath)
+    result = result & Assert(r3.WouldChange, "a different source ID re-fires")
+
+    sld.Delete
+    Test_InjectPicture_FillsStampsAndThenStaysSilent = result
+End Function
+
+' THE SAFETY ONE. The existing image is the only copy on the slide, so a locator
+' that is not a readable file must be refused BEFORE anything is deleted --
+' otherwise a typo in a Sources row costs a photo.
+Private Function Test_InjectPicture_RefusesABadLocatorWithoutLosingTheOldImage() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim seedPath As String
+    seedPath = MakeTestBitmap(Environ("TEMP") & "\dsseed2.bmp", 40, 20)
+    Dim frame As Object
+    Set frame = sld.Shapes.AddPicture(seedPath, msoFalse, msoTrue, 100, 80, 300, 150)
+    frame.Tags.Add "role", "PHOTO"
+    frame.Tags.Add InjectPrimitive.PICTURE_SOURCE_TAG, "S20"
+
+    Dim before As Long
+    before = sld.Shapes.count
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectPictureField(sld, "PHOTO", "S21", Environ("TEMP") & "\no_such_image_here.bmp")
+
+    result = result & Assert(Not r.Written, "a missing file is not written")
+    result = result & Assert(InStr(r.ErrorMessage, "not there") > 0, _
+        "and says the file is not there, got '" & r.ErrorMessage & "'")
+    result = result & Assert(sld.Shapes.count = before, _
+        "THE OLD IMAGE SURVIVES -- shape count unchanged, got " & sld.Shapes.count & " was " & before)
+
+    Dim still As Object
+    Set still = ShapeTaggedRole(sld, "PHOTO")
+    result = result & Assert(Not still Is Nothing, "the field is still tagged")
+    If Not still Is Nothing Then
+        result = result & Assert(InjectPrimitive.PictureSourceOf(still) = "S20", _
+            "and still stamped with what it was actually filled from")
+    End If
+
+    sld.Delete
+    Test_InjectPicture_RefusesABadLocatorWithoutLosingTheOldImage = result
+End Function
+
+' Finds a shape by its role tag without reaching into InjectPrimitive's private
+' locator -- the test should not widen production visibility to see a result.
+Private Function ShapeTaggedRole(sld As Object, roleTag As String) As Object
+    Dim shp As Object
+    For Each shp In sld.Shapes
+        On Error Resume Next
+        If shp.Tags("role") = roleTag Then
+            Set ShapeTaggedRole = shp
+            On Error GoTo 0
+            Exit Function
+        End If
+        On Error GoTo 0
+    Next shp
 End Function
