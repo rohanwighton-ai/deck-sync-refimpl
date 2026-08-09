@@ -8157,21 +8157,23 @@ Private Function Test_InjectPicture_CroppedFrameIsFilledUncroppedIsFitted() As S
     Dim r As InjectResult
     r = InjectPrimitive.InjectPictureField(sld, "BANNER", "S30", tall)
 
-    ' A CROPPED FRAME IS NOT TOUCHED. Replacing it would lose the cropping with
-    ' no way to restore it -- probed against real PowerPoint. So sync reports.
-    result = result & Assert(Not r.Written, "a cropped frame is not rewritten")
-    result = result & Assert(InStr(r.ErrorMessage, "CROPPED") > 0, _
-        "and says why, got '" & r.ErrorMessage & "'")
-    result = result & Assert(InStr(r.ErrorMessage, "S30") > 0, _
-        "naming the image the register expects, so it can be set by hand")
+    ' A CROPPED FRAME IS REPLACED AND KEEPS EVERYTHING. Size, position and the
+    ' crop itself -- the last of which needs LockAspectRatio off before the
+    ' dimensions are assigned, or each one undoes the other.
+    result = result & Assert(r.Written, "a cropped frame is replaced [" & r.ErrorMessage & "]")
+    result = result & Assert(r.Verified, "and verified [" & r.ErrorMessage & "]")
 
-    Dim untouched As Object
-    Set untouched = ShapeTaggedRole(sld, "BANNER")
-    If Not untouched Is Nothing Then
-        result = result & Assert(Abs(untouched.Width - wasW) < 0.5 And Abs(untouched.Height - wasH) < 0.5, _
-            "the frame is exactly as it was, was " & wasW & "x" & wasH & " now " & untouched.Width & "x" & untouched.Height)
-        result = result & Assert(Abs(untouched.PictureFormat.CropLeft - wasCropL) < 0.1, _
-            "and keeps its cropping, was " & wasCropL & " now " & untouched.PictureFormat.CropLeft)
+    Dim after As Object
+    Set after = ShapeTaggedRole(sld, "BANNER")
+    If Not after Is Nothing Then
+        result = result & Assert(Abs(after.Width - wasW) < 0.5 And Abs(after.Height - wasH) < 0.5, _
+            "the frame keeps its size, was " & wasW & "x" & wasH & " now " & after.Width & "x" & after.Height)
+        result = result & Assert(Abs(after.Left - wasL) < 0.5 And Abs(after.Top - wasT) < 0.5, _
+            "and its position, was " & wasL & "," & wasT & " now " & after.Left & "," & after.Top)
+        result = result & Assert(Abs(after.PictureFormat.CropLeft - wasCropL) < 0.1, _
+            "and its cropping, was " & wasCropL & " now " & after.PictureFormat.CropLeft)
+        result = result & Assert(InjectPrimitive.PictureSourceOf(after) = "S30", _
+            "and is stamped with what it was filled from")
     End If
 
     ' An uncropped frame with the same mismatch must FIT, not fill.

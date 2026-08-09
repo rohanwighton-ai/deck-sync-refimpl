@@ -516,32 +516,77 @@ Public Function InjectPictureField(sld As Object, identityTag As String, _
         Exit Function
     End If
 
-    ' A CROPPED FRAME IS REPORTED, NEVER REBUILT.
+    ' A CROPPED FRAME IS REPLACED, CARRYING ITS RECORDED GEOMETRY ACROSS.
     '
-    ' Five attempts were made to rebuild one and restore its frame exactly, and
-    ' every one produced a different wrong size -- a 284pt frame came back 142pt
-    ' whether the crop was applied before sizing, after sizing, or re-asserted in
-    ' a loop. PowerPoint reports a cropped picture's Width against its uncropped
-    ' extent, and modelling that is precisely the geometry-guessing this design
-    ' exists to stop.
+    ' Fill.UserPicture cannot be used here -- probed: after feeding, the crop
+    ' reads the no-crop sentinel and cannot be set again. So the shape is
+    ' rebuilt and its size, position, z-order and CROP are applied from values
+    ' captured before anything changed.
     '
-    ' So it is not attempted. The template holds the frame AND its framing; a
-    ' project's photo is set once at project start, in the template-cloned slide.
-    ' Sync's job here is to notice the register names a different image and SAY
-    ' so -- which is useful, and honest, and cannot damage a slide.
-    result.Written = False
-    result.Verified = False
-    result.ErrorMessage = "this frame is CROPPED, so the image was not replaced -- " & _
-        "replacing it would lose the cropping and PowerPoint gives no way to put it back. " & _
-        "The register says this should be " & sourceId & " (" & locator & "). " & _
-        "Set the picture by hand on this slide, or use an uncropped frame."
-    InjectPictureField = result
-    Exit Function
+    ' LOCKASPECTRATIO MUST BE OFF FIRST, and that single line is what five
+    ' earlier attempts were missing. With it on, setting Width makes PowerPoint
+    ' rescale Height and setting Height rescales Width back -- probed: a 284x150
+    ' target lands on 150x150, and no ordering, re-assertion or arithmetic fixes
+    ' it, because nothing was ever wrong with the numbers. Rohan: "you can
+    ' replace a pic right? if needed rec size and position and order".
+    Dim fL As Single, fT As Single, fW As Single, fH As Single, fZ As Long
+    fL = shp.Left: fT = shp.Top: fW = shp.Width: fH = shp.Height
+    On Error Resume Next
+    fZ = shp.ZOrderPosition
+    On Error GoTo 0
+
+    Dim newShp As Object
+    On Error Resume Next
+    Err.Clear
+    Set newShp = sld.Shapes.AddPicture(locator, msoFalse, msoTrue, fL, fT, -1, -1)
+    If Err.Number <> 0 Or newShp Is Nothing Then
+        Dim eAdd As String
+        eAdd = Err.Description
+        On Error GoTo 0
+        result.ErrorMessage = "could not place " & locator & " (" & eAdd & ")"
+        InjectPictureField = result
+        Exit Function
+    End If
+
+    newShp.LockAspectRatio = msoFalse
+
+    ' The template's framing, verbatim -- nothing computed from the image.
+    newShp.PictureFormat.CropLeft = cL
+    newShp.PictureFormat.CropRight = cR
+    newShp.PictureFormat.CropTop = cT
+    newShp.PictureFormat.CropBottom = cB
+
+    newShp.Left = fL
+    newShp.Top = fT
+    newShp.Width = fW
+    newShp.Height = fH
+
+    newShp.Tags.Add "role", identityTag
+    newShp.Tags.Add PICTURE_SOURCE_TAG, sourceId
+    On Error GoTo 0
+
+    shp.Delete
+    On Error Resume Next
+    If fZ > 0 Then
+        Do While newShp.ZOrderPosition > fZ
+            newShp.ZOrder 3          ' msoSendBackward
+        Loop
+    End If
+    On Error GoTo 0
+
+    Set shp = newShp
 
     result.Written = True
     result.Verified = (StrComp(PictureSourceOf(shp), sourceId, vbTextCompare) = 0)
     If Not result.Verified Then
         result.ErrorMessage = "the picture was placed but its source stamp did not stick -- a later run would replace it again"
+    ElseIf isCropped Then
+        If Abs(shp.Width - fW) > 0.5 Or Abs(shp.Height - fH) > 0.5 Then
+            result.Verified = False
+            result.ErrorMessage = "the image was placed but the frame ended " & _
+                shp.Width & "x" & shp.Height & " instead of " & fW & "x" & fH & _
+                " -- check this slide before trusting it"
+        End If
     End If
 
     InjectPictureField = result
