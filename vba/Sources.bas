@@ -333,3 +333,96 @@ Public Function UnknownRefs(refs As String, known As Object) As String
     Next i
     UnknownRefs = bad
 End Function
+
+' The sources cited on a drafting sheet, written out for the prompt.
+'
+' THE FLOW USED TO STOP HERE, AND THAT WAS THE WHOLE PROBLEM. Sources were
+' consulted at PUBLISH only -- KnownSourceIds, UnknownRefs, RefsForOtherPeriod
+' checked that a citation was valid and bound to the right period. Nothing ever
+' put the cited document in front of the thing doing the writing.
+'
+' So a recipe could forbid presenting an inferred fact as a declared one, the
+' fact could be declared in a cited document, and the model still had no way to
+' confirm it -- because the prompt said "the workbook is the sole source of
+' truth" and never mentioned the citation. WORKED-EXAMPLE-STRATEGIC-ALIGNMENT.md
+' records exactly that outcome: "Declared linkages: [TBC]", and it would have
+' stayed [TBC] however many sources were cited.
+'
+' Returns "" when nothing on the sheet cites anything, so a field that needs no
+' evidence gets no extra words.
+Public Function CitedBlockFor(srcWs As Object, draftWs As Object, _
+                              sourcesCol As Long, firstRow As Long) As String
+    If srcWs Is Nothing Or draftWs Is Nothing Then Exit Function
+
+    ' Which IDs does this sheet actually cite, in the order first seen.
+    Dim seen As Object
+    Set seen = CreateObject("Scripting.Dictionary")
+    Dim order As Object
+    Set order = CreateObject("Scripting.Dictionary")
+
+    Dim r As Long
+    r = firstRow
+    Do While Trim(CStr(draftWs.Cells(r, 1).Value)) <> ""
+        Dim raw As String
+        raw = Trim(CStr(draftWs.Cells(r, sourcesCol).Value))
+        If raw <> "" Then
+            Dim parts() As String
+            parts = Split(Replace(raw, ";", ","), ",")
+            Dim i As Long
+            For i = LBound(parts) To UBound(parts)
+                Dim id As String
+                id = UCase(Trim(parts(i)))
+                If id <> "" Then
+                    If Not seen.Exists(id) Then
+                        seen(id) = True
+                        order(order.Count) = id
+                    End If
+                End If
+            Next i
+        End If
+        r = r + 1
+    Loop
+
+    If order.Count = 0 Then Exit Function
+
+    Dim s As String
+    s = vbCrLf & vbCrLf & "SOURCES CITED ON THIS SHEET" & vbCrLf & _
+        "These are named in column G against the rows that rely on them. Each" & vbCrLf & _
+        "row's own column G says which apply TO THAT ROW -- do not carry a" & vbCrLf & _
+        "source across to a row that does not cite it." & vbCrLf & vbCrLf
+
+    Dim k As Long
+    For k = 0 To order.Count - 1
+        Dim wantId As String
+        wantId = CStr(order(k))
+        Dim rr As Long
+        rr = SRC_FIRST_ROW
+        Dim found As Boolean
+        found = False
+        Do While Trim(CStr(srcWs.Cells(rr, COL_S_ID).Value)) <> ""
+            If UCase(Trim(CStr(srcWs.Cells(rr, COL_S_ID).Value))) = wantId Then
+                s = s & wantId & "  " & Trim(CStr(srcWs.Cells(rr, COL_S_LABEL).Value)) & vbCrLf & _
+                    "    kind:     " & Trim(CStr(srcWs.Cells(rr, COL_S_TYPE).Value)) & vbCrLf & _
+                    "    where:    " & Trim(CStr(srcWs.Cells(rr, COL_S_LOCATOR).Value)) & vbCrLf & _
+                    "    applies:  " & Trim(CStr(srcWs.Cells(rr, COL_S_APPLIES).Value)) & vbCrLf & vbCrLf
+                found = True
+                Exit Do
+            End If
+            rr = rr + 1
+        Loop
+        ' A cited ID with no Sources row is reported at publish. Saying so here
+        ' too stops the model treating an unknown citation as evidence.
+        If Not found Then
+            s = s & wantId & "  -- NOT ON THE SOURCES SHEET. Do not treat this as evidence." & vbCrLf & vbCrLf
+        End If
+    Next k
+
+    s = s & "The workbook AND these cited documents are your evidence. You may" & vbCrLf & _
+        "confirm a fact from a document a row cites. You may NOT introduce" & vbCrLf & _
+        "anything that is in neither." & vbCrLf & vbCrLf & _
+        "IF YOU CANNOT OPEN ONE, SAY SO in column J and treat its facts as" & vbCrLf & _
+        "unconfirmed. Do not infer the contents of a document you could not" & vbCrLf & _
+        "read -- an unopened source is not a source."
+
+    CitedBlockFor = s
+End Function

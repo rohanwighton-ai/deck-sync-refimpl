@@ -400,7 +400,7 @@ Public Sub RefreshDraftingSheets()
         ' damaging one: RollForwardPeriod COPIES last period's rows, so the
         ' previous text arrives as this sheet's ORIGINAL column instead. The
         ' protection moved; it did not disappear.
-        report = report & fid & ": " & Drafting.WriteDraftingSheet(ws, reg, fid, specWs, period) & vbCrLf
+        report = report & fid & ": " & Drafting.WriteDraftingSheet(ws, reg, fid, specWs, period, Nothing, srcWs) & vbCrLf
     Next i
 
     WorkbookBridge.WriteWorkbookIndex wb

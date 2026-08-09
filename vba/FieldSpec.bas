@@ -275,7 +275,15 @@ End Function
 ' it IS the fallback: an AI told "write this field" with no further guidance
 ' produces something plausible and unusable, and the person reading the output
 ' should know which of those they are looking at.
-Public Function PromptFrom(g As FieldGuidance) As String
+' citedBlock is APPENDED AFTER the global rules, deliberately.
+'
+' The rules end with "the workbook is the sole source of truth", and the sheet's
+' own copy of that wording wins over the built-in one. So widening the built-in
+' would do nothing on any workbook that has its own -- the exact "editing the
+' cell appears to do nothing" failure the comment below warns about, inverted.
+' Coming last, the sources block states the wider rule itself and cannot be
+' silently overridden by either copy.
+Public Function PromptFrom(g As FieldGuidance, Optional citedBlock As String = "") As String
     Dim s As String
     s = "Read the workbook and the existing text in column C." & vbCrLf & vbCrLf
 
@@ -303,6 +311,8 @@ Public Function PromptFrom(g As FieldGuidance) As String
     Else
         s = s & DefaultGlobalRules()
     End If
+
+    If Trim(citedBlock) <> "" Then s = s & citedBlock
 
     PromptFrom = s
 End Function

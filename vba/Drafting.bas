@@ -139,7 +139,8 @@ End Function
 Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String, _
                                    Optional guidance As Variant, _
                                    Optional periodStamp As String = "", _
-                                   Optional cadence As Object = Nothing) As String
+                                   Optional cadence As Object = Nothing, _
+                                   Optional srcWs As Object = Nothing) As String
     ' A REBUILD MUST NOT COST A PERSON THEIR WORK. Everything a human or an AI
     ' put on this sheet is carried across: the AI draft, the SUBMIT text they
     ' edited, the source IDs they assigned, and their notes. Only ORIGINAL and
@@ -466,7 +467,14 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     Else
         g.FieldId = fieldId
     End If
-    ws.Cells(2, COL_D_PROMPT).Value = "'" & FieldSpec.PromptFrom(g)
+    ' THE CITED SOURCES GO INTO THE PROMPT. Built AFTER the rows are written,
+    ' because it reads column G off the sheet it has just laid out -- including
+    ' the citations carried across from the previous build.
+    Dim citedBlock As String
+    If Not srcWs Is Nothing Then
+        citedBlock = Sources.CitedBlockFor(srcWs, ws, COL_D_SOURCES, DRAFT_FIRST_ROW)
+    End If
+    ws.Cells(2, COL_D_PROMPT).Value = "'" & FieldSpec.PromptFrom(g, citedBlock)
     ws.Cells(DRAFT_INTRO_ROW, COL_D_PROMPT).Value = _
         "PROMPT TO GIVE COPILOT (copy this cell)" & IIf(g.Found, "", "  --  GENERIC, no Field Spec row")
     ws.Columns(COL_D_PROMPT).ColumnWidth = 70

@@ -655,6 +655,10 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "DeckRegistry_LocalPathForUrlFindsARealSyncedFile", r
     r = Test_ReviewQueue_BackupDestinationHandlesACloudDeck()
     AppendResult report, "ReviewQueue_BackupDestinationHandlesACloudDeck", r
+    r = Test_Sources_CitedBlockPutsTheDocumentInThePrompt()
+    AppendResult report, "Sources_CitedBlockPutsTheDocumentInThePrompt", r
+    r = Test_Drafting_CitedSourceReachesThePromptCell()
+    AppendResult report, "Drafting_CitedSourceReachesThePromptCell", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -7748,4 +7752,117 @@ Private Function Test_ReviewQueue_BackupDestinationHandlesACloudDeck() As String
     On Error GoTo 0
 
     Test_ReviewQueue_BackupDestinationHandlesACloudDeck = result
+End Function
+
+' The link that did not exist until 2026-08-09: a cited source reaching the
+' prompt. Sources were validated at publish and never shown to the thing doing
+' the writing, so a recipe forbidding an inferred claim could never be satisfied
+' by a document -- WORKED-EXAMPLE-STRATEGIC-ALIGNMENT.md's "[TBC]" was permanent.
+Private Function Test_Sources_CitedBlockPutsTheDocumentInThePrompt() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, srcWs As Object, dws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set srcWs = wb.Worksheets(1)
+    Set dws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_ID).Value = "S12"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_LABEL).Value = "Program plan -- declared linkage codes"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_TYPE).Value = "SPOT source"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_LOCATOR).Value = "C:\rig\plan.md"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_APPLIES).Value = Sources.APPLIES_ALL
+
+    ' Two rows: one citing a known source, one citing an ID that does not exist.
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, 1).Value = "2_P004"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value = "S12"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, 1).Value = "3_P001"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value = "S99"
+
+    Dim block As String
+    block = Sources.CitedBlockFor(srcWs, dws, Drafting.COL_D_SOURCES, Drafting.DRAFT_FIRST_ROW)
+
+    result = result & Assert(InStr(block, "S12") > 0, "the cited ID reaches the prompt")
+    result = result & Assert(InStr(block, "Program plan -- declared linkage codes") > 0, _
+        "so does what the source IS -- an ID alone is not evidence")
+    result = result & Assert(InStr(block, "C:\rig\plan.md") > 0, _
+        "and WHERE it lives, or it cannot be opened")
+    result = result & Assert(InStr(block, "unopened source is not a source") > 0, _
+        "the block refuses inference from a document that could not be read")
+    result = result & Assert(InStr(block, "S99") > 0 And InStr(block, "NOT ON THE SOURCES SHEET") > 0, _
+        "an unknown citation is named as NOT evidence rather than passed over")
+
+    ' A sheet citing nothing must add nothing -- a field needing no evidence
+    ' should not carry a paragraph about evidence.
+    Dim bare As Object
+    Set bare = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+    bare.Cells(Drafting.DRAFT_FIRST_ROW, 1).Value = "2_P004"
+    result = result & Assert(Sources.CitedBlockFor(srcWs, bare, Drafting.COL_D_SOURCES, Drafting.DRAFT_FIRST_ROW) = "", _
+        "a sheet that cites nothing produces no block")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing
+    Set xl = Nothing
+
+    Test_Sources_CitedBlockPutsTheDocumentInThePrompt = result
+End Function
+
+' THE WIRING, NOT THE PIECES. The first test written for this covered
+' CitedBlockFor alone, so replacing the call with citedBlock = "" left 162 tests
+' green -- the link from a citation to the prompt was untested while looking
+' tested. This builds a real drafting sheet and reads cell L2.
+'
+' Two builds, deliberately: citations are carried across a rebuild, so a first
+' build has none. That is also how it happens in use -- you cite after the sheet
+' exists, and the next rebuild must carry it into the prompt.
+Private Function Test_Drafting_CitedSourceReachesThePromptCell() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, regWs As Object, dws As Object, srcWs As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set regWs = wb.Worksheets(1)
+    Set dws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+    Set srcWs = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+
+    ExcelOutput.CreateSheet regWs, "deck-v1"
+    Dim vals As Object
+    Set vals = CreateObject("Scripting.Dictionary")
+    vals("ABOUT_BODY") = "existing text"
+    ExcelOutput.UpsertRow regWs, "2_P004", vals, "Q4F26"
+    Dim reg As Sheet
+    reg = ExcelOutput.ReadSheetForDeckPeriod(regWs, "Q4F26", "")
+
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_ID).Value = "S12"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_LABEL).Value = "Program plan -- declared linkage codes"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_LOCATOR).Value = "C:\rig\plan.md"
+
+    ' Build once, cite, rebuild -- the citation is carried across.
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", Nothing, srcWs
+    Dim before As String
+    before = CStr(dws.Cells(2, Drafting.COL_D_PROMPT).Value)
+    result = result & Assert(InStr(before, "S12") = 0, _
+        "with nothing cited, the prompt carries no sources block")
+
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value = "S12"
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", Nothing, srcWs
+
+    Dim after As String
+    after = CStr(dws.Cells(2, Drafting.COL_D_PROMPT).Value)
+    result = result & Assert(InStr(after, "S12") > 0, _
+        "the cited source reaches the PROMPT CELL, not just the block builder")
+    result = result & Assert(InStr(after, "C:\rig\plan.md") > 0, _
+        "with its locator, so the document can actually be opened")
+    result = result & Assert(InStr(after, "sole source of truth") > 0, _
+        "and the original guard survives -- the block widens it, never replaces it")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing
+    Set xl = Nothing
+
+    Test_Drafting_CitedSourceReachesThePromptCell = result
 End Function
