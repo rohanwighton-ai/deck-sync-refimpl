@@ -366,10 +366,33 @@ Public Sub WriteRunLog(wb As Object, header As String, body As String)
     Dim lines As Variant
     lines = Split(Replace(body, vbCrLf, vbLf), vbLf)
 
+    ' EVERY LINE IS FORCED TO TEXT, and that is not cosmetic.
+    '
+    ' A cell value beginning with "=" is a FORMULA to Excel. Every report this
+    ' log receives opens with a banner like:
+    '
+    '     === PREVIEW (nothing written): project-status ===
+    '
+    ' so Excel tried to parse "== PREVIEW ..." as an expression, raised, and the
+    ' handler below abandoned the rest of the log -- silently, by design, because
+    ' a log must never stop the run it describes. Net effect: the body was lost
+    ' on EVERY Preview Sync and Sync Now, while the dialog said "the full
+    ' before-and-after is on the 'Run Log' sheet, untruncated".
+    '
+    ' Found 2026-08-09: the sheet held five lines (title, timestamp, and the
+    ' unsaved-workbook note) against a report of 38 changes -- and the count in
+    ' the dialog is derived from that same report, so the detail provably
+    ' existed.
+    '
+    ' The leading apostrophe is Excel's own "treat as text" marker and is not
+    ' stored in the value. The column is also formatted as text first, so a line
+    ' like "-1.5" or "1/2" cannot be coerced into a number or a date either.
+    ws.Columns(1).NumberFormat = "@"
+
     Dim i As Long, r As Long
     r = 4
     For i = LBound(lines) To UBound(lines)
-        ws.Cells(r, 1).Value = CStr(lines(i))
+        ws.Cells(r, 1).Value = "'" & CStr(lines(i))
         r = r + 1
     Next i
 

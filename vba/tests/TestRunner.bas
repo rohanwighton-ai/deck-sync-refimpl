@@ -286,6 +286,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob", r
     r = Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty()
     AppendResult report, "Drafting_AFieldWithNoValueLeavesColumnCEmpty", r
+    r = Test_WorkbookBridge_RunLogSurvivesALineStartingWithEquals()
+    AppendResult report, "WorkbookBridge_RunLogSurvivesALineStartingWithEquals", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -2995,6 +2997,68 @@ Private Function Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty() As String
     On Error GoTo 0
 
     Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty = result
+End Function
+
+' THE LOG MUST SURVIVE THE FIRST LINE OF EVERY REPORT IT IS GIVEN.
+'
+' Reports open with "=== PREVIEW (nothing written): <type> ===". A cell value
+' starting with "=" is a FORMULA, so Excel raised, and WriteRunLog's handler --
+' which deliberately swallows errors so a log cannot stop a run -- abandoned the
+' body. The sheet then held the title, the timestamp and a note, while the
+' dialog promised "the full before-and-after ... untruncated".
+'
+' Asserts the LAST line arrives, not merely that something was written: the old
+' behaviour wrote the first few lines perfectly well, so a test that only
+' checked "the sheet is not empty" would have passed against the defect.
+Private Function Test_WorkbookBridge_RunLogSurvivesALineStartingWithEquals() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+
+    Dim body As String
+    body = "=== PREVIEW (nothing written): project-status ===" & vbCrLf & _
+           "  would correct: 2_P004" & vbCrLf & _
+           "-1.5 leading minus, must not become a number" & vbCrLf & _
+           "+cat" & vbCrLf & _
+           "LAST-LINE-MARKER"
+
+    WorkbookBridge.WriteRunLog wb, "Preview Sync -- nothing was written", body
+
+    Dim ws As Object
+    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, WorkbookBridge.RUN_LOG_SHEET_NAME)
+
+    Dim found As String
+    Dim lastSeen As String
+    Dim r As Long
+    For r = 1 To 40
+        Dim v As String
+        v = CStr(ws.Cells(r, 1).Value)
+        If Trim(v) <> "" Then
+            found = found & "|" & v
+            lastSeen = v
+        End If
+    Next r
+
+    result = result & Assert(InStr(found, "=== PREVIEW") > 0, _
+        "the banner line survives as TEXT -- got '" & found & "'")
+    result = result & Assert(InStr(found, "would correct: 2_P004") > 0, _
+        "the body reaches the sheet at all")
+    result = result & Assert(lastSeen = "LAST-LINE-MARKER", _
+        "and the LAST line arrives -- the old failure wrote the first lines fine, " & _
+        "so 'not empty' would have passed against it. Got last = '" & lastSeen & "'")
+    result = result & Assert(InStr(found, "-1.5 leading minus") > 0, _
+        "a line starting with a minus is not coerced into a number")
+
+    On Error Resume Next
+    wb.Close False
+    xl.Quit
+    On Error GoTo 0
+
+    Test_WorkbookBridge_RunLogSurvivesALineStartingWithEquals = result
 End Function
 
 Private Function Test_PlaceholderCheck_FindsRecordsNotTheTemplate() As String
