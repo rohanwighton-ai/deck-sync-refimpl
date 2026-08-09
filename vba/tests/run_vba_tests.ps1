@@ -461,7 +461,22 @@ finally {
     # to windowless processes specifically (every zombie observed while
     # fixing this had a blank MainWindowTitle) so a real, separate,
     # visible Excel session a human opened during the run is never touched.
-    Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { -not $_.MainWindowTitle } | Stop-Process -Force -ErrorAction SilentlyContinue
+    # A BLANK TITLE IS NOT THE ONLY SHAPE A ZOMBIE TAKES. On 2026-08-09 a run
+    # left an EXCEL.EXE whose MainWindowTitle was the bare word "Excel" -- an
+    # empty frame with no workbook -- so this filter did not match it and the
+    # self-heal quietly did nothing. Four tests in the NEXT run then ERRORED
+    # while the runner still printed RESULT: OK, which is how the leak presents:
+    # never as itself, always as unrelated tests failing later.
+    #
+    # The discriminator is now "no document loaded", which covers both shapes.
+    # A human's Excel showing a workbook always carries its name in the title
+    # ("register-wide.xlsx - Excel"), so a real working session is still never
+    # touched. An Excel a human left open on the start screen with nothing
+    # loaded does match and will be closed -- it has no workbook, so there is
+    # nothing unsaved to lose.
+    Get-Process EXCEL -ErrorAction SilentlyContinue |
+        Where-Object { -not $_.MainWindowTitle -or $_.MainWindowTitle -eq 'Excel' } |
+        Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
 # --- Report --------------------------------------------------------
