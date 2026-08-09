@@ -339,3 +339,60 @@ layout.
 
 **If it is ever built, build it in that order:** leave-the-gap first (cheap,
 reversible, no geometry), replace-with second, move-things last or never.
+
+---
+
+## The time-elapsed bar: the best automation target on the slide
+
+Rohan, 2026-08-09, drawing the distinction the model was missing:
+
+> timeline will move towards end but not necessarily every quarter, vs time
+> elapsed bar autoshapes that move with the clock regardless of progress
+
+**Judgement versus clockwork.** Milestone markers move when the plan changes and
+someone decides. The elapsed bar is a pure function of the date -- nobody
+decides it, and it is wrong on every slide the moment the quarter turns, in a
+way nobody notices until a reader does.
+
+**It beats the prose panels as an automation target, which is counterintuitive
+given where the effort has gone.** Prose needs drafting and review, and
+automating delivery still leaves the expensive human part. The elapsed bar needs
+NOTHING from a person: the slide already carries Start and End, the period
+supplies the third input, and position is arithmetic. It changes every quarter,
+guaranteed, on all 43 slides. Rohan's words: fiddling with **its two component
+autoshapes is a PITA** -- so it is two shapes, not one, and the manual cost is
+per-shape.
+
+**It needs a KIND that does not exist.** `Kind` is how content is decided
+(Controlled / Prose / Static); `FieldType` is what it is (Text / Picture /
+Shape). The elapsed bar is `FieldType = Shape`, `Kind = Derived` -- computed,
+never drafted, never approved, re-derived every run. Nothing in the tool has
+that shape today, and it is the only kind that could sync with no human in the
+loop at all.
+
+**Design, as agreed:** the register says WHERE, sync just applies it -- keeps
+sync dumb, which is what unattended quarterly work needs. Two refinements on
+top of that, both about avoiding a fragile coupling:
+
+- **Store a FRACTION, not points.** Raw PowerPoint coordinates in the register
+  means the day anyone nudges the timeline, all 43 stored positions are quietly
+  wrong and still look synced. Store `0.72` = "72% along", tag the timeline axis
+  itself, and let sync read THAT shape's own Left and Width at run time. Moving
+  the track then fixes itself.
+- **Let Excel compute the fraction, not VBA.** A formula over start, end and
+  period end is visible and checkable in the sheet, and it keeps date handling
+  out of the VBA -- which matters specifically here, because the code has
+  already been bitten by period parsing (`Q4F26` vs `FYnnQn`) and this sidesteps
+  the whole class rather than adding to it.
+
+So the register row gains `TIMELINE_START`, `TIMELINE_END`, `TIMELINE_ELAPSED`
+(a formula over the first two and the period). Sync reads only the last.
+
+**Open:** whether formatting varies too. Size alone covers "the bar gets
+longer". Colour -- amber when the end date falls inside the current quarter, red
+once passed -- is a second column AND a second decision, because a bar that
+changes colour is making a claim about the project rather than showing a date.
+
+**Not for the week it was raised in:** building it costs longer than dragging
+the shapes once. This is next-quarter work, ranked above the Excel polish and
+above show/hide.
