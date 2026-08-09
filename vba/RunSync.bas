@@ -240,6 +240,38 @@ Public Function CreateMissingSlides(sheet As Sheet, slideType As String, templat
     ' that adds slides in bulk, and the wrong answer is unrecoverable by the
     ' tool itself. The flagged slide almost certainly IS the entity about to be
     ' duplicated -- re-tagging it is the correct fix and costs one action.
+    ' THE SOURCE MUST ACTUALLY BE A TEMPLATE, and nothing checked.
+    '
+    ' DeckRegistry.LookupType returns FindBySlideID of whatever slide the type was
+    ' registered against. It does not assert is_template, and on the rig deck NO
+    ' slide carries that tag at all -- preflight reports "0 template". So this
+    ' would have cloned a REAL PROJECT'S SLIDE and tagged the copy with the new
+    ' project's key.
+    '
+    ' Sync then corrects the fields it owns and leaves every other panel exactly
+    ' as it was, so the new project's slide would carry the source project's
+    ' Strategic Alignment, Problem and Project Progress -- the three panels
+    ' nothing tracks. No check would ever fire: sync only inspects its own fields,
+    ' and parity would report a matched pair.
+    '
+    ' Refusing rather than warning, for the reason stated below about flagged
+    ' slides: this is the only operation that adds slides in bulk, and the wrong
+    ' answer is not recoverable by the tool.
+    If templateSld Is Nothing Then
+        CreateMissingSlides = report & vbCrLf & _
+            "REFUSED: this slide type has no template slide registered." & vbCrLf
+        Exit Function
+    End If
+    If Not Resolve.IsTemplateSlide(templateSld) Then
+        CreateMissingSlides = report & vbCrLf & _
+            "REFUSED: the slide registered for '" & slideType & "' is NOT marked as a" & vbCrLf & _
+            "template -- it is a real project's slide." & vbCrLf & vbCrLf & _
+            "Copying it would give every new project that project's wording in any" & vbCrLf & _
+            "panel this tool does not track, and nothing here would notice." & vbCrLf & vbCrLf & _
+            "Use 'Create Template Slide' to make a blank one first." & vbCrLf
+        Exit Function
+    End If
+
     Dim flaggedCount As Long
     If hasActions Then
         Dim fi As Long

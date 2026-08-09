@@ -2655,6 +2655,14 @@ Private Function Test_RunSync_CreateMissingRefusesWhileSlidesAreUnclassified() A
     Set orphan = NewBlankSlide()
     orphan.Tags.Add "slide_type", "cm-type"      ' typed, but NO instance_key
 
+    ' A REAL TEMPLATE, because this test used to hand CreateMissingSlides the
+    ' onboarded slide `keyed` -- a genuine project's slide -- as its source.
+    ' That is the shape the new guard refuses, and the shape the rig deck is in.
+    Dim tmpl As Object
+    Set tmpl = NewBlankSlide()
+    tmpl.Tags.Add "slide_type", "cm-type"
+    tmpl.Tags.Add "is_template", "1"
+
     Dim sheet As Sheet
     Set sheet.Rows = CreateObject("Scripting.Dictionary")
     Set sheet.Fields = New Collection
@@ -2674,7 +2682,7 @@ Private Function Test_RunSync_CreateMissingRefusesWhileSlidesAreUnclassified() A
     before = Application.ActivePresentation.Slides.count
 
     Dim rep As String
-    rep = RunSync.CreateMissingSlides(sheet, "cm-type", keyed, False)
+    rep = RunSync.CreateMissingSlides(sheet, "cm-type", tmpl, False)
 
     result = result & Assert(InStr(rep, "REFUSED") > 0, "it REFUSES while a slide of this type is unclassified")
     result = result & Assert(InStr(rep, "two slides claiming one project") > 0, "the refusal explains the consequence, not just the rule")
@@ -2689,7 +2697,7 @@ Private Function Test_RunSync_CreateMissingRefusesWhileSlidesAreUnclassified() A
     Dim before2 As Long
     before2 = Application.ActivePresentation.Slides.count
     Dim rep2 As String
-    rep2 = RunSync.CreateMissingSlides(sheet, "cm-type", keyed, False)
+    rep2 = RunSync.CreateMissingSlides(sheet, "cm-type", tmpl, False)
     result = result & Assert(InStr(rep2, "REFUSED") = 0, "with no unclassified slide it does NOT refuse")
     result = result & Assert(Application.ActivePresentation.Slides.count = before2 + 1, _
         "and it DOES create the missing slide, got " & Application.ActivePresentation.Slides.count & " vs " & before2)
@@ -3398,6 +3406,15 @@ Private Function Test_RunSync_EndToEndCreatesSlidesFromFreshSheet() As String
     titleShp.Tags.Add "role", "Title"
     templateSld.Tags.Add "slide_type", "e2e-type"
     templateSld.Tags.Add "instance_key", "e2e-template"
+    ' MARKED AS A TEMPLATE, which no fixture in this suite ever did.
+    ' CreateMissingSlides now refuses a source that is not marked -- because
+    ' DeckRegistry.LookupType returns whatever slide the type was registered
+    ' against, and on the real rig NO slide carries is_template, so creation
+    ' would have cloned a REAL PROJECT'S slide. The copy keeps every panel the
+    ' tool does not track, so a new project would silently inherit another
+    ' project's Strategic Alignment, Problem and Progress text.
+    ' Resolve excludes templates from GatherInstances, hence the count below.
+    templateSld.Tags.Add "is_template", "1"
 
     Dim xl As Object, wb As Object, ws As Object
     Set xl = CreateObject("Excel.Application")
@@ -3453,7 +3470,10 @@ Private Function Test_RunSync_EndToEndCreatesSlidesFromFreshSheet() As String
     lo = LBound(instances): hi = UBound(instances): hasAny = (Err.Number = 0)
     On Error GoTo 0
 
-    result = result & Assert(hasAny And (hi - lo + 1) = 4, "4 total instances after sync (template+existing+2 new), got " & IIf(hasAny, hi - lo + 1, 0) & " -- report: " & report)
+    ' 3, not 4: the template is now marked and GatherInstances excludes it
+    ' (RunSync.bas:54). It was previously counted as a record, which is exactly
+    ' the confusion the marker exists to prevent.
+    result = result & Assert(hasAny And (hi - lo + 1) = 3, "3 real instances after sync (existing + 2 new; the template is excluded), got " & IIf(hasAny, hi - lo + 1, 0) & " -- report: " & report)
 
     Dim byKey As Object
     Set byKey = CreateObject("Scripting.Dictionary")
