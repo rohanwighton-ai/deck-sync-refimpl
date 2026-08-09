@@ -273,3 +273,36 @@ than a code change. It is the first live test of whether the boundary wording ho
 
 `addin56` was built before the `NumberFormat = "@"` fix landed. Until the next build,
 every Run Log still loses its body — so "read the Run Log" is not usable advice yet.
+
+## Source assets — the state as at 2026-08-09, and what work means
+
+**Sources sheet: 6 rows, every one prefixed `EXAMPLE (not a real document)`.** Invented
+2026-08-08 to exercise the citation check. Still there.
+
+**Citations: ZERO, on every field.** This is new today and it is not a cleanup — the 37
+fabricated citations on `TPL_ABOUT_BODY` were WIPED when the drafting sheets rebuilt at
+the period change, because `cadence` is permanently `Nothing` so every row cleared.
+The provenance-dies-at-rollover problem, demonstrating itself on real data. Half the
+scaffolding removed itself; the six sheet rows did not.
+
+**Two of the six now point at a period that no longer exists** — `S02` and `S05` are
+`Applies to: Q4F26`, and the register holds only `Q3F26` and `Q1F27` after the relabel.
+
+**So "source assets need work" means, concretely:**
+
+1. **Delete `S01`–`S06`.** Nothing cites them now, so it costs nothing — and leaving
+   fabricated provenance next to real content is worse than having none.
+2. **Build the first real source from the question already asked.** `J13` on
+   `TPL_STRATEGIC_ALIGNMENT_BODY` holds it: are `1.4.2, 1.5.2, 2.3.1` DECLARED linkage
+   codes, and where does that list live? That answer becomes the first genuine Sources
+   row and unblocks the `[TBC]` in `2_P004`'s published text.
+3. **Use the form.** `SOURCE-HARVEST.md` has the rubric and the fields; it needs no
+   tools and can be filled in at work.
+4. **Decide where a maintained list lives.** Rohan owns it now, colleagues later — so it
+   needs an `as at` date, and probably a home outside the register workbook, which the
+   tool rebuilds and clears.
+
+**And the structural point stays open:** citations live only on the drafting sheet,
+which is cleared at every period change. Until that moves to the register — same grain
+and lifespan as the text it explains — provenance has a maximum life of one quarter,
+and today proved it empirically rather than theoretically.
