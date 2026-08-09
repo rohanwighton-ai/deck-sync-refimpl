@@ -32,6 +32,37 @@ success: the diagnosis existed and was thrown away.
 
 ---
 
+## 1a. A message that reports a COUNT must name its SUBJECT
+
+**Three instances in one afternoon, 2026-08-09. Each was true, and each was unusable.**
+
+- `Copy AI to Submit`: *"Nothing to copy: there are no AI drafts on this sheet yet.
+  Column F is empty for all 43 row(s)."* It acts on whichever `TPL_` sheet is ACTIVE in
+  Excel. The active tab was `TPL_ABOUT_BODY`; the work was on
+  `TPL_STRATEGIC_ALIGNMENT_BODY`, where column F held 812 characters. The message never
+  names the field, so a correct statement about one sheet reads as a flat contradiction
+  of what you just did. Its success message has the same hole — *"1 copied"*, of what?
+- `Create Template Slide`: *"5 field(s) set to placeholders."* True. The deck had EIGHT
+  tagged fields; the template was cloned from a slide carrying only five. Naming them
+  would have shown the three missing at a glance instead of after a byte-level check.
+- `OpenOrGetWorkbook` (item 1): *"Could not open the paired workbook at <path>"* — names
+  the file that is FINE and not the duplicate filename blocking it.
+
+**The shape:** the code holds the identifying detail at the moment it composes the
+message, and drops it. What survives is a number with no subject, which is worse than
+silence — it reads as authoritative and sends you to check the wrong thing.
+
+**Fix:** every count in a user-facing message names what it counted. `"Nothing to copy
+for ABOUT_BODY"`, `"5 of 8 fields set to placeholders -- missing: ..."`, `"...blocked by
+register-wide.xlsx already open from <other path>"`. Mechanical, and it is the single
+cheapest reduction in time-to-diagnose available in this codebase.
+
+**Worth guarding, not just fixing:** this is the fourth time a message has been true and
+unusable. A test that asserts every `MsgBox` composing a count also interpolates a name
+would be crude, but it would hold.
+
+---
+
 ## 1b. A drafting sheet for a derived field carries nothing to derive from
 
 **Found 2026-08-09, on the first real drafting run of a new field.** Two faults, one
