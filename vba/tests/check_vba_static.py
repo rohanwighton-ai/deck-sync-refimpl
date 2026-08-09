@@ -369,12 +369,20 @@ def check_unreachable_capabilities(files: list[Path], root: Path) -> list[str]:
     # Parsed as the third argument of AddButton specifically, rather than by
     # grepping for the name anywhere: a mention in a comment must not count as
     # wired, or the scan goes quiet exactly where documentation is thickest.
+    #
+    # THE CAPTION IS NO LONGER A LITERAL. 2026-08-09: captions moved to
+    # Public Const CAP_* in CommandBarUI so a rename is one edit rather than 88,
+    # and this pattern -- which required a quoted second argument -- stopped
+    # matching anything. It reported that rather than passing on zero buttons,
+    # which is the only reason the change did not silently blind the check. The
+    # second argument now accepts either form; the ACTION is still required to be
+    # a literal, because that is the thing being verified.
     wired: set[str] = set()
     bodies: dict[str, str] = {}
     public_procs: list[tuple[str, str, int]] = []
 
     pub_re = re.compile(r"^Public\s+(?:Sub|Function)\s+(\w+)")
-    addbtn_re = re.compile(r'AddButton\s+\w+\s*,\s*"[^"]*"\s*,\s*"([^"]+)"')
+    addbtn_re = re.compile(r'AddButton\s+\w+\s*,\s*(?:"[^"]*"|\w+)\s*,\s*"([^"]+)"')
 
     for path in files:
         name = path.name

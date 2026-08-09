@@ -1,6 +1,37 @@
 Attribute VB_Name = "CommandBarUI"
 Option Explicit
 
+' ---------------------------------------------------------------------
+' THE BUTTON CAPTIONS, DEFINED ONCE.
+'
+' Every user-facing message that tells someone to press a button used to spell
+' its caption out as a literal -- 88 of them across seven modules. So a rename
+' was 88 edits, and missing one left a message pointing at a button that does
+' not exist. That is not hypothetical: Readiness offered 'Create Template
+' Slide' as a remedy for a button the toolbar has never carried.
+'
+' The toolbar builder owns the vocabulary; everything else refers to it. Same
+' split as Kind and the Sources period list -- the code owns the words, the
+' caller owns the choice. Renaming a button is now one edit here.
+' ---------------------------------------------------------------------
+Public Const CAP_MARK_FIELDS As String = "Setup A: Mark Fields"
+Public Const CAP_DISCOVER_FIELDS As String = "Setup A2: Discover Fields"
+Public Const CAP_ONBOARD_SLIDES As String = "Setup B: Onboard Slides"
+Public Const CAP_CHECK_COVERAGE As String = "Setup C: Check Coverage"
+Public Const CAP_CLEAR_MARKS As String = "Setup: Clear Marks"
+Public Const CAP_WHERE_AM_I As String = "Where am I?"
+Public Const CAP_START_QUARTER As String = "0. Start a Quarter"
+Public Const CAP_ROLL_FORWARD As String = "0b. Roll Forward"
+Public Const CAP_DRAFTING_SHEETS As String = "1. Drafting Sheets"
+Public Const CAP_COPY_AI As String = "2. Copy AI to Submit"
+Public Const CAP_PUBLISH As String = "3. Publish & Preview"
+Public Const CAP_SYNC_NOW As String = "4. Sync Now"
+Public Const CAP_REVIEW_CHANGES As String = "Review Changes"
+Public Const CAP_APPLY_APPROVED As String = "Apply Approved"
+Public Const CAP_APPROVE_ALL As String = "Review + Approve All"
+Public Const CAP_REPOINT_WORKBOOK As String = "Repoint Workbook"
+
+
 ' The actual shipped UI surface for specs/ribbon-ui.md, after a real
 ' customUI14.xml ribbon turned out to be impossible for a .ppam add-in
 ' (confirmed 2026-07-26 against real Office -- see customUI/customUI14.xml's
@@ -139,11 +170,11 @@ Public Sub ShowToolbar()
     ' ---------------------------------------------------------------------
 
     ' --- SETUP: once per slide type -------------------------------------
-    AddButton bar, "Setup A: Mark Fields", "BatchOnboardFlow.MarkFieldForBatch", 165, _
+    AddButton bar, CAP_MARK_FIELDS, "BatchOnboardFlow.MarkFieldForBatch", 165, _
         "Use to tag one field by clicking its shape. Repeat per field. Text shapes only."
-    AddButton bar, "Setup A2: Discover Fields", "DiscoverUI.DiscoverFields", 1697, _
+    AddButton bar, CAP_DISCOVER_FIELDS, "DiscoverUI.DiscoverFields", 1697, _
         "Use to tag every field on a slide at once, in one Excel grid. Marks nothing until you confirm."
-    AddButton bar, "Setup B: Onboard Slides", "BatchOnboardFlow.BatchOnboardType", 122, _
+    AddButton bar, CAP_ONBOARD_SLIDES, "BatchOnboardFlow.BatchOnboardType", 122, _
         "Use to link the other slides of this layout to the register. You review them in Excel first."
     ' KEPT AS A BUTTON, unlike Template Slide, and the distinction is real.
     ' Both were merged into onboarding on 2026-08-01 -- then the test suite
@@ -153,28 +184,28 @@ Public Sub ShowToolbar()
     ' -- asked again every time a field is added or a slide is redesigned -- and
     ' a read-only diagnostic you can only reach by re-running a setup step is
     ' one nobody will run. It is offered at onboarding AND available here.
-    AddButton bar, "Setup C: Check Coverage", "RibbonUI.AuditFields", 1000, _
+    AddButton bar, CAP_CHECK_COVERAGE, "RibbonUI.AuditFields", 1000, _
         "Use to see what on the slide is not being tracked. Writes a checklist; changes nothing."
-    AddButton bar, "Setup: Clear Marks", "BatchOnboardFlow.ClearMarkedFieldsForBatch", 480, _
+    AddButton bar, CAP_CLEAR_MARKS, "BatchOnboardFlow.ClearMarkedFieldsForBatch", 480, _
         "Use to discard all marking and start again. Cannot remove just one."
 
     ' --- THE QUARTERLY LOOP ---------------------------------------------
     Set bar = NewBar(BAR_STEPS)
     ' FIRST, because it is the only button that answers "what should I press?".
     ' Rebuilds the readiness sheet from the saved files and shows it.
-    AddButton bar, "Where am I?", "RibbonUI.WhereAmI", 1000, _
+    AddButton bar, CAP_WHERE_AM_I, "RibbonUI.WhereAmI", 1000, _
         "Use to see what is set, what is missing, and what to press next. Writes one sheet; changes nothing else."
-    AddButton bar, "0. Start a Quarter", "DraftingUI.StartQuarter", 297, _
+    AddButton bar, CAP_START_QUARTER, "DraftingUI.StartQuarter", 297, _
         "Use to tell this deck which period it reports. Saves the deck and confirms it landed.", True
-    AddButton bar, "0b. Roll Forward", "DraftingUI.RollForwardUI", 1017, _
+    AddButton bar, CAP_ROLL_FORWARD, "DraftingUI.RollForwardUI", 1017, _
         "Use to copy last period's rows into this one. Refuses if this period already has rows."
-    AddButton bar, "1. Drafting Sheets", "DraftingUI.RefreshDraftingSheets", 1697, _
+    AddButton bar, CAP_DRAFTING_SHEETS, "DraftingUI.RefreshDraftingSheets", 1697, _
         "Use to build the sheets you write on. Your text goes in column D, the tick in column E.", True
-    AddButton bar, "2. Copy AI to Submit", "DraftingUI.CopyAiDraftsToSubmit", 122, _
+    AddButton bar, CAP_COPY_AI, "DraftingUI.CopyAiDraftsToSubmit", 122, _
         "Use to move Copilot's drafts into the column that publishes. Never overwrites your own words."
-    AddButton bar, "3. Publish & Preview", "DraftingUI.PublishDraftsForField", 3, _
+    AddButton bar, CAP_PUBLISH, "DraftingUI.PublishDraftsForField", 3, _
         "Use to send your ticked rows to the register. No slide is touched."
-    AddButton bar, "4. Sync Now", "RibbonUI.SyncNow", 1004, _
+    AddButton bar, CAP_SYNC_NOW, "RibbonUI.SyncNow", 1004, _
         "Use to put the register's text onto the slides. Shows you what will change first."
 
     ' --- The careful route to slides, when step 4 is too blunt -----------
@@ -185,13 +216,13 @@ Public Sub ShowToolbar()
     ' that question is now a readiness line ("Parity: deck and register agree");
     ' the per-run half is Sync Now's own confirmation, which you can cancel.
     ' The Sub stays: DraftingUI offers it at the end of Publish.
-    AddButton bar, "Review Changes", "RibbonUI.ReviewChanges", 1090, _
+    AddButton bar, CAP_REVIEW_CHANGES, "RibbonUI.ReviewChanges", 1090, _
         "Use to read each change one at a time, on a sheet. Writes nothing."
-    AddButton bar, "Apply Approved", "RibbonUI.ApplyApprovedChanges", 3, _
+    AddButton bar, CAP_APPLY_APPROVED, "RibbonUI.ApplyApprovedChanges", 3, _
         "Use to write only the changes you ticked. Takes a backup first."
-    AddButton bar, "Review + Approve All", "RibbonUI.ReviewChangesApproveAll", 463, _
+    AddButton bar, CAP_APPROVE_ALL, "RibbonUI.ReviewChangesApproveAll", 463, _
         "Use to tick everything without reading it. Scratch copies only."
-    AddButton bar, "Repoint Workbook", "DraftingUI.RepointWorkbookUI", 23, _
+    AddButton bar, CAP_REPOINT_WORKBOOK, "DraftingUI.RepointWorkbookUI", 23, _
         "Use to point this deck at a different workbook. Only needed if they got separated.", True
 
     ' CommandBars.Add CREATES THE BAR HIDDEN. Without this line the toolbar is

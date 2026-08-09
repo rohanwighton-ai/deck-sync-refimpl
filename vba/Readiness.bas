@@ -58,6 +58,32 @@ Public Const ST_OK As String = "ok"
 Public Const ST_BLOCKED As String = "BLOCKED"
 Public Const ST_UNKNOWN As String = "CANNOT TELL"
 
+' ---------------------------------------------------------------------
+' REMEDIES ARE A CLOSED SET, NOT FREE TEXT.
+'
+' Each line used to carry its remedy as a hand-typed string, and one of them
+' said "Create Template Slide" -- a button this toolbar has never had. A person
+' following that advice goes looking for something that does not exist, which is
+' the precise failure the toolbar redesign exists to stop, shipping already.
+'
+' As an enum the code switches on, a remedy naming a dead button stops being a
+' typo and becomes a compile-time impossibility: the text is resolved in ONE
+' place, from CommandBarUI's caption constants, so renaming a button moves every
+' remedy with it.
+' ---------------------------------------------------------------------
+Public Enum RemedyCode
+    RM_NONE = 0
+    RM_START_QUARTER
+    RM_ROLL_FORWARD
+    RM_REPOINT_WORKBOOK
+    RM_ONBOARD_SLIDES
+    RM_TEMPLATE_FROM_ONBOARDING
+    RM_SAVE_DECK_THEN_REBUILD
+    RM_SAVE_WORKBOOK_THEN_REBUILD
+    RM_DECK_UNREADABLE
+End Enum
+
+
 ' One row of the sheet. Source is the evidence half of rule 2 -- what was read,
 ' not merely what was concluded.
 Public Type ReadyLine
@@ -74,6 +100,32 @@ Public Type ReadyReport
     Blocked As Long
     Unknown As Long
 End Type
+
+' The single place a remedy becomes words. Button remedies are built from the
+' captions rather than repeating them.
+Public Function RemedyText(code As RemedyCode) As String
+    Select Case code
+        Case RM_NONE:                    RemedyText = ""
+        Case RM_START_QUARTER:           RemedyText = "Press '" & CommandBarUI.CAP_START_QUARTER & "'"
+        Case RM_ROLL_FORWARD:            RemedyText = "Press '" & CommandBarUI.CAP_ROLL_FORWARD & "'"
+        Case RM_REPOINT_WORKBOOK:        RemedyText = "Press '" & CommandBarUI.CAP_REPOINT_WORKBOOK & "'"
+        Case RM_ONBOARD_SLIDES:          RemedyText = "Press '" & CommandBarUI.CAP_ONBOARD_SLIDES & "'"
+
+        ' NOT A BUTTON, and saying so is the whole point of this entry. The
+        ' template slide is created from inside onboarding; there has never been
+        ' a way to press for it directly.
+        Case RM_TEMPLATE_FROM_ONBOARDING: RemedyText = _
+            "Create it from within '" & CommandBarUI.CAP_ONBOARD_SLIDES & "' -- there is no separate button"
+
+        Case RM_SAVE_DECK_THEN_REBUILD:  RemedyText = "Save the deck, then rebuild this sheet"
+        Case RM_SAVE_WORKBOOK_THEN_REBUILD: RemedyText = "Save the workbook, then rebuild this sheet"
+        Case RM_DECK_UNREADABLE:         RemedyText = "Open the deck from a local folder, or see the trace"
+
+        ' An unrecognised code must never render as a confident blank -- the
+        ' sheet would show a line with no way forward and look complete.
+        Case Else:                       RemedyText = "(no remedy recorded -- code " & code & ")"
+    End Select
+End Function
 
 ' The headline. Deliberately a function of the counts alone, so it cannot drift
 ' away from the lines beneath it.
@@ -137,10 +189,10 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
                                              periodTrace, periodUnreadable)
     If periodUnreadable Then
         AddLine r, "Period", "COULD NOT READ THE SAVED FILE", ST_UNKNOWN, _
-            "attempted: " & periodTrace, "Open the deck from a local folder, or see the trace"
+            "attempted: " & periodTrace, RemedyText(RM_DECK_UNREADABLE)
     ElseIf periodDisk = "" Then
         AddLine r, "Period", "(not set in the saved file)", ST_BLOCKED, _
-            "saved .pptx", "Start a Quarter"
+            "saved .pptx", RemedyText(RM_START_QUARTER)
     Else
         AddLine r, "Period", periodDisk, ST_OK, "saved .pptx"
     End If
@@ -155,7 +207,7 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
         If StrComp(periodLive, periodDisk, vbTextCompare) <> 0 Then
             AddLine r, "Period not saved", "PowerPoint says " & periodLive & _
                 ", the file says " & periodDisk, ST_BLOCKED, _
-                "saved .pptx vs PowerPoint", "Save the deck, then rebuild this sheet"
+                "saved .pptx vs PowerPoint", RemedyText(RM_SAVE_DECK_THEN_REBUILD)
         End If
     End If
 
@@ -163,10 +215,10 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
     wbPathDisk = DeckRegistry.WorkbookPathOnDisk(deckPath, wbTrace, wbUnreadable)
     If wbUnreadable Then
         AddLine r, "Paired workbook", "COULD NOT READ THE SAVED FILE", ST_UNKNOWN, _
-            "attempted: " & wbTrace, "Open the deck from a local folder, or see the trace"
+            "attempted: " & wbTrace, RemedyText(RM_DECK_UNREADABLE)
     ElseIf wbPathDisk = "" Then
         AddLine r, "Paired workbook", "(none recorded in the saved file)", ST_BLOCKED, _
-            "saved .pptx", "Repoint Workbook"
+            "saved .pptx", RemedyText(RM_REPOINT_WORKBOOK)
     Else
         AddLine r, "Paired workbook", wbPathDisk, ST_OK, "saved .pptx"
     End If
@@ -185,7 +237,7 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
 
     If WorkbookBridge.IsDirty(wb) Then
         AddLine r, "Register", "not read -- Excel is holding unsaved edits", ST_UNKNOWN, _
-            "Excel (unsaved)", "Save the workbook, then rebuild this sheet"
+            "Excel (unsaved)", RemedyText(RM_SAVE_WORKBOOK_THEN_REBUILD)
         Build = r
         Exit Function
     End If
@@ -200,7 +252,7 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
 
     If Not hasTypes Then
         AddLine r, "Slide type", "(none registered)", ST_BLOCKED, "saved .pptx", _
-            "Setup B: Onboard Slides"
+            RemedyText(RM_ONBOARD_SLIDES)
         Build = r
         Exit Function
     End If
@@ -211,7 +263,7 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
         Dim wsName As String
         If Not DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
             AddLine r, "Slide type " & types(i), "registered, but its slide is gone", _
-                ST_BLOCKED, "saved .pptx", "Setup B: Onboard Slides"
+                ST_BLOCKED, "saved .pptx", RemedyText(RM_ONBOARD_SLIDES)
         Else
             AddLine r, "Slide type", types(i) & " -> sheet '" & wsName & "'", ST_OK, "saved .pptx"
 
@@ -220,18 +272,18 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
             ' a new project arrives and gets another project's slide.
             If templateSld Is Nothing Then
                 AddLine r, "Template slide", "none for " & types(i), ST_BLOCKED, _
-                    "deck", "Create Template Slide"
+                    "deck", RemedyText(RM_TEMPLATE_FROM_ONBOARDING)
             ElseIf Not Resolve.IsTemplateSlide(templateSld) Then
                 AddLine r, "Template slide", "NOT marked as a template -- a new project " & _
                     "would be copied from a real project's slide", ST_BLOCKED, "deck", _
-                    "Create Template Slide"
+                    RemedyText(RM_TEMPLATE_FROM_ONBOARDING)
             Else
                 AddLine r, "Template slide", "present", ST_OK, "deck"
             End If
 
             If Not WorkbookBridge.WorksheetExists(wb, wsName) Then
                 AddLine r, "Register sheet", "'" & wsName & "' is missing from this workbook", _
-                    ST_BLOCKED, "open workbook", "Repoint Workbook"
+                    ST_BLOCKED, "open workbook", RemedyText(RM_REPOINT_WORKBOOK)
             Else
                 Dim problem As String
                 Dim sheet As Sheet
@@ -239,7 +291,7 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
                     WorkbookBridge.GetOrAddWorksheet(wb, wsName), periodDisk, problem)
                 If problem <> "" Then
                     AddLine r, "Rows for " & periodDisk, problem, ST_BLOCKED, _
-                        "open workbook", "Roll Forward"
+                        "open workbook", RemedyText(RM_ROLL_FORWARD)
                 Else
                     Dim q As ReviewQueueSet
                     q = ReviewQueue.BuildQueue(sheet, types(i))
