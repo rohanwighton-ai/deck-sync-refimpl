@@ -731,3 +731,80 @@ Public Function MacroEnabledWarning(path As String) As String
                 "non-macro format (.pptx / .xlsx), to a local folder."
     End Select
 End Function
+
+' TABS IN THE ORDER YOU USE THEM, not the order they were created.
+'
+' Rohan, 2026-08-10. The workbook had grown by accretion: two drafting sheets
+' stranded among the reference sheets because they were made first, the other
+' three at the end because they were made last, and the logs in the middle.
+' Nothing grouped, and with five colour-coded drafting tabs the strip is now the
+' index -- an index in creation order is not one.
+'
+'   START HERE   where am I
+'   Field Spec   the recipes -- how each field should be written
+'   Sources      the evidence available
+'   TPL_...      where you work, in Field Spec order so the colours run in
+'                sequence rather than scattering
+'   Review ...   the gate
+'   <the rest>   the register and anything else
+'   Run Log      what happened, last, because it is read after the fact
+'   Sync Log
+'
+' THE REGISTER SITS AFTER THE DRAFTING SHEETS ON PURPOSE. It is the output --
+' derived, not edited. Putting it second would invite treating it as the working
+' surface, which is the mistake column C already guards against one level down.
+'
+' draftOrder is a vbLf-delimited list of drafting sheet names in the order the
+' caller built them; only the caller knows the Field Spec order.
+'
+' Never creates or deletes. A name that is not present is skipped, so this is
+' safe on a workbook that has only some of them.
+Public Sub ArrangeTabs(wb As Object, draftOrder As String)
+    Dim wanted As String
+    wanted = Readiness.READY_SHEET_NAME & vbLf & _
+             FieldSpec.SPEC_SHEET_NAME & vbLf & _
+             Sources.SOURCES_SHEET_NAME
+    If Trim(draftOrder) <> "" Then wanted = wanted & vbLf & draftOrder
+
+    ' Review sheets next, whatever they are called -- the name carries a slide
+    ' type and a hash, so it is matched by prefix rather than named.
+    Dim ws As Object
+    For Each ws In wb.Worksheets
+        If Left(ws.Name, 7) = "Review " Then wanted = wanted & vbLf & ws.Name
+    Next ws
+
+    ' Then everything else in its current order, EXCEPT the logs.
+    For Each ws In wb.Worksheets
+        If InStr(vbLf & wanted & vbLf, vbLf & ws.Name & vbLf) = 0 Then
+            If ws.Name <> RUN_LOG_SHEET_NAME And ws.Name <> "Sync Log" Then
+                wanted = wanted & vbLf & ws.Name
+            End If
+        End If
+    Next ws
+
+    ' Logs last.
+    wanted = wanted & vbLf & RUN_LOG_SHEET_NAME & vbLf & "Sync Log"
+
+    Dim names() As String
+    names = Split(wanted, vbLf)
+
+    Dim placed As Long
+    Dim i As Long
+    For i = LBound(names) To UBound(names)
+        Dim nm As String
+        nm = Trim(names(i))
+        If nm <> "" Then
+            If WorksheetExists(wb, nm) Then
+                On Error Resume Next
+                If placed = 0 Then
+                    wb.Worksheets(nm).Move Before:=wb.Worksheets(1)
+                Else
+                    wb.Worksheets(nm).Move After:=wb.Worksheets(placed)
+                End If
+                If Err.Number = 0 Then placed = placed + 1
+                Err.Clear
+                On Error GoTo 0
+            End If
+        End If
+    Next i
+End Sub

@@ -389,6 +389,7 @@ Public Sub RefreshDraftingSheets()
 
     Dim report As String, firstSheet As String
     Dim i As Long
+    Dim draftOrder As String
     Dim seedIndex As Long
     seedIndex = 0
     For i = LBound(parts) To UBound(parts)
@@ -399,6 +400,8 @@ Public Sub RefreshDraftingSheets()
         Dim sName As String
         sName = Drafting.DraftSheetNameFor(fid)
         If firstSheet = "" Then firstSheet = sName
+        If draftOrder <> "" Then draftOrder = draftOrder & vbLf
+        draftOrder = draftOrder & sName
 
         Dim ws As Object
         Set ws = WorkbookBridge.GetOrAddWorksheet(wb, sName)
@@ -413,6 +416,7 @@ Public Sub RefreshDraftingSheets()
         seedIndex = seedIndex + 1
     Next i
 
+    WorkbookBridge.ArrangeTabs wb, draftOrder
     WorkbookBridge.WriteWorkbookIndex wb
     WorkbookBridge.FormatRegisterSheet regWs
 

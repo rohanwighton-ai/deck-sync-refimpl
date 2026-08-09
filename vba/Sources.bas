@@ -386,10 +386,17 @@ Public Function CitedBlockFor(srcWs As Object, draftWs As Object, _
     If order.Count = 0 Then Exit Function
 
     Dim s As String
+    ' THE COLUMN LETTER IS DERIVED, NEVER TYPED. Written as a literal "G" on
+    ' 2026-08-09 and invalidated an hour later by the layout-4 reorder that moved
+    ' SOURCES to D -- prose describing a column cannot be trusted to a human
+    ' remembering to update it, which is the 88-strings defect in miniature.
+    Dim colLetter As String
+    colLetter = Chr$(64 + sourcesCol)
+
     s = vbCrLf & vbCrLf & "SOURCES CITED ON THIS SHEET" & vbCrLf & _
-        "These are named in column G against the rows that rely on them. Each" & vbCrLf & _
-        "row's own column G says which apply TO THAT ROW -- do not carry a" & vbCrLf & _
-        "source across to a row that does not cite it." & vbCrLf & vbCrLf
+        "These are named in column " & colLetter & " against the rows that rely on them." & vbCrLf & _
+        "Each row's own column " & colLetter & " says which apply TO THAT ROW -- do not" & vbCrLf & _
+        "carry a source across to a row that does not cite it." & vbCrLf & vbCrLf
 
     Dim k As Long
     For k = 0 To order.Count - 1
