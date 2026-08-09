@@ -346,18 +346,18 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Cells(DRAFT_INTRO_ROW, 1).Font.Bold = True
     ws.Cells(DRAFT_INTRO_ROW, 1).Font.Size = 9
 
-    ws.Cells(2, 1).Value = "STEP 1   Read column C -- what the slide says today."
+    ws.Cells(2, 1).Value = "STEP 1   Read column " & Chr$(64 + COL_D_CURRENT) & " -- what the slide says today."
     ' COLUMN G, NOT E. Step 5 below sends the tick to E, so this line named one
     ' column for two things inside a single instruction block -- and E is the tick,
     ' which is the consent gate. Stale since 3de4be8 moved SUBMIT to D and the tick
     ' to E; that commit updated the header row and the toolbar tooltip and left
     ' every prose instruction pointing at the old layout.
-    ws.Cells(3, 1).Value = "STEP 2   Name your sources in column D. Add new ones on the Sources sheet first."
-    ws.Cells(4, 1).Value = "STEP 3   Ask Copilot for a draft -- the prompt is in cell L2. It writes into column E. E is NEVER published."
-    ws.Cells(5, 1).Value = "STEP 4   Press '" & CommandBarUI.CAP_SYNC_NOW & "' to copy E into F, then EDIT column F until you are happy. F is what gets sent."
-    ws.Cells(6, 1).Value = "STEP 5   Type  Y  in column G, save and CLOSE the file, then press '" & CommandBarUI.CAP_SYNC_NOW & "' again."
+    ws.Cells(3, 1).Value = "STEP 2   Name your sources in column " & Chr$(64 + COL_D_SOURCES) & ". Add new ones on the Sources sheet first."
+    ws.Cells(4, 1).Value = "STEP 3   Ask Copilot for a draft -- the prompt is in cell L2. It writes into column " & Chr$(64 + COL_D_DRAFT) & ". That column is NEVER published."
+    ws.Cells(5, 1).Value = "STEP 4   Press '" & CommandBarUI.CAP_SYNC_NOW & "' to copy " & Chr$(64 + COL_D_DRAFT) & " into " & Chr$(64 + COL_D_SUBMIT) & ", then EDIT column " & Chr$(64 + COL_D_SUBMIT) & " until you are happy. That is what gets sent."
+    ws.Cells(6, 1).Value = "STEP 5   Type  Y  in column " & Chr$(64 + COL_D_APPROVED) & ", save and CLOSE the file, then press '" & CommandBarUI.CAP_SYNC_NOW & "' again."
 
-    ws.Cells(7, 1).Value = "Only column F is published -- nothing the AI writes reaches a slide unless you have moved it into F and ticked it. " & _
+    ws.Cells(7, 1).Value = "Only column " & Chr$(64 + COL_D_SUBMIT) & " is published -- nothing the AI writes reaches a slide unless you have moved it there and ticked it. " & _
                            "Column C is read-only: edit the register, not this sheet, to change what a slide says today."
     ws.Cells(7, 1).Font.Italic = True
 
@@ -883,10 +883,14 @@ Public Function CopyAiToSubmit(ws As Object) As String
     ' as a machine shrugging. A tool that does nothing must say why, or the
     ' person is left deciding whether it is broken.
     If copied = 0 And keptExisting = 0 Then
+        ' COLUMN LETTERS DERIVED, NEVER TYPED. Written as D/E/F when the layout
+        ' put them there, and left saying so when layout 4 moved them -- so the
+        ' message told a person to type into the sources column while the sheet
+        ' beside it said the opposite. Seen on screen 2026-08-10.
         CopyAiToSubmit = "Nothing to copy: there are no AI drafts on this sheet yet." & vbCrLf & _
-            "Column F (AI DRAFT) is empty for all " & noAi & " row(s)." & vbCrLf & vbCrLf & _
-            "Paste Copilot's text into column F first -- the prompt is in cell L2 -- " & _
-            "or just type into column D (SUBMIT) yourself." & vbCrLf
+            "Column " & Chr$(64 + COL_D_DRAFT) & " (AI DRAFT) is empty for all " & noAi & " row(s)." & vbCrLf & vbCrLf & _
+            "Paste Copilot's text into column " & Chr$(64 + COL_D_DRAFT) & " first -- the prompt is in cell L2 -- " & _
+            "or just type into column " & Chr$(64 + COL_D_SUBMIT) & " (SUBMIT) yourself." & vbCrLf
         Exit Function
     End If
 

@@ -56,7 +56,11 @@ Public Function WriteSourcesSheet(ws As Object) As String
     ws.Cells(SRC_INTRO_ROW, 1).Font.Bold = True
     ws.Cells(SRC_INTRO_ROW, 1).Font.Size = 9
 
-    ws.Cells(2, 1).Value = "Add a row for anything you drafted from. Give it the next free ID, then put that ID in column G of the drafting sheet."
+    ' The drafting sheet's own column, derived. Said "column G" and stayed
+    ' saying it when layout 4 moved sources to D -- wrong on the very sheet a
+    ' person reads while adding a source.
+    ws.Cells(2, 1).Value = "Add a row for anything you drafted from. Give it the next free ID, then put that ID in column " & _
+        Chr$(64 + Drafting.COL_D_SOURCES) & " of the drafting sheet."
     ws.Cells(3, 1).Value = "One row per source, ever -- if 20 projects use the same report, they all reference the same ID. Do not paste document text in here; point at it."
 
     ws.Cells(4, 1).Value = "A drafting row referring to an ID that is not listed here is reported when you publish. It will not stop the publish, but it means the record is wrong."
