@@ -653,6 +653,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "DeckRegistry_LocalPathForUrlOnlyAnswersWhenTheFileIsThere", r
     r = Test_DeckRegistry_LocalPathForUrlFindsARealSyncedFile()
     AppendResult report, "DeckRegistry_LocalPathForUrlFindsARealSyncedFile", r
+    r = Test_ReviewQueue_BackupDestinationHandlesACloudDeck()
+    AppendResult report, "ReviewQueue_BackupDestinationHandlesACloudDeck", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -7656,4 +7658,81 @@ Private Function Test_DeckRegistry_LocalPathForUrlFindsARealSyncedFile() As Stri
     On Error GoTo 0
 
     Test_DeckRegistry_LocalPathForUrlFindsARealSyncedFile = result
+End Function
+
+' The cloud branch of the backup is what blocked Apply Approved entirely: a
+' deck whose FullName is a URL got no backup, and ApplyApproved refuses to write
+' without one. Destination choice is split out as a pure function precisely so
+' this can be exercised without a cloud-hosted deck open.
+Private Function Test_ReviewQueue_BackupDestinationHandlesACloudDeck() As String
+    Dim result As String
+    Dim note As String
+
+    ' A local deck keeps the sibling .bak -- findable next to what it protects.
+    Dim localDeck As String
+    localDeck = "C:\Users\rohan\deck-sync-e2e\e2e-deck.pptx"
+    Dim localDest As String
+    localDest = ReviewQueue.BackupDestinationFor(localDeck, note)
+    result = result & Assert(InStr(localDest, localDeck) = 1, _
+        "a local deck backs up beside itself, got '" & localDest & "'")
+    result = result & Assert(Right$(localDest, 9) = ".bak.pptx", _
+        "the backup is named as a pptx backup, got '" & localDest & "'")
+
+    ' A cloud deck that resolves to a real synced file must get a destination --
+    ' this is the case that used to return nothing and stop the whole run.
+    Dim root As String
+    root = Environ("OneDrive")
+    If root = "" Then
+        Test_ReviewQueue_BackupDestinationHandlesACloudDeck = result & _
+            "    FAIL: SKIPPED -- no OneDrive, the cloud branch was never exercised" & vbCrLf
+        Exit Function
+    End If
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Dim leaf As String, full As String
+    leaf = "dsbackuptest_" & Format(Now, "yyyymmddhhnnss") & ".pptx"
+    full = fso.BuildPath(root, leaf)
+    fso.CreateTextFile(full, True).Write "probe"
+
+    Dim reg As Object, ns As String
+    On Error Resume Next
+    Set reg = GetObject("winmgmts:\\.\root\default:StdRegProv")
+    reg.GetStringValue &H80000001, "SOFTWARE\SyncEngines\Providers\OneDrive\Personal", "UrlNamespace", ns
+    On Error GoTo 0
+
+    If ns = "" Then
+        On Error Resume Next
+        fso.DeleteFile full
+        On Error GoTo 0
+        Test_ReviewQueue_BackupDestinationHandlesACloudDeck = result & _
+            "    FAIL: SKIPPED -- no personal UrlNamespace, the cloud branch was never exercised" & vbCrLf
+        Exit Function
+    End If
+
+    note = ""
+    Dim cloudDest As String
+    cloudDest = ReviewQueue.BackupDestinationFor(ns & "/0123456789abcdef/" & leaf, note)
+
+    result = result & Assert(cloudDest <> "", _
+        "a cloud deck that resolves to a synced file GETS a backup destination [" & note & "]")
+    result = result & Assert(InStr(1, cloudDest, Environ("LOCALAPPDATA"), vbTextCompare) = 1, _
+        "the cloud backup goes to LOCALAPPDATA, got '" & cloudDest & "'")
+    result = result & Assert(InStr(1, cloudDest, root, vbTextCompare) = 0, _
+        "the cloud backup is NOT inside the synced folder -- it must not upload, got '" & cloudDest & "'")
+    result = result & Assert(InStr(cloudDest, leaf) > 0, _
+        "the backup carries the deck's real name, got '" & cloudDest & "'")
+
+    ' And an unresolvable URL still yields nothing, so Apply Approved still stops.
+    note = ""
+    result = result & Assert( _
+        ReviewQueue.BackupDestinationFor("https://not-a-real-tenant.example.com/x/deck.pptx", note) = "", _
+        "an unresolvable cloud deck still gets no destination")
+    result = result & Assert(note <> "", "and says why [" & note & "]")
+
+    On Error Resume Next
+    fso.DeleteFile full
+    On Error GoTo 0
+
+    Test_ReviewQueue_BackupDestinationHandlesACloudDeck = result
 End Function

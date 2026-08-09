@@ -1013,13 +1013,69 @@ End Sub
 ' Rohan remembers, and a rule that depends on remembering is not a control. This
 ' makes the tool take its own .bak, so the protection survives a tired evening.
 '
-' Cloud-hosted decks report Presentation.FullName as a URL rather than a path
-' (found 2026-07-28, item 4), and SaveCopyAs cannot write a sibling file next to
-' a URL. That case WARNS LOUDLY and proceeds rather than refusing: the real
-' protection is that the original deck is never opened for write in the first
-' place, and refusing here would block cloud decks entirely while adding nothing
-' that rule does not already provide. The warning goes in the report so an
-' unbacked run is visible rather than assumed.
+' WHERE THE BACKUP GOES, as a pure function so it can be tested without a deck.
+'
+' A local deck gets a sibling .bak, which is what this has always done and what
+' makes the backup findable next to the thing it protects.
+'
+' A CLOUD-HOSTED DECK USED TO GET NOTHING. FullName is a URL, SaveCopyAs cannot
+' write a sibling next to one, and ApplyApproved aborts when no backup exists --
+' so on the machine where the real quarter is produced, sync could not write a
+' single slide. The URL now resolves to the local synced file
+' (DeckRegistry.LocalPathForUrl), which proves the deck is reachable on disk and
+' supplies its real name.
+'
+' The backup is then written to LOCAL APPDATA, deliberately, NOT beside the
+' synced copy. A ~49MB .bak dropped into a synced folder on every Apply Approved
+' uploads to SharePoint and appears in front of whoever else is in that library.
+' AppData is never synced, so the protection is real and private. The caller
+' must NAME the location, because a backup nobody can find is not one.
+'
+' Returns "" when there is no location it can honestly offer -- the caller
+' treats that as "no backup" and refuses to write.
+Public Function BackupDestinationFor(deckPath As String, Optional ByRef note As String) As String
+    BackupDestinationFor = ""
+    note = ""
+    If deckPath = "" Then Exit Function
+
+    Dim stamp As String
+    stamp = ".r13-" & Format(Now, "yyyymmdd-hhnnss") & ".bak.pptx"
+
+    If InStr(deckPath, "://") = 0 Then
+        BackupDestinationFor = deckPath & stamp
+        Exit Function
+    End If
+
+    Dim localCopy As String, trace As String
+    localCopy = DeckRegistry.LocalPathForUrl(deckPath, trace)
+    If localCopy = "" Then
+        note = "this deck is cloud-hosted and no local synced copy could be found (" & trace & ")"
+        Exit Function
+    End If
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    Dim folder As String
+    folder = Environ("LOCALAPPDATA")
+    If folder = "" Then
+        note = "LOCALAPPDATA is not set, so there is nowhere unsynced to put a backup"
+        Exit Function
+    End If
+    folder = fso.BuildPath(folder, "deck-sync-backups")
+
+    On Error Resume Next
+    If Not fso.FolderExists(folder) Then fso.CreateFolder folder
+    On Error GoTo 0
+    If Not fso.FolderExists(folder) Then
+        note = "could not create the backup folder at " & folder
+        Exit Function
+    End If
+
+    note = "cloud-hosted deck -- backup written outside the synced folder so it is not uploaded"
+    BackupDestinationFor = fso.BuildPath(folder, fso.GetFileName(localCopy) & stamp)
+End Function
+
 Public Function BackupBeforeWrite(pres As Object, ByRef backupPath As String) As String
     backupPath = ""
 
@@ -1033,14 +1089,14 @@ Public Function BackupBeforeWrite(pres As Object, ByRef backupPath As String) As
     End If
     On Error GoTo 0
 
-    If InStr(fullName, "://") > 0 Then
-        BackupBeforeWrite = "WARNING: this deck is cloud-hosted (" & fullName & ")." & vbCrLf & _
-            "         NO LOCAL BACKUP COULD BE TAKEN. Office version history is the only undo."
+    Dim whereNote As String
+    Dim candidate As String
+    candidate = BackupDestinationFor(fullName, whereNote)
+    If candidate = "" Then
+        BackupBeforeWrite = "WARNING: NO BACKUP COULD BE TAKEN -- " & whereNote & "." & vbCrLf & _
+            "         Office version history is the only undo, and Apply Approved will not write."
         Exit Function
     End If
-
-    Dim candidate As String
-    candidate = fullName & ".r13-" & Format(Now, "yyyymmdd-hhnnss") & ".bak.pptx"
 
     On Error Resume Next
     pres.SaveCopyAs candidate
@@ -1074,7 +1130,11 @@ Public Function BackupBeforeWrite(pres As Object, ByRef backupPath As String) As
     On Error GoTo 0
 
     backupPath = candidate
+    ' NAME THE LOCATION. For a cloud deck the backup is deliberately NOT beside
+    ' the deck, so "a backup was taken" without a path is unactionable -- the one
+    ' moment it matters is the moment someone needs to find it in a hurry.
     BackupBeforeWrite = "Backup: " & candidate
+    If whereNote <> "" Then BackupBeforeWrite = BackupBeforeWrite & vbCrLf & "        (" & whereNote & ")"
 End Function
 
 ' Applies exactly the approved changes and nothing else.
