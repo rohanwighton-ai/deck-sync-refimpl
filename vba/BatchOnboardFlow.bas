@@ -2779,10 +2779,25 @@ Private Function PromptBatchOnboardType() As String
     Err.Clear
     pres.Save
     If Err.Number <> 0 Then pptSaveWarning = "WARNING: could not save the deck (" & Err.Description & ") -- save it manually now."
-    Err.Clear
-    wb.Save
-    If Err.Number <> 0 Then xlSaveWarning = "WARNING: could not save the Data workbook (" & Err.Description & ") -- save it manually now."
     On Error GoTo 0
+
+    ' THE DECK'S SAVE IS CONFIRMED FROM DISK BELOW; THE WORKBOOK'S WAS NOT.
+    '
+    ' This was `wb.Save` guarded by `Err.Number <> 0`, which is the check this
+    ' project has already established is not evidence -- WorkbookBridge documents
+    ' a macro-enabled/managed-policy save that fails SILENTLY, raising nothing,
+    ' so Err.Number stays 0 and the commit reports success against a file nothing
+    ' reached. DraftingUI's publish path had the identical gap and was moved to
+    ' SaveWorkbookVerified, which compares DateLastModified across the save.
+    '
+    ' It matters here as much as anywhere: this line commits the real harvested
+    ' values, and the block above calls it the one write that actually matters.
+    Dim xlSaveProblem As String
+    xlSaveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
+    If xlSaveProblem <> "" Then
+        xlSaveWarning = "WARNING: the Data workbook did NOT save -- " & xlSaveProblem & vbCrLf & _
+            "The harvested values are in Excel's memory only. Save it manually now, before closing Excel."
+    End If
 
     ' Same permanent closed-loop verification as SaveMarkingSessionToProperty
     ' (see that function's own header for why Err.Number/Saved alone aren't
