@@ -823,13 +823,33 @@ Public Sub RepointWorkbookUI()
     Dim problem As String
     problem = DeckRegistry.SetWorkbookPathVerified(pres, typed, 4)
 
-    If problem = "" Then
-        MsgBox "Paired workbook is now:" & vbCrLf & vbCrLf & typed & vbCrLf & vbCrLf & _
-               "Confirmed in the saved file -- the deck has been saved for you." & vbCrLf & vbCrLf & _
-               "Keep the deck and its workbook in the SAME FOLDER -- then the pairing " & _
-               "repairs itself when either moves.", vbInformation, CAP
-    Else
+    If problem <> "" Then
         MsgBox problem, vbCritical, CAP
+        Exit Sub
+    End If
+
+    ' A PATH IS NOT THE PAIRING. The deck also stores DeckSyncType:<type> =
+    ' slideID|worksheetName, and this never touched it -- so repointing at a
+    ' workbook whose register sheet is named differently left LookupType asking
+    ' for the old name, GetOrAddWorksheet CREATING it blank, and sync reporting
+    ' success over zero rows. Reported as a repair that had half worked.
+    '
+    ' Rohan's test, 2026-08-09: "if a relink / repair / repoint button will
+    ' genuinely work, fine, otherwise people just start from the top". So it has
+    ' to say when it has not genuinely worked.
+    Dim linkNote As String
+    linkNote = WorksheetLinkProblem(pres, typed)
+
+    If linkNote = "" Then
+        MsgBox "Paired workbook is now:" & vbCrLf & vbCrLf & typed & vbCrLf & vbCrLf & _
+               "Confirmed in the saved file, and this deck's slide type still finds " & _
+               "its sheet there. The deck has been saved for you.", vbInformation, CAP
+    Else
+        MsgBox "The path was changed and confirmed on disk:" & vbCrLf & vbCrLf & typed & vbCrLf & vbCrLf & _
+               "BUT THE PAIRING IS NOT REPAIRED." & vbCrLf & vbCrLf & linkNote & vbCrLf & vbCrLf & _
+               "Do not sync until this is resolved -- a missing sheet gets created " & _
+               "empty, and the run would report success having written nothing. " & _
+               "Onboard this deck's slide type again to rebuild the link.", vbExclamation, CAP
     End If
     Exit Sub
 
@@ -837,3 +857,53 @@ Failed:
     MsgBox "Could not repoint the workbook." & vbCrLf & vbCrLf & _
            "Error " & Err.Number & ": " & Err.Description, vbCritical, CAP
 End Sub
+
+' Does every slide type this deck registers still find its worksheet in the
+' workbook now paired to it? Returns "" when the link is sound, otherwise the
+' sentence to show.
+'
+' OPENS THE WORKBOOK READ-ONLY VIA THE NORMAL BRIDGE and asks whether the sheet
+' EXISTS -- never GetOrAddWorksheet, which would create the very sheet whose
+' absence is the thing being tested, and turn the check into a repair that
+' hides the fault it found.
+Private Function WorksheetLinkProblem(pres As Object, workbookPath As String) As String
+    WorksheetLinkProblem = ""
+
+    Dim types() As String
+    types = DeckRegistry.ListRegisteredTypes(pres)
+
+    Dim lo As Long, hi As Long, hasTypes As Boolean
+    On Error Resume Next
+    lo = LBound(types): hi = UBound(types)
+    hasTypes = (Err.Number = 0)
+    On Error GoTo 0
+    If Not hasTypes Then
+        WorksheetLinkProblem = "This deck registers no slide type, so there is no sheet to find."
+        Exit Function
+    End If
+
+    Dim wb As Object
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
+    If wb Is Nothing Then
+        WorksheetLinkProblem = "The new workbook could not be opened, so the link could not be checked."
+        Exit Function
+    End If
+
+    Dim missing As String
+    Dim i As Long
+    For i = lo To hi
+        Dim templateSld As Object
+        Dim wsName As String
+        If DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
+            If Not WorkbookBridge.WorksheetExists(wb, wsName) Then
+                If missing <> "" Then missing = missing & vbCrLf
+                missing = missing & "  '" & types(i) & "' expects a sheet named '" & wsName & "' -- not in this workbook."
+            End If
+        End If
+    Next i
+
+    If missing <> "" Then
+        WorksheetLinkProblem = "This deck's slide type points at a sheet the new workbook " & _
+            "does not have:" & vbCrLf & missing
+    End If
+End Function

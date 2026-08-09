@@ -4941,11 +4941,11 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
 
     ' THREE BARS since 2026-08-08 -- sixteen buttons did not fit one row and the
     ' last four were unreachable behind an overflow chevron. The count that
-    ' matters is still sixteen buttons in total, and every one of them visible.
+    ' matters is still every button being present and visible -- two, since 2026-08-09.
     Dim allBars As Collection
     Set allBars = New Collection
     Dim nm As Variant
-    For Each nm In CommandBarUI.ToolbarNames()
+    For Each nm In CommandBarUI.ActiveToolbarNames()
         Dim oneBar As Object
         Set oneBar = Nothing
         On Error Resume Next
@@ -4963,7 +4963,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     For Each bb In allBars
         totalButtons = totalButtons + bb.Controls.count
     Next bb
-    result = result & Assert(totalButtons = 16, "16 buttons across all bars, got " & totalButtons)
+    result = result & Assert(totalButtons = 2, "2 buttons on the one bar, got " & totalButtons)
 
     Dim bar As Object
     Set bar = allBars(1)
@@ -5002,7 +5002,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     ' pass. Tightened 2026-07-30 while adding SyncNow, whose name contains
     ' another entry's prefix.
     Dim expectedActions As String
-    expectedActions = "|WhereAmI|SyncNow|ReviewChanges|ReviewChangesApproveAll|ApplyApprovedChanges|CreateTemplateSlide|AuditFields|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|DiscoverFields|RefreshDraftingSheets|CopyAiDraftsToSubmit|PublishDraftsForField|StartQuarter|RollForwardUI|RepointWorkbookUI|"
+    expectedActions = "|SyncNowChain|RefreshDraftingSheets|"
 
     Dim i As Long
     Dim eachBar As Variant
@@ -5027,7 +5027,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
         result = result & Assert(Left$(ctrl.TooltipText, 7) = "Use to ", _
             "button '" & ctrl.Caption & "' tooltip opens with 'Use to ', got '" & Left$(ctrl.TooltipText, 20) & "'")
         If subName = "WhereAmI" Then seenPreview = True
-        If subName = "SyncNow" Then seenSyncNow = True
+        If subName = "SyncNowChain" Then seenSyncNow = True
         If subName = "ReviewChanges" Then seenReview = True
         If subName = "ApplyApprovedChanges" Then seenApply = True
         If subName = "CreateTemplateSlide" Then seenCreateTemplate = True
@@ -5035,10 +5035,18 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     Next i
     Next eachBar
 
-    result = result & Assert(seenPreview, "Where am I? is actually ON the toolbar -- the read-only action, and the safe first thing to run on an unfamiliar machine")
-    result = result & Assert(seenReview, "Review Changes is actually ON the toolbar -- R13's gate, and unreachable without a button")
-    result = result & Assert(seenApply, "Apply Approved is actually ON the toolbar -- the recurring payoff the tool exists for, and useless while the review cannot be acted on")
-    result = result & Assert(seenSyncNow, "Sync Now is ON the toolbar -- batch-aware, and the one-click path for a change set that is honestly one decision")
+    ' THESE FOUR NO LONGER HAVE BUTTONS, AND THAT IS THE DESIGN, not drift.
+    ' 2026-08-09: 16 buttons became 2. Where am I?, Review Changes, Apply
+    ' Approved and Audit Fields are reached from inside the Sync Now chain --
+    ' the chain opens by rebuilding the readiness sheet, offers read-one-at-a-
+    ' time or approve-all, and stops at the write-authorising confirmation.
+    '
+    ' Asserting their ABSENCE would be asserting the implementation. What must
+    ' stay true is that they are still REACHABLE, and a live toolbar cannot
+    ' answer that -- check_vba_static.py walks the call graph and fails the
+    ' build on a genuine orphan. It caught exactly this regression when the
+    ' chains were calling private Cores and nine capabilities went dark.
+    result = result & Assert(seenSyncNow, "Sync Now is ON the toolbar -- the chain, and the only route to a slide write")
     ' Create Template Slide is deliberately NOT a button as of 2026-08-01 -- it
     ' is offered at the end of Bulk Onboard, where it belongs: it cannot run
     ' before onboarding and is a once-per-slide-type action. This assertion used
@@ -5046,7 +5054,6 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     ' rather than looking like an omission.
     result = result & Assert(Not seenCreateTemplate, _
         "Create Template Slide is NOT a toolbar button -- it is offered at the end of Bulk Onboard instead")
-    result = result & Assert(seenAuditFields, "Audit Fields is actually ON the toolbar -- read-only, and the thing that tells you which fields the type is still missing")
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarCreatesWiredButtons = result
@@ -5060,7 +5067,7 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
 
     Dim total2 As Long
     Dim nm2 As Variant
-    For Each nm2 In CommandBarUI.ToolbarNames()
+    For Each nm2 In CommandBarUI.ActiveToolbarNames()
         Dim b2 As Object
         Set b2 = Nothing
         On Error Resume Next
@@ -5069,7 +5076,7 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
         result = result & Assert(Not b2 Is Nothing, "bar '" & CStr(nm2) & "' still exists after calling ShowToolbar twice")
         If Not b2 Is Nothing Then total2 = total2 + b2.Controls.count
     Next nm2
-    result = result & Assert(total2 = 16, "still exactly 16 buttons across all bars, got " & total2)
+    result = result & Assert(total2 = 2, "still exactly 2 buttons, got " & total2)
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarIsIdempotent = result
@@ -6035,13 +6042,19 @@ Private Function Test_CommandBarUI_EveryDeclaredCapabilityHasAButton() As String
     Dim result As String
 
     Dim required As Variant
-    required = Array( _
-        "StartQuarter", "RollForwardUI", "RefreshDraftingSheets", _
-        "CopyAiDraftsToSubmit", "PublishDraftsForField", "SyncNow", _
-        "MarkFieldForBatch", "DiscoverFields", "BatchOnboardType", _
-        "AuditFields", "ClearMarkedFieldsForBatch", _
-        "WhereAmI", "ReviewChanges", "ApplyApprovedChanges", _
-        "ReviewChangesApproveAll", "RepointWorkbookUI")
+    ' THE RUNTIME HALF ONLY, and the split is a real loss worth stating.
+    '
+    ' This asserted that sixteen named Subs each had a button. Under two buttons
+    ' and a chain, thirteen of them are reached from INSIDE the chain instead --
+    ' so the question "can a person still do this?" is no longer answerable from
+    ' the live toolbar. It moved to check_vba_static.py, which walks the call
+    ' graph and fails the build on a genuine orphan. That check is Python, so it
+    ' runs on the dev machine and NOT at work: the strongest guard against
+    ' silently orphaning a capability is now weaker where it matters most.
+    '
+    ' What stays here is what only a live toolbar can answer: the dispatchers
+    ' are wired, and they resolve to real Subs.
+    required = Array("SyncNowChain", "RefreshDraftingSheets")
 
     ' Read from the LIVE toolbar, not from a list of what we think we built.
     CommandBarUI.ShowToolbar
@@ -6049,7 +6062,7 @@ Private Function Test_CommandBarUI_EveryDeclaredCapabilityHasAButton() As String
     wired = "|"
 
     Dim barNames As Variant
-    barNames = CommandBarUI.ToolbarNames
+    barNames = CommandBarUI.ActiveToolbarNames
     Dim nm As Variant
     For Each nm In barNames
         Dim bar As Object

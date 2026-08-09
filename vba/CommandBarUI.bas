@@ -20,12 +20,15 @@ Public Const CAP_ONBOARD_SLIDES As String = "Setup B: Onboard Slides"
 Public Const CAP_CHECK_COVERAGE As String = "Setup C: Check Coverage"
 Public Const CAP_CLEAR_MARKS As String = "Setup: Clear Marks"
 Public Const CAP_WHERE_AM_I As String = "Where am I?"
-Public Const CAP_START_QUARTER As String = "0. Start a Quarter"
+Public Const CAP_START_QUARTER As String = "1. Start the quarter"
 Public Const CAP_ROLL_FORWARD As String = "0b. Roll Forward"
 Public Const CAP_DRAFTING_SHEETS As String = "1. Drafting Sheets"
 Public Const CAP_COPY_AI As String = "2. Copy AI to Submit"
 Public Const CAP_PUBLISH As String = "3. Publish & Preview"
-Public Const CAP_SYNC_NOW As String = "4. Sync Now"
+Public Const CAP_DRAFT_AND_PUBLISH As String = "2. Draft and publish"
+Public Const CAP_PUT_ON_SLIDES As String = "3. Put it on the slides"
+Public Const CAP_SYNC_NOW As String = "1. Sync Now"
+Public Const CAP_REBUILD_SHEETS As String = "2. Rebuild my sheets"
 Public Const CAP_REVIEW_CHANGES As String = "Review Changes"
 Public Const CAP_APPLY_APPROVED As String = "Apply Approved"
 Public Const CAP_APPROVE_ALL As String = "Review + Approve All"
@@ -90,6 +93,10 @@ Private Const TOOLBAR_NAME As String = "Deck Sync " & TOOLBAR_BUILD
 ' the division the code already makes -- setup runs once per slide type, the
 ' numbered steps run every period, and the careful route is what you use when
 ' step 4 is too blunt.
+' The bar the three buttons live on. BAR_SETUP/BAR_STEPS/BAR_CAREFUL are kept
+' ONLY so HideToolbar still deletes them -- upgrading from build 40 would
+' otherwise leave orphan bars on screen with dead buttons on them.
+Private Const BAR_MAIN As String = "Deck Sync " & TOOLBAR_BUILD
 Private Const BAR_SETUP As String = "Deck Sync " & TOOLBAR_BUILD & " -- Setup"
 Private Const BAR_STEPS As String = "Deck Sync " & TOOLBAR_BUILD & " -- Each period"
 Private Const BAR_CAREFUL As String = "Deck Sync " & TOOLBAR_BUILD & " -- One at a time"
@@ -152,78 +159,37 @@ Public Sub ShowToolbar()
     HideToolbar
 
     Dim bar As Object
-    Set bar = NewBar(BAR_SETUP)
+    Set bar = NewBar(BAR_MAIN)
 
     ' ---------------------------------------------------------------------
-    ' ORDERED BY THE WORK, AND NUMBERED. Rohan, 2026-08-01: "The ribbon should
-    ' be organised in line with the workflow and numbered in steps."
+    ' TWO BUTTONS. Was 16 across three bars.
     '
-    ' The previous order was accretion -- buttons sat wherever they were added,
-    ' so Preview Sync came first, the setup steps came last, and nothing told a
-    ' person what to press after what. On a toolbar this is not cosmetic: it is
-    ' the only instruction the tool gives before somebody clicks something.
+    ' Rohan applied his own boundary rule to the bar itself -- "a boundary earns
+    ' its place only where a person has to do work or make a decision in the
+    ' gap" (BatchOnboardFlow.bas:2886) -- and then asked whether two would do.
+    ' They do, and the reason three felt necessary was a mistake: buttons were
+    ' being treated as the safety mechanism. They are not. The CONFIRMATION is
+    ' the consent gate -- the tick is a selection, the dialog is the consent --
+    ' so "publish to the register" and "write to the slides" do not need separate
+    ' buttons. They need separate STOPS, which a chain gives you anyway.
     '
-    ' Two tracks, deliberately distinguished. SETUP runs once per slide type,
-    ' ever. The numbered steps run every quarter. Numbering all of them 1..7
-    ' would say "do these seven things each time", which is wrong and would
-    ' send somebody back through onboarding they have already done.
+    ' NOTHING IS UNREACHABLE. Every capability is called from the chain or
+    ' offered by the step before it, and check_vba_static.py fails the build if
+    ' that stops being true -- it caught exactly that regression when this was
+    ' three buttons and the chains called the private Cores instead.
+    '
+    ' Button 2 is NOT called "Reset". Reset could mean clearing the marking,
+    ' rebuilding the sheets, discarding the quarter's rows, or restoring the deck
+    ' from backup -- four different consequences, one word, pressed four months
+    ' after you last used the tool. It rebuilds the drafting sheets, and
+    ' WriteDraftingSheet harvests drafts, notes, submit text and sources before
+    ' clearing and restores them after, so typed work survives. Verified before
+    ' this button was put one click away.
     ' ---------------------------------------------------------------------
-
-    ' --- SETUP: once per slide type -------------------------------------
-    AddButton bar, CAP_MARK_FIELDS, "BatchOnboardFlow.MarkFieldForBatch", 165, _
-        "Use to tag one field by clicking its shape. Repeat per field. Text shapes only."
-    AddButton bar, CAP_DISCOVER_FIELDS, "DiscoverUI.DiscoverFields", 1697, _
-        "Use to tag every field on a slide at once, in one Excel grid. Marks nothing until you confirm."
-    AddButton bar, CAP_ONBOARD_SLIDES, "BatchOnboardFlow.BatchOnboardType", 122, _
-        "Use to link the other slides of this layout to the register. You review them in Excel first."
-    ' KEPT AS A BUTTON, unlike Template Slide, and the distinction is real.
-    ' Both were merged into onboarding on 2026-08-01 -- then the test suite
-    ' pointed out both had become unreachable except by re-running onboarding.
-    ' Template Slide is genuinely once per slide type, so the offer at the end
-    ' of onboarding covers it. "What am I not tracking?" is a RECURRING question
-    ' -- asked again every time a field is added or a slide is redesigned -- and
-    ' a read-only diagnostic you can only reach by re-running a setup step is
-    ' one nobody will run. It is offered at onboarding AND available here.
-    AddButton bar, CAP_CHECK_COVERAGE, "RibbonUI.AuditFields", 1000, _
-        "Use to see what on the slide is not being tracked. Writes a checklist; changes nothing."
-    AddButton bar, CAP_CLEAR_MARKS, "BatchOnboardFlow.ClearMarkedFieldsForBatch", 480, _
-        "Use to discard all marking and start again. Cannot remove just one."
-
-    ' --- THE QUARTERLY LOOP ---------------------------------------------
-    Set bar = NewBar(BAR_STEPS)
-    ' FIRST, because it is the only button that answers "what should I press?".
-    ' Rebuilds the readiness sheet from the saved files and shows it.
-    AddButton bar, CAP_WHERE_AM_I, "RibbonUI.WhereAmI", 1000, _
-        "Use to see what is set, what is missing, and what to press next. Writes one sheet; changes nothing else."
-    AddButton bar, CAP_START_QUARTER, "DraftingUI.StartQuarter", 297, _
-        "Use to tell this deck which period it reports. Saves the deck and confirms it landed.", True
-    AddButton bar, CAP_ROLL_FORWARD, "DraftingUI.RollForwardUI", 1017, _
-        "Use to copy last period's rows into this one. Refuses if this period already has rows."
-    AddButton bar, CAP_DRAFTING_SHEETS, "DraftingUI.RefreshDraftingSheets", 1697, _
-        "Use to build the sheets you write on. Your text goes in column D, the tick in column E.", True
-    AddButton bar, CAP_COPY_AI, "DraftingUI.CopyAiDraftsToSubmit", 122, _
-        "Use to move Copilot's drafts into the column that publishes. Never overwrites your own words."
-    AddButton bar, CAP_PUBLISH, "DraftingUI.PublishDraftsForField", 3, _
-        "Use to send your ticked rows to the register. No slide is touched."
-    AddButton bar, CAP_SYNC_NOW, "RibbonUI.SyncNow", 1004, _
-        "Use to put the register's text onto the slides. Shows you what will change first."
-
-    ' --- The careful route to slides, when step 4 is too blunt -----------
-    Set bar = NewBar(BAR_CAREFUL)
-    ' PREVIEW SYNC LOST ITS BUTTON 2026-08-09 (Rohan: "pre sync review can be part
-    ' of sync? option to cancel for user, one less button?"). Its output was a
-    ' count plus a Run Log dump -- a LINE, not an action. The standing half of
-    ' that question is now a readiness line ("Parity: deck and register agree");
-    ' the per-run half is Sync Now's own confirmation, which you can cancel.
-    ' The Sub stays: DraftingUI offers it at the end of Publish.
-    AddButton bar, CAP_REVIEW_CHANGES, "RibbonUI.ReviewChanges", 1090, _
-        "Use to read each change one at a time, on a sheet. Writes nothing."
-    AddButton bar, CAP_APPLY_APPROVED, "RibbonUI.ApplyApprovedChanges", 3, _
-        "Use to write only the changes you ticked. Takes a backup first."
-    AddButton bar, CAP_APPROVE_ALL, "RibbonUI.ReviewChangesApproveAll", 463, _
-        "Use to tick everything without reading it. Scratch copies only."
-    AddButton bar, CAP_REPOINT_WORKBOOK, "DraftingUI.RepointWorkbookUI", 23, _
-        "Use to point this deck at a different workbook. Only needed if they got separated.", True
+    AddButton bar, CAP_SYNC_NOW, "RibbonUI.SyncNowChain", 1004, _
+        "Use to carry the quarter forward: sets the period, builds your sheets, publishes what you ticked, then asks before changing any slide.", True
+    AddButton bar, CAP_REBUILD_SHEETS, "DraftingUI.RefreshDraftingSheets", 1697, _
+        "Use to rebuild the drafting sheets when they look wrong. Rebuilt from the register; your typed drafts and notes are kept."
 
     ' CommandBars.Add CREATES THE BAR HIDDEN. Without this line the toolbar is
     ' built correctly, wired correctly, and invisible -- and PowerPoint shows no
@@ -249,7 +215,19 @@ End Function
 
 ' Every bar we own, so a caller can find or check them all.
 Public Function ToolbarNames() As Variant
-    ToolbarNames = Array(BAR_SETUP, BAR_STEPS, BAR_CAREFUL)
+    ToolbarNames = Array(BAR_MAIN, BAR_SETUP, BAR_STEPS, BAR_CAREFUL)
+End Function
+
+' THE BARS THAT ACTUALLY EXIST, as opposed to the ones HideToolbar must delete.
+'
+' ToolbarNames had quietly become two things: the delete list (which must keep
+' naming build 40's three bars so an upgrade leaves no orphan) and the list of
+' live bars. Anything iterating it to read controls asked PowerPoint for a bar
+' that was never created and got "Invalid procedure call" -- which surfaced as
+' two tests ERRORING rather than failing, plus a third erroring downstream off
+' the same left-behind state. One word, two jobs.
+Public Function ActiveToolbarNames() As Variant
+    ActiveToolbarNames = Array(BAR_MAIN)
 End Function
 
 Public Sub HideToolbar()

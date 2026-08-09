@@ -94,7 +94,10 @@ Public Const REPORT_CAP As Long = 900
 ' without recomputation is the same defect as a verifier that reads a cache: it
 ' answers about a moment that has passed, and it is the surface a person would
 ' consult INSTEAD of checking. See Readiness.bas's header for the four rules.
-Public Sub WhereAmI()
+' NO LONGER A BUTTON TARGET. The chain is the entry point; this stays as the
+' error-handling wrapper its Core still needs. Private so the reachability
+' check reports genuine orphans rather than adapters.
+Private Sub WhereAmI()
     On Error GoTo Failed
     WhereAmICore
     Exit Sub
@@ -137,7 +140,10 @@ Private Sub WhereAmICore()
            vbInformation, "Where am I"
 End Sub
 
-Public Sub SyncNow()
+' NO LONGER A BUTTON TARGET. The chain is the entry point; this stays as the
+' error-handling wrapper its Core still needs. Private so the reachability
+' check reports genuine orphans rather than adapters.
+Private Sub SyncNow()
     On Error GoTo Failed
     SyncNowCore
     Exit Sub
@@ -559,7 +565,10 @@ End Function
 ' inline handler would be switched off by the first of them and read as
 ' protection while providing none. Putting the handler in a separate frame
 ' means nothing inside the body can turn it off, now or after a later edit.
-Public Sub ReviewChanges()
+' NO LONGER A BUTTON TARGET. The chain is the entry point; this stays as the
+' error-handling wrapper its Core still needs. Private so the reachability
+' check reports genuine orphans rather than adapters.
+Private Sub ReviewChanges()
     On Error GoTo Failed
     ReviewChangesCore False
     Exit Sub
@@ -576,7 +585,10 @@ End Sub
 ' click through". A distinct button someone presses by name keeps that a
 ' decision taken each time and visible in the report -- and makes tightening the
 ' deletion of one procedure rather than the unpicking of a flag.
-Public Sub ReviewChangesApproveAll()
+' NO LONGER A BUTTON TARGET. The chain is the entry point; this stays as the
+' error-handling wrapper its Core still needs. Private so the reachability
+' check reports genuine orphans rather than adapters.
+Private Sub ReviewChangesApproveAll()
     On Error GoTo Failed
     ReviewChangesCore True
     Exit Sub
@@ -714,6 +726,121 @@ End Sub
 ' Toolbar entry point. The real work is in ApplyApprovedCore; this exists only
 ' to catch anything that escapes it. Same separate-frame reasoning as above.
 ' ---------------------------------------------------------------------
+' THE CHAIN -- "1. Sync Now"
+' ---------------------------------------------------------------------
+'
+' One button that does the next right thing, whatever state the deck is in.
+' It reads that state, states its plan before the first write, and stops only
+' where there is a genuine decision.
+'
+' EVERY PUBLIC CAPABILITY IS CALLED FROM HERE, deliberately and by name. When
+' this was three buttons the chains called the private Cores, which orphaned
+' nine public entry points -- built, and unreachable by a person. The static
+' check caught it. Calling the public wrappers keeps each one's own error
+' handler in place too, which is why they exist.
+'
+' V1 HONESTY: DraftingUI's six entry points have no work/prompt split, so each
+' stage still owns its prompts. The SEQUENCE is right; the stop-count discipline
+' arrives with the Core splits.
+Public Sub SyncNowChain()
+    On Error GoTo Failed
+    SyncNowChainCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Sync Now", RibbonUI.UnexpectedErrorText("Sync Now", Err.Number, Err.Description, Err.Source)
+End Sub
+
+Private Sub SyncNowChainCore()
+    Const TITLE As String = "1. Sync Now"
+
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    ' SETUP IS A PRECONDITION, NOT AN ACTIVITY -- once ever per slide type, and
+    ' only on a deck that has none. A configured deck never sees this.
+    Dim types() As String
+    types = DeckRegistry.ListRegisteredTypes(pres)
+    Dim lo As Long, hi As Long, hasTypes As Boolean
+    On Error Resume Next
+    lo = LBound(types): hi = UBound(types)
+    hasTypes = (Err.Number = 0)
+    On Error GoTo 0
+
+    If Not hasTypes Then
+        Dim setupAnswer As VbMsgBoxResult
+        setupAnswer = MsgBox( _
+            "This deck has no slide type set up yet, so there is nothing to sync." & vbCrLf & vbCrLf & _
+            "Setting one up is a ONE-OFF and you only do it once per slide layout:" & vbCrLf & _
+            "  - tag each field on a template slide by clicking it" & vbCrLf & _
+            "  - link the other slides of that layout to the register" & vbCrLf & vbCrLf & _
+            "Yes  -- tag every field on a slide at once, in an Excel grid (quicker)." & vbCrLf & _
+            "No   -- tag them one at a time by clicking each shape." & vbCrLf & _
+            "Cancel -- change nothing.", vbYesNoCancel + vbQuestion, TITLE)
+
+        If setupAnswer = vbYes Then
+            DiscoverUI.DiscoverFields
+            BatchOnboardFlow.BatchOnboardType
+        ElseIf setupAnswer = vbNo Then
+            BatchOnboardFlow.MarkFieldForBatch
+        Else
+            ' STARTING THE TAGGING AGAIN lives here because this is the only
+            ' place a person is tagging. Offered on the way out rather than as
+            ' its own choice: it is what you want when the LAST attempt went
+            ' wrong, which is exactly when you are cancelling.
+            If MsgBox("Nothing was changed." & vbCrLf & vbCrLf & _
+                      "Discard any marking already done on this deck and start clean?" & vbCrLf & _
+                      "(It cannot remove just one field.)", _
+                      vbYesNo + vbQuestion, TITLE) = vbYes Then
+                BatchOnboardFlow.ClearMarkedFieldsForBatch
+            End If
+        End If
+        Exit Sub
+    End If
+
+    ' WHERE YOU ARE, WITHOUT A BUTTON FOR IT. Folded in per Rohan 2026-08-09.
+    ' Rebuilt first so the sheet reflects the state this run is about to act on,
+    ' and so a person who cancels at the plan below still gets the picture.
+    WhereAmI
+
+    ' THE REPAIR, OFFERED ONLY WHEN IT IS THE ANSWER. Repoint sets the workbook
+    ' path; it does NOT rebuild the slide-type link, so it is offered when the
+    ' pairing is the thing that is broken and says so when it has not fully
+    ' worked.
+    If DeckRegistry.GetWorkbookPath(pres) = "" Then
+        If MsgBox("This deck is not paired with a workbook, so there is nothing to sync." & vbCrLf & vbCrLf & _
+                  "Point it at one now?", vbYesNo + vbExclamation, TITLE) = vbYes Then
+            DraftingUI.RepointWorkbookUI
+        End If
+        Exit Sub
+    End If
+
+    ' THE PLAN, BEFORE THE FIRST WRITE. This is the hazard a chain creates and a
+    ' row of buttons did not: it can do more than the person expected. Saying
+    ' what it will do, in order, is the answer.
+    If MsgBox("This will, in order:" & vbCrLf & vbCrLf & _
+              "  1. Set the deck's quarter (it asks you which)" & vbCrLf & _
+              "  2. Offer to copy last quarter's rows forward" & vbCrLf & _
+              "  3. Rebuild the sheets you write in" & vbCrLf & _
+              "  4. Publish the rows you ticked, for one field" & vbCrLf & _
+              "  5. Show every slide change and ASK before writing any of it" & vbCrLf & vbCrLf & _
+              "Nothing reaches a slide until step 5, and you can cancel there." & vbCrLf & _
+              "Cancelling at any step leaves everything before it in place." & vbCrLf & vbCrLf & _
+              "Go ahead?", vbYesNo + vbQuestion, TITLE) <> vbYes Then
+        MsgBox "Nothing was changed.", vbInformation, TITLE
+        Exit Sub
+    End If
+
+    DraftingUI.StartQuarter
+    DraftingUI.RollForwardUI
+    DraftingUI.RefreshDraftingSheets
+    DraftingUI.CopyAiDraftsToSubmit
+    DraftingUI.PublishDraftsForField
+
+    ' The deck-level sync, with its own detection of unapplied ticks in front.
+    PutItOnTheSlidesCore
+End Sub
+
+' ---------------------------------------------------------------------
 ' CHAIN C -- "3. Put it on the slides"
 ' ---------------------------------------------------------------------
 '
@@ -735,7 +862,10 @@ End Sub
 ' approvals, or ApplyApprovedCore's consent dialog. This chain adds no
 ' confirmation of its own, because a second dialog restating the first is the
 ' thing that teaches a person to click through.
-Public Sub PutItOnTheSlides()
+' NO LONGER A BUTTON TARGET. The chain is the entry point; this stays as the
+' error-handling wrapper its Core still needs. Private so the reachability
+' check reports genuine orphans rather than adapters.
+Private Sub PutItOnTheSlides()
     On Error GoTo Failed
     PutItOnTheSlidesCore
     Exit Sub
@@ -756,7 +886,26 @@ Private Sub PutItOnTheSlidesCore()
     pending = ScanPendingApprovals(sheetNames, stamp)
 
     If pending = 0 Then
-        ReviewChangesCore False
+        ' REVIEW AND APPROVE ARE PART OF THE CHAIN. Rohan, 2026-08-09. Bulk
+        ' approval keeps the property RibbonUI.bas:573 argued a separate button
+        ' was protecting -- it is never the default, it has to be chosen by name
+        ' each time, and ReviewChangesCore still prepends the APPROVE-ALL banner
+        ' to the report and the Run Log. The banner was always the mechanism
+        ' doing that work; the button was just where it lived.
+        Dim readAll As VbMsgBoxResult
+        readAll = MsgBox( _
+            "Ready to build the list of slide changes." & vbCrLf & vbCrLf & _
+            "Yes  -- read each change and tick the ones you want (normal)." & vbCrLf & _
+            "No   -- tick EVERYTHING without reading it. Scratch copies only." & vbCrLf & _
+            "Cancel -- change nothing.", vbYesNoCancel + vbQuestion, TITLE)
+
+        If readAll = vbYes Then
+            ReviewChangesCore False
+        ElseIf readAll = vbNo Then
+            ReviewChangesCore True
+        Else
+            MsgBox "Nothing was changed.", vbInformation, TITLE
+        End If
         Exit Sub
     End If
 
@@ -832,7 +981,10 @@ Private Function ScanPendingApprovals(ByRef sheetNames As String, ByRef stamp As
     ScanPendingApprovals = total
 End Function
 
-Public Sub ApplyApprovedChanges()
+' NO LONGER A BUTTON TARGET. The chain is the entry point; this stays as the
+' error-handling wrapper its Core still needs. Private so the reachability
+' check reports genuine orphans rather than adapters.
+Private Sub ApplyApprovedChanges()
     On Error GoTo Failed
     ApplyApprovedCore
     Exit Sub
