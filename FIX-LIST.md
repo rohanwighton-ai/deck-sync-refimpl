@@ -306,3 +306,36 @@ scaffolding removed itself; the six sheet rows did not.
 which is cleared at every period change. Until that moves to the register — same grain
 and lifespan as the text it explains — provenance has a maximum life of one quarter,
 and today proved it empirically rather than theoretically.
+
+---
+
+## PARKED, nice-to-have: show/hide control for fields on a slide
+
+Rohan, 2026-08-09, asked for it and then ranked it himself: **nice to have.** Not
+scheduled. Recorded so the design conversation is not re-run from scratch.
+
+**The want:** control whether a given field appears on a given slide -- "this
+project has no Problem section this quarter".
+
+**Grain:** the register row is already slide x period, so one `Hidden fields`
+column on that row gives per-slide, per-period control. Field Spec is the wrong
+home: it is per-field globally and cannot say "hidden on this project, not that
+one". Values picked from known field IDs, never typed -- same rule as
+`Sources.ApplyPeriodValidation`.
+
+**Mechanism:** `Shape.Visible = msoFalse`, not blanking the text and not
+deleting the shape. Blanking leaves an empty box with its fill and border still
+drawn. Deleting destroys the tag, so sync could never bring the field back --
+and it must come back, because next quarter the section returns.
+
+**What Rohan wants to happen to the space, in his words:** *"ultimately leave
+it. or replace it. some items could move."* So the behaviour is not one rule:
+leaving the gap is the default, some panels would be REPLACED by other content
+rather than emptied, and a minority of items would move. That last part is the
+expensive one -- PowerPoint does not reflow, so closing a gap means the tool
+moves slide furniture, which is a much larger promise than filling in text and
+has to handle stacking, columns and grouped shapes without silently damaging a
+layout.
+
+**If it is ever built, build it in that order:** leave-the-gap first (cheap,
+reversible, no geometry), replace-with second, move-things last or never.
