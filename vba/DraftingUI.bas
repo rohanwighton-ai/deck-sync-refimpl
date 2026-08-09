@@ -389,9 +389,13 @@ Public Sub RefreshDraftingSheets()
 
     Dim report As String, firstSheet As String
     Dim i As Long
+    Dim seedIndex As Long
+    seedIndex = 0
     For i = LBound(parts) To UBound(parts)
         Dim fid As String
         fid = Trim(CStr(parts(i)))
+        ' The colour family comes from POSITION, so the eight fields get eight
+        ' distinct families. A name hash collided ABOUT_BODY with PROGRESS_BODY.
         Dim sName As String
         sName = Drafting.DraftSheetNameFor(fid)
         If firstSheet = "" Then firstSheet = sName
@@ -405,7 +409,8 @@ Public Sub RefreshDraftingSheets()
         ' damaging one: RollForwardPeriod COPIES last period's rows, so the
         ' previous text arrives as this sheet's ORIGINAL column instead. The
         ' protection moved; it did not disappear.
-        report = report & fid & ": " & Drafting.WriteDraftingSheet(ws, reg, fid, specWs, period, Nothing, srcWs) & vbCrLf
+        report = report & fid & ": " & Drafting.WriteDraftingSheet(ws, reg, fid, specWs, period, Nothing, srcWs, seedIndex) & vbCrLf
+        seedIndex = seedIndex + 1
     Next i
 
     WorkbookBridge.WriteWorkbookIndex wb

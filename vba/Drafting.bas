@@ -198,7 +198,8 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
                                    Optional guidance As Variant, _
                                    Optional periodStamp As String = "", _
                                    Optional cadence As Object = Nothing, _
-                                   Optional srcWs As Object = Nothing) As String
+                                   Optional srcWs As Object = Nothing, _
+                                   Optional familySeed As Long = -1) As String
     ' A REBUILD MUST NOT COST A PERSON THEIR WORK. Everything a human or an AI
     ' put on this sheet is carried across: the AI draft, the SUBMIT text they
     ' edited, the source IDs they assigned, and their notes. Only ORIGINAL and
@@ -565,7 +566,7 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
 
     ' The look goes on LAST, over the top of the per-column settings above, so
     ' the sheet reads as one thing rather than as the sum of its edits.
-    ApplyDraftingLook ws, r - 1
+    ApplyDraftingLook ws, r - 1, fieldId, familySeed
 
     ws.Cells(DRAFT_INTRO_ROW, COL_D_PERIOD).Value = periodStamp
     ws.Cells(DRAFT_INTRO_ROW, COL_D_PERIOD).Font.Color = RGB(190, 190, 190)
@@ -960,15 +961,88 @@ End Function
 ' PowerPoint, where xlEdgeLeft, xlContinuous and friends do not resolve -- the
 ' same gotcha ExcelOutput hit on 2026-07-25 with xlUp. A named constant here
 ' would be Empty, which is 0, which silently means something else.
-Private Sub ApplyDraftingLook(ws As Object, lastRow As Long)
+' A COLOUR FAMILY PER FIELD, so you can tell which sheet you are on from the tab
+' strip. Rohan, 2026-08-10, with 13 tabs in the workbook and 8 fields coming.
+'
+' THE ROLE COLOURS DO NOT CHANGE. Grey means read-only, amber means a machine
+' wrote it, cream means yours and publishes, green means consent -- on every
+' sheet, always. If amber meant "AI draft" here and "sources" there, the role
+' encoding would stop being readable, and it is doing more work than the sheet
+' identity is. So the family colours the TITLE BAR, the HEADER ROW, the TAB and
+' the small SOURCES column, and nothing else.
+'
+' Stable from the field name rather than from creation order, so a field keeps
+' its colour across rebuilds, machines and quarters. Two fields can land on the
+' same family -- harmless, they are still adjacent to their own name in a 40pt
+' header -- and that is preferred over a lookup table someone has to maintain.
+' POSITION FIRST, HASH ONLY AS A FALLBACK.
+'
+' A hash of the field name was the first attempt and it collided on the two
+' fields that matter most: ABOUT_BODY and PROGRESS_BODY both landed on teal,
+' which is precisely the pair a person flips between. Caught by listing the
+' eight real field names against the function before shipping it, not after.
+'
+' The sheets are built in a known order, so passing that position guarantees
+' eight distinct families for the first eight fields -- which covers the five
+' in use and the three coming. Colours follow sheet order, so reordering the
+' Field Spec reshuffles them; that is honest rather than surprising, because
+' the tab strip reorders too.
+'
+' seed < 0 means "caller did not say", and only then does the name get hashed.
+Private Function FamilyIndex(fieldId As String, seed As Long) As Long
+    If seed >= 0 Then
+        FamilyIndex = seed Mod 8
+        Exit Function
+    End If
+    Dim h As Long, i As Long
+    For i = 1 To Len(fieldId)
+        h = (h * 31 + Asc(Mid$(fieldId, i, 1))) Mod 100000
+    Next i
+    FamilyIndex = h Mod 8
+End Function
+
+Private Function FamilyDark(fieldId As String, seed As Long) As Long
+    Select Case FamilyIndex(fieldId, seed)
+        Case 0: FamilyDark = RGB(46, 74, 48)      ' green
+        Case 1: FamilyDark = RGB(40, 64, 92)      ' blue
+        Case 2: FamilyDark = RGB(112, 58, 40)     ' rust
+        Case 3: FamilyDark = RGB(74, 52, 92)      ' purple
+        Case 4: FamilyDark = RGB(30, 78, 78)      ' teal
+        Case 5: FamilyDark = RGB(82, 78, 34)      ' olive
+        Case 6: FamilyDark = RGB(96, 42, 58)      ' maroon
+        Case Else: FamilyDark = RGB(58, 62, 70)   ' slate
+    End Select
+End Function
+
+Private Function FamilyTint(fieldId As String, seed As Long) As Long
+    Select Case FamilyIndex(fieldId, seed)
+        Case 0: FamilyTint = RGB(222, 233, 221)
+        Case 1: FamilyTint = RGB(219, 229, 240)
+        Case 2: FamilyTint = RGB(243, 226, 216)
+        Case 3: FamilyTint = RGB(232, 224, 240)
+        Case 4: FamilyTint = RGB(214, 234, 234)
+        Case 5: FamilyTint = RGB(236, 236, 210)
+        Case 6: FamilyTint = RGB(240, 220, 228)
+        Case Else: FamilyTint = RGB(226, 228, 233)
+    End Select
+End Function
+
+Private Sub ApplyDraftingLook(ws As Object, lastRow As Long, fieldId As String, familySeed As Long)
     Const EDGE_LEFT As Long = 7, EDGE_TOP As Long = 8
     Const EDGE_BOTTOM As Long = 9, EDGE_RIGHT As Long = 10
     Const INSIDE_V As Long = 11, INSIDE_H As Long = 12
     Const CONTINUOUS As Long = 1, THIN As Long = 2, MEDIUM As Long = -4138
 
-    Dim INK As Long, RULE As Long
+    Dim INK As Long, RULE As Long, FAM As Long, FAMLIGHT As Long
     INK = RGB(38, 46, 38)
     RULE = RGB(120, 124, 112)
+    FAM = FamilyDark(fieldId, familySeed)
+    FAMLIGHT = FamilyTint(fieldId, familySeed)
+
+    ' The tab strip becomes the index: you find the sheet before you open it.
+    On Error Resume Next
+    ws.Tab.Color = FAM
+    On Error GoTo 0
 
     ' --- the instruction panel: one block, not seven loose lines ------
     With ws.Range(ws.Cells(DRAFT_INTRO_ROW, 1), ws.Cells(7, COL_D_NOTES))
@@ -982,14 +1056,14 @@ Private Sub ApplyDraftingLook(ws As Object, lastRow As Long)
 
     ' Title bar, reversed out -- the one thing you see before anything else.
     With ws.Range(ws.Cells(DRAFT_INTRO_ROW, 1), ws.Cells(DRAFT_INTRO_ROW, COL_D_NOTES))
-        .Interior.Color = RGB(46, 74, 48)
+        .Interior.Color = FAM
         .Font.Color = RGB(255, 255, 255)
         .Font.Bold = True
     End With
 
     ' --- the header row: chunky, reversed out, ruled underneath -------
     With ws.Range(ws.Cells(DRAFT_HEADER_ROW, 1), ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES))
-        .Interior.Color = RGB(46, 74, 48)
+        .Interior.Color = FAM
         .Font.Color = RGB(255, 255, 255)
         .Font.Bold = True
         .Font.Size = 8
@@ -1005,7 +1079,7 @@ Private Sub ApplyDraftingLook(ws As Object, lastRow As Long)
     ' --- the body: role colour per column ----------------------------
     ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_ENTITY), ws.Cells(lastRow, COL_D_NAME)).Interior.Color = RGB(245, 244, 238)
     ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_CURRENT), ws.Cells(lastRow, COL_D_CURRENT)).Interior.Color = RGB(226, 226, 221)
-    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_SOURCES), ws.Cells(lastRow, COL_D_SOURCES)).Interior.Color = RGB(214, 223, 228)
+    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_SOURCES), ws.Cells(lastRow, COL_D_SOURCES)).Interior.Color = FAMLIGHT
     ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_DRAFT), ws.Cells(lastRow, COL_D_DRAFT)).Interior.Color = RGB(250, 238, 205)
     ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_SUBMIT), ws.Cells(lastRow, COL_D_SUBMIT)).Interior.Color = RGB(255, 252, 235)
     ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_APPROVED), ws.Cells(lastRow, COL_D_APPROVED)).Interior.Color = RGB(206, 226, 202)
@@ -1047,6 +1121,6 @@ Private Sub ApplyDraftingLook(ws As Object, lastRow As Long)
     ' yours and reach the deck. If one line on this sheet has to be noticed,
     ' it is this one.
     With ws.Range(ws.Cells(DRAFT_HEADER_ROW, COL_D_SUBMIT), ws.Cells(lastRow, COL_D_SUBMIT)).Borders(EDGE_LEFT)
-        .LineStyle = CONTINUOUS: .Weight = MEDIUM: .Color = RGB(46, 74, 48)
+        .LineStyle = CONTINUOUS: .Weight = MEDIUM: .Color = FAM
     End With
 End Sub
