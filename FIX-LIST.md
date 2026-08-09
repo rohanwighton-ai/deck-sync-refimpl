@@ -396,3 +396,39 @@ changes colour is making a claim about the project rather than showing a date.
 **Not for the week it was raised in:** building it costs longer than dragging
 the shapes once. This is next-quarter work, ranked above the Excel polish and
 above show/hide.
+
+---
+
+## PARKED WITH ITS DESIGN SETTLED: picture fields
+
+Rohan, 2026-08-10: pictures **"don't change quarterly, set once at project
+start, I'd still like them set from link rather than played around with
+manually"**. That answer makes this much smaller than the parked note assumed.
+
+**It is not a sync field.** `FieldType = Picture`, `Kind = Static/Given` -- the
+two axes the specs keep apart and must not collapse into one word. It carries
+across a rollover untouched like any period-invariant content, so it costs
+nothing per quarter.
+
+**The cell holds a SOURCE ID, not a path.** Sources already solves one row per
+thing, reference by ID, period binding, existence checking, and now feeds the
+prompt. An image is evidence-shaped: it came from somewhere, that somewhere has
+an owner, and "why is this photo on the slide?" is the same question as "why
+does it say 90%?". A raw path per row would duplicate all of that badly -- 43
+spellings of one folder and nothing checking any of them.
+
+**Idempotence without comparing images:** when the tool fills a picture it
+STAMPS THE SOURCE ID IT USED into the shape's own tag. Sync fills only when the
+register's ID and the shape's stamped ID differ. So it fires once at project
+start, stays silent forever after, and re-fires by itself if the link is ever
+changed. No image comparison, no re-inserting 43 photos a quarter.
+
+**Mechanism, once decided:** insert, copy Top/Left/Width/Height and z-order from
+the tagged shape, delete the old, re-apply the tag. Fiddly, not deep -- the
+tagged shape already knows its own geometry.
+
+**THE ONE OPEN DECISION, and it is Rohan's:** when the image's proportions do
+not match the frame -- fit inside and letterbox, fill and crop the overflow, or
+refuse and report. Visibly different slides, no defensible default; it depends
+whether the project photos are consistently shaped. Answer it against a few real
+ones before anything is built.
