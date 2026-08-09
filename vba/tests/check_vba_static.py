@@ -292,6 +292,62 @@ def check_reserved_params(path: Path, lines: list[str]) -> list[str]:
     return findings
 
 
+# A PROCEDURE THAT CALLS ITSELF WITH ITS OWN ARGUMENT LIST, VERBATIM.
+#
+# Twice in one session (2026-08-09) a scripted find-and-replace rewrote a line
+# INSIDE the procedure it was creating:
+#
+#   RemedyText = RemedyText(RM_SAVE_DECK_THEN_REBUILD)   ' was a literal string
+#   Say text, style, caption                             ' was MsgBox text, ...
+#
+# Both are infinite recursion. NEITHER was caught: VBA compiles them happily,
+# and the second shipped in an add-in and surfaced as "Run-time error 28: Out of
+# stack space" the first time it ran. 163 tests could not see it because the
+# path only runs outside a chain, which nothing tests.
+#
+# Deliberately NARROW. Real recursion passes arguments that CHANGE -- that is
+# what makes it terminate. A call passing exactly the parameter names in exactly
+# the declared order can never terminate, so this cannot cry wolf on a genuine
+# recursive function.
+def check_self_call_with_own_params(path: Path, lines: list[str]) -> list[str]:
+    problems: list[str] = []
+    decl = re.compile(r"^\s*(?:Public|Private)?\s*(?:Sub|Function)\s+(\w+)\s*\((.*?)\)", re.I)
+    name = None
+    params: list[str] = []
+    for i, raw in enumerate(lines, 1):
+        line = code_only(raw)
+        m = decl.match(line)
+        if m:
+            name = m.group(1)
+            params = [
+                p.strip().split()[-1] if " " in p.strip() else p.strip()
+                for p in m.group(2).split(",")
+                if p.strip()
+            ]
+            params = [
+                re.sub(r"^(?:ByRef|ByVal|Optional)\s+", "", p, flags=re.I).split(" As ")[0].strip()
+                for p in m.group(2).split(",")
+                if p.strip()
+            ]
+            continue
+        if not name or not params:
+            continue
+        if re.match(r"^\s*End (Sub|Function)", line, re.I):
+            name, params = None, []
+            continue
+        body = line.strip()
+        joined = r"\s*,\s*".join(re.escape(p) for p in params)
+        # "Name a, b" or "Name = Name(a, b)"
+        as_sub = re.fullmatch(rf"{re.escape(name)}\s+{joined}", body, re.I)
+        as_fn = re.fullmatch(rf"{re.escape(name)}\s*=\s*{re.escape(name)}\s*\(\s*{joined}\s*\)", body, re.I)
+        if as_sub or as_fn:
+            problems.append(
+                f"{path.as_posix()}:{i}: '{name}' calls itself passing its own parameters "
+                f"unchanged -- infinite recursion. Almost always a find-and-replace that "
+                f"rewrote a line inside the procedure it was creating."
+            )
+    return problems
+
 def check_structural_sanity(path: Path, lines: list[str]) -> list[str]:
     """Every module has at least one procedure, and starts/ends balance.
 
@@ -458,6 +514,7 @@ def main() -> int:
         findings += check_reserved_params(rel, lines)
         findings += check_function_returns(rel, lines)
         findings += check_structural_sanity(rel, lines)
+        findings += check_self_call_with_own_params(rel, lines)
 
 
     # REACHABILITY IS REPORTED, NOT ENFORCED, AND THE ASYMMETRY IS DELIBERATE.

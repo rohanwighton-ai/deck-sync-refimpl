@@ -65,7 +65,12 @@ Private Sub Say(text As String, style As VbMsgBoxStyle, caption As String)
         If mReport <> "" Then mReport = mReport & vbCrLf & vbCrLf
         mReport = mReport & "-- " & caption & " --" & vbCrLf & text
     Else
-        Say text, style, caption
+        ' NOT Say. This line was rewritten into a call to its own procedure by a
+        ' scripted MsgBox -> Say replacement that did not exclude the body of Say
+        ' itself, and shipped as "Run-time error 28: Out of stack space" the
+        ' first time a stage ran outside a chain. Second instance of that exact
+        ' mistake in one session; check_vba_static.py now refuses it.
+        MsgBox text, style, caption
     End If
 End Sub
 
