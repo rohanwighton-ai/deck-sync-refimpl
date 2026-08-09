@@ -151,7 +151,7 @@ Public Function PromptAdoptExistingSlides() As String
     On Error GoTo 0
 
     If Not hasTypes Then
-        PromptAdoptExistingSlides = "This deck has no registered slide types yet -- use 'Setup A: Mark Fields' then 'Setup B: Onboard Slides' on one example slide first, then Adopt the rest."
+        PromptAdoptExistingSlides = "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- on a deck with no slide type it walks the setup, then come back and Adopt the rest."
         Exit Function
     End If
 

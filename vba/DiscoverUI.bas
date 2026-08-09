@@ -73,7 +73,7 @@ Public Sub DiscoverFields()
     If workbookPath = "" Then
         MsgBox "This deck has no paired workbook yet." & vbCrLf & vbCrLf & _
                "Discover Fields writes its grid into the paired workbook, so there has to be one." & vbCrLf & _
-               "Use 'Setup A: Mark Fields' and 'Setup B: Onboard Slides' for the very first slide type -- " & _
+               "Press '" & CommandBarUI.CAP_SYNC_NOW & "' for the very first slide type -- " & _
                "that is what establishes the pairing.", vbExclamation, CAP
         Exit Sub
     End If
@@ -327,7 +327,7 @@ Public Function ApplyDiscoverySheet(sld As Object, wb As Object) As String
     If skippedNoName > 0 Then msg = msg & vbCrLf & skippedNoName & " ticked but unnamed -- not marked."
     If skippedNotFound > 0 Then msg = msg & vbCrLf & skippedNotFound & " shape(s) no longer on the slide."
     If problems <> "" Then msg = msg & vbCrLf & vbCrLf & "NOT MARKED:" & vbCrLf & problems
-    If marked > 0 Then msg = msg & vbCrLf & vbCrLf & "Now run 'Setup B: Onboard Slides'."
+    If marked > 0 Then msg = msg & vbCrLf & vbCrLf & "Now press '" & CommandBarUI.CAP_SYNC_NOW & "' to link the rest of the slides."
 
     ApplyDiscoverySheet = msg
 End Function

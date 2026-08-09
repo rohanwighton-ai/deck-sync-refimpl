@@ -293,7 +293,7 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' every prose instruction pointing at the old layout.
     ws.Cells(3, 1).Value = "2.  List the source IDs you are working from in column G. Add new ones on the Sources sheet first."
     ws.Cells(4, 1).Value = "3.  Ask Copilot for a draft (prompt is in L2). It writes into column F (AI DRAFT). F is never published."
-    ws.Cells(5, 1).Value = "4.  Run Copy AI to Submit, then EDIT column D (SUBMIT) until you are happy. D is what gets sent."
+    ws.Cells(5, 1).Value = "4.  Press '" & CommandBarUI.CAP_SYNC_NOW & "' to copy F into D, then EDIT column D (SUBMIT) until you are happy. D is what gets sent."
     ws.Cells(6, 1).Value = "5.  Type  Y  in column E, save and CLOSE the file, then run Publish and Apply."
 
     ws.Cells(7, 1).Value = "Only column D is published -- nothing the AI writes reaches a slide unless you have put it in SUBMIT and ticked it. " & _
@@ -686,7 +686,7 @@ Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, 
                 skippedEmpty = skippedEmpty + 1
                 If Trim(CStr(ws.Cells(r, COL_D_DRAFT).Value)) <> "" Then
                     report = report & "  SKIPPED " & ent & " -- ticked, and there IS an AI draft, " & _
-                        "but SUBMIT is empty. Run Copy AI to Submit, or type it yourself." & vbCrLf
+                        "but SUBMIT is empty. Press '" & CommandBarUI.CAP_SYNC_NOW & "' to copy it across, or type into D yourself." & vbCrLf
                 Else
                     report = report & "  SKIPPED " & ent & " -- ticked but SUBMIT is empty" & vbCrLf
                 End If

@@ -134,7 +134,7 @@ End Function
 '
 ' 2026-08-08: Rohan typed "About_Body" -- Office capitalises the first letter of
 ' an input box by habit -- and the tool answered "There is no drafting sheet for
-' About_Body yet. Run '1. Drafting Sheets' first." Following that advice would
+' About_Body yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it builds them." Following that advice would
 ' have created a SECOND sheet, TPL_About_Body, alongside TPL_ABOUT_BODY: two
 ' drafting sheets for one field, diverging quietly.
 '
@@ -462,7 +462,7 @@ Public Sub CopyAiDraftsToSubmit()
     Dim sheetName As String
     sheetName = Drafting.DraftSheetNameFor(fieldId)
     If Not WorkbookBridge.WorksheetExists(wb, sheetName) Then
-        ' "Run Drafting Sheets first" is the RIGHT advice for a real field with no
+        ' "Press '" & CommandBarUI.CAP_SYNC_NOW & "' first" is the RIGHT advice for a real field with no
         ' sheet yet, and the WRONG advice for a typo -- following it would build a
         ' sheet for a FieldID that does not exist. So the two cases are separated.
         If StrComp(CanonicalFieldId(wb, fieldId), fieldId, vbBinaryCompare) <> 0 Or _
@@ -472,7 +472,7 @@ Public Sub CopyAiDraftsToSubmit()
                    vbExclamation, CAP
         Else
             MsgBox "There is no drafting sheet for " & fieldId & " yet." & vbCrLf & vbCrLf & _
-                   "Run '1. Drafting Sheets' first.", vbExclamation, CAP
+                   "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it builds them.", vbExclamation, CAP
         End If
         Exit Sub
     End If
@@ -524,7 +524,7 @@ Public Sub PublishDraftsForField()
     sheetName = Drafting.DraftSheetNameFor(fieldId)
     If Not WorkbookBridge.WorksheetExists(wb, sheetName) Then
         MsgBox "There is no drafting sheet for " & fieldId & " yet." & vbCrLf & vbCrLf & _
-               "Run '1. Drafting Sheets' first.", vbExclamation, CAP
+               "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it builds them.", vbExclamation, CAP
         Exit Sub
     End If
 
@@ -543,7 +543,7 @@ Public Sub PublishDraftsForField()
     If period = "" Then
         MsgBox "This deck does not declare a period, so there is no way to know " & _
                "which quarter's rows to publish into." & vbCrLf & vbCrLf & _
-               "Run '0. Start a Quarter' first.", vbExclamation, CAP
+               "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it sets the quarter first.", vbExclamation, CAP
         Exit Sub
     End If
 
@@ -561,7 +561,7 @@ Public Sub PublishDraftsForField()
     WorkbookBridge.WriteRunLog wb, "Publish " & fieldId & " -- preview", preview
     If MsgBox(RibbonUI.CapReport(macroWarn & preview) & vbCrLf & vbCrLf & _
               "Write these into the register for " & period & "?" & vbCrLf & vbCrLf & _
-              "This does NOT touch any slide -- run Sync Now or Preview Sync " & _
+              "This does NOT touch any slide -- press '" & CommandBarUI.CAP_SYNC_NOW & "' " & _
               "afterwards to get them onto the deck.", _
               vbYesNo + vbQuestion, CAP) <> vbYes Then
         MsgBox "Nothing was published.", vbInformation, CAP
@@ -615,7 +615,7 @@ Public Sub PublishDraftsForField()
 
     ' THE STEP THAT TOLD YOU TO PRESS THE NEXT BUTTON NOW OFFERS TO.
     '
-    ' This used to end with "Now run Preview Sync" -- the tool admitting the
+    ' This used to end with "Now press '" & CommandBarUI.CAP_SYNC_NOW & "'" -- the tool admitting the
     ' boundary was artificial. Nothing happens between writing Approved into the
     ' register and looking at what that would do to slides, so there is no
     ' decision for a button to mark. Offered rather than done, because it opens
@@ -710,7 +710,7 @@ Public Sub StartQuarter()
         MsgBox "Deck period is now " & readBack & ", confirmed in the saved file." & vbCrLf & vbCrLf & _
                "STILL TO DO: the register needs rows for " & typed & ". Without " & _
                "them the drafting sheets will be empty." & vbCrLf & vbCrLf & _
-               "Press 'Roll Forward' on the toolbar. It copies the previous period's " & _
+               "'" & CommandBarUI.CAP_SYNC_NOW & "' does this next -- no separate step. It copies the previous period's " & _
                "rows and stamps them " & typed & ", one row per slide.", vbInformation, CAP
     Else
         MsgBox problem, vbCritical, CAP
@@ -746,7 +746,7 @@ Public Sub RollForwardUI()
     toPeriod = DeckRegistry.GetDeckPeriod(pres)
     If Trim$(toPeriod) = "" Then
         MsgBox "This deck does not say what period it is." & vbCrLf & vbCrLf & _
-               "Press '0. Start a Quarter' first. Roll Forward copies rows INTO " & _
+               "Set the deck's quarter first -- '" & CommandBarUI.CAP_SYNC_NOW & "' does that. Rolling forward copies rows INTO " & _
                "the period the deck declares, so it cannot run without one.", _
                vbExclamation, CAP
         Exit Sub

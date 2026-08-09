@@ -597,7 +597,7 @@ Public Sub WriteQueueSheet(ws As Object, q As ReviewQueueSet)
     ws.Cells(ROW_BANNER, 1).Value = "SYNC REVIEW -- " & q.SlideType
     ws.Cells(ROW_BANNER, 2).Value = "Run: " & q.RunStamp
     ws.Cells(ROW_BANNER, 3).Value = IIf(q.Consumed, STATE_CONSUMED, STATE_OPEN)
-    ws.Cells(ROW_BANNER, 4).Value = "Put Y in the Approve column. Nothing is written until you run Apply Approved."
+    ws.Cells(ROW_BANNER, 4).Value = "Put Y in the Approve column. Nothing is written until you press '" & CommandBarUI.CAP_SYNC_NOW & "' again."
     ws.Rows(ROW_BANNER).Font.Bold = True
 
     ws.Cells(ROW_HEADER, COL_ENTITY).Value = "EntityCode"
@@ -1168,7 +1168,7 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
     If q.Consumed Then
         ApplyApproved = report & vbCrLf & _
             "REFUSED: this review has already been applied." & vbCrLf & _
-            "Run 'Review Changes' again to build a fresh queue." & vbCrLf
+            "Press '" & CommandBarUI.CAP_SYNC_NOW & "' again to build a fresh queue." & vbCrLf
         Exit Function
     End If
 
@@ -1318,7 +1318,7 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
         failedCount & " failed" & vbCrLf
 
     If staleCount > 0 Then
-        report = report & vbCrLf & "Dropped changes were NOT written. Run 'Review Changes'" & vbCrLf & _
+        report = report & vbCrLf & "Dropped changes were NOT written. Press '" & CommandBarUI.CAP_SYNC_NOW & "'" & vbCrLf & _
             "again to see them with their current before-and-after." & vbCrLf
     End If
 
@@ -1401,7 +1401,7 @@ Public Function QueueSummaryText(q As ReviewQueueSet) As String
     End If
 
     s = s & "Nothing has been written. Review the '" & REVIEW_SHEET_NAME & _
-        "' sheet, put Y against what you approve, then run Apply Approved." & vbCrLf
+        "' sheet, put Y against what you approve, then press '" & CommandBarUI.CAP_SYNC_NOW & "' again." & vbCrLf
 
     QueueSummaryText = s
 End Function

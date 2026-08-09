@@ -113,7 +113,7 @@ Private Sub WhereAmICore()
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath = "" Then
         MsgBox "This deck has no paired workbook yet, so there is nothing to report " & _
-               "on." & vbCrLf & vbCrLf & "Use 'Setup B: Onboard Slides' first.", _
+               "on." & vbCrLf & vbCrLf & "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", _
                vbExclamation, "Where am I"
         Exit Sub
     End If
@@ -482,7 +482,7 @@ Private Function ResolveSyncContext(title As String, pres As Object, ByRef wb As
     Dim workbookPath As String
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath = "" Then
-        MsgBox "This deck has no paired workbook yet -- use 'Setup B: Onboard Slides' first.", vbExclamation, title
+        MsgBox "This deck has no paired workbook yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", vbExclamation, title
         Exit Function
     End If
 
@@ -495,7 +495,7 @@ Private Function ResolveSyncContext(title As String, pres As Object, ByRef wb As
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet -- use 'Setup B: Onboard Slides' first.", vbExclamation, title
+        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", vbExclamation, title
         Exit Function
     End If
 
@@ -606,7 +606,7 @@ Private Sub ReviewChangesCore(approveAll As Boolean)
     Dim workbookPath As String
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath = "" Then
-        MsgBox "This deck has no paired workbook yet -- use 'Setup B: Onboard Slides' first.", vbExclamation, title
+        MsgBox "This deck has no paired workbook yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", vbExclamation, title
         Exit Sub
     End If
 
@@ -620,7 +620,7 @@ Private Sub ReviewChangesCore(approveAll As Boolean)
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet -- use 'Setup B: Onboard Slides' first.", vbExclamation, title
+        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", vbExclamation, title
         Exit Sub
     End If
 
@@ -1064,7 +1064,7 @@ Private Sub ApplyApprovedCore()
 
             If Not WorkbookBridge.WorksheetExists(wb, reviewName) Then
                 fullReport = fullReport & "=== " & types(i) & " ===" & vbCrLf & _
-                    "No review has been built for this type. Run 'Review Changes' first." & vbCrLf & vbCrLf
+                    "No review has been built for this type. Press '" & CommandBarUI.CAP_SYNC_NOW & "' first." & vbCrLf & vbCrLf
             Else
                 Dim ws As Object
                 Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
@@ -1204,7 +1204,7 @@ Private Sub SyncPreviewCore()
         CountLines(fullReport, "would correct:") & " slide(s) would change." & vbCrLf & vbCrLf & _
         "The full before-and-after is on the '" & WorkbookBridge.RUN_LOG_SHEET_NAME & _
         "' sheet in the workbook, untruncated." & vbCrLf & vbCrLf & _
-        "Read it there, then run Sync Now."
+        "Read it there, then press '" & CommandBarUI.CAP_SYNC_NOW & "' again."
 
     ' wbWasDirty, NOT a fresh IsDirty -- WriteRunLog above has dirtied the workbook
     ' by now, so re-asking would always answer yes. See the note at the first test.
@@ -1269,7 +1269,7 @@ Private Sub AuditFieldsCore()
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet -- use 'Setup B: Onboard Slides' first.", vbExclamation, "Audit Fields"
+        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", vbExclamation, "Audit Fields"
         Exit Sub
     End If
 
@@ -1446,7 +1446,7 @@ Private Sub CreateTemplateSlideCore()
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet -- use 'Setup B: Onboard Slides' first.", vbExclamation, "Create Template Slide"
+        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", vbExclamation, "Create Template Slide"
         Exit Sub
     End If
 

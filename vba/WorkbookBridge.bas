@@ -458,7 +458,7 @@ Public Function DescribeSheet(sheetName As String) As String
             ". Read column C, type new wording in D, put Y in E. Instructions are on the sheet."
     ElseIf Left(sheetName, 11) = "Sync Review" Then
         DescribeSheet = "Every change waiting to be approved before it reaches a slide. " & _
-            "Tick what you agree with, then run Apply Approved."
+            "Tick what you agree with, then press '" & CommandBarUI.CAP_SYNC_NOW & "' again."
     ElseIf sheetName = "Sync Log" Then
         DescribeSheet = "What was written to slides, and when. Written as it happens, so a run " & _
             "that dies halfway still leaves a record."

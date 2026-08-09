@@ -268,7 +268,7 @@ Public Function CreateMissingSlides(sheet As Sheet, slideType As String, templat
             "template -- it is a real project's slide." & vbCrLf & vbCrLf & _
             "Copying it would give every new project that project's wording in any" & vbCrLf & _
             "panel this tool does not track, and nothing here would notice." & vbCrLf & vbCrLf & _
-            "Use 'Create Template Slide' to make a blank one first." & vbCrLf
+            "A template slide is created from inside setup, which '" & CommandBarUI.CAP_SYNC_NOW & "' walks on a deck that has none." & vbCrLf
         Exit Function
     End If
 
