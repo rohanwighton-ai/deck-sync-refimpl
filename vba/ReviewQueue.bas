@@ -134,7 +134,10 @@ Private Const COL_HASH As Long = 7        ' hidden; the row's identity
 ' nobody approved. Placement is worth less than that.
 Private Const COL_DIFF As Long = 8
 
-Public Const REVIEW_SHEET_NAME As String = "Sync Review"
+' REVIEW_SHEET_NAME IS GONE. It held "Sync Review", a name the sheet lost in
+' 3de4be8, and every reader of it was therefore pointing somewhere that either
+' did not exist or -- worse, on a workbook carrying the pre-rename orphan --
+' existed and was wrong. ReviewSheetNameFor(slideType) is the one answer.
 
 ' Above this many distinct batches, the modal stops being readable and the fast
 ' path is refused.
@@ -1400,7 +1403,13 @@ Public Function QueueSummaryText(q As ReviewQueueSet) As String
         s = s & "Batches:" & vbCrLf & BatchSummaryText(q) & vbCrLf
     End If
 
-    s = s & "Nothing has been written. Review the '" & REVIEW_SHEET_NAME & _
+    ' NAMED FROM THE QUEUE, NOT FROM A CONSTANT. This said "Sync Review", which
+    ' has not been the sheet's name since 3de4be8 renamed it so Rohan could find
+    ' it. Worse than merely stale: the rig workbook still carries an ORPHAN
+    ' "Sync Review project-st-..." tab from before the rename, opening with the
+    ' identical banner -- so the sentence pointed at a real sheet that was the
+    ' WRONG one, and ticking it would leave approvals somewhere nothing reads.
+    s = s & "Nothing has been written. Review the '" & ReviewSheetNameFor(q.SlideType) & _
         "' sheet, put Y against what you approve, then press '" & CommandBarUI.CAP_SYNC_NOW & "' again." & vbCrLf
 
     QueueSummaryText = s

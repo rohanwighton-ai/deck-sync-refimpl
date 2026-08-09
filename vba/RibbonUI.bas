@@ -874,7 +874,10 @@ Failed:
 End Sub
 
 Private Sub PutItOnTheSlidesCore()
-    Const TITLE As String = "3. Put it on the slides"
+    ' Titled from the caption that actually exists. This said "3. Put it on the
+    ' slides" -- a caption from the three-button design, which lasted three hours.
+    Dim TITLE As String
+    TITLE = CommandBarUI.CAP_SYNC_NOW & " -- slide changes"
 
     ' The guards for a missing workbook, missing types and an unopenable file
     ' live in ReviewChangesCore and say why in each case. Duplicating them here
