@@ -3,6 +3,40 @@
 **Finished =** Rohan produces a real quarter's deck and the tool saved him time.
 Not a field count. Not a test count.
 
+## The baseline — stated 2026-08-09, and it changes what matters
+
+**A quarter by hand costs Rohan about THREE WEEKS OF NIGHTS. Most of that is
+re-deciding.**
+
+Roughly 30–40 hours, four times a year, 120–160 hours annually. Nobody had written
+this down before today, which meant "did it save time" had no denominator — a timed
+run could report 40 minutes and tell you nothing about whether that was good.
+
+Two consequences, and the second should govern the order of work:
+
+1. **The hardening is cheap, not disproportionate.** Two days of evenings against a
+   40-hour quarterly cost returns within one use. Judgements about whether this
+   project is worth its evenings were, until today, being made against an imagined
+   one-evening baseline. They were wrong by an order of magnitude.
+
+2. **The dominant cost is in the half of the tool that is NOT the sync.** "Most of it
+   re-deciding" means the expense is re-deriving what each section should say — the
+   standard, the voice, the length, where About stops and Problem starts. A Field
+   Spec row eliminates exactly that. Sync moves text that already exists; it does not
+   help you work out what the text should be.
+
+   So the tool does not primarily need to be fast, or complete. **It needs to
+   remember decisions.** And the three panels with no recipe — Strategic Alignment,
+   Problem, Project Progress — are the two hardest things to re-decide plus the one
+   that changes most, which makes writing those three rows the highest-leverage
+   remaining work in the project. Ahead of every simplification, including the
+   double-tick fix: saving 43 keystrokes matters far less than not re-deriving a
+   standard 43 times.
+
+**Still to pin down, and Rohan already holds it:** which parts of the three weeks are
+drafting, chasing source material, pasting into slides, and checking. The split
+decides whether anything after the recipes is worth building at all.
+
 **8 of 10.**
 
 *Said "7 of 10" for two hours after item 8 was ticked. The file that exists to police
