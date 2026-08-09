@@ -432,3 +432,80 @@ not match the frame -- fit inside and letterbox, fill and crop the overflow, or
 refuse and report. Visibly different slides, no defensible default; it depends
 whether the project photos are consistently shaped. Answer it against a few real
 ones before anything is built.
+
+---
+
+# STATE AT 2026-08-10 07:45 -- READ BEFORE PLANNING ANYTHING
+
+## THE ONE THAT MATTERS: two features are built and unreachable
+
+`InjectPictureField` and `InjectProgressField` are unit-tested and called by
+**nothing except their own tests**. The sync path calls
+`InjectPrimitive.InjectPrimitive` -- the TEXT injector -- for every field
+(`ReviewQueue.bas:1283` and `:1301`, `SyncOperations.bas:157`), so a picture or
+progress field is handed to the text writer and refused as "no text frame to
+write into".
+
+169 passing tests say nothing about this. Rohan found it by asking whether the
+bars had been proven slide to slide.
+
+**In this order:**
+
+1. **Template-clone test FIRST.** Does a slide cloned from the template keep the
+   `.track` and `.rest` SHAPE tags? `SlideDuplication.bas` manages SLIDE-level
+   tags (`slide_type`, `instance_key`, removing `TEMPLATE_TAG_NAME`) and nothing
+   asserts shape tags survive duplication. **If they do not survive, the track
+   pair design changes**, so this is the first question, not the last.
+2. **Dispatch by shape type in the sync path.** A field whose tagged shape is a
+   picture goes to `InjectPictureField`; one with a `.track` sibling goes to
+   `InjectProgressField`; everything else to the text injector.
+3. **A multi-slide test.** Every existing picture and progress test uses ONE
+   slide. Nothing proves two slides with different values.
+
+## What is built and verified
+
+- **Two buttons** (`1. Sync Now`, `2. Rebuild my sheets`) with every capability
+  reached from inside the chain; `check_vba_static.py` fails the build on an
+  orphan and caught nine during the refactor.
+- **The whole quarter loop ran through them**, verified from file bytes: period
+  set and confirmed on disk, 43 rows rolled forward, a second roll refused,
+  `PendingApprovals` fired on its first real press, three fields written to
+  `2_P004`, backup taken one second before the write.
+- **Layout 4** drafting columns in workflow order, with `ColumnInLayout`
+  migrating layout-3 sheets rather than dropping their work.
+- **Cited sources reach the prompt** (`Sources.CitedBlockFor`). Before this the
+  evidence rule could never be satisfied -- `[TBC]` was permanent no matter how
+  many sources were cited.
+- **Colour family per field**, from POSITION not a name hash (a hash collided
+  ABOUT_BODY with PROGRESS_BODY, the two most-used sheets).
+- **Every column letter and button caption in user-facing text is derived**, not
+  typed. 29 stale captions swept on 08-09, four stale column letters on 08-10.
+- **Build stamp** written by `build_ppam.ps1` into `CommandBarUI.BUILD_STAMP`
+  and shown on every report. **Not in `addin62`** -- it was added after.
+
+## Rules this codebase earned the hard way, tonight
+
+- **Green is not evidence; green plus a demonstrated red is.** Five checks
+  tonight passed while being incapable of failing. Twice the first attempt to
+  break a test failed to break it -- which is itself the finding.
+- **Probe the mechanism before modelling the symptom.** Five rounds of geometry
+  arithmetic were spent compensating for `LockAspectRatio`, one property, which
+  a thirty-second probe settled. A retry loop that re-asserts a value is an
+  admission that something else is changing it -- go find out what.
+- **The template owns geometry, the register owns values, the tool computes
+  neither.** Every fit/fill/scale calculation was the tool deciding something
+  the template had already decided.
+- **Trace the path from a person's action to the code before calling it done.**
+  Both unreachable features would have failed that sentence immediately.
+
+## Rohan's constraints, current
+
+- The workbook can NEVER be `.xlsm` -- work restrictions. No workbook-level VBA
+  ever; all behaviour lives in the `.ppam`. Add-ins themselves ARE permitted at
+  work (`addin33` ran there).
+- Native in-cell checkboxes have no VBA API. The achievable "toggle" is a
+  validation dropdown plus conditional formatting.
+- Pictures are set once at project start, not quarterly -- so a picture field is
+  a `Given` filled from a link, not a sync field.
+- Sharing turns on **portability, install, single truth** -- his words. Single
+  truth forces a shared register, which forces the cloud path.

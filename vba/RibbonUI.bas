@@ -1671,7 +1671,11 @@ Public Function CapReport(text As String, Optional mustKeep As String = "") As S
 End Function
 
 Public Sub ShowSyncResult(title As String, report As String)
-    MsgBox CapReport(report), vbInformation, title
+    ' THE BUILD, ON EVERY REPORT. So "is this fix in?" is answerable from the
+    ' screen instead of by asking. Appended AFTER CapReport so the stamp cannot
+    ' be the thing that gets truncated away.
+    MsgBox CapReport(report) & vbCrLf & vbCrLf & "build: " & CommandBarUI.BUILD_STAMP, _
+           vbInformation, title
 End Sub
 
 ' What the human sees when an action dies of something nobody anticipated.

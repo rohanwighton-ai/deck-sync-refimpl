@@ -78,6 +78,21 @@ Public Const CAP_REPOINT_WORKBOOK As String = "Repoint Workbook"
 ' BUMP THIS when building a new .ppam. It is deliberately manual: a version that
 ' derives itself from something automatic would drift out of step with the file
 ' the user actually loaded, which is the thing being disambiguated.
+' WHEN THIS ADD-IN WAS BUILT, written by build_ppam.ps1 at build time.
+'
+' Three times on 2026-08-10 Rohan pressed a button to check a fix and got the
+' old behaviour, because the .ppam predated the commit -- and nothing on screen
+' could tell him which build he was running. The question "is this fix in?" cost
+' a round trip every time.
+'
+' NOT hand-maintained, deliberately. TOOLBAR_BUILD below is "40" and has been
+' since build 40, which is exactly how a version constant goes stale: it depends
+' on someone remembering. This one is stamped by the script that makes the file,
+' so it cannot disagree with what is in it.
+'
+' A build that says (unbuilt) is running straight from source -- worth knowing.
+Public Const BUILD_STAMP As String = "(unbuilt)"
+
 Private Const TOOLBAR_BUILD As String = "40"
 Private Const TOOLBAR_NAME As String = "Deck Sync " & TOOLBAR_BUILD
 

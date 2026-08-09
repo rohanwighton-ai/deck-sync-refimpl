@@ -99,8 +99,27 @@ $ppt.Visible = -1
 $pres = $ppt.Presentations.Add()
 $pres.Slides.Add(1, 12) | Out-Null
 
+# STAMP THE BUILD, so the add-in can say how old it is.
+#
+# Modules are staged and the stamp written into the COPY -- the repo file keeps
+# saying "(unbuilt)", which is itself the signal that something is running
+# straight from source rather than from a built package.
+$stamp = Get-Date -Format "yyyy-MM-dd HH:mm"
+$stageDir = Join-Path $env:TEMP ("deck-sync-ppam-" + [guid]::NewGuid().ToString("N").Substring(0,8))
+New-Item -ItemType Directory -Path $stageDir | Out-Null
 foreach ($m in $productionModules) {
-    $comp = $pres.VBProject.VBComponents.Import((Join-Path $vbaSourceDir $m))
+    $src = Join-Path $vbaSourceDir $m
+    $dst = Join-Path $stageDir $m
+    if ($m -eq "CommandBarUI.bas") {
+        (Get-Content $src -Raw) -replace 'BUILD_STAMP As String = "\(unbuilt\)"', ('BUILD_STAMP As String = "' + $stamp + '"') | Set-Content $dst -NoNewline
+        Write-Output ("Stamped build: " + $stamp)
+    } else {
+        Copy-Item $src $dst
+    }
+}
+
+foreach ($m in $productionModules) {
+    $comp = $pres.VBProject.VBComponents.Import((Join-Path $stageDir $m))
     Write-Output ("Imported $m as: " + $comp.Name)
 }
 
