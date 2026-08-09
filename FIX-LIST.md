@@ -32,6 +32,40 @@ success: the diagnosis existed and was thrown away.
 
 ---
 
+## 1b. A drafting sheet for a derived field carries nothing to derive from
+
+**Found 2026-08-09, on the first real drafting run of a new field.** Two faults, one
+cheap and one structural.
+
+**The cheap one — the global rules assume a prior value exists.** They say *"Column C
+is the standard, not a draft to improve on… if the text in column C already does its
+job, say so and leave the row blank."* On a field added today, column C is empty for
+every project that has not been harvested — 42 of 43. Read literally, that clause tells
+Copilot to leave every row blank. Those rules were written when every field had a prior
+value, which was true of `ABOUT_BODY` and is false of every field added from now on.
+It is a cell on the Field Spec sheet, so the fix is an edit, not a build.
+
+**The structural one — the sheet shows a drafter only the project's NAME.** The columns
+are: code, name, ORIGINAL (empty for a new field), SUBMIT, tick, AI draft, sources,
+counts, notes. `STRATEGIC_ALIGNMENT_BODY` is the "so what" for a project, and it cannot
+be written from a title. `ABOUT_BODY` — what the project actually IS — exists for all
+43 projects, in the register and on its own sheet, and is not visible here.
+
+So for a derived field the honest output is 42 blank rows, and the rules correctly
+forbid inventing the rest. That is not the recipe failing; it is the sheet not carrying
+what the recipe needs.
+
+**Fix, and it is Field-Spec-shaped rather than code-shaped:** a `Context fields` column
+on the Field Spec saying which other fields to show read-only alongside — Strategic
+Alignment and Problem both want `ABOUT_BODY`; Progress wants `KEY_EVENTS_BODY`. Then
+`WriteDraftingSheet` renders those as extra read-only columns.
+
+**Why this matters more than it looks:** it is the difference between a tool that can
+only UPDATE text that already exists and one that can WRITE a field for the first time.
+Every new field, and every new project, hits this.
+
+---
+
 ## 2. `4. Sync Now` always refuses on the main field, and names a sheet that does not exist
 
 `AssignBatches` batches only `KIND_CONTROLLED` fields, so for prose —
