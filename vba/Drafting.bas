@@ -563,6 +563,10 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
         ws.Range(ws.Rows(DRAFT_FIRST_ROW), ws.Rows(r - 1)).RowHeight = 52
     End If
 
+    ' The look goes on LAST, over the top of the per-column settings above, so
+    ' the sheet reads as one thing rather than as the sum of its edits.
+    ApplyDraftingLook ws, r - 1
+
     ws.Cells(DRAFT_INTRO_ROW, COL_D_PERIOD).Value = periodStamp
     ws.Cells(DRAFT_INTRO_ROW, COL_D_PERIOD).Font.Color = RGB(190, 190, 190)
     ws.Columns(COL_D_PERIOD).ColumnWidth = 9
@@ -932,3 +936,117 @@ Private Function HasControlCharacter(value As String) As Boolean
         End If
     Next i
 End Function
+
+' ---------------------------------------------------------------------
+' THE LOOK. Rohan, 2026-08-10: "clearer formatting transport tycoon style
+' headers in the worksheet ... make body text and line work to suit".
+'
+' The point is not decoration. This sheet is a WORKBENCH with a direction of
+' travel -- read C, gather D, machine writes E, you write F, you tick G -- and
+' the formatting's whole job is to make that direction visible before a word is
+' read. So the columns are colour-coded by ROLE, not prettified individually:
+'
+'   grey    you may read this but not change it      (ORIGINAL)
+'   slate   small inputs you supply                  (SOURCES)
+'   amber   a machine wrote this, it never publishes (AI DRAFT)
+'   cream   YOUR words, this is what publishes       (SUBMIT)
+'   green   the consent                              (APPROVE)
+'
+' The heavy rule sits to the LEFT OF SUBMIT, because that is the real boundary
+' on this sheet: everything left of it is material, everything right of it is
+' yours and goes to the deck.
+'
+' EVERY EXCEL CONSTANT IS A NUMERIC LITERAL. This module is driven from
+' PowerPoint, where xlEdgeLeft, xlContinuous and friends do not resolve -- the
+' same gotcha ExcelOutput hit on 2026-07-25 with xlUp. A named constant here
+' would be Empty, which is 0, which silently means something else.
+Private Sub ApplyDraftingLook(ws As Object, lastRow As Long)
+    Const EDGE_LEFT As Long = 7, EDGE_TOP As Long = 8
+    Const EDGE_BOTTOM As Long = 9, EDGE_RIGHT As Long = 10
+    Const INSIDE_V As Long = 11, INSIDE_H As Long = 12
+    Const CONTINUOUS As Long = 1, THIN As Long = 2, MEDIUM As Long = -4138
+
+    Dim INK As Long, RULE As Long
+    INK = RGB(38, 46, 38)
+    RULE = RGB(120, 124, 112)
+
+    ' --- the instruction panel: one block, not seven loose lines ------
+    With ws.Range(ws.Cells(DRAFT_INTRO_ROW, 1), ws.Cells(7, COL_D_NOTES))
+        .Interior.Color = RGB(233, 229, 210)
+        .Font.Color = INK
+    End With
+    With ws.Range(ws.Cells(DRAFT_INTRO_ROW, 1), ws.Cells(7, COL_D_NOTES)).Borders(EDGE_BOTTOM)
+        .LineStyle = CONTINUOUS: .Weight = MEDIUM: .Color = RULE
+    End With
+    ws.Range(ws.Cells(2, 1), ws.Cells(6, 1)).Font.Bold = True
+
+    ' Title bar, reversed out -- the one thing you see before anything else.
+    With ws.Range(ws.Cells(DRAFT_INTRO_ROW, 1), ws.Cells(DRAFT_INTRO_ROW, COL_D_NOTES))
+        .Interior.Color = RGB(46, 74, 48)
+        .Font.Color = RGB(255, 255, 255)
+        .Font.Bold = True
+    End With
+
+    ' --- the header row: chunky, reversed out, ruled underneath -------
+    With ws.Range(ws.Cells(DRAFT_HEADER_ROW, 1), ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES))
+        .Interior.Color = RGB(46, 74, 48)
+        .Font.Color = RGB(255, 255, 255)
+        .Font.Bold = True
+        .Font.Size = 8
+        .VerticalAlignment = -4108          ' xlCenter
+        .WrapText = True
+    End With
+    With ws.Range(ws.Cells(DRAFT_HEADER_ROW, 1), ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES)).Borders(EDGE_BOTTOM)
+        .LineStyle = CONTINUOUS: .Weight = MEDIUM: .Color = INK
+    End With
+
+    If lastRow < DRAFT_FIRST_ROW Then Exit Sub
+
+    ' --- the body: role colour per column ----------------------------
+    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_ENTITY), ws.Cells(lastRow, COL_D_NAME)).Interior.Color = RGB(245, 244, 238)
+    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_CURRENT), ws.Cells(lastRow, COL_D_CURRENT)).Interior.Color = RGB(226, 226, 221)
+    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_SOURCES), ws.Cells(lastRow, COL_D_SOURCES)).Interior.Color = RGB(214, 223, 228)
+    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_DRAFT), ws.Cells(lastRow, COL_D_DRAFT)).Interior.Color = RGB(250, 238, 205)
+    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_SUBMIT), ws.Cells(lastRow, COL_D_SUBMIT)).Interior.Color = RGB(255, 252, 235)
+    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_APPROVED), ws.Cells(lastRow, COL_D_APPROVED)).Interior.Color = RGB(206, 226, 202)
+    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_NOTES), ws.Cells(lastRow, COL_D_NOTES)).Interior.Color = RGB(245, 244, 238)
+
+    ' Body text: one size, top-aligned, prose wrapped. Set on the block so a
+    ' later column tweak cannot leave one column reading differently.
+    With ws.Range(ws.Cells(DRAFT_FIRST_ROW, 1), ws.Cells(lastRow, COL_D_NOTES))
+        .Font.Size = 8
+        .Font.Color = INK
+        .VerticalAlignment = -4160          ' xlTop
+    End With
+    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_APPROVED), ws.Cells(lastRow, COL_D_APPROVED)).HorizontalAlignment = -4108
+    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_APPROVED), ws.Cells(lastRow, COL_D_APPROVED)).Font.Bold = True
+
+    ' --- line work ----------------------------------------------------
+    With ws.Range(ws.Cells(DRAFT_HEADER_ROW, 1), ws.Cells(lastRow, COL_D_NOTES))
+        .Borders(INSIDE_V).LineStyle = CONTINUOUS
+        .Borders(INSIDE_V).Weight = THIN
+        .Borders(INSIDE_V).Color = RULE
+        .Borders(INSIDE_H).LineStyle = CONTINUOUS
+        .Borders(INSIDE_H).Weight = THIN
+        .Borders(INSIDE_H).Color = RGB(198, 200, 190)
+        .Borders(EDGE_LEFT).LineStyle = CONTINUOUS
+        .Borders(EDGE_LEFT).Weight = MEDIUM
+        .Borders(EDGE_LEFT).Color = INK
+        .Borders(EDGE_RIGHT).LineStyle = CONTINUOUS
+        .Borders(EDGE_RIGHT).Weight = MEDIUM
+        .Borders(EDGE_RIGHT).Color = INK
+        .Borders(EDGE_TOP).LineStyle = CONTINUOUS
+        .Borders(EDGE_TOP).Weight = MEDIUM
+        .Borders(EDGE_TOP).Color = INK
+        .Borders(EDGE_BOTTOM).LineStyle = CONTINUOUS
+        .Borders(EDGE_BOTTOM).Weight = MEDIUM
+        .Borders(EDGE_BOTTOM).Color = INK
+    End With
+
+    ' THE PUBLISH BOUNDARY, drawn heavy. Left of it is material; F and G are
+    ' yours and reach the deck. If one line on this sheet has to be noticed,
+    ' it is this one.
+    With ws.Range(ws.Cells(DRAFT_HEADER_ROW, COL_D_SUBMIT), ws.Cells(lastRow, COL_D_SUBMIT)).Borders(EDGE_LEFT)
+        .LineStyle = CONTINUOUS: .Weight = MEDIUM: .Color = RGB(46, 74, 48)
+    End With
+End Sub
