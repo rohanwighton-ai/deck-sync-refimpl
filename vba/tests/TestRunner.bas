@@ -665,6 +665,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "InjectPicture_FillsStampsAndThenStaysSilent", r
     r = Test_InjectPicture_RefusesABadLocatorWithoutLosingTheOldImage()
     AppendResult report, "InjectPicture_RefusesABadLocatorWithoutLosingTheOldImage", r
+    r = Test_InjectPicture_CroppedFrameIsFilledUncroppedIsFitted()
+    AppendResult report, "InjectPicture_CroppedFrameIsFilledUncroppedIsFitted", r
+    r = Test_InjectProgress_MeasuresAgainstTheTrackNotItself()
+    AppendResult report, "InjectProgress_MeasuresAgainstTheTrackNotItself", r
+    r = Test_InjectProgress_RefusesWithoutATrack()
+    AppendResult report, "InjectProgress_RefusesWithoutATrack", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -8043,11 +8049,11 @@ Private Function Test_InjectPicture_FillsStampsAndThenStaysSilent() As String
     If Not placed Is Nothing Then
         result = result & Assert(InjectPrimitive.PictureSourceOf(placed) = "S20", _
             "and the source stamp, got '" & InjectPrimitive.PictureSourceOf(placed) & "'")
-        ' Fitted INSIDE the frame the slide defined -- never larger than it.
-        result = result & Assert(placed.Width <= 300.5 And placed.Height <= 150.5, _
-            "the image is fitted inside the frame, got " & placed.Width & "x" & placed.Height)
-        result = result & Assert(placed.Left >= 99 And placed.Top >= 79, _
-            "and sits within the frame's origin")
+        ' The frame is untouched -- it was fed, not replaced.
+        result = result & Assert(Abs(placed.Width - 300) < 1 And Abs(placed.Height - 150) < 1, _
+            "the frame keeps the size the slide gave it, got " & placed.Width & "x" & placed.Height)
+        result = result & Assert(Abs(placed.Left - 100) < 0.5 And Abs(placed.Top - 80) < 0.5, _
+            "and its position, got " & placed.Left & "," & placed.Top)
     End If
 
     ' THE SECOND RUN MUST DO NOTHING. This is the property that makes a picture
@@ -8118,4 +8124,144 @@ Private Function ShapeTaggedRole(sld As Object, roleTag As String) As Object
         End If
         On Error GoTo 0
     Next shp
+End Function
+
+' A CROPPED FRAME MEANS FILL IT. Read off the shape rather than configured --
+' the real deck's project banner carries a crop and its logos do not, so the
+' deck already states which treatment each frame wants.
+Private Function Test_InjectPicture_CroppedFrameIsFilledUncroppedIsFitted() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim wide As String, tall As String
+    wide = MakeTestBitmap(Environ("TEMP") & "\dswide.bmp", 40, 20)
+    tall = MakeTestBitmap(Environ("TEMP") & "\dstall.bmp", 20, 40)
+
+    ' A cropped frame: 300x150, holding a portrait image it must fill.
+    Dim cropped As Object
+    Set cropped = sld.Shapes.AddPicture(wide, msoFalse, msoTrue, 100, 80, 300, 150)
+    cropped.Tags.Add "role", "BANNER"
+    cropped.PictureFormat.CropLeft = 2
+    cropped.PictureFormat.CropRight = 2
+
+    ' MEASURED, NOT ASSUMED. Applying a crop SHRINKS a picture shape, so the
+    ' frame is not the 300x150 it was created at -- an earlier version of this
+    ' test asserted 300x150 and failed against numbers the setup itself had
+    ' changed. What matters is that the injection leaves them alone.
+    Dim wasW As Single, wasH As Single, wasL As Single, wasT As Single, wasCropL As Single
+    wasW = cropped.Width: wasH = cropped.Height
+    wasL = cropped.Left: wasT = cropped.Top
+    wasCropL = cropped.PictureFormat.CropLeft
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectPictureField(sld, "BANNER", "S30", tall)
+
+    ' A CROPPED FRAME IS NOT TOUCHED. Replacing it would lose the cropping with
+    ' no way to restore it -- probed against real PowerPoint. So sync reports.
+    result = result & Assert(Not r.Written, "a cropped frame is not rewritten")
+    result = result & Assert(InStr(r.ErrorMessage, "CROPPED") > 0, _
+        "and says why, got '" & r.ErrorMessage & "'")
+    result = result & Assert(InStr(r.ErrorMessage, "S30") > 0, _
+        "naming the image the register expects, so it can be set by hand")
+
+    Dim untouched As Object
+    Set untouched = ShapeTaggedRole(sld, "BANNER")
+    If Not untouched Is Nothing Then
+        result = result & Assert(Abs(untouched.Width - wasW) < 0.5 And Abs(untouched.Height - wasH) < 0.5, _
+            "the frame is exactly as it was, was " & wasW & "x" & wasH & " now " & untouched.Width & "x" & untouched.Height)
+        result = result & Assert(Abs(untouched.PictureFormat.CropLeft - wasCropL) < 0.1, _
+            "and keeps its cropping, was " & wasCropL & " now " & untouched.PictureFormat.CropLeft)
+    End If
+
+    ' An uncropped frame with the same mismatch must FIT, not fill.
+    Dim plain As Object
+    Set plain = sld.Shapes.AddPicture(wide, msoFalse, msoTrue, 400, 80, 300, 150)
+    plain.Tags.Add "role", "THUMB"
+    Dim plainW As Single, plainH As Single
+    plainW = plain.Width: plainH = plain.Height
+    Dim r2 As InjectResult
+    r2 = InjectPrimitive.InjectPictureField(sld, "THUMB", "S31", tall)
+    Dim placed2 As Object
+    Set placed2 = ShapeTaggedRole(sld, "THUMB")
+    If Not placed2 Is Nothing Then
+        result = result & Assert(Abs(placed2.Width - plainW) < 0.5 And Abs(placed2.Height - plainH) < 0.5, _
+            "an uncropped frame also keeps its size, was " & plainW & "x" & plainH & " now " & placed2.Width & "x" & placed2.Height)
+    End If
+
+    sld.Delete
+    Test_InjectPicture_CroppedFrameIsFilledUncroppedIsFitted = result
+End Function
+
+' A progress bar measured against a track it never writes.
+'
+' The assertion that matters is the SECOND RUN. Scaling the done part against
+' its own width works exactly once -- after that the bar is shorter, so the next
+' run takes a fraction of a fraction and walks toward zero while every report
+' says success. Reading a shape the tool never touches is what prevents it, and
+' running twice is the only way to prove it.
+Private Function Test_InjectProgress_MeasuresAgainstTheTrackNotItself() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    Dim track As Object, done As Object, rest As Object
+    Set track = sld.Shapes.AddShape(1, 100, 200, 400, 12)     ' msoShapeRectangle
+    track.Tags.Add "role", "ELAPSED.track"
+    Set done = sld.Shapes.AddShape(1, 100, 200, 40, 12)
+    done.Tags.Add "role", "ELAPSED"
+    Set rest = sld.Shapes.AddShape(1, 140, 200, 360, 12)
+    rest.Tags.Add "role", "ELAPSED.rest"
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectProgressField(sld, "ELAPSED", 0.75)
+    result = result & Assert(r.Written, "the bar is set [" & r.ErrorMessage & "]")
+    result = result & Assert(Abs(done.Width - 300) < 1, _
+        "75% of a 400pt track is 300pt, got " & done.Width)
+    result = result & Assert(Abs(rest.Left - 400) < 1 And Abs(rest.Width - 100) < 1, _
+        "the remainder takes what is left, got left " & rest.Left & " width " & rest.Width)
+    result = result & Assert(Abs(track.Width - 400) < 0.5, _
+        "THE TRACK IS NEVER WRITTEN, got " & track.Width)
+
+    ' SECOND RUN, SAME VALUE. A bar measured against itself would shrink here.
+    Dim r2 As InjectResult
+    r2 = InjectPrimitive.InjectProgressField(sld, "ELAPSED", 0.75)
+    result = result & Assert(Not r2.WouldChange, "a second run with the same value changes nothing")
+    result = result & Assert(Abs(done.Width - 300) < 1, _
+        "and the bar is STILL 300pt, not a fraction of a fraction, got " & done.Width)
+
+    ' A value that is a percentage rather than a fraction must be refused, not
+    ' clamped -- 90 meaning 0.9 would otherwise draw a full bar and look right.
+    Dim r3 As InjectResult
+    r3 = InjectPrimitive.InjectProgressField(sld, "ELAPSED", 90)
+    result = result & Assert(Not r3.Written, "90 is refused rather than clamped to full")
+    result = result & Assert(Abs(done.Width - 300) < 1, "and the bar is untouched, got " & done.Width)
+
+    sld.Delete
+    Test_InjectProgress_MeasuresAgainstTheTrackNotItself = result
+End Function
+
+' No track means no answer. Falling back to the bar's own width is the shrinking
+' bug; falling back to the slide is a scale nobody chose.
+Private Function Test_InjectProgress_RefusesWithoutATrack() As String
+    Dim result As String
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    Dim done As Object
+    Set done = sld.Shapes.AddShape(1, 100, 200, 40, 12)
+    done.Tags.Add "role", "LONELY"
+    Dim before As Single
+    before = done.Width
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectProgressField(sld, "LONELY", 0.5)
+    result = result & Assert(Not r.Written, "a bar with no track is not written")
+    result = result & Assert(InStr(r.ErrorMessage, ".track") > 0, _
+        "and the message names the tag to add, got '" & r.ErrorMessage & "'")
+    result = result & Assert(done.Width = before, "the bar is left exactly as it was")
+
+    sld.Delete
+    Test_InjectProgress_RefusesWithoutATrack = result
 End Function

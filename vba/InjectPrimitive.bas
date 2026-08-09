@@ -455,83 +455,210 @@ Public Function InjectPictureField(sld As Object, identityTag As String, _
         Exit Function
     End If
 
-    ' The frame the slide already defines. Captured BEFORE anything changes.
-    Dim fL As Single, fT As Single, fW As Single, fH As Single, fZ As Long
-    fL = shp.Left: fT = shp.Top: fW = shp.Width: fH = shp.Height
+    ' FEED THE SHAPE, DO NOT REPLACE IT. Rohan, 2026-08-10: "shouldn't the shape
+    ' settings handle it you just feed it".
+    '
+    ' He is right, and the first implementation proved it the hard way. Deleting
+    ' the old shape and inserting a new one meant recreating everything the
+    ' shape already knew -- position, size, crop, z-order, tags -- and PowerPoint
+    ' recomputes a picture's geometry when crops change, so a 300x150 frame came
+    ' back 284x150 at the wrong origin. Two passes of arithmetic did not fix it,
+    ' because the arithmetic was never the problem: replacing the shape was.
+    '
+    ' Fill.UserPicture was PROBED against real PowerPoint before being relied on
+    ' -- it works on a picture shape (type 13), not only on an autoshape. The
+    ' shape keeps its own settings because nothing touches them.
+    ' TWO ROUTES, CHOSEN BY WHAT THE TEMPLATE DID -- not by arithmetic.
+    '
+    ' Probed against real PowerPoint: Fill.UserPicture and cropping are mutually
+    ' exclusive on a picture shape. After feeding, CropLeft reads the no-crop
+    ' sentinel and CANNOT be set again. So an uncropped frame can be fed in
+    ' place, and a cropped frame cannot -- its framing would be lost with no way
+    ' back.
+    '
+    ' For a cropped frame the shape is rebuilt and the TEMPLATE'S OWN CROP VALUES
+    ' are applied verbatim. That is not geometry logic: nothing is computed from
+    ' the image's proportions, nothing is fitted or filled. The template said how
+    ' this frame is framed, and those numbers are carried across unchanged.
+    Dim cL As Single, cR As Single, cT As Single, cB As Single
     On Error Resume Next
-    fZ = shp.ZOrderPosition
+    cL = shp.PictureFormat.CropLeft
+    cR = shp.PictureFormat.CropRight
+    cT = shp.PictureFormat.CropTop
+    cB = shp.PictureFormat.CropBottom
     On Error GoTo 0
 
-    Dim newShp As Object
+    Dim isCropped As Boolean
+    isCropped = (cL > 0.01) Or (cR > 0.01) Or (cT > 0.01) Or (cB > 0.01)
+
+    If Not isCropped Then
+        ' FED IN PLACE. Nothing about the shape changes but its image.
+        On Error Resume Next
+        Err.Clear
+        shp.Fill.UserPicture locator
+        If Err.Number <> 0 Then
+            Dim eFeed As String
+            eFeed = Err.Description
+            On Error GoTo 0
+            result.ErrorMessage = "could not place " & locator & " (" & eFeed & ")"
+            InjectPictureField = result
+            Exit Function
+        End If
+        shp.Tags.Delete PICTURE_SOURCE_TAG
+        shp.Tags.Add PICTURE_SOURCE_TAG, sourceId
+        On Error GoTo 0
+        result.Written = True
+        result.Verified = (StrComp(PictureSourceOf(shp), sourceId, vbTextCompare) = 0)
+        If Not result.Verified Then
+            result.ErrorMessage = "the picture was placed but its source stamp did not stick"
+        End If
+        InjectPictureField = result
+        Exit Function
+    End If
+
+    ' A CROPPED FRAME IS REPORTED, NEVER REBUILT.
+    '
+    ' Five attempts were made to rebuild one and restore its frame exactly, and
+    ' every one produced a different wrong size -- a 284pt frame came back 142pt
+    ' whether the crop was applied before sizing, after sizing, or re-asserted in
+    ' a loop. PowerPoint reports a cropped picture's Width against its uncropped
+    ' extent, and modelling that is precisely the geometry-guessing this design
+    ' exists to stop.
+    '
+    ' So it is not attempted. The template holds the frame AND its framing; a
+    ' project's photo is set once at project start, in the template-cloned slide.
+    ' Sync's job here is to notice the register names a different image and SAY
+    ' so -- which is useful, and honest, and cannot damage a slide.
+    result.Written = False
+    result.Verified = False
+    result.ErrorMessage = "this frame is CROPPED, so the image was not replaced -- " & _
+        "replacing it would lose the cropping and PowerPoint gives no way to put it back. " & _
+        "The register says this should be " & sourceId & " (" & locator & "). " & _
+        "Set the picture by hand on this slide, or use an uncropped frame."
+    InjectPictureField = result
+    Exit Function
+
+    result.Written = True
+    result.Verified = (StrComp(PictureSourceOf(shp), sourceId, vbTextCompare) = 0)
+    If Not result.Verified Then
+        result.ErrorMessage = "the picture was placed but its source stamp did not stick -- a later run would replace it again"
+    End If
+
+    InjectPictureField = result
+End Function
+
+' ---------------------------------------------------------------------
+' PROGRESS BARS: A TRACK AND ITS PARTS, ALL GEOMETRY READ OFF THE SLIDE
+' ---------------------------------------------------------------------
+'
+' Rohan, 2026-08-10: "do the track pair approach, i have used two shapes b4 to
+' show progress remainder. use position etc from slide."
+'
+' A progress field is a PAIR (or a trio), not one shape:
+'
+'   role = FIELD           the DONE part -- the bit that grows
+'   role = FIELD.track     the full extent. Read, never written.
+'   role = FIELD.rest      the REMAINDER, optional. Written if present.
+'
+' THE TRACK IS THE MEASUREMENT AND IT IS NEVER TOUCHED. Scaling the done part
+' against its own previous width would work exactly once: after the first run
+' the bar is shorter, so the next run scales a fraction of a fraction and the
+' bar walks toward zero while every report says success. Reading a shape the
+' tool never writes removes that entirely -- and it means nudging or resizing
+' the bar in the deck fixes itself, because the slide is the authority on
+' position, not the register.
+'
+' Suffix convention on the role tag rather than new schema: a field's parts are
+' discoverable from its own name, and a template that carries them carries the
+' whole behaviour with it.
+'
+' HORIZONTAL ONLY, deliberately, and it says so when it cannot help: a vertical
+' bar is the same arithmetic on Top/Height, but guessing the axis from which
+' dimension happens to be larger would silently do the wrong thing to a square.
+Public Function InjectProgressField(sld As Object, identityTag As String, _
+                                    fraction As Double, _
+                                    Optional dryRun As Boolean = False) As InjectResult
+    Dim result As InjectResult
+
+    Dim doneShp As Object, trackShp As Object, restShp As Object
+    Set doneShp = FindShapeByRoleTag(sld, identityTag)
+    Set trackShp = FindShapeByRoleTag(sld, identityTag & ".track")
+    Set restShp = FindShapeByRoleTag(sld, identityTag & ".rest")
+
+    If doneShp Is Nothing Then
+        result.ErrorMessage = "no single shape tagged role=" & identityTag
+        InjectProgressField = result
+        Exit Function
+    End If
+    result.Found = True
+
+    ' NO TRACK, NO ANSWER. Falling back to the done part's own width is the
+    ' shrinking-bar bug above; falling back to the slide width would invent a
+    ' scale nobody chose. Both are worse than saying so.
+    If trackShp Is Nothing Then
+        result.ErrorMessage = "no shape tagged role=" & identityTag & ".track -- " & _
+            "a progress bar needs a track to measure against. Tag the full-width " & _
+            "shape behind the bar and this will work."
+        InjectProgressField = result
+        Exit Function
+    End If
+
+    ' OUT OF RANGE IS REPORTED, NOT CLAMPED SILENTLY. A register cell holding
+    ' 90 when it meant 0.9 would otherwise draw a full bar and look correct.
+    Dim f As Double
+    f = fraction
+    If f < 0 Or f > 1 Then
+        result.ErrorMessage = "progress value " & fraction & " is not between 0 and 1" & _
+            " -- the bar was NOT changed. A percentage belongs in the register as 0.9, not 90."
+        InjectProgressField = result
+        Exit Function
+    End If
+
+    Dim wantLeft As Single, wantWidth As Single
+    wantLeft = trackShp.Left
+    wantWidth = trackShp.Width * f
+
+    result.CurrentValue = CStr(doneShp.Width)
+    result.WouldChange = (Abs(doneShp.Width - wantWidth) > 0.5) Or (Abs(doneShp.Left - wantLeft) > 0.5)
+
+    If Not result.WouldChange Then
+        result.Verified = True
+        InjectProgressField = result
+        Exit Function
+    End If
+    If dryRun Then
+        result.Verified = True
+        InjectProgressField = result
+        Exit Function
+    End If
+
     On Error Resume Next
-    ' -1, -1 = insert at the image's NATIVE size, so its true proportions are
-    ' known before anything is scaled.
-    Set newShp = sld.Shapes.AddPicture(locator, msoFalse, msoTrue, fL, fT, -1, -1)
-    If Err.Number <> 0 Or newShp Is Nothing Then
+    Err.Clear
+    doneShp.Left = wantLeft
+    doneShp.Width = wantWidth
+
+    ' The remainder, if the slide carries one, takes what is left of the track.
+    If Not restShp Is Nothing Then
+        restShp.Left = wantLeft + wantWidth
+        restShp.Width = trackShp.Width - wantWidth
+    End If
+
+    If Err.Number <> 0 Then
         Dim e As String
         e = Err.Description
         On Error GoTo 0
-        result.ErrorMessage = "could not place " & locator & " (" & e & ")"
-        InjectPictureField = result
+        result.ErrorMessage = "could not resize the bar (" & e & ")"
+        InjectProgressField = result
         Exit Function
     End If
     On Error GoTo 0
 
-    ' FIT INSIDE, CENTRED, PROPORTIONS KEPT.
-    '
-    ' THE NATIVE SIZE IS CAPTURED BEFORE ANYTHING IS ASSIGNED, and the aspect
-    ' lock is OFF while assigning. With the lock ON, setting Width makes
-    ' PowerPoint recompute Height underneath you, so a second line reading
-    ' .Height multiplies a value that has already changed -- which put a 40x20
-    ' image into a 300x150 frame at 300x300, twice as tall as the frame it was
-    ' supposed to fit inside. Caught by the test on its first run.
-    Dim natW As Single, natH As Single
-    natW = newShp.Width
-    natH = newShp.Height
-
-    Dim scaleFactor As Single
-    If natW <= 0 Or natH <= 0 Then
-        scaleFactor = 1
-    ElseIf (fW / natW) < (fH / natH) Then
-        scaleFactor = fW / natW
-    Else
-        scaleFactor = fH / natH
-    End If
-
-    Dim ratioNote As String
-    If natH > 0 And fH > 0 Then
-        If Abs((natW / natH) - (fW / fH)) > 0.02 Then
-            ratioNote = " (image proportions differ from the frame -- fitted inside and centred, nothing cropped)"
-        End If
-    End If
-
-    newShp.LockAspectRatio = msoFalse
-    newShp.Width = natW * scaleFactor
-    newShp.Height = natH * scaleFactor
-    newShp.Left = fL + (fW - newShp.Width) / 2
-    newShp.Top = fT + (fH - newShp.Height) / 2
-
-    ' The tags travel, or the field stops being a field.
-    newShp.Tags.Add "role", identityTag
-    newShp.Tags.Add PICTURE_SOURCE_TAG, sourceId
-
-    shp.Delete
-    On Error Resume Next
-    If fZ > 0 Then
-        Do While newShp.ZOrderPosition > fZ
-            newShp.ZOrder 3          ' msoSendBackward
-        Loop
-    End If
-    On Error GoTo 0
-
-    ' VERIFIED FROM THE NEW SHAPE, not from the fact that no error was raised.
+    ' VERIFIED FROM THE SHAPE, not from the absence of an error.
     result.Written = True
-    result.Verified = (StrComp(PictureSourceOf(newShp), sourceId, vbTextCompare) = 0)
+    result.Verified = (Abs(doneShp.Width - wantWidth) <= 0.5)
     If Not result.Verified Then
-        result.ErrorMessage = "the picture was placed but its source stamp did not stick -- a later run would replace it again"
-    Else
-        result.ErrorMessage = ratioNote
+        result.ErrorMessage = "the bar was set to " & wantWidth & " but reads " & doneShp.Width
     End If
 
-    InjectPictureField = result
+    InjectProgressField = result
 End Function

@@ -59,6 +59,31 @@ Public Const COL_S_ALLOWED As Long = 8
 ' verbatim, and splitting prose into a grid makes it harder to edit, not
 ' easier. The per-field columns are a grid because they are compared field to
 ' field; this is not.
+' HOW THE FIELD'S CONTENT IS PLACED, as opposed to what it says.
+'
+' Rohan, 2026-08-10: "per field, on the field spec row, same principle for text
+' and can extend to anchor positions for variable object placement (deliverable
+' icon graphics etc)."
+'
+' A third axis, and it must not collapse into the other two -- this project has
+' already paid once for a word doing two jobs:
+'   Kind      how the content is DECIDED   (Controlled / Prose / Static)
+'   FieldType what the content IS          (Text / Picture / Shape)
+'   Behaviour how it is PLACED             (fill the frame / fit inside / ...)
+'
+' Derived from his own deck rather than invented: the project banner is cropped
+' to fill its frame, while the logos and article thumbnails beside it sit
+' uncropped at their own proportions. Two pictures, two behaviours, on one
+' slide -- so it cannot be a global setting.
+'
+' The code owns the vocabulary and the sheet owns the assignment, the same split
+' as Kind and the Sources period list. Picked, never typed.
+Public Const COL_S_BEHAVIOUR As Long = 10
+
+Public Const BEHAVIOUR_FILL As String = "Fill the frame"
+Public Const BEHAVIOUR_FIT As String = "Fit inside"
+Public Const BEHAVIOUR_ASIS As String = "Leave as is"
+
 Public Const COL_S_GLOBAL As Long = 9
 Public Const SPEC_GLOBAL_ROW As Long = 2
 
@@ -76,6 +101,7 @@ Public Type FieldGuidance
     OwnJob As String
     DoNot As String
     GlobalRules As String   ' shared by every field -- see COL_S_GLOBAL
+    Behaviour As String     ' how the content is PLACED -- see COL_S_BEHAVIOUR
 End Type
 
 ' Creates the sheet with its headers and, on a fresh workbook, the rows already
@@ -195,6 +221,8 @@ Public Function WriteSpecSheet(ws As Object) As String
     ' The global clauses. Seeded once with what used to be hardcoded, then
     ' never touched again -- like every other row on this sheet, an edit here
     ' is the owner's and must survive a rebuild.
+    ws.Cells(SPEC_HEADER_ROW, COL_S_BEHAVIOUR).Value = "Behaviour  --  how the content is PLACED (pictures and objects)"
+    ws.Columns(COL_S_BEHAVIOUR).ColumnWidth = 18
     ws.Cells(SPEC_HEADER_ROW, COL_S_GLOBAL).Value = "GLOBAL RULES  --  added to EVERY field's prompt. Edit freely."
     If Trim(CStr(ws.Cells(SPEC_GLOBAL_ROW, COL_S_GLOBAL).Value)) = "" Then
         ws.Cells(SPEC_GLOBAL_ROW, COL_S_GLOBAL).Value = "'" & DefaultGlobalRules()
@@ -259,6 +287,8 @@ Public Function LookupGuidance(ws As Object, fieldId As String) As FieldGuidance
             g.OwnJob = Trim(CStr(ws.Cells(r, COL_S_OWNJOB).Value))
             g.DoNot = Trim(CStr(ws.Cells(r, COL_S_DONOT).Value))
             g.Allowed = Trim(CStr(ws.Cells(r, COL_S_ALLOWED).Value))
+                ' Per ROW, unlike GlobalRules which comes from a fixed cell.
+                g.Behaviour = Trim(CStr(ws.Cells(r, COL_S_BEHAVIOUR).Value))
             Exit Do
         End If
         r = r + 1
@@ -498,4 +528,49 @@ Private Function InVocabulary(value As String, allowed As String) As Boolean
             Exit Function
         End If
     Next i
+End Function
+
+' PICKED, NEVER TYPED -- the same rule as periods and allowed values, and for
+' the same reason: a behaviour matched by string that nobody can spell wrong is
+' worth more than one that reads well in a comment.
+'
+' FAILS LOUD, like Sources.ApplyPeriodValidation. A dropdown that silently did
+' not apply would read as care taken and stop anyone re-checking.
+Public Function ApplyBehaviourValidation(ws As Object) As String
+    If ws Is Nothing Then
+        ApplyBehaviourValidation = "Behaviour validation: skipped (no Field Spec sheet)."
+        Exit Function
+    End If
+
+    Dim listText As String
+    listText = BEHAVIOUR_FILL & "," & BEHAVIOUR_FIT & "," & BEHAVIOUR_ASIS
+
+    Dim lastRow As Long
+    lastRow = SPEC_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(lastRow, COL_S_FIELDID).Value)) <> ""
+        lastRow = lastRow + 1
+    Loop
+    If lastRow <= SPEC_FIRST_ROW Then
+        ApplyBehaviourValidation = "Behaviour validation: no field rows yet."
+        Exit Function
+    End If
+
+    Dim rng As Object
+    Set rng = ws.Range(ws.Cells(SPEC_FIRST_ROW, COL_S_BEHAVIOUR), ws.Cells(lastRow - 1, COL_S_BEHAVIOUR))
+
+    On Error Resume Next
+    Err.Clear
+    rng.Validation.Delete
+    rng.Validation.Add 3, 1, 1, listText      ' xlValidateList, xlValidAlertStop, xlBetween
+    If Err.Number <> 0 Then
+        Dim e As String
+        e = Err.Description
+        On Error GoTo 0
+        ApplyBehaviourValidation = "Behaviour validation NOT APPLIED (" & e & _
+            ") -- the column still works, it just will not offer the list."
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    ApplyBehaviourValidation = "Behaviour: list applied to " & (lastRow - SPEC_FIRST_ROW) & " field row(s)."
 End Function
