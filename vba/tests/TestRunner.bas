@@ -284,6 +284,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "FieldSpec_GuidanceDrivesThePrompt", r
     r = Test_FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob()
     AppendResult report, "FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob", r
+    r = Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty()
+    AppendResult report, "Drafting_AFieldWithNoValueLeavesColumnCEmpty", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -2917,6 +2919,82 @@ Private Function Test_FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob() As Strin
     On Error GoTo 0
 
     Test_FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob = result
+End Function
+
+' ONE PROJECT'S TEXT MUST NEVER APPEAR AGAINST ANOTHER PROJECT.
+'
+' VBA's Dim does not scope to a loop, so `current` was procedure-scoped and kept
+' the PREVIOUS entity's value whenever the register had none for this field. The
+' first project with a value had its text copied into column C for every project
+' after it. Found 2026-08-09 on the first real run of a new field: one project
+' had STRATEGIC_ALIGNMENT_BODY, forty showed its 1,113 characters, and the three
+' rows above it were blank -- which is the signature of exactly this bug.
+'
+' Column C is what a person and Copilot are both told to stay close to, so the
+' failure is silent and it attributes a real paragraph to the wrong project.
+'
+' The fixture deliberately puts the value in the MIDDLE: an entity before it
+' proves nothing leaks backwards, and two after prove nothing leaks forwards.
+Private Function Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+
+    Dim reg As Sheet
+    Set reg.Rows = CreateObject("Scripting.Dictionary")
+    Set reg.Fields = New Collection
+    Set reg.InstanceOrder = New Collection
+
+    Dim ids As Variant
+    ids = Array("P-BEFORE", "P-HAS", "P-AFTER1", "P-AFTER2")
+    Dim i As Long
+    For i = LBound(ids) To UBound(ids)
+        Dim vals As Object
+        Set vals = CreateObject("Scripting.Dictionary")
+        vals("PROJECT_NAME") = "Name " & CStr(ids(i))
+        ' ONLY the middle entity carries the field.
+        If CStr(ids(i)) = "P-HAS" Then vals("ABOUT_BODY") = "ONLY-P-HAS-SHOULD-SHOW-THIS"
+        reg.Rows.Add CStr(ids(i)), vals
+        reg.InstanceOrder.Add CStr(ids(i))
+    Next i
+    reg.Fields.Add "ABOUT_BODY"
+
+    Drafting.WriteDraftingSheet ws, reg, "ABOUT_BODY", Empty, "Q4F26"
+
+    ' Read column C back per entity, by matching column A rather than by row
+    ' offset -- the header block's height is not this test's business.
+    Dim seen As Object
+    Set seen = CreateObject("Scripting.Dictionary")
+    Dim r As Long
+    For r = 1 To 200
+        Dim ent As String
+        ent = Trim(CStr(ws.Cells(r, Drafting.COL_D_ENTITY).Value))
+        If ent <> "" Then seen(ent) = Trim(CStr(ws.Cells(r, Drafting.COL_D_CURRENT).Value))
+    Next r
+
+    result = result & Assert(seen.Exists("P-HAS"), "the entity with a value is on the sheet")
+    result = result & Assert(InStr(CStr(seen("P-HAS")), "ONLY-P-HAS-SHOULD-SHOW-THIS") > 0, _
+        "and it shows its own text -- got '" & CStr(seen("P-HAS")) & "'")
+
+    Dim v As Variant
+    For Each v In Array("P-BEFORE", "P-AFTER1", "P-AFTER2")
+        result = result & Assert(seen.Exists(CStr(v)), CStr(v) & " is on the sheet")
+        result = result & Assert(CStr(seen(CStr(v))) = "", _
+            CStr(v) & " has NO value for this field, so column C must be EMPTY -- got '" & _
+            CStr(seen(CStr(v))) & "'")
+    Next v
+
+    On Error Resume Next
+    wb.Close False
+    xl.Quit
+    On Error GoTo 0
+
+    Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty = result
 End Function
 
 Private Function Test_PlaceholderCheck_FindsRecordsNotTheTemplate() As String

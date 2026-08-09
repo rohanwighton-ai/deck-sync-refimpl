@@ -335,9 +335,33 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
             ' Guarded on Exists: reading a missing key from a Scripting.Dictionary
             ' ADDS it and returns Empty, so an unguarded read would silently
             ' invent blank rows for entities this field does not cover.
+            ' CLEARED EVERY ITERATION, and that line is the whole defect.
+            '
+            ' VBA's Dim does not scope to a loop -- these are procedure-scoped and
+            ' keep the PREVIOUS entity's value on any iteration where the If below
+            ' does not fire. So the first project with a value for this field had
+            ' its text copied into column C for every project after it that had
+            ' none.
+            '
+            ' Found 2026-08-09 on the first real run of three new fields: the
+            ' register held STRATEGIC_ALIGNMENT_BODY for exactly one project, and
+            ' the drafting sheet showed that project's 1,113 characters against
+            ' FORTY of them. The three rows ABOVE it were blank, which is the
+            ' signature -- nothing had been assigned yet.
+            '
+            ' Column C is labelled "what the slide says now" and is what a person
+            ' and Copilot are both told to stay close to. Forty projects would
+            ' have been drafted against one project's story, and nothing
+            ' downstream could have noticed: the values are real, just attributed
+            ' to the wrong entity.
+            '
+            ' Rohan asked "is that the old q?" about this exact hazard in
+            ' RibbonUI earlier the same day. It was safe there. It was not here.
             Dim current As String
-            If vals.Exists(fieldId) Then current = CStr(vals(fieldId))
             Dim projName As String
+            current = ""
+            projName = ""
+            If vals.Exists(fieldId) Then current = CStr(vals(fieldId))
             If vals.Exists("PROJECT_NAME") Then projName = CStr(vals("PROJECT_NAME"))
 
             ws.Cells(r, COL_D_ENTITY).Value = key
