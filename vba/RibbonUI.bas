@@ -747,7 +747,13 @@ Public Sub SyncNowChain()
     SyncNowChainCore
     Exit Sub
 Failed:
-    RibbonUI.ShowSyncResult "Sync Now", RibbonUI.UnexpectedErrorText("Sync Now", Err.Number, Err.Description, Err.Source)
+    ' END COLLECTING IN THE HANDLER TOO. Left on, the next standalone run would
+    ' swallow its own messages into a buffer nobody reads -- a silent tool is a
+    ' worse failure than a noisy one.
+    Dim partial As String
+    partial = DraftingUI.EndCollecting()
+    If partial <> "" Then partial = "What had happened before the error:" & vbCrLf & vbCrLf & partial & vbCrLf & vbCrLf
+    RibbonUI.ShowSyncResult "Sync Now", partial & RibbonUI.UnexpectedErrorText("Sync Now", Err.Number, Err.Description, Err.Source)
 End Sub
 
 Private Sub SyncNowChainCore()
@@ -830,11 +836,21 @@ Private Sub SyncNowChainCore()
         Exit Sub
     End If
 
+    ' ONE REPORT FOR THE WHOLE PROLOGUE. Each stage's decisions still stop and
+    ' ask; only its informational messages are collected. A stage with nothing
+    ' to do now says so in the report instead of interrupting to say it.
+    DraftingUI.BeginCollecting
     DraftingUI.StartQuarter
     DraftingUI.RollForwardUI
     DraftingUI.RefreshDraftingSheets
     DraftingUI.CopyAiDraftsToSubmit
     DraftingUI.PublishDraftsForField
+
+    Dim staged As String
+    staged = DraftingUI.EndCollecting()
+    If staged <> "" Then
+        MsgBox CapReport(staged, "Next: the slide changes."), vbInformation, TITLE
+    End If
 
     ' The deck-level sync, with its own detection of unapplied ticks in front.
     PutItOnTheSlidesCore

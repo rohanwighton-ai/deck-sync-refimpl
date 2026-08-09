@@ -24,6 +24,51 @@ Option Explicit
 ' is work a person does IN Excel; the button's job is to put them in front of
 ' the right sheet, not to do something invisible and report on it.
 
+
+' ---------------------------------------------------------------------
+' ONE REPORT AT THE END, NOT A DIALOG PER STAGE.
+'
+' Rohan, 2026-08-09, after the first real run of the two-button build:
+' "with a full sync subsequent changes shouldn't trigger same hellish popup
+' chain?" Ten dialogs to do one thing, and about five of them were a stage
+' announcing that it had done nothing.
+'
+' The cause was that every stage owned its own MsgBox. So an INFORMATIONAL
+' message now goes through Say: shown immediately when the stage is run on its
+' own, appended to a buffer when a chain is collecting. DECISIONS and INPUTS
+' are deliberately NOT routed through here -- a question that does not block is
+' not a question, and the write-authorising gates must stay exactly where they
+' are.
+'
+' EXPLICIT BEGIN/END rather than a quiet-mode flag. A mode is a thing someone
+' forgets to turn off; a Begin with a matching End in the caller's error handler
+' fails closed. BeginCollecting resets the buffer, so a chain that died halfway
+' cannot leak its half-report into the next run.
+Private mReport As String
+Private mCollecting As Boolean
+
+Public Sub BeginCollecting()
+    mReport = ""
+    mCollecting = True
+End Sub
+
+' Returns everything the stages said, and ALWAYS stops collecting -- callers put
+' this in their error handler as well as their happy path.
+Public Function EndCollecting() As String
+    EndCollecting = mReport
+    mReport = ""
+    mCollecting = False
+End Function
+
+Private Sub Say(text As String, style As VbMsgBoxStyle, caption As String)
+    If mCollecting Then
+        If mReport <> "" Then mReport = mReport & vbCrLf & vbCrLf
+        mReport = mReport & "-- " & caption & " --" & vbCrLf & text
+    Else
+        Say text, style, caption
+    End If
+End Sub
+
 ' The register worksheet for this deck.
 '
 ' ONE SHAPE, NOT TWO. This comment used to say the opposite: that the e2e rig's
@@ -97,7 +142,7 @@ Private Function Resolve(caption As String, ByRef pres As Object, ByRef wb As Ob
     Dim workbookPath As String
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath = "" Then
-        MsgBox "This deck has no paired workbook yet." & vbCrLf & vbCrLf & _
+        Say "This deck has no paired workbook yet." & vbCrLf & vbCrLf & _
                "Onboard a slide type first -- drafting reads the register, and " & _
                "there is no register until the deck and a workbook are paired.", _
                vbExclamation, caption
@@ -106,14 +151,14 @@ Private Function Resolve(caption As String, ByRef pres As Object, ByRef wb As Ob
 
     Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
     If wb Is Nothing Then
-        MsgBox "Could not open the paired workbook at:" & vbCrLf & workbookPath, vbCritical, caption
+        Say "Could not open the paired workbook at:" & vbCrLf & workbookPath, vbCritical, caption
         Exit Function
     End If
 
     Dim problem As String
     Set regWs = ResolveRegisterSheet(pres, wb, problem)
     If regWs Is Nothing Then
-        MsgBox "Could not work out which register sheet to use." & vbCrLf & vbCrLf & _
+        Say "Could not work out which register sheet to use." & vbCrLf & vbCrLf & _
                problem, vbCritical, caption
         Exit Function
     End If
@@ -299,7 +344,7 @@ Public Sub RefreshDraftingSheets()
     Dim fields As String
     fields = ProseFields(wb)
     If fields = "" Then
-        MsgBox "No field on the 'Field Spec' sheet is marked Kind = Prose, so there " & _
+        Say "No field on the 'Field Spec' sheet is marked Kind = Prose, so there " & _
                "is nothing to draft." & vbCrLf & vbCrLf & _
                "Static and Controlled fields are edited in the register, not drafted.", _
                vbInformation, CAP
@@ -309,7 +354,7 @@ Public Sub RefreshDraftingSheets()
     Dim period As String
     period = DeckRegistry.GetDeckPeriod(pres)
     If period = "" Then
-        MsgBox "This deck does not declare a period, so the register cannot be " & _
+        Say "This deck does not declare a period, so the register cannot be " & _
                "filtered to a quarter." & vbCrLf & vbCrLf & _
                "Roll the deck forward (or set its period) before drafting.", vbExclamation, CAP
         Exit Sub
@@ -329,7 +374,7 @@ Public Sub RefreshDraftingSheets()
     Dim reg As Sheet
     reg = ExcelOutput.ReadSheetForDeckPeriod(regWs, period, problem)
     If problem <> "" Then
-        MsgBox "Cannot build drafting sheets from this register." & vbCrLf & vbCrLf & problem & _
+        Say "Cannot build drafting sheets from this register." & vbCrLf & vbCrLf & problem & _
                vbCrLf & vbCrLf & "Nothing was written.", vbExclamation, CAP
         Exit Sub
     End If
@@ -407,11 +452,11 @@ Public Sub RefreshDraftingSheets()
         msg = msg & vbCrLf & vbCrLf & saveProblem
     End If
 
-    MsgBox msg, vbInformation, CAP
+    Say msg, vbInformation, CAP
     Exit Sub
 
 Failed:
-    MsgBox "Could not refresh the drafting sheets." & vbCrLf & vbCrLf & _
+    Say "Could not refresh the drafting sheets." & vbCrLf & vbCrLf & _
            "Error " & Err.Number & ": " & Err.Description, vbCritical, CAP
 End Sub
 
@@ -467,11 +512,11 @@ Public Sub CopyAiDraftsToSubmit()
         ' sheet for a FieldID that does not exist. So the two cases are separated.
         If StrComp(CanonicalFieldId(wb, fieldId), fieldId, vbBinaryCompare) <> 0 Or _
            Not FieldIsKnown(wb, fieldId) Then
-            MsgBox "There is no field called '" & fieldId & "' on the Field Spec sheet." & vbCrLf & vbCrLf & _
+            Say "There is no field called '" & fieldId & "' on the Field Spec sheet." & vbCrLf & vbCrLf & _
                    "Check the spelling against the list, then try again. Nothing was created.", _
                    vbExclamation, CAP
         Else
-            MsgBox "There is no drafting sheet for " & fieldId & " yet." & vbCrLf & vbCrLf & _
+            Say "There is no drafting sheet for " & fieldId & " yet." & vbCrLf & vbCrLf & _
                    "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it builds them.", vbExclamation, CAP
         End If
         Exit Sub
@@ -492,11 +537,11 @@ Public Sub CopyAiDraftsToSubmit()
     End If
 
     ShowSheet wb, sheetName
-    MsgBox note, vbInformation, CAP
+    Say note, vbInformation, CAP
     Exit Sub
 
 Failed:
-    MsgBox "Could not copy the AI drafts." & vbCrLf & vbCrLf & _
+    Say "Could not copy the AI drafts." & vbCrLf & vbCrLf & _
            "Error " & Err.Number & ": " & Err.Description, vbCritical, CAP
 End Sub
 
@@ -523,7 +568,7 @@ Public Sub PublishDraftsForField()
     Dim sheetName As String
     sheetName = Drafting.DraftSheetNameFor(fieldId)
     If Not WorkbookBridge.WorksheetExists(wb, sheetName) Then
-        MsgBox "There is no drafting sheet for " & fieldId & " yet." & vbCrLf & vbCrLf & _
+        Say "There is no drafting sheet for " & fieldId & " yet." & vbCrLf & vbCrLf & _
                "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it builds them.", vbExclamation, CAP
         Exit Sub
     End If
@@ -541,7 +586,7 @@ Public Sub PublishDraftsForField()
     Dim period As String
     period = DeckRegistry.GetDeckPeriod(pres)
     If period = "" Then
-        MsgBox "This deck does not declare a period, so there is no way to know " & _
+        Say "This deck does not declare a period, so there is no way to know " & _
                "which quarter's rows to publish into." & vbCrLf & vbCrLf & _
                "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it sets the quarter first.", vbExclamation, CAP
         Exit Sub
@@ -564,7 +609,7 @@ Public Sub PublishDraftsForField()
               "This does NOT touch any slide -- press '" & CommandBarUI.CAP_SYNC_NOW & "' " & _
               "afterwards to get them onto the deck.", _
               vbYesNo + vbQuestion, CAP) <> vbYes Then
-        MsgBox "Nothing was published.", vbInformation, CAP
+        Say "Nothing was published.", vbInformation, CAP
         Exit Sub
     End If
 
@@ -630,7 +675,7 @@ Public Sub PublishDraftsForField()
     Exit Sub
 
 Failed:
-    MsgBox "Could not publish." & vbCrLf & vbCrLf & _
+    Say "Could not publish." & vbCrLf & vbCrLf & _
            "Error " & Err.Number & ": " & Err.Description, vbCritical, CAP
 End Sub
 
@@ -676,7 +721,7 @@ Public Sub StartQuarter()
     If typed = "" Then Exit Sub
 
     If StrComp(typed, current, vbTextCompare) = 0 Then
-        MsgBox "The deck already reports " & current & ". Nothing changed.", vbInformation, CAP
+        Say "The deck already reports " & current & ". Nothing changed.", vbInformation, CAP
         Exit Sub
     End If
 
@@ -707,18 +752,18 @@ Public Sub StartQuarter()
         ' instead of telling you the next action.
         ' No "save the deck" instruction any more: the verified write saves it,
         ' and confirms the value in the saved file before saying this.
-        MsgBox "Deck period is now " & readBack & ", confirmed in the saved file." & vbCrLf & vbCrLf & _
+        Say "Deck period is now " & readBack & ", confirmed in the saved file." & vbCrLf & vbCrLf & _
                "STILL TO DO: the register needs rows for " & typed & ". Without " & _
                "them the drafting sheets will be empty." & vbCrLf & vbCrLf & _
                "'" & CommandBarUI.CAP_SYNC_NOW & "' does this next -- no separate step. It copies the previous period's " & _
                "rows and stamps them " & typed & ", one row per slide.", vbInformation, CAP
     Else
-        MsgBox problem, vbCritical, CAP
+        Say problem, vbCritical, CAP
     End If
     Exit Sub
 
 Failed:
-    MsgBox "Could not set the period." & vbCrLf & vbCrLf & _
+    Say "Could not set the period." & vbCrLf & vbCrLf & _
            "Error " & Err.Number & ": " & Err.Description, vbCritical, CAP
 End Sub
 
@@ -745,7 +790,7 @@ Public Sub RollForwardUI()
     Dim toPeriod As String
     toPeriod = DeckRegistry.GetDeckPeriod(pres)
     If Trim$(toPeriod) = "" Then
-        MsgBox "This deck does not say what period it is." & vbCrLf & vbCrLf & _
+        Say "This deck does not say what period it is." & vbCrLf & vbCrLf & _
                "Set the deck's quarter first -- '" & CommandBarUI.CAP_SYNC_NOW & "' does that. Rolling forward copies rows INTO " & _
                "the period the deck declares, so it cannot run without one.", _
                vbExclamation, CAP
@@ -777,11 +822,11 @@ Public Sub RollForwardUI()
         outcome = outcome & vbCrLf & vbCrLf & rollSaveProblem
     End If
 
-    MsgBox outcome, vbInformation, CAP
+    Say outcome, vbInformation, CAP
     Exit Sub
 
 Failed:
-    MsgBox "Could not roll the period forward." & vbCrLf & vbCrLf & _
+    Say "Could not roll the period forward." & vbCrLf & vbCrLf & _
            "Error " & Err.Number & ": " & Err.Description, vbCritical, CAP
 End Sub
 
@@ -824,7 +869,7 @@ Public Sub RepointWorkbookUI()
     problem = DeckRegistry.SetWorkbookPathVerified(pres, typed, 4)
 
     If problem <> "" Then
-        MsgBox problem, vbCritical, CAP
+        Say problem, vbCritical, CAP
         Exit Sub
     End If
 
@@ -841,11 +886,11 @@ Public Sub RepointWorkbookUI()
     linkNote = WorksheetLinkProblem(pres, typed)
 
     If linkNote = "" Then
-        MsgBox "Paired workbook is now:" & vbCrLf & vbCrLf & typed & vbCrLf & vbCrLf & _
+        Say "Paired workbook is now:" & vbCrLf & vbCrLf & typed & vbCrLf & vbCrLf & _
                "Confirmed in the saved file, and this deck's slide type still finds " & _
                "its sheet there. The deck has been saved for you.", vbInformation, CAP
     Else
-        MsgBox "The path was changed and confirmed on disk:" & vbCrLf & vbCrLf & typed & vbCrLf & vbCrLf & _
+        Say "The path was changed and confirmed on disk:" & vbCrLf & vbCrLf & typed & vbCrLf & vbCrLf & _
                "BUT THE PAIRING IS NOT REPAIRED." & vbCrLf & vbCrLf & linkNote & vbCrLf & vbCrLf & _
                "Do not sync until this is resolved -- a missing sheet gets created " & _
                "empty, and the run would report success having written nothing. " & _
@@ -854,7 +899,7 @@ Public Sub RepointWorkbookUI()
     Exit Sub
 
 Failed:
-    MsgBox "Could not repoint the workbook." & vbCrLf & vbCrLf & _
+    Say "Could not repoint the workbook." & vbCrLf & vbCrLf & _
            "Error " & Err.Number & ": " & Err.Description, vbCritical, CAP
 End Sub
 
