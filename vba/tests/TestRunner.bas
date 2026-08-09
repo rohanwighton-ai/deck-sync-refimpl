@@ -659,6 +659,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "Sources_CitedBlockPutsTheDocumentInThePrompt", r
     r = Test_Drafting_CitedSourceReachesThePromptCell()
     AppendResult report, "Drafting_CitedSourceReachesThePromptCell", r
+    r = Test_Drafting_Layout3SheetMigratesIntoLayout4Columns()
+    AppendResult report, "Drafting_Layout3SheetMigratesIntoLayout4Columns", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -7865,4 +7867,92 @@ Private Function Test_Drafting_CitedSourceReachesThePromptCell() As String
     Set xl = Nothing
 
     Test_Drafting_CitedSourceReachesThePromptCell = result
+End Function
+
+' A LAYOUT-3 SHEET MUST GIVE UP ITS WORK INTO THE LAYOUT-4 POSITIONS.
+'
+' Layout 3 ordered columns as they were added; layout 4 orders them as they are
+' used (Rohan, 2026-08-10). Bumping the version alone is SAFE AND LOSSY -- the
+' carry-across refuses an unrecognised layout, so every unpublished draft, note
+' and source citation on the sheet is dropped at the next rebuild. Too expensive
+' to pay for a reordering, hence ColumnInLayout.
+'
+' The failure this guards is the one Drafting.bas's own header describes and
+' which happened for real on 2026-08-01: reading an old sheet with new column
+' numbers does not crash, it RELABELS -- a tick arriving as publishable text.
+' So the assertions below check WHICH FIELD each value came back as, not merely
+' that something was carried.
+'
+' The suite's 163 could not see any of this: every test addresses columns
+' through the COL_D_* constants, so they pass whatever the numbers are.
+Private Function Test_Drafting_Layout3SheetMigratesIntoLayout4Columns() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, regWs As Object, dws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set regWs = wb.Worksheets(1)
+    Set dws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+
+    ExcelOutput.CreateSheet regWs, "deck-v1"
+    Dim vals As Object
+    Set vals = CreateObject("Scripting.Dictionary")
+    vals("ABOUT_BODY") = "register text"
+    ExcelOutput.UpsertRow regWs, "2_P004", vals, "Q4F26"
+    Dim reg As Sheet
+    reg = ExcelOutput.ReadSheetForDeckPeriod(regWs, "Q4F26", "")
+
+    ' A sheet as LAYOUT 3 left it: C original, D submit, E tick, F AI, G sources,
+    ' J notes -- written by hand at those numbers, which is the whole point.
+    dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_LAYOUT).Value = 3
+    dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value = "Q4F26"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, 1).Value = "2_P004"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, 4).Value = "MY SUBMITTED WORDS"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, 5).Value = "Y"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, 6).Value = "THE AI DRAFT"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, 7).Value = "S12"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, 10).Value = "MY NOTE"
+
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", Nothing, Nothing
+
+    Dim got As String
+    got = CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value)
+    result = result & Assert(got = "MY SUBMITTED WORDS", _
+        "SUBMIT lands in the new SUBMIT column, got '" & got & "'")
+
+    got = CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).Value)
+    result = result & Assert(got = "THE AI DRAFT", _
+        "the AI draft lands in the new AI column, got '" & got & "'")
+
+    got = CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value)
+    result = result & Assert(got = "S12", _
+        "the source citation survives the move, got '" & got & "'")
+
+    got = CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value)
+    result = result & Assert(got = "MY NOTE", _
+        "notes survive, got '" & got & "'")
+
+    ' THE RELABELLING TEST. Layout 3's SUBMIT sat at column 4, which is layout
+    ' 4's SOURCES. If the migration were skipped, "MY SUBMITTED WORDS" would be
+    ' read as a source ID -- text arriving as a citation, the same shape as a
+    ' tick arriving as publishable text.
+    result = result & Assert( _
+        InStr(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value), "SUBMITTED") = 0, _
+        "SUBMIT text is NOT read as a source ID")
+    result = result & Assert( _
+        InStr(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value), "AI DRAFT") = 0, _
+        "the AI draft is NOT read as submitted text -- that would publish it")
+
+    ' And the sheet is stamped forward, so this migration happens once.
+    result = result & Assert( _
+        CLng(Val(CStr(dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_LAYOUT).Value))) = Drafting.DRAFT_LAYOUT_VERSION, _
+        "the rebuilt sheet is stamped with the current layout version")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing
+    Set xl = Nothing
+
+    Test_Drafting_Layout3SheetMigratesIntoLayout4Columns = result
 End Function

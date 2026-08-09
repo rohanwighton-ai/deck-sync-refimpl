@@ -64,16 +64,31 @@ Option Explicit
 '
 ' PROMPT stays at column 12 so Copilot's prompt is still in cell L2 -- that
 ' address is written in the on-sheet instructions and in the toolbar tooltip.
+' LEFT TO RIGHT IS THE ORDER YOU DO IT IN. Rohan, 2026-08-10: "fix the column
+' order in the drafting sheet to make more sense re workflow".
+'
+' Layout 3 had the columns in the order they were ADDED, not the order they are
+' used: you read C, jumped right to G for sources, back to F for the AI draft,
+' left again to D to edit, then E to tick. The sheet's own instructions listed
+' the steps 1-5 and the columns went 3, 7, 6, 4, 5.
+'
+' Layout 4 puts them in step order, so working the sheet is a walk rightwards:
+'   C read what the slide says now
+'   D name the sources you are drafting from
+'   E the AI writes here (never published)
+'   F your words (this is what publishes)
+'   G tick to approve
+'   H notes back to the tool
 Public Const COL_D_ENTITY As Long = 1
 Public Const COL_D_NAME As Long = 2
-Public Const COL_D_CURRENT As Long = 3      ' C  ORIGINAL
-Public Const COL_D_SUBMIT As Long = 4       ' D  your text
-Public Const COL_D_APPROVED As Long = 5     ' E  the tick
-Public Const COL_D_DRAFT As Long = 6        ' F  AI draft
-Public Const COL_D_SOURCES As Long = 7
+Public Const COL_D_CURRENT As Long = 3      ' C  ORIGINAL -- read this first
+Public Const COL_D_SOURCES As Long = 4      ' D  what you drafted FROM
+Public Const COL_D_DRAFT As Long = 5        ' E  AI draft, never published
+Public Const COL_D_SUBMIT As Long = 6       ' F  your text -- this publishes
+Public Const COL_D_APPROVED As Long = 7     ' G  the tick
 Public Const COL_D_CHARS As Long = 8
 Public Const COL_D_SUBCHARS As Long = 9
-Public Const COL_D_NOTES As Long = 10
+Public Const COL_D_NOTES As Long = 10      ' J  notes back to the tool
 Public Const COL_D_LAYOUT As Long = 11
 Public Const COL_D_PERIOD As Long = 13
 Public Const COL_D_PROMPT As Long = 12
@@ -91,7 +106,7 @@ Public Const COL_D_PROMPT As Long = 12
 ' did not match: "3 left alone (you had already written something there)" when
 ' only one row had been written. The number was the only evidence; nothing
 ' raised, and the sheet looked fine.
-Public Const DRAFT_LAYOUT_VERSION As Long = 3
+Public Const DRAFT_LAYOUT_VERSION As Long = 4
 
 ' The instruction block occupies rows 1-7, so the grid starts lower.
 '
@@ -136,6 +151,49 @@ End Function
 ' the way the modal prompts it replaces were. Approvals ARE cleared, because an
 ' approval is against a specific pairing of exemplar and draft, and a rebuild may
 ' have changed the exemplar.
+' WHERE A COLUMN USED TO LIVE.
+'
+' Bumping DRAFT_LAYOUT_VERSION protects a person from a renumbered sheet being
+' read with the wrong column numbers -- "column 7 meaning tick on Monday and
+' SUBMIT on Tuesday". It protects by REFUSING to carry anything, which is safe
+' and lossy: every unpublished draft, note and source citation on the sheet is
+' dropped on the next rebuild.
+'
+' That is too expensive to pay for a reordering. So a KNOWN older layout is read
+' through its own column map instead of being abandoned. An UNKNOWN one still
+' returns 0 and is still refused -- a layout nobody has described cannot be read
+' safely, and guessing is the failure this whole mechanism exists to prevent.
+Private Function ColumnInLayout(layoutVersion As Long, which As String) As Long
+    Select Case layoutVersion
+        Case DRAFT_LAYOUT_VERSION
+            Select Case which
+                Case "CURRENT":  ColumnInLayout = COL_D_CURRENT
+                Case "SOURCES":  ColumnInLayout = COL_D_SOURCES
+                Case "DRAFT":    ColumnInLayout = COL_D_DRAFT
+                Case "SUBMIT":   ColumnInLayout = COL_D_SUBMIT
+                Case "APPROVED": ColumnInLayout = COL_D_APPROVED
+                Case "NOTES":    ColumnInLayout = COL_D_NOTES
+            End Select
+
+        ' Layout 3: columns sat in the order they were added, not used.
+        ' C ORIGINAL, D SUBMIT, E tick, F AI draft, G sources, J notes.
+        ' Layout 3: columns sat in the order they were added, not used.
+        ' C ORIGINAL, D SUBMIT, E tick, F AI draft, G sources, J notes.
+        Case 3
+            Select Case which
+                Case "CURRENT":  ColumnInLayout = 3
+                Case "SOURCES":  ColumnInLayout = 7
+                Case "DRAFT":    ColumnInLayout = 6
+                Case "SUBMIT":   ColumnInLayout = 4
+                Case "APPROVED": ColumnInLayout = 5
+                Case "NOTES":    ColumnInLayout = 10
+            End Select
+
+        Case Else
+            ColumnInLayout = 0
+    End Select
+End Function
+
 Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String, _
                                    Optional guidance As Variant, _
                                    Optional periodStamp As String = "", _
@@ -161,7 +219,8 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     On Error Resume Next
     sheetLayout = CLng(Val(CStr(ws.Cells(DRAFT_INTRO_ROW, COL_D_LAYOUT).Value)))
     On Error GoTo 0
-    layoutMatches = (sheetLayout = DRAFT_LAYOUT_VERSION)
+    ' Readable, not merely identical -- a known older layout is migrated below.
+    layoutMatches = (ColumnInLayout(sheetLayout, "SUBMIT") > 0)
 
     ' AND THE PERIOD MUST MATCH TOO.
     '
@@ -269,10 +328,10 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
             End If
 
             If carryThisRow Then
-                If Trim(CStr(ws.Cells(r, COL_D_DRAFT).Value)) <> "" Then keptDraft(oldKey) = CStr(ws.Cells(r, COL_D_DRAFT).Value)
-                If Trim(CStr(ws.Cells(r, COL_D_NOTES).Value)) <> "" Then keptNotes(oldKey) = CStr(ws.Cells(r, COL_D_NOTES).Value)
-                If Trim(CStr(ws.Cells(r, COL_D_SUBMIT).Value)) <> "" Then keptSubmit(oldKey) = CStr(ws.Cells(r, COL_D_SUBMIT).Value)
-                If Trim(CStr(ws.Cells(r, COL_D_SOURCES).Value)) <> "" Then keptSources(oldKey) = CStr(ws.Cells(r, COL_D_SOURCES).Value)
+                If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "DRAFT")).Value)) <> "" Then keptDraft(oldKey) = CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "DRAFT")).Value)
+                If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "NOTES")).Value)) <> "" Then keptNotes(oldKey) = CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "NOTES")).Value)
+                If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SUBMIT")).Value)) <> "" Then keptSubmit(oldKey) = CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SUBMIT")).Value)
+                If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SOURCES")).Value)) <> "" Then keptSources(oldKey) = CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SOURCES")).Value)
             End If
             r = r + 1
         Loop
@@ -286,18 +345,18 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Cells(DRAFT_INTRO_ROW, 1).Font.Bold = True
     ws.Cells(DRAFT_INTRO_ROW, 1).Font.Size = 9
 
-    ws.Cells(2, 1).Value = "1.  Read column C (ORIGINAL) -- what the slide says today."
+    ws.Cells(2, 1).Value = "STEP 1   Read column C -- what the slide says today."
     ' COLUMN G, NOT E. Step 5 below sends the tick to E, so this line named one
     ' column for two things inside a single instruction block -- and E is the tick,
     ' which is the consent gate. Stale since 3de4be8 moved SUBMIT to D and the tick
     ' to E; that commit updated the header row and the toolbar tooltip and left
     ' every prose instruction pointing at the old layout.
-    ws.Cells(3, 1).Value = "2.  List the source IDs you are working from in column G. Add new ones on the Sources sheet first."
-    ws.Cells(4, 1).Value = "3.  Ask Copilot for a draft (prompt is in L2). It writes into column F (AI DRAFT). F is never published."
-    ws.Cells(5, 1).Value = "4.  Press '" & CommandBarUI.CAP_SYNC_NOW & "' to copy F into D, then EDIT column D (SUBMIT) until you are happy. D is what gets sent."
-    ws.Cells(6, 1).Value = "5.  Type  Y  in column E, save and CLOSE the file, then run Publish and Apply."
+    ws.Cells(3, 1).Value = "STEP 2   Name your sources in column D. Add new ones on the Sources sheet first."
+    ws.Cells(4, 1).Value = "STEP 3   Ask Copilot for a draft -- the prompt is in cell L2. It writes into column E. E is NEVER published."
+    ws.Cells(5, 1).Value = "STEP 4   Press '" & CommandBarUI.CAP_SYNC_NOW & "' to copy E into F, then EDIT column F until you are happy. F is what gets sent."
+    ws.Cells(6, 1).Value = "STEP 5   Type  Y  in column G, save and CLOSE the file, then press '" & CommandBarUI.CAP_SYNC_NOW & "' again."
 
-    ws.Cells(7, 1).Value = "Only column D is published -- nothing the AI writes reaches a slide unless you have put it in SUBMIT and ticked it. " & _
+    ws.Cells(7, 1).Value = "Only column F is published -- nothing the AI writes reaches a slide unless you have moved it into F and ticked it. " & _
                            "Column C is read-only: edit the register, not this sheet, to change what a slide says today."
     ws.Cells(7, 1).Font.Italic = True
 
@@ -312,14 +371,14 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' nothing about where to type.
     ws.Cells(DRAFT_HEADER_ROW, COL_D_ENTITY).Value = "Project code"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_NAME).Value = "Project name"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_CURRENT).Value = "C  --  ORIGINAL, what the slide says now (read-only)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_CURRENT).Value = "C   ORIGINAL -- what the slide says now (read-only)"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_CHARS).Value = "Chars"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_SOURCES).Value = "G  --  SOURCES (IDs from the Sources sheet, e.g. S01,S03)"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_DRAFT).Value = "F  --  AI DRAFT (Copilot writes here -- NEVER published)"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_SUBMIT).Value = "D  --  SUBMIT, your text (THIS is what gets sent)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_SOURCES).Value = "D   SOURCES -- IDs from the Sources sheet, e.g. S01,S03"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_DRAFT).Value = "E   AI DRAFT -- Copilot writes here. NEVER published"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_SUBMIT).Value = "F   SUBMIT -- your words. THIS is what gets sent"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_SUBCHARS).Value = "Chars"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_APPROVED).Value = "E  --  TYPE Y TO USE IT"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES).Value = "J  --  your notes (optional)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_APPROVED).Value = "G   APPROVE -- type Y"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES).Value = "J   NOTES -- back to the tool (optional)"
     ws.Rows(DRAFT_HEADER_ROW).Font.Bold = True
     ws.Rows(DRAFT_HEADER_ROW).WrapText = True
 
