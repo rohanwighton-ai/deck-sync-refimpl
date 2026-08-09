@@ -713,6 +713,125 @@ End Sub
 
 ' Toolbar entry point. The real work is in ApplyApprovedCore; this exists only
 ' to catch anything that escapes it. Same separate-frame reasoning as above.
+' ---------------------------------------------------------------------
+' CHAIN C -- "3. Put it on the slides"
+' ---------------------------------------------------------------------
+'
+' One button for the deck-level sync, sequencing the review and the apply
+' instead of asking a person to know which of three buttons they are up to.
+'
+' A CHAIN, NOT A MENU. It reads the current state and runs the sequence,
+' stopping only where there is a decision in the gap -- Rohan's rule, stated at
+' BatchOnboardFlow.bas:2886: "a boundary earns its place only where a person has
+' to do work or make a decision in the gap." There are exactly two stops here,
+' and each one is named below.
+'
+' STOP 1 is the safety property of the whole design. ReviewChangesCore calls
+' WriteQueueSheet unconditionally, so a chain that opened by rebuilding the
+' queue would take every tick with it. Detect first, branch, never rebuild
+' without being told to.
+'
+' STOP 2 is whatever the route it takes already asks -- the review sheet's own
+' approvals, or ApplyApprovedCore's consent dialog. This chain adds no
+' confirmation of its own, because a second dialog restating the first is the
+' thing that teaches a person to click through.
+Public Sub PutItOnTheSlides()
+    On Error GoTo Failed
+    PutItOnTheSlidesCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Put it on the slides", RibbonUI.UnexpectedErrorText("Put it on the slides", Err.Number, Err.Description, Err.Source)
+End Sub
+
+Private Sub PutItOnTheSlidesCore()
+    Const TITLE As String = "3. Put it on the slides"
+
+    ' The guards for a missing workbook, missing types and an unopenable file
+    ' live in ReviewChangesCore and say why in each case. Duplicating them here
+    ' would mean two sets of wording to keep true, so when the detection cannot
+    ' run this delegates and lets that path do the explaining.
+    Dim pending As Long
+    Dim sheetNames As String
+    Dim stamp As String
+    pending = ScanPendingApprovals(sheetNames, stamp)
+
+    If pending = 0 Then
+        ReviewChangesCore False
+        Exit Sub
+    End If
+
+    ' STOP 1. Names the sheet, the count and when it was built, because a count
+    ' without its subject sends you to check the wrong thing.
+    Dim msg As String
+    msg = sheetNames & " holds " & pending & " ticked change(s) from " & stamp & _
+          ", not yet applied." & vbCrLf & vbCrLf & _
+          "Yes -- apply those " & pending & " change(s) to the slides now." & vbCrLf & _
+          "No -- build a fresh review instead. THE " & pending & " TICK(S) ARE LOST." & vbCrLf & _
+          "Cancel -- change nothing."
+
+    Dim answer As VbMsgBoxResult
+    answer = MsgBox(msg, vbYesNoCancel + vbQuestion, TITLE)
+
+    If answer = vbYes Then
+        ApplyApprovedCore
+    ElseIf answer = vbNo Then
+        ReviewChangesCore False
+    Else
+        MsgBox "Nothing was changed. " & sheetNames & " still holds its " & _
+               pending & " ticked change(s).", vbInformation, TITLE
+    End If
+End Sub
+
+' Totals the unapplied ticks across every registered slide type, and names the
+' sheets they are on. Returns 0 when anything needed to look is missing -- the
+' caller then delegates to the path that reports why.
+Private Function ScanPendingApprovals(ByRef sheetNames As String, ByRef stamp As String) As Long
+    sheetNames = ""
+    stamp = ""
+    ScanPendingApprovals = 0
+
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim workbookPath As String
+    workbookPath = DeckRegistry.GetWorkbookPath(pres)
+    If workbookPath = "" Then Exit Function
+
+    Dim types() As String
+    types = DeckRegistry.ListRegisteredTypes(pres)
+
+    Dim lo As Long, hi As Long, hasTypes As Boolean
+    On Error Resume Next
+    lo = LBound(types): hi = UBound(types)
+    hasTypes = (Err.Number = 0)
+    On Error GoTo 0
+    If Not hasTypes Then Exit Function
+
+    Dim wb As Object
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
+    If wb Is Nothing Then Exit Function
+
+    Dim total As Long
+    Dim i As Long
+    For i = lo To hi
+        Dim n As Long
+        Dim wsName As String
+        Dim thisStamp As String
+        n = ReviewQueue.PendingApprovals(wb, types(i), wsName, thisStamp)
+        If n > 0 Then
+            total = total + n
+            If sheetNames = "" Then
+                sheetNames = "'" & wsName & "'"
+                stamp = thisStamp
+            Else
+                sheetNames = sheetNames & ", '" & wsName & "'"
+            End If
+        End If
+    Next i
+
+    ScanPendingApprovals = total
+End Function
+
 Public Sub ApplyApprovedChanges()
     On Error GoTo Failed
     ApplyApprovedCore

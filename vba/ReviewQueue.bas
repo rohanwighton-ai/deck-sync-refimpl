@@ -754,6 +754,58 @@ Public Sub MarkConsumed(ws As Object)
     ws.Cells(ROW_BANNER, 3).Value = STATE_CONSUMED
 End Sub
 
+' How many ticked changes are sitting on this type's review sheet, unapplied.
+'
+' THIS EXISTS TO STOP A CHAIN DESTROYING AN EVENING'S WORK. ReviewChangesCore
+' calls WriteQueueSheet unconditionally, which rewrites the sheet and takes
+' every tick with it. That is safe today only because a person picks
+' `Apply Approved` directly. A chained button that opened by rebuilding the
+' queue would silently discard approvals that took an hour to make, and it
+' would report success while doing it.
+'
+' So the chain asks this FIRST and branches on the answer. Consumed sheets
+' return 0: MarkConsumed stamps the banner after a successful apply, and a
+' sheet whose ticks have already been written is not pending work.
+'
+' Returns 0 -- never raises -- when the sheet is absent, empty, consumed, or
+' unreadable. sheetName and stamp are filled only when the answer is > 0, so a
+' caller cannot name a sheet it has not confirmed has work on it.
+Public Function PendingApprovals(wb As Object, slideType As String, _
+                                 ByRef sheetName As String, ByRef stamp As String) As Long
+    sheetName = ""
+    stamp = ""
+    PendingApprovals = 0
+
+    Dim wsName As String
+    wsName = ReviewSheetNameFor(slideType)
+    If Not WorkbookBridge.WorksheetExists(wb, wsName) Then Exit Function
+
+    Dim ws As Object
+    On Error Resume Next
+    Set ws = wb.Worksheets(wsName)
+    If Err.Number <> 0 Or ws Is Nothing Then
+        On Error GoTo 0
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    Dim q As ReviewQueueSet
+    q = ReadQueueSheet(ws)
+    If q.Consumed Then Exit Function
+    If q.Count = 0 Then Exit Function
+
+    Dim n As Long, i As Long
+    For i = 1 To q.Count
+        If q.Items(i).Approved Then n = n + 1
+    Next i
+
+    If n = 0 Then Exit Function
+
+    sheetName = wsName
+    stamp = q.RunStamp
+    PendingApprovals = n
+End Function
+
 ' ---------------------------------------------------------------------
 ' Approve-all
 ' ---------------------------------------------------------------------

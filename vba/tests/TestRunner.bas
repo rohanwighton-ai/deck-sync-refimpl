@@ -647,6 +647,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "ReviewQueue_ParityAndTheCreateThreshold", r
     r = Test_RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero()
     AppendResult report, "RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero", r
+    r = Test_ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed()
+    AppendResult report, "ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -7453,4 +7455,72 @@ Private Function Test_DeckRegistry_PeriodIsReadableThroughSlideParent() As Strin
     testPres.Close
 
     Test_DeckRegistry_PeriodIsReadableThroughSlideParent = result
+End Function
+
+' PendingApprovals is the detection that stops chain C rebuilding a review sheet
+' over a person's ticks. Three questions, and the second is the one that matters:
+' a CONSUMED sheet has already been applied, so its ticks are history, not
+' pending work. Without that branch the chain would offer to re-apply an
+' evening's approvals every time the button was pressed.
+Private Function Test_ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+
+    ' The sheet must carry the name PendingApprovals derives, or it is not the
+    ' sheet the chain would find.
+    ws.Name = ReviewQueue.ReviewSheetNameFor("project-status")
+
+    ' Built through WriteQueueSheet rather than by hand, so the fixture cannot
+    ' drift from the shape the tool actually writes.
+    Dim q As ReviewQueueSet
+    q.SlideType = "project-status"
+    q.RunStamp = "2026-08-09 15:30"
+    q.Consumed = False
+    q.Count = 3
+    ReDim q.Items(1 To 3)
+    Dim i As Long
+    For i = 1 To 3
+        q.Items(i).EntityKey = "P00" & i
+        q.Items(i).FieldID = "ABOUT_BODY"
+        q.Items(i).ChangeHash = "HASH" & i
+        q.Items(i).Approved = False
+    Next i
+    ReviewQueue.WriteQueueSheet ws, q
+
+    Dim n As Long, nm As String, stamp As String
+
+    ' 1. Nothing ticked yet -- a queue is not pending approvals.
+    n = ReviewQueue.PendingApprovals(wb, "project-status", nm, stamp)
+    result = result & Assert(n = 0, "an unticked sheet has no pending approvals, got " & n)
+    result = result & Assert(nm = "", "no sheet is named when the answer is 0, got '" & nm & "'")
+
+    ' 2. Ticked and open -- this is the state that must stop the chain.
+    ReviewQueue.ApproveAllInSheet ws
+    n = ReviewQueue.PendingApprovals(wb, "project-status", nm, stamp)
+    result = result & Assert(n = 3, "3 ticked rows are 3 pending approvals, got " & n)
+    result = result & Assert(nm = ReviewQueue.ReviewSheetNameFor("project-status"), _
+        "the sheet holding the ticks is named, got '" & nm & "'")
+    result = result & Assert(stamp = "2026-08-09 15:30", _
+        "the run stamp is carried so the person can date the ticks, got '" & stamp & "'")
+
+    ' 3. THE DISCRIMINATOR. Same ticks, same rows, but already applied.
+    ReviewQueue.MarkConsumed ws
+    n = ReviewQueue.PendingApprovals(wb, "project-status", nm, stamp)
+    result = result & Assert(n = 0, "a CONSUMED sheet has no pending approvals, got " & n)
+
+    wb.Close False
+    xl.Quit
+    ' Quit alone does not always end the process while a live reference is held,
+    ' and a leaked EXCEL.EXE makes the NEXT run error rather than fail -- 4 tests
+    ' errored that way on 2026-08-09 before this was noticed. 25 of the 30 tests
+    ' that quit Excel omit this line; see the note in TRACKER.
+    Set wb = Nothing
+    Set xl = Nothing
+
+    Test_ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed = result
 End Function
