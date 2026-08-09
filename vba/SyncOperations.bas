@@ -154,7 +154,11 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                 sourceValue = rowValues(fieldName)
 
                 Dim r As InjectResult
-                r = InjectPrimitive.InjectPrimitive(instanceSlide, CStr(fieldName), sourceValue, dryRun)
+                ' Routed by shape type. No Sources sheet is passed: PlanRoutineSync
+                ' is handed rows, not a workbook, so a picture field here reports
+                ' that it could not be resolved rather than being written wrongly.
+                ' Progress bars need nothing extra and work on this path.
+                r = InjectPrimitive.InjectField(instanceSlide, CStr(fieldName), sourceValue, dryRun)
 
                 ' r.Found = False covers both "no shape carries this
                 ' field's tag" (skip -- matches resolve.py's

@@ -186,6 +186,129 @@ Private Function IgnoringTrailingBreaks(text As String) As String
     IgnoringTrailingBreaks = t
 End Function
 
+' ===========================================================================
+' THE ROUTER -- the one entry point sync uses, so a field's TYPE is decided in
+' exactly one place.
+'
+' Until 2026-08-10 every sync call site called InjectPrimitive -- the TEXT
+' writer -- for every field. InjectPictureField and InjectProgressField were
+' unit-tested and called by NOTHING but their own tests, so a picture or a
+' progress bar was handed to the text writer and refused as "no text frame to
+' write into": two tested components and no feature. 169 passing tests said
+' nothing about it, because a unit test asks "does this behave when called"
+' and nothing asked "can a person cause it to be called".
+'
+' THE TYPE COMES FROM THE SHAPE, NOT FROM A COLUMN. The template already
+' decides what a field is by what it puts on the slide; a second answer in the
+' workbook could disagree with it silently, which is the collision `Kind`
+' already has (FIX-LIST item 4). Derived, so it cannot drift.
+'
+'   the tagged shape is a picture             -> InjectPictureField
+'   a sibling tagged `<field>.track` exists   -> InjectProgressField
+'   anything else                             -> InjectPrimitive (text)
+'
+' Picture beats track when a slide somehow offers both, rather than being
+' reported as ambiguous: the decision has to be deterministic, because an
+' injector chosen differently on the preview run and the write run would show
+' one thing and do another.
+'
+' srcWs is the Sources worksheet and it is OPTIONAL, because only the picture
+' branch needs it -- a bar reads its whole value from the register cell. Where
+' it is absent a picture field SAYS SO instead of falling through to the text
+' writer, whose "no text frame" is a true sentence about the wrong question.
+Public Function InjectField(sld As Object, identityTag As String, sourceValue As String, _
+                            Optional dryRun As Boolean = False, _
+                            Optional srcWs As Object = Nothing) As InjectResult
+    Dim shp As Object, trackShp As Object
+    Set shp = FindShapeByRoleTag(sld, identityTag)
+    Set trackShp = FindShapeByRoleTag(sld, identityTag & ".track")
+
+    If Not shp Is Nothing Then
+        If IsPictureShape(shp) Then
+            InjectField = InjectPictureVia(sld, identityTag, sourceValue, srcWs, dryRun)
+            Exit Function
+        End If
+    End If
+
+    ' The track, not the done part, is the discriminator: the done part is an
+    ' ordinary rectangle and looks like any other shape. Asking for the track
+    ' also means a bar whose done part has been deleted still routes here and
+    ' gets InjectProgressField's specific message, rather than being told it
+    ' has no text frame.
+    If Not trackShp Is Nothing Then
+        InjectField = InjectProgressVia(sld, identityTag, sourceValue, dryRun)
+        Exit Function
+    End If
+
+    InjectField = InjectPrimitive(sld, identityTag, sourceValue, dryRun)
+End Function
+
+' A register cell is text; a bar needs a number. Converting is the router's
+' job, and REFUSING is the important half of it.
+'
+' Val("done") returns 0 and CDbl("done") raises. Val's answer is the dangerous
+' one: it would draw an empty bar and report success, which is the exact
+' failure InjectProgressField's own out-of-range check exists to prevent (a
+' register holding 90 for 90% drawing a full bar and looking right).
+Private Function InjectProgressVia(sld As Object, identityTag As String, _
+                                   sourceValue As String, dryRun As Boolean) As InjectResult
+    Dim result As InjectResult
+
+    If Not IsNumeric(Trim(sourceValue)) Then
+        ' Found and WouldChange are both True deliberately. Found=False is a
+        ' SKIP to SyncOperations and WouldChange=False is a NO CHANGE -- either
+        ' one would swallow this in silence, which is how the tool would come
+        ' to report a clean run over a bar it never drew.
+        result.Found = True
+        result.WouldChange = True
+        result.ErrorMessage = "progress field " & identityTag & " needs a number between 0 and 1" & _
+            " and the register holds '" & sourceValue & "'" & _
+            " -- 90% belongs in the register as 0.9, not 90 and not '90%'."
+        InjectProgressVia = result
+        Exit Function
+    End If
+
+    InjectProgressVia = InjectProgressField(sld, identityTag, CDbl(Trim(sourceValue)), dryRun)
+End Function
+
+' A picture field's register cell holds a SOURCE ID, not a path -- the stamp
+' the injector leaves behind is that ID, and the path is whatever the Sources
+' sheet currently says it is. So a photo that moves is re-pointed in one row
+' rather than in forty register cells.
+Private Function InjectPictureVia(sld As Object, identityTag As String, _
+                                  sourceId As String, srcWs As Object, _
+                                  dryRun As Boolean) As InjectResult
+    Dim result As InjectResult
+
+    If srcWs Is Nothing Then
+        result.Found = True
+        result.WouldChange = True
+        result.ErrorMessage = "picture field " & identityTag & " is filled from a source, and the '" & _
+            Sources.SOURCES_SHEET_NAME & "' sheet was not available here, so its image could not be found."
+        InjectPictureVia = result
+        Exit Function
+    End If
+
+    Dim known As Boolean
+    Dim locator As String
+    locator = Sources.LocatorFor(srcWs, sourceId, known)
+
+    ' The two failures are told apart because they send the person to
+    ' different places: a citation typo is fixed in the register, a blank
+    ' locator on a real row is fixed on the Sources sheet.
+    If Not known Then
+        result.Found = True
+        result.WouldChange = True
+        result.ErrorMessage = "picture field " & identityTag & " cites source '" & Trim(sourceId) & _
+            "', which is not on the '" & Sources.SOURCES_SHEET_NAME & "' sheet."
+        InjectPictureVia = result
+        Exit Function
+    End If
+
+    InjectPictureVia = InjectPictureField(sld, identityTag, Trim(sourceId), locator, dryRun)
+End Function
+' ===========================================================================
+
 Public Function InjectPrimitive(sld As Object, identityTag As String, sourceValue As String, Optional dryRun As Boolean = False) As InjectResult
     Dim result As InjectResult
     Dim shp As Object

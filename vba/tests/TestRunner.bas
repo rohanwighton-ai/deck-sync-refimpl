@@ -671,6 +671,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "InjectProgress_MeasuresAgainstTheTrackNotItself", r
     r = Test_InjectProgress_RefusesWithoutATrack()
     AppendResult report, "InjectProgress_RefusesWithoutATrack", r
+    r = Test_InjectField_RoutesEachTypeByItsShape()
+    AppendResult report, "InjectField_RoutesEachTypeByItsShape", r
+    r = Test_InjectField_RefusesANonNumberForABarWithoutGoingQuiet()
+    AppendResult report, "InjectField_RefusesANonNumberForABarWithoutGoingQuiet", r
+    r = Test_InjectField_TwoSlidesEachGetTheirOwnValue()
+    AppendResult report, "InjectField_TwoSlidesEachGetTheirOwnValue", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -8266,4 +8272,177 @@ Private Function Test_InjectProgress_RefusesWithoutATrack() As String
 
     sld.Delete
     Test_InjectProgress_RefusesWithoutATrack = result
+End Function
+
+' THE ROUTER. Three fields of three different types on ONE slide, all sent
+' through the single entry point sync uses.
+'
+' This is the test that would have caught the defect it was written for: until
+' 2026-08-10 every sync call site called the TEXT injector for every field, so
+' the bar and the picture here would both have come back "no text frame to
+' write into" while the suite stayed green -- because the picture and progress
+' injectors were tested directly and nothing tested that anything CALLS them.
+'
+' All three on one slide deliberately: routing that works when a slide holds
+' only one kind of field proves much less than routing that has to tell three
+' apart with all three in front of it.
+Private Function Test_InjectField_RoutesEachTypeByItsShape() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    ' --- text -------------------------------------------------------------
+    Dim tb As Object
+    Set tb = sld.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    tb.TextFrame.TextRange.Text = "old prose"
+    tb.Tags.Add "role", "ABOUT_BODY"
+
+    ' --- a bar: done part plus the track it measures against ---------------
+    Dim track As Object, done As Object
+    Set track = sld.Shapes.AddShape(1, 40, 200, 400, 12)      ' msoShapeRectangle
+    track.Tags.Add "role", "ELAPSED.track"
+    Set done = sld.Shapes.AddShape(1, 40, 200, 40, 12)
+    done.Tags.Add "role", "ELAPSED"
+
+    ' --- a picture --------------------------------------------------------
+    Dim seedPath As String
+    seedPath = MakeTestBitmap(Environ("TEMP") & "\dsroute.bmp", 40, 20)
+    Dim frame As Object
+    Set frame = sld.Shapes.AddPicture(seedPath, msoFalse, msoTrue, 40, 300, 200, 100)
+    frame.Tags.Add "role", "PHOTO"
+
+    ' --- text goes to the text injector -----------------------------------
+    Dim rt As InjectResult
+    rt = InjectPrimitive.InjectField(sld, "ABOUT_BODY", "new prose")
+    result = result & Assert(rt.Written, "text is written [" & rt.ErrorMessage & "]")
+    result = result & Assert(IgnoringTrailingBreaksForTest(tb.TextFrame.TextRange.Text) = "new prose", _
+        "and the textbox holds it, got '" & tb.TextFrame.TextRange.Text & "'")
+
+    ' --- a bar goes to the progress injector, from a STRING cell -----------
+    ' The register holds text; the injector needs a Double. The conversion is
+    ' the router's, and this is the assertion that proves it happened.
+    Dim rb As InjectResult
+    rb = InjectPrimitive.InjectField(sld, "ELAPSED", "0.75")
+    result = result & Assert(rb.Written, "the bar is written [" & rb.ErrorMessage & "]")
+    result = result & Assert(Abs(done.Width - 300) < 1, _
+        "75% of a 400pt track is 300pt, got " & done.Width)
+    result = result & Assert(Abs(track.Width - 400) < 0.5, _
+        "and the track is still never written, got " & track.Width)
+
+    ' --- a picture goes to the picture injector ----------------------------
+    ' With no Sources sheet in scope it must say THAT, and specifically must
+    ' not fall through to the text writer's "no text frame" -- a true sentence
+    ' about the wrong question, which is what sent five minutes into the wrong
+    ' file the last time a message named the wrong thing.
+    Dim rp As InjectResult
+    rp = InjectPrimitive.InjectField(sld, "PHOTO", "S20")
+    result = result & Assert(InStr(rp.ErrorMessage, Sources.SOURCES_SHEET_NAME) > 0, _
+        "a picture with no Sources sheet names the Sources sheet, got '" & rp.ErrorMessage & "'")
+    result = result & Assert(InStr(rp.ErrorMessage, "text frame") = 0, _
+        "and is NOT refused as a text field, got '" & rp.ErrorMessage & "'")
+    result = result & Assert(rp.Found And rp.WouldChange, _
+        "and does not read as 'nothing to do', which would hide it from the report")
+
+    sld.Delete
+    Test_InjectField_RoutesEachTypeByItsShape = result
+End Function
+
+' A register cell holding something that is not a number.
+'
+' The assertion that carries the weight is the LAST one. Val("done") returns 0,
+' which would draw an empty bar and report success; and a result with Found or
+' WouldChange False is SKIPPED by SyncOperations and reported as no change --
+' so a bar could fail to draw inside a run that says it went perfectly. Being
+' refused is not enough; it has to be refused LOUDLY.
+Private Function Test_InjectField_RefusesANonNumberForABarWithoutGoingQuiet() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    Dim track As Object, done As Object
+    Set track = sld.Shapes.AddShape(1, 40, 200, 400, 12)
+    track.Tags.Add "role", "ELAPSED.track"
+    Set done = sld.Shapes.AddShape(1, 40, 200, 40, 12)
+    done.Tags.Add "role", "ELAPSED"
+
+    Dim before As Single
+    before = done.Width
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectField(sld, "ELAPSED", "not a number")
+
+    result = result & Assert(Not r.Written, "a non-number is not written")
+    result = result & Assert(done.Width = before, _
+        "and the bar is left exactly as it was, got " & done.Width & " was " & before)
+    result = result & Assert(InStr(r.ErrorMessage, "ELAPSED") > 0, _
+        "the message names the field, got '" & r.ErrorMessage & "'")
+    result = result & Assert(InStr(r.ErrorMessage, "not a number") > 0, _
+        "and quotes what the register actually held, got '" & r.ErrorMessage & "'")
+    result = result & Assert(r.Found And r.WouldChange, _
+        "and it is LOUD: Found and WouldChange are both set, or the run reports clean over it")
+
+    sld.Delete
+    Test_InjectField_RefusesANonNumberForABarWithoutGoingQuiet = result
+End Function
+
+' TWO SLIDES. Every picture and progress test before this used one, so nothing
+' proved a second slide gets its own value rather than the first slide's -- and
+' a quarter is 43 slides, not one. The `Dim` that does not scope to a loop cost
+' this project forty projects' worth of column C on 2026-08-09; a value that
+' leaks from one slide to the next is the same defect wearing a different hat.
+Private Function Test_InjectField_TwoSlidesEachGetTheirOwnValue() As String
+    Dim result As String
+
+    Dim sldA As Object, sldB As Object
+    Set sldA = NewBlankSlide()
+    Set sldB = NewBlankSlide()
+
+    Dim trackA As Object, doneA As Object, trackB As Object, doneB As Object
+    Set trackA = sldA.Shapes.AddShape(1, 40, 200, 400, 12)
+    trackA.Tags.Add "role", "ELAPSED.track"
+    Set doneA = sldA.Shapes.AddShape(1, 40, 200, 40, 12)
+    doneA.Tags.Add "role", "ELAPSED"
+
+    ' A DIFFERENT track width, so a bar drawn against the wrong slide's track
+    ' cannot land on the right number by coincidence.
+    Set trackB = sldB.Shapes.AddShape(1, 40, 200, 200, 12)
+    trackB.Tags.Add "role", "ELAPSED.track"
+    Set doneB = sldB.Shapes.AddShape(1, 40, 200, 40, 12)
+    doneB.Tags.Add "role", "ELAPSED"
+
+    Dim ra As InjectResult, rb As InjectResult
+    ra = InjectPrimitive.InjectField(sldA, "ELAPSED", "0.25")
+    rb = InjectPrimitive.InjectField(sldB, "ELAPSED", "0.75")
+
+    result = result & Assert(ra.Written And rb.Written, _
+        "both slides are written [" & ra.ErrorMessage & "] [" & rb.ErrorMessage & "]")
+    result = result & Assert(Abs(doneA.Width - 100) < 1, _
+        "slide A: 25% of its own 400pt track is 100pt, got " & doneA.Width)
+    result = result & Assert(Abs(doneB.Width - 150) < 1, _
+        "slide B: 75% of its own 200pt track is 150pt, got " & doneB.Width)
+
+    sldB.Delete
+    sldA.Delete
+    Test_InjectField_TwoSlidesEachGetTheirOwnValue = result
+End Function
+
+' Local copy of the trailing-break normalisation, for comparing what a textbox
+' reads back against what was written. InjectPrimitive's own is Private, and
+' widening a production function's scope to satisfy a test would let the test
+' change the shipped surface.
+Private Function IgnoringTrailingBreaksForTest(text As String) As String
+    Dim t As String
+    t = text
+    Do While Len(t) > 0
+        Dim lastChar As String
+        lastChar = Right(t, 1)
+        If lastChar = vbCr Or lastChar = vbLf Or lastChar = Chr(11) Then
+            t = Left(t, Len(t) - 1)
+        Else
+            Exit Do
+        End If
+    Loop
+    IgnoringTrailingBreaksForTest = t
 End Function

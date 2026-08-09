@@ -137,6 +137,37 @@ Public Function KnownSourceIds(ws As Object) As Object
     Set KnownSourceIds = d
 End Function
 
+' The locator (column D) for one source ID, for the callers that need to open
+' what a source POINTS AT rather than just name it -- currently the picture
+' injector, which places the file a source resolves to.
+'
+' `found` is an out-parameter and not a sentinel return, because "" is a real
+' answer that means something different: a source row that exists and carries
+' no locator is a Sources sheet to go and fix, while an ID that is on no row at
+' all is a citation typo. Collapsing the two into "" would let the picture
+' injector report the wrong one, and it is the message that decides where the
+' person goes looking.
+Public Function LocatorFor(ws As Object, sourceId As String, ByRef found As Boolean) As String
+    found = False
+    LocatorFor = ""
+    If ws Is Nothing Then Exit Function
+    If Trim(sourceId) = "" Then Exit Function
+
+    Dim want As String
+    want = UCase(Trim(sourceId))
+
+    Dim r As Long
+    r = SRC_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(r, COL_S_ID).Value)) <> ""
+        If UCase(Trim(CStr(ws.Cells(r, COL_S_ID).Value))) = want Then
+            found = True
+            LocatorFor = Trim(CStr(ws.Cells(r, COL_S_LOCATOR).Value))
+            Exit Function
+        End If
+        r = r + 1
+    Loop
+End Function
+
 ' THE PERIOD IS PICKED, NEVER TYPED.
 '
 ' Periods are free text matched EXACTLY, so "Q4F26", "Q4 F26" and "q4f26" are

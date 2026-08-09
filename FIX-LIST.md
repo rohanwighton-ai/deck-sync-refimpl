@@ -451,16 +451,101 @@ bars had been proven slide to slide.
 
 **In this order:**
 
-1. **Template-clone test FIRST.** Does a slide cloned from the template keep the
-   `.track` and `.rest` SHAPE tags? `SlideDuplication.bas` manages SLIDE-level
-   tags (`slide_type`, `instance_key`, removing `TEMPLATE_TAG_NAME`) and nothing
-   asserts shape tags survive duplication. **If they do not survive, the track
-   pair design changes**, so this is the first question, not the last.
-2. **Dispatch by shape type in the sync path.** A field whose tagged shape is a
-   picture goes to `InjectPictureField`; one with a `.track` sibling goes to
-   `InjectProgressField`; everything else to the text injector.
-3. **A multi-slide test.** Every existing picture and progress test uses ONE
-   slide. Nothing proves two slides with different values.
+1. ~~**Template-clone test FIRST.**~~ **ANSWERED 2026-08-10 08:15 — THEY SURVIVE.
+   The track-pair design stands; nothing has to change.** Run against real
+   PowerPoint via `vba/tools/tag_cloning_probe.ps1` (the probe had existed since
+   31 July with no runner and no recorded result — written, never run, which is
+   the same shape as the unreachable injectors it exists to answer for).
+
+   What survived `Slide.Duplicate`: the suffixed role value `BAR_BODY.track`, its
+   pair `BAR_BODY`, **both inside a GROUP**, and a second tag name on the same
+   shape (`picsrc`). Slide-level tags survive too, and the duplicate gets a new
+   SlideID.
+
+   Two things the first run could not have told me, both fixed before the verdict
+   was believed: `DumpTags` printed a grouped shape and a never-grouped shape
+   identically, so it could not show the group had actually formed (it now prints
+   `[Group 4] GROUP of 2` and marks members); and nothing demonstrated the finder
+   could return "not found". Two controls now run and **must** read False — a role
+   never tagged, and a picture stamp on the track shape. Both did.
+
+   Incidental, not today's question but worth having in writing: **Copy/Paste into
+   a different presentation preserved the SlideID exactly.** SlideID is unique
+   within a deck, not across decks — do not use it as a cross-deck discriminator.
+2. ~~**Dispatch by shape type in the sync path.**~~ **BUILT 2026-08-10.**
+   `InjectPrimitive.InjectField` is the one entry point; the type is derived
+   from the SHAPE (picture / a `.track` sibling / else text), so it cannot
+   disagree with a column the way `Kind` does. All three sync call sites rewired
+   (`ReviewQueue` ×2 with the Sources sheet resolved once per run,
+   `SyncOperations` without one). New `Sources.LocatorFor`, with a `found`
+   out-parameter so "cited a source that does not exist" and "source row has a
+   blank locator" get different messages — they send the person to different
+   files.
+
+   A non-numeric register cell for a bar is refused **loudly**: `Found` and
+   `WouldChange` are both set, because `Found=False` is a SKIP to
+   `SyncOperations` and `WouldChange=False` is a NO CHANGE — either would let a
+   bar silently fail to draw inside a run reporting success. `Val("done")`
+   returning 0 would have drawn an empty bar and called it a success.
+
+3. ~~**A multi-slide test.**~~ **DONE** — `InjectField_TwoSlidesEachGetTheirOwnValue`,
+   with the two slides given **different track widths** so a bar drawn against
+   the wrong slide's track cannot land on the right number by coincidence.
+
+**172 passed / 0 failed behind the compile gate, and every new test was made to
+fail on purpose first, in two separate runs.** Breaking both non-text branches
+failed all three new tests while the five existing picture/progress tests stayed
+green — which is the blindness itself, since those test the injectors directly
+and cannot see that nothing calls them. Breaking the picture branch ALONE then
+failed only the picture assertions, with the failure text being the exact defect
+this work removes: `shape tagged role=PHOTO has no text frame to write into`.
+
+## 2a. PICTURES ARE NOW REACHABLE. BARS ARE STILL NOT — THERE IS NO WAY TO MARK ONE
+
+**Found 2026-08-10 by Rohan asking "how are these types of fields marked",
+while the dispatch was still being written.** The dispatch was necessary and is
+not sufficient.
+
+- **Pictures: markable.** `BatchOnboardFlow`'s gate accepts a picture shape
+  (added earlier the same day) and `Onboarding.IsCandidateField` offers pictures
+  in discovery. With the router in, pictures now work end to end.
+- **Progress bars: not markable at all.** Two independent blocks. The marking
+  gate (`BatchOnboardFlow.bas:1429-1436`) requires a picture OR a shape with
+  non-empty text; a bar's done part and its track are empty rectangles, so both
+  are refused — the message says *"progress bars are not supported yet"* in as
+  many words. And **nothing outside `InjectPrimitive.bas` mentions `.track`
+  anywhere in the codebase**: `Onboarding.ConfirmFieldMatch` is the only thing
+  that ever writes a `role` tag, and no path offers a suffixed value.
+
+**DECIDED 2026-08-10, not yet built: bars are tagged ONCE ON THE TEMPLATE, not
+per slide.** Rohan's call, and this morning's probe is what makes it safe — the
+tags survive duplication, including inside a group. A bar is furniture the
+template owns, so there is no per-slide marking and no guessing which of two
+shapes is the track.
+
+**Also decided, and it is a boundary worth keeping:** `Behaviour` (Fill / Fit /
+Leave as is) **stays on the Field Spec for now**, even though it is a shape fact
+and would arguably be better on the tag. The line agreed: the template owns what
+is true of the SHAPE, the workbook owns what is true of the CONTENT — and
+`Kind`, which is already double-sourced, gets fixed by making the sheet win, not
+by moving it to a third place.
+
+**The standing cost of leaning on tags: a tag is invisible.** It cannot be seen,
+diffed or repaired without the tool, on the machine with no Python and no
+Claude. If real behaviour moves onto the template, a toolbar-reachable "what
+does this slide say about itself" dump stops being a nicety —
+`read_deck_slide_tags.py` is Python and therefore useless at work.
+
+## 2b. `field_e2e.ps1`'s module list is missing `Readiness.bas`
+
+Pre-existing, found 2026-08-10 by running `vba/tools/check_module_lists.py`
+(not caused by the dispatch work; the test-suite and add-in lists both pass).
+
+    FAIL  harness  (field_e2e.ps1)
+            missing Readiness.bas -- referenced by DeckRegistry, RibbonUI, WorkbookBridge
+
+The harness will fail at runtime on any path that reaches Readiness. Cost: one
+line.
 
 ## What is built and verified
 

@@ -1180,6 +1180,20 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
         Exit Function
     End If
 
+    ' The Sources sheet, resolved ONCE for the run and passed to every inject,
+    ' because picture fields hold a source ID and the path lives on that sheet.
+    ' Looked up, NEVER created -- GetOrAddWorksheet would invent an empty
+    ' Sources sheet and then truthfully report that no source was on it. When
+    ' it is genuinely absent, picture fields say so and text and bars are
+    ' unaffected.
+    Dim srcWs As Object
+    Set srcWs = Nothing
+    If Not ws Is Nothing Then
+        If WorkbookBridge.WorksheetExists(ws.Parent, Sources.SOURCES_SHEET_NAME) Then
+            Set srcWs = ws.Parent.Worksheets(Sources.SOURCES_SHEET_NAME)
+        End If
+    End If
+
     Dim approved As Object
     Set approved = ApprovedHashSet(q)
     If approved.Count = 0 Then
@@ -1280,7 +1294,7 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
             Else
                 ' Dry inject reads the slide's current text without touching it.
                 Dim probe As InjectResult
-                probe = InjectPrimitive.InjectPrimitive(sld, q.Items(n).FieldID, proposed, True)
+                probe = InjectPrimitive.InjectField(sld, q.Items(n).FieldID, proposed, True, srcWs)
 
                 Dim liveHash As String
                 liveHash = ChangeHash(q.Items(n).EntityKey, q.Items(n).FieldID, _
@@ -1298,7 +1312,7 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                     AppendLogLine logWs, q.RunStamp, q.Items(n), "failed: " & probe.ErrorMessage
                 Else
                     Dim wrote As InjectResult
-                    wrote = InjectPrimitive.InjectPrimitive(sld, q.Items(n).FieldID, proposed, False)
+                    wrote = InjectPrimitive.InjectField(sld, q.Items(n).FieldID, proposed, False, srcWs)
                     If wrote.Verified Then
                         writtenCount = writtenCount + 1
                         report = report & "  written: " & q.Items(n).EntityKey & "/" & q.Items(n).FieldID & vbCrLf
