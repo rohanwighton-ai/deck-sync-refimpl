@@ -121,9 +121,24 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
     On Error GoTo 0
 
     ' --- the deck -----------------------------------------------------
-    Dim periodDisk As String
-    periodDisk = DeckRegistry.PropertyOnDisk(deckPath, DeckRegistry.PROP_DECK_PERIOD)
-    If periodDisk = "" Then
+    '
+    ' READ FAILURE IS NOT ABSENCE, AND SAYING SO IS RULE 1.
+    '
+    ' Observed 2026-08-09 on a OneDrive-hosted deck: this reported "Period:
+    ' BLOCKED -- not set in the saved file" while the file's bytes held Q3F26.
+    ' PropertyOnDisk could not reach the file at all, and the only thing it could
+    ' say about that was "", which read as a confident statement about the deck.
+    ' BLOCKED sends a person to re-set a period that is already correct; CANNOT
+    ' TELL sends them to find out why the file could not be read. The trace is
+    ' carried into the Source column because rule 2 requires the line to name
+    ' what it read, and "could not read it, here is how far it got" is that.
+    Dim periodDisk As String, periodTrace As String, periodUnreadable As Boolean
+    periodDisk = DeckRegistry.PropertyOnDisk(deckPath, DeckRegistry.PROP_DECK_PERIOD, _
+                                             periodTrace, periodUnreadable)
+    If periodUnreadable Then
+        AddLine r, "Period", "COULD NOT READ THE SAVED FILE", ST_UNKNOWN, _
+            "attempted: " & periodTrace, "Open the deck from a local folder, or see the trace"
+    ElseIf periodDisk = "" Then
         AddLine r, "Period", "(not set in the saved file)", ST_BLOCKED, _
             "saved .pptx", "Start a Quarter"
     Else
@@ -144,9 +159,12 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
         End If
     End If
 
-    Dim wbPathDisk As String
-    wbPathDisk = DeckRegistry.WorkbookPathOnDisk(deckPath)
-    If wbPathDisk = "" Then
+    Dim wbPathDisk As String, wbTrace As String, wbUnreadable As Boolean
+    wbPathDisk = DeckRegistry.WorkbookPathOnDisk(deckPath, wbTrace, wbUnreadable)
+    If wbUnreadable Then
+        AddLine r, "Paired workbook", "COULD NOT READ THE SAVED FILE", ST_UNKNOWN, _
+            "attempted: " & wbTrace, "Open the deck from a local folder, or see the trace"
+    ElseIf wbPathDisk = "" Then
         AddLine r, "Paired workbook", "(none recorded in the saved file)", ST_BLOCKED, _
             "saved .pptx", "Repoint Workbook"
     Else

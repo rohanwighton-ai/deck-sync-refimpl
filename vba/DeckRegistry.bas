@@ -415,8 +415,26 @@ End Sub
 ' i.e. PowerPoint's cache. That check passes against a deck that never saved,
 ' which is the exact defect Start a Quarter had that morning, sitting in the flow
 ' this module's own comment calls "the one write in this add-in that matters".
-Public Function PropertyOnDisk(deckPath As String, propertyName As String, Optional ByRef trace As String) As String
+' readFailed DISTINGUISHES "THE FILE SAYS NO" FROM "I COULD NOT ASK".
+'
+' Both used to return "", and on 2026-08-09 that cost the readiness sheet its
+' credibility: a OneDrive-hosted deck reported "Period: BLOCKED -- not set in
+' the saved file" while the file's bytes held Q3F26. Seven of the eight exit
+' paths below are failures to READ, and every one of them was reported to the
+' user as a confident statement about the deck's contents.
+'
+' The sheet's own rule 1 (Readiness.bas:32) requires three states, not two: a
+' check that could not run must say so. It cannot honour that while its only
+' input is an empty string.
+'
+' DEFAULTS TO TRUE, deliberately. Any path added later that forgets to clear it
+' reports CANNOT TELL, which is recoverable; the alternative default reports a
+' confident wrong answer, which is what this whole function exists to prevent.
+Public Function PropertyOnDisk(deckPath As String, propertyName As String, _
+                               Optional ByRef trace As String, _
+                               Optional ByRef readFailed As Boolean) As String
     On Error GoTo Failed
+    readFailed = True
 
     Dim fso As Object
     Set fso = CreateObject("Scripting.FileSystemObject")
@@ -462,10 +480,17 @@ Public Function PropertyOnDisk(deckPath As String, propertyName As String, Optio
         GoTo Cleanup
     End If
 
+    ' THE ZIP OPENED. From here the file has been read, and everything below is
+    ' a statement about its CONTENTS. A deck created with no custom properties
+    ' never gets a docProps/custom.xml part written at all, so "not found" here
+    ' is an honest "this deck declares nothing", not a failure to look -- the
+    ' distinction the blank-deck fixture in TestRunner exists to hold.
+    readFailed = False
+
     Dim props As Object
     Set props = zipNs.ParseName("docProps")
     If props Is Nothing Then
-        trace = trace & " | docProps NOT FOUND"
+        trace = trace & " | docProps NOT FOUND -- deck declares no properties"
         GoTo Cleanup
     End If
     trace = trace & " | docProps=" & props.Path
@@ -475,6 +500,7 @@ Public Function PropertyOnDisk(deckPath As String, propertyName As String, Optio
     Set propsNs = sh.Namespace(propsVar)
     If propsNs Is Nothing Then
         trace = trace & " | Namespace(docProps) returned Nothing"
+        readFailed = True          ' found the folder, could not open it -- a failure to look
         GoTo Cleanup
     End If
 
@@ -501,12 +527,17 @@ Public Function PropertyOnDisk(deckPath As String, propertyName As String, Optio
     Loop
     If Not fso.FileExists(extracted) Then
         trace = trace & " | EXTRACT TIMED OUT after " & waited
+        readFailed = True          ' custom.xml exists and we never got to read it
         GoTo Cleanup
     End If
     trace = trace & " | extracted"
 
     Dim xml As String
     xml = fso.OpenTextFile(extracted, 1).ReadAll
+
+    ' THE READ SUCCEEDED. From here an empty answer is a fact about the deck,
+    ' not a failure to look -- this is the only place that can honestly say so.
+    readFailed = False
 
     Dim atProp As Long
     atProp = InStr(1, xml, propertyName, vbTextCompare)
@@ -515,12 +546,23 @@ Public Function PropertyOnDisk(deckPath As String, propertyName As String, Optio
         GoTo Cleanup
     End If
 
+    ' Present but unreadable is NOT the same as absent: the property is in the
+    ' file and this code cannot parse it, which is a defect to surface rather
+    ' than a deck to send someone off to reconfigure.
     Dim openTag As Long, closeTag As Long
     openTag = InStr(atProp, xml, "<vt:lpwstr>")
-    If openTag = 0 Then GoTo Cleanup
+    If openTag = 0 Then
+        trace = trace & " | '" & propertyName & "' present but no <vt:lpwstr> value"
+        readFailed = True
+        GoTo Cleanup
+    End If
     openTag = openTag + Len("<vt:lpwstr>")
     closeTag = InStr(openTag, xml, "</vt:lpwstr>")
-    If closeTag = 0 Then GoTo Cleanup
+    If closeTag = 0 Then
+        trace = trace & " | '" & propertyName & "' value never closed"
+        readFailed = True
+        GoTo Cleanup
+    End If
 
     PropertyOnDisk = Mid$(xml, openTag, closeTag - openTag)
 
@@ -532,6 +574,10 @@ Cleanup:
 
 Failed:
     trace = trace & " | ERROR " & Err.Number & ": " & Err.Description
+    ' Set explicitly rather than relying on the entry default: the zip-opened
+    ' branch clears it partway through, so an error raised AFTER that point
+    ' would otherwise be reported as a clean read of an empty value.
+    readFailed = True
     On Error Resume Next
     If Not fso Is Nothing Then fso.DeleteFolder work, True
     On Error GoTo 0
@@ -602,8 +648,9 @@ End Function
 
 ' The deck's period, from the saved file. Kept as its own name because it is the
 ' one every caller asks for.
-Public Function PeriodOnDisk(deckPath As String, Optional ByRef trace As String) As String
-    PeriodOnDisk = PropertyOnDisk(deckPath, PROP_DECK_PERIOD, trace)
+Public Function PeriodOnDisk(deckPath As String, Optional ByRef trace As String, _
+                             Optional ByRef readFailed As Boolean) As String
+    PeriodOnDisk = PropertyOnDisk(deckPath, PROP_DECK_PERIOD, trace, readFailed)
 End Function
 
 ' Returns "" when the period is confirmed on disk, otherwise a message saying
@@ -647,8 +694,9 @@ End Function
 ' the pair and WRONG for verification: it can return a path that was never written
 ' and read as confirmation of the write. A verifier must answer "what is actually
 ' recorded", not "what would we open".
-Public Function WorkbookPathOnDisk(deckPath As String, Optional ByRef trace As String) As String
-    WorkbookPathOnDisk = PropertyOnDisk(deckPath, WORKBOOK_PATH_PROPERTY_NAME, trace)
+Public Function WorkbookPathOnDisk(deckPath As String, Optional ByRef trace As String, _
+                                   Optional ByRef readFailed As Boolean) As String
+    WorkbookPathOnDisk = PropertyOnDisk(deckPath, WORKBOOK_PATH_PROPERTY_NAME, trace, readFailed)
 End Function
 
 ' Returns "" when the pairing is confirmed in the saved file, otherwise a message

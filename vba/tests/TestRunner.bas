@@ -4855,11 +4855,24 @@ Private Function Test_DeckRegistry_PeriodOnDiskReadsTheSavedFile() As String
     Dim blankPres As Object
     Set blankPres = Application.Presentations.Add
     blankPres.SaveAs blankPath
-    result = result & Assert(DeckRegistry.PeriodOnDisk(blankPath) = "", _
+    ' THESE TWO CASES RETURN THE SAME EMPTY STRING AND MEAN OPPOSITE THINGS.
+    ' Until 2026-08-09 nothing could tell them apart, and a OneDrive deck whose
+    ' file could not be read was reported to the user as "Period: BLOCKED -- not
+    ' set in the saved file" while its bytes held Q3F26. The empty-string
+    ' assertions below are kept exactly as they were; what is new is that each
+    ' now also states WHICH of the two it is.
+    Dim blankTrace As String, blankUnreadable As Boolean
+    result = result & Assert(DeckRegistry.PeriodOnDisk(blankPath, blankTrace, blankUnreadable) = "", _
         "a deck with no period reads as empty, not an error")
+    result = result & Assert(Not blankUnreadable, _
+        "a deck that WAS read and simply has no period is not a read failure [" & blankTrace & "]")
 
-    result = result & Assert(DeckRegistry.PeriodOnDisk(Environ("TEMP") & "\no_such_deck_here.pptx") = "", _
+    Dim missTrace As String, missUnreadable As Boolean
+    result = result & Assert(DeckRegistry.PeriodOnDisk(Environ("TEMP") & "\no_such_deck_here.pptx", _
+        missTrace, missUnreadable) = "", _
         "a missing file reads as empty rather than raising")
+    result = result & Assert(missUnreadable, _
+        "a file that could not be read reports a READ FAILURE, not an absent period [" & missTrace & "]")
 
     testPres.Saved = True
     testPres.Close
