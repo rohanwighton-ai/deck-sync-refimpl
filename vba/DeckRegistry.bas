@@ -430,6 +430,108 @@ End Sub
 ' DEFAULTS TO TRUE, deliberately. Any path added later that forgets to clear it
 ' reports CANNOT TELL, which is recoverable; the alternative default reports a
 ' confident wrong answer, which is what this whole function exists to prevent.
+' A cloud-hosted deck reports its FullName as a URL, and FileSystemObject cannot
+' read one. Windows keeps the mapping from cloud URL to local synced folder in
+' HKCU\SOFTWARE\SyncEngines\Providers\OneDrive: each sync root has a
+' UrlNamespace ("https://d.docs.live.net") and a MountPoint
+' ("C:\Users\rohan\OneDrive").
+'
+' THE REMAINDER DOES NOT MAP STRAIGHT ACROSS. Personal OneDrive puts a user-id
+' segment after the namespace that does not appear in the local path; business
+' and SharePoint namespaces are longer and have no such segment. Rather than
+' encode either convention -- and get it wrong on the one that matters, at work,
+' where nothing can be debugged -- this tries the candidate and CONFIRMS IT BY
+' THE FILE BEING THERE, dropping one leading segment and retrying if not. It
+' returns only a path that exists, so a wrong guess is indistinguishable from no
+' answer, which is the safe direction.
+'
+' This reads the LOCAL SYNCED FILE, which is genuinely on disk and shares no
+' state with PowerPoint -- the property this whole function exists to have. The
+' local copy is also what PowerPoint actually wrote; the upload is OneDrive's
+' problem afterwards.
+Public Function LocalPathForUrl(url As String, Optional ByRef trace As String) As String
+    LocalPathForUrl = ""
+
+    If LCase$(Left$(url, 5)) <> "http:" And LCase$(Left$(url, 6)) <> "https:" Then
+        LocalPathForUrl = url                     ' already a filesystem path
+        Exit Function
+    End If
+
+    Dim decoded As String
+    decoded = Replace(url, "%20", " ")
+    decoded = Replace(decoded, "%27", "'")
+    decoded = Replace(decoded, "%28", "(")
+    decoded = Replace(decoded, "%29", ")")
+    decoded = Replace(decoded, "%26", "&")
+
+    Dim reg As Object
+    On Error Resume Next
+    Set reg = GetObject("winmgmts:\\.\root\default:StdRegProv")
+    On Error GoTo 0
+    If reg Is Nothing Then
+        trace = trace & " | no registry provider -- cannot map URL"
+        Exit Function
+    End If
+
+    Const HKCU As Long = &H80000001
+    Const BASE As String = "SOFTWARE\SyncEngines\Providers\OneDrive"
+
+    Dim keys As Variant
+    On Error Resume Next
+    If reg.EnumKey(HKCU, BASE, keys) <> 0 Then
+        On Error GoTo 0
+        trace = trace & " | no OneDrive sync roots registered"
+        Exit Function
+    End If
+    On Error GoTo 0
+    If IsEmpty(keys) Then Exit Function
+    If Not IsArray(keys) Then Exit Function
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    Dim i As Long
+    For i = LBound(keys) To UBound(keys)
+        Dim ns As String, mp As String
+        ns = "": mp = ""
+        On Error Resume Next
+        reg.GetStringValue HKCU, BASE & "\" & keys(i), "UrlNamespace", ns
+        reg.GetStringValue HKCU, BASE & "\" & keys(i), "MountPoint", mp
+        On Error GoTo 0
+
+        If ns <> "" And mp <> "" Then
+            If StrComp(Left$(decoded, Len(ns)), ns, vbTextCompare) = 0 Then
+                Dim rest As String
+                rest = Mid$(decoded, Len(ns) + 1)
+                rest = Replace(rest, "/", "\")
+                Do While Left$(rest, 1) = "\"
+                    rest = Mid$(rest, 2)
+                Loop
+
+                ' Try the whole remainder, then with one leading segment
+                ' dropped, then two. Personal OneDrive needs one dropped (the
+                ' user id); business usually needs none.
+                Dim attempt As Long
+                For attempt = 0 To 2
+                    Dim candidate As String
+                    candidate = fso.BuildPath(mp, rest)
+                    If fso.FileExists(candidate) Then
+                        trace = trace & " | URL mapped to " & candidate
+                        LocalPathForUrl = candidate
+                        Exit Function
+                    End If
+                    Dim cut As Long
+                    cut = InStr(rest, "\")
+                    If cut = 0 Then Exit For
+                    rest = Mid$(rest, cut + 1)
+                Next attempt
+            End If
+        End If
+    Next i
+
+    trace = trace & " | URL matched no synced folder that holds this file"
+End Function
+
 Public Function PropertyOnDisk(deckPath As String, propertyName As String, _
                                Optional ByRef trace As String, _
                                Optional ByRef readFailed As Boolean) As String
@@ -439,6 +541,19 @@ Public Function PropertyOnDisk(deckPath As String, propertyName As String, _
     Dim fso As Object
     Set fso = CreateObject("Scripting.FileSystemObject")
     trace = "fso ok"
+
+    ' A cloud-hosted deck arrives here as a URL. Translate before looking, or
+    ' every check below reports a perfectly good deck as empty -- which is what
+    ' the readiness sheet did on 2026-08-09.
+    If LCase$(Left$(deckPath, 4)) = "http" Then
+        Dim mapped As String
+        mapped = LocalPathForUrl(deckPath, trace)
+        If mapped = "" Then
+            trace = trace & " | cloud deck, no local copy found: " & deckPath
+            Exit Function
+        End If
+        deckPath = mapped
+    End If
     If Not fso.FileExists(deckPath) Then
         trace = trace & " | file missing: " & deckPath
         Exit Function

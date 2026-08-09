@@ -649,6 +649,10 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero", r
     r = Test_ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed()
     AppendResult report, "ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed", r
+    r = Test_DeckRegistry_LocalPathForUrlOnlyAnswersWhenTheFileIsThere()
+    AppendResult report, "DeckRegistry_LocalPathForUrlOnlyAnswersWhenTheFileIsThere", r
+    r = Test_DeckRegistry_LocalPathForUrlFindsARealSyncedFile()
+    AppendResult report, "DeckRegistry_LocalPathForUrlFindsARealSyncedFile", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -7536,4 +7540,120 @@ Private Function Test_ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed(
     Set xl = Nothing
 
     Test_ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed = result
+End Function
+
+' LocalPathForUrl only ever returns a path it has confirmed exists, so a wrong
+' guess and no answer are the same outcome. These pin the two ends that do not
+' depend on this machine's sync roots; the real mapping is proven by pressing
+' Where am I? on a cloud-hosted deck, which is the only place it matters.
+Private Function Test_DeckRegistry_LocalPathForUrlOnlyAnswersWhenTheFileIsThere() As String
+    Dim result As String
+    Dim trace As String
+
+    ' A filesystem path is not a URL and must come back untouched -- every
+    ' non-cloud caller goes through this line.
+    Dim plain As String
+    plain = "C:\Users\rohan\deck-sync-e2e\e2e-deck.pptx"
+    result = result & Assert(DeckRegistry.LocalPathForUrl(plain, trace) = plain, _
+        "a local path passes through unchanged, got '" & DeckRegistry.LocalPathForUrl(plain, trace) & "'")
+
+    ' A URL under no registered sync root has no local copy to offer, and
+    ' inventing one would be worse than admitting it.
+    trace = ""
+    result = result & Assert( _
+        DeckRegistry.LocalPathForUrl("https://not-a-real-tenant.example.com/sites/x/deck.pptx", trace) = "", _
+        "an unmapped URL returns empty rather than a constructed path")
+    result = result & Assert(InStr(trace, "matched no synced folder") > 0 Or InStr(trace, "no OneDrive") > 0, _
+        "the trace says why it could not map, got [" & trace & "]")
+
+    ' And the whole point: a URL must never be handed to FileSystemObject as-is.
+    trace = ""
+    Dim readFailed As Boolean
+    result = result & Assert( _
+        DeckRegistry.PropertyOnDisk("https://not-a-real-tenant.example.com/sites/x/deck.pptx", _
+            "DeckSyncPeriod", trace, readFailed) = "", _
+        "an unreadable cloud deck yields no value")
+    result = result & Assert(readFailed, _
+        "an unreadable cloud deck is a READ FAILURE, not an absent period [" & trace & "]")
+
+    Test_DeckRegistry_LocalPathForUrlOnlyAnswersWhenTheFileIsThere = result
+End Function
+
+' THE TEST THAT ACTUALLY EXERCISES THE MAPPING.
+'
+' The first three assertions written for LocalPathForUrl used a tenant that
+' matches nothing, so all three passed against a version of the function whose
+' body had been short-circuited to Exit Function -- proven by doing exactly that
+' on 2026-08-09 and watching 159 tests stay green. They tested the two ends and
+' skipped the middle, which was the only part that had ever been broken.
+'
+' This one creates a real file inside the real sync root and asks the function
+' to find it from a URL. OneDrive's root comes from the environment, NOT from
+' the registry the code under test reads, so the test cannot pass by sharing the
+' bug. SKIPS LOUDLY rather than passing when there is no OneDrive to test with.
+Private Function Test_DeckRegistry_LocalPathForUrlFindsARealSyncedFile() As String
+    Dim result As String
+
+    Dim root As String
+    root = Environ("OneDrive")
+    If root = "" Then
+        Test_DeckRegistry_LocalPathForUrlFindsARealSyncedFile = _
+            "    FAIL: SKIPPED -- no OneDrive environment variable, mapping never exercised" & vbCrLf
+        Exit Function
+    End If
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    Dim leaf As String, full As String
+    leaf = "dsurltest_" & Format(Now, "yyyymmddhhnnss") & ".txt"
+    full = fso.BuildPath(root, leaf)
+
+    fso.CreateTextFile(full, True).Write "probe"
+
+    ' The namespace is read here independently of the code under test. If this
+    ' machine registers no personal sync root the mapping cannot be exercised,
+    ' and that is reported rather than passed.
+    Dim reg As Object, ns As String
+    On Error Resume Next
+    Set reg = GetObject("winmgmts:\\.\root\default:StdRegProv")
+    reg.GetStringValue &H80000001, "SOFTWARE\SyncEngines\Providers\OneDrive\Personal", "UrlNamespace", ns
+    On Error GoTo 0
+
+    If ns = "" Then
+        On Error Resume Next
+        fso.DeleteFile full
+        On Error GoTo 0
+        Test_DeckRegistry_LocalPathForUrlFindsARealSyncedFile = _
+            "    FAIL: SKIPPED -- no personal OneDrive UrlNamespace registered, mapping never exercised" & vbCrLf
+        Exit Function
+    End If
+
+    ' The shape a cloud-hosted deck actually reports: namespace, a user-id
+    ' segment that does NOT appear in the local path, then the file. Resolving
+    ' this requires the drop-a-leading-segment retry to work.
+    Dim trace As String
+    Dim url As String
+    url = ns & "/0123456789abcdef/" & leaf
+
+    Dim mapped As String
+    mapped = DeckRegistry.LocalPathForUrl(url, trace)
+
+    result = result & Assert(StrComp(mapped, full, vbTextCompare) = 0, _
+        "a cloud URL resolves to the real synced file -- wanted '" & full & _
+        "', got '" & mapped & "' [" & trace & "]")
+
+    ' And the whole point of the change: reading a property through a URL must
+    ' now reach the file rather than reporting it missing.
+    Dim readFailed As Boolean
+    trace = ""
+    DeckRegistry.PropertyOnDisk url, "DeckSyncPeriod", trace, readFailed
+    result = result & Assert(InStr(trace, "URL mapped to") > 0, _
+        "PropertyOnDisk translates a URL before looking [" & trace & "]")
+
+    On Error Resume Next
+    fso.DeleteFile full
+    On Error GoTo 0
+
+    Test_DeckRegistry_LocalPathForUrlFindsARealSyncedFile = result
 End Function
