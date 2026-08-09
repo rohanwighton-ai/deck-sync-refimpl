@@ -88,6 +88,55 @@ Public Const REPORT_CAP As Long = 900
 ' Approved. This is a different REVIEW SURFACE for changes that fit one, not a
 ' different write path -- there is still exactly one place that writes a field
 ' to a slide (F7).
+' WHERE AM I -- rebuilds the readiness sheet and shows it.
+'
+' REBUILDS, never merely activates. A readiness surface that can be revisited
+' without recomputation is the same defect as a verifier that reads a cache: it
+' answers about a moment that has passed, and it is the surface a person would
+' consult INSTEAD of checking. See Readiness.bas's header for the four rules.
+Public Sub WhereAmI()
+    On Error GoTo Failed
+    WhereAmICore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult "Where am I", RibbonUI.UnexpectedErrorText("Where am I", Err.Number, Err.Description, Err.Source)
+End Sub
+
+Private Sub WhereAmICore()
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim workbookPath As String
+    workbookPath = DeckRegistry.GetWorkbookPath(pres)
+    If workbookPath = "" Then
+        MsgBox "This deck has no paired workbook yet, so there is nothing to report " & _
+               "on." & vbCrLf & vbCrLf & "Use 'Setup B: Onboard Slides' first.", _
+               vbExclamation, "Where am I"
+        Exit Sub
+    End If
+
+    Dim wb As Object
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
+    If wb Is Nothing Then
+        MsgBox "Could not open the paired workbook at: " & workbookPath, vbCritical, "Where am I"
+        Exit Sub
+    End If
+
+    Dim r As ReadyReport
+    r = Readiness.Build(pres, wb)
+    Readiness.WriteSheet wb, pres, r
+
+    ' The sheet is the answer; the dialog only carries the headline and points at
+    ' it. Everything else would be truncated -- CapReport exists because MsgBox
+    ' silently cuts near 1024 characters, and this report is longer than that.
+    Readiness.ShowSheet wb
+    MsgBox Readiness.Headline(r) & vbCrLf & vbCrLf & _
+           "The full picture is on the '" & Readiness.READY_SHEET_NAME & _
+           "' sheet, first tab of the workbook." & vbCrLf & vbCrLf & _
+           "Nothing is disabled by what it says -- it reports, it does not gate.", _
+           vbInformation, "Where am I"
+End Sub
+
 Public Sub SyncNow()
     On Error GoTo Failed
     SyncNowCore

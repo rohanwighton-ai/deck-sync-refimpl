@@ -160,6 +160,10 @@ Public Sub ShowToolbar()
 
     ' --- THE QUARTERLY LOOP ---------------------------------------------
     Set bar = NewBar(BAR_STEPS)
+    ' FIRST, because it is the only button that answers "what should I press?".
+    ' Rebuilds the readiness sheet from the saved files and shows it.
+    AddButton bar, "Where am I?", "RibbonUI.WhereAmI", 1000, _
+        "Use to see what is set, what is missing, and what to press next. Writes one sheet; changes nothing else."
     AddButton bar, "0. Start a Quarter", "DraftingUI.StartQuarter", 297, _
         "Use to tell this deck which period it reports. Saves the deck and confirms it landed.", True
     AddButton bar, "0b. Roll Forward", "DraftingUI.RollForwardUI", 1017, _
@@ -175,8 +179,12 @@ Public Sub ShowToolbar()
 
     ' --- The careful route to slides, when step 4 is too blunt -----------
     Set bar = NewBar(BAR_CAREFUL)
-    AddButton bar, "Preview Sync", "RibbonUI.SyncPreview", 1090, _
-        "Use to see what would change. Writes nothing.", True
+    ' PREVIEW SYNC LOST ITS BUTTON 2026-08-09 (Rohan: "pre sync review can be part
+    ' of sync? option to cancel for user, one less button?"). Its output was a
+    ' count plus a Run Log dump -- a LINE, not an action. The standing half of
+    ' that question is now a readiness line ("Parity: deck and register agree");
+    ' the per-run half is Sync Now's own confirmation, which you can cancel.
+    ' The Sub stays: DraftingUI offers it at the end of Publish.
     AddButton bar, "Review Changes", "RibbonUI.ReviewChanges", 1090, _
         "Use to read each change one at a time, on a sheet. Writes nothing."
     AddButton bar, "Apply Approved", "RibbonUI.ApplyApprovedChanges", 3, _

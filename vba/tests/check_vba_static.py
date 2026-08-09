@@ -158,6 +158,15 @@ RESERVED_NAMES = {
     "property", "option", "resume", "select", "then", "to", "step", "is",
     "like", "mod", "not", "and", "or", "xor", "new", "set", "let", "call",
     "end", "exit", "for", "each", "in", "do", "while", "until", "if", "else",
+    # Built-in FUNCTIONS are just as illegal as identifiers, and were missing.
+    # "fix" cost a compile-gate failure on 2026-08-09 -- Readiness.bas had a
+    # ReadyLine member and a parameter both called Fix, which VBE reports only
+    # as "Syntax error" on a line that looks fine. Added as a class rather than
+    # the one word, since every name here fails the same way.
+    "fix", "int", "abs", "sgn", "sqr", "log", "exp", "rnd", "val", "hex",
+    "oct", "asc", "chr", "len", "mid", "left", "right", "trim", "ltrim",
+    "rtrim", "space", "format", "join", "split", "filter", "replace",
+    "array", "choose", "iif", "switch", "cint", "clng", "cdbl", "cstr",
 }
 
 # The trailing `As` is what keeps this off DECLARATION forms. Without it,

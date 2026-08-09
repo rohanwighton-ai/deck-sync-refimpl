@@ -4771,7 +4771,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     ' pass. Tightened 2026-07-30 while adding SyncNow, whose name contains
     ' another entry's prefix.
     Dim expectedActions As String
-    expectedActions = "|SyncPreview|SyncNow|ReviewChanges|ReviewChangesApproveAll|ApplyApprovedChanges|CreateTemplateSlide|AuditFields|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|DiscoverFields|RefreshDraftingSheets|CopyAiDraftsToSubmit|PublishDraftsForField|StartQuarter|RollForwardUI|RepointWorkbookUI|"
+    expectedActions = "|WhereAmI|SyncNow|ReviewChanges|ReviewChangesApproveAll|ApplyApprovedChanges|CreateTemplateSlide|AuditFields|MarkFieldForBatch|BatchOnboardType|ClearMarkedFieldsForBatch|DiscoverFields|RefreshDraftingSheets|CopyAiDraftsToSubmit|PublishDraftsForField|StartQuarter|RollForwardUI|RepointWorkbookUI|"
 
     Dim i As Long
     Dim eachBar As Variant
@@ -4795,7 +4795,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
             "button '" & ctrl.Caption & "' tooltip is within Office's 255-char cap, got " & Len(ctrl.TooltipText))
         result = result & Assert(Left$(ctrl.TooltipText, 7) = "Use to ", _
             "button '" & ctrl.Caption & "' tooltip opens with 'Use to ', got '" & Left$(ctrl.TooltipText, 20) & "'")
-        If subName = "SyncPreview" Then seenPreview = True
+        If subName = "WhereAmI" Then seenPreview = True
         If subName = "SyncNow" Then seenSyncNow = True
         If subName = "ReviewChanges" Then seenReview = True
         If subName = "ApplyApprovedChanges" Then seenApply = True
@@ -4804,7 +4804,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     Next i
     Next eachBar
 
-    result = result & Assert(seenPreview, "Preview Sync is actually ON the toolbar -- the read-only action, and the safe first thing to run on an unfamiliar machine")
+    result = result & Assert(seenPreview, "Where am I? is actually ON the toolbar -- the read-only action, and the safe first thing to run on an unfamiliar machine")
     result = result & Assert(seenReview, "Review Changes is actually ON the toolbar -- R13's gate, and unreachable without a button")
     result = result & Assert(seenApply, "Apply Approved is actually ON the toolbar -- the recurring payoff the tool exists for, and useless while the review cannot be acted on")
     result = result & Assert(seenSyncNow, "Sync Now is ON the toolbar -- batch-aware, and the one-click path for a change set that is honestly one decision")
@@ -5809,7 +5809,7 @@ Private Function Test_CommandBarUI_EveryDeclaredCapabilityHasAButton() As String
         "CopyAiDraftsToSubmit", "PublishDraftsForField", "SyncNow", _
         "MarkFieldForBatch", "DiscoverFields", "BatchOnboardType", _
         "AuditFields", "ClearMarkedFieldsForBatch", _
-        "SyncPreview", "ReviewChanges", "ApplyApprovedChanges", _
+        "WhereAmI", "ReviewChanges", "ApplyApprovedChanges", _
         "ReviewChangesApproveAll", "RepointWorkbookUI")
 
     ' Read from the LIVE toolbar, not from a list of what we think we built.

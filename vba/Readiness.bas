@@ -1,0 +1,346 @@
+Attribute VB_Name = "Readiness"
+Option Explicit
+
+' WHERE YOU ARE, computed fresh, on the first tab of the workbook.
+'
+' Rohan, 2026-08-09: "cant like requirements stack until 'ready to sync'? should
+' allow a cleaner interface? form guides the user?"
+'
+' The toolbar numbers its buttons 0, 0b, 1, 2, 3, 4 and that ordering is a LIE
+' about the shape of the work. The true shape is:
+'
+'     a deck-level prologue  ->  N per-field lanes that do NOT wait for each
+'                                other  ->  a deck-level sync
+'
+' RefreshDraftingSheets builds every prose field's sheet at once and says it is
+' "safe to run at any time"; PublishDraftsForField publishes ONE field. So
+' ABOUT_BODY can be published and synced while KEY_EVENTS_BODY is half drafted.
+' A 0-to-4 ladder cannot express that, and a readiness LADDER would just be a
+' prettier version of the same wrong claim. Hence a form with a per-field block,
+' not a checklist.
+'
+' ---------------------------------------------------------------------
+' THE DANGER, AND THE FOUR RULES THAT ANSWER IT
+' ---------------------------------------------------------------------
+'
+' A green readiness list is EXACTLY this project's defining defect -- reports
+' success without confirming the effect -- and it is worse than every previous
+' instance, because it is designed to be the thing consulted INSTEAD of
+' checking. Get it wrong and it does not hide one bug; it teaches a person to
+' stop looking. So:
+'
+'   1. THREE STATES, NEVER TWO. OK / BLOCKED / CANNOT TELL. A check that could
+'      not run says so and is never quietly counted as a pass. FastPathRefusalText
+'      earned this rule: "the deck's worst state and its healthiest state
+'      produced the same sentence."
+'
+'   2. EVERY LINE NAMES WHAT IT READ AND WHEN. Not "Period Q4F26 ok" but
+'      "Q4F26 -- read from the saved .pptx". On 2026-08-08 the tool said "Deck
+'      period is now Q4F26" against a file untouched for three days; a line that
+'      omits its source recreates that at the top of the workbook.
+'
+'   3. THE WORD READY IS FORBIDDEN UNLESS EVERY CHECK RAN. No "READY, 3 checks
+'      skipped". Anything uncomputed makes the headline CANNOT CONFIRM.
+'      ReviewQueue's backup rule states the principle: a reported safety that is
+'      not there "is the reason you feel safe running the destructive write".
+'
+'   4. RECOMPUTED, NEVER REVISITED. The button REBUILDS this sheet; it must
+'      never merely Activate an existing tab, and the banner carries its own
+'      computation time so a tab left open overnight indicts itself.
+'
+' AND IT OFFERS, IT DOES NOT GATE. No button is disabled anywhere on the basis
+' of what this sheet says. Someone syncing one field while another is mid-draft
+' is doing something legitimate, and a tool that argues with that is wrong.
+
+Public Const READY_SHEET_NAME As String = "START HERE"
+
+Public Const ST_OK As String = "ok"
+Public Const ST_BLOCKED As String = "BLOCKED"
+Public Const ST_UNKNOWN As String = "CANNOT TELL"
+
+' One row of the sheet. Source is the evidence half of rule 2 -- what was read,
+' not merely what was concluded.
+Public Type ReadyLine
+    Label As String
+    Value As String
+    State As String
+    Source As String
+    Remedy As String
+End Type
+
+Public Type ReadyReport
+    Lines() As ReadyLine
+    Count As Long
+    Blocked As Long
+    Unknown As Long
+End Type
+
+' The headline. Deliberately a function of the counts alone, so it cannot drift
+' away from the lines beneath it.
+Public Function Headline(r As ReadyReport) As String
+    If r.Unknown > 0 Then
+        Headline = "CANNOT CONFIRM -- " & r.Unknown & " of " & r.Count & _
+            " check(s) could not run"
+    ElseIf r.Blocked > 0 Then
+        Headline = "NOT READY -- " & r.Blocked & " of " & r.Count & " check(s) blocked"
+    ElseIf r.Count = 0 Then
+        ' Zero checks is not a pass. Nothing ran.
+        Headline = "CANNOT CONFIRM -- no checks ran"
+    Else
+        Headline = "READY -- " & r.Count & " check(s) passed"
+    End If
+End Function
+
+Public Sub AddLine(ByRef r As ReadyReport, label As String, value As String, _
+                   state As String, source As String, Optional remedy As String = "")
+    r.Count = r.Count + 1
+    ReDim Preserve r.Lines(1 To r.Count)
+    r.Lines(r.Count).Label = label
+    r.Lines(r.Count).Value = value
+    r.Lines(r.Count).State = state
+    r.Lines(r.Count).Source = source
+    r.Lines(r.Count).Remedy = remedy
+    If state = ST_BLOCKED Then r.Blocked = r.Blocked + 1
+    If state = ST_UNKNOWN Then r.Unknown = r.Unknown + 1
+End Sub
+
+' Builds the report for a deck and its workbook.
+'
+' The deck lines are read OUT OF PROCESS, from the saved .pptx, because that is
+' the only reading this project trusts about a property -- DeckRegistry.
+' PropertyOnDisk opens a copy as a zip through Shell COM and parses
+' docProps/custom.xml. The workbook lines are read LIVE, which is correct
+' because Excel has it open, and made honest by refusing to report numbers from
+' a workbook with unsaved edits.
+Public Function Build(pres As Object, wb As Object) As ReadyReport
+    Dim r As ReadyReport
+
+    Dim deckPath As String
+    On Error Resume Next
+    deckPath = pres.FullName
+    On Error GoTo 0
+
+    ' --- the deck -----------------------------------------------------
+    Dim periodDisk As String
+    periodDisk = DeckRegistry.PropertyOnDisk(deckPath, DeckRegistry.PROP_DECK_PERIOD)
+    If periodDisk = "" Then
+        AddLine r, "Period", "(not set in the saved file)", ST_BLOCKED, _
+            "saved .pptx", "Start a Quarter"
+    Else
+        AddLine r, "Period", periodDisk, ST_OK, "saved .pptx"
+    End If
+
+    ' A period held only in memory is the 2026-08-08 defect exactly: reported
+    ' set, never written. Stated as its own line rather than folded into the one
+    ' above, because "you have unsaved work" and "it never saved" need different
+    ' actions from a person.
+    Dim periodLive As String
+    periodLive = DeckRegistry.GetDeckPeriod(pres)
+    If periodLive <> "" And periodDisk <> "" Then
+        If StrComp(periodLive, periodDisk, vbTextCompare) <> 0 Then
+            AddLine r, "Period not saved", "PowerPoint says " & periodLive & _
+                ", the file says " & periodDisk, ST_BLOCKED, _
+                "saved .pptx vs PowerPoint", "Save the deck, then rebuild this sheet"
+        End If
+    End If
+
+    Dim wbPathDisk As String
+    wbPathDisk = DeckRegistry.WorkbookPathOnDisk(deckPath)
+    If wbPathDisk = "" Then
+        AddLine r, "Paired workbook", "(none recorded in the saved file)", ST_BLOCKED, _
+            "saved .pptx", "Repoint Workbook"
+    Else
+        AddLine r, "Paired workbook", wbPathDisk, ST_OK, "saved .pptx"
+    End If
+
+    ' --- the workbook -------------------------------------------------
+    '
+    ' RULE 1 IN ITS MOST IMPORTANT PLACE. Everything below counts rows, and a
+    ' workbook with unsaved edits would have this sheet report numbers that are
+    ' not in any file. That is the failure this whole surface risks becoming, so
+    ' it refuses rather than guessing, and says which.
+    If wb Is Nothing Then
+        AddLine r, "Register", "workbook not open", ST_UNKNOWN, "-- nothing read"
+        Build = r
+        Exit Function
+    End If
+
+    If WorkbookBridge.IsDirty(wb) Then
+        AddLine r, "Register", "not read -- Excel is holding unsaved edits", ST_UNKNOWN, _
+            "Excel (unsaved)", "Save the workbook, then rebuild this sheet"
+        Build = r
+        Exit Function
+    End If
+
+    Dim types() As String
+    types = DeckRegistry.ListRegisteredTypes(pres)
+    Dim lo As Long, hi As Long, hasTypes As Boolean
+    On Error Resume Next
+    lo = LBound(types): hi = UBound(types)
+    hasTypes = (Err.Number = 0)
+    On Error GoTo 0
+
+    If Not hasTypes Then
+        AddLine r, "Slide type", "(none registered)", ST_BLOCKED, "saved .pptx", _
+            "Setup B: Onboard Slides"
+        Build = r
+        Exit Function
+    End If
+
+    Dim i As Long
+    For i = lo To hi
+        Dim templateSld As Object
+        Dim wsName As String
+        If Not DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
+            AddLine r, "Slide type " & types(i), "registered, but its slide is gone", _
+                ST_BLOCKED, "saved .pptx", "Setup B: Onboard Slides"
+        Else
+            AddLine r, "Slide type", types(i) & " -> sheet '" & wsName & "'", ST_OK, "saved .pptx"
+
+            ' A REGISTERED SLIDE IS NOT A TEMPLATE, and on the rig none is.
+            ' Stated here because it is invisible everywhere else until the day
+            ' a new project arrives and gets another project's slide.
+            If templateSld Is Nothing Then
+                AddLine r, "Template slide", "none for " & types(i), ST_BLOCKED, _
+                    "deck", "Create Template Slide"
+            ElseIf Not Resolve.IsTemplateSlide(templateSld) Then
+                AddLine r, "Template slide", "NOT marked as a template -- a new project " & _
+                    "would be copied from a real project's slide", ST_BLOCKED, "deck", _
+                    "Create Template Slide"
+            Else
+                AddLine r, "Template slide", "present", ST_OK, "deck"
+            End If
+
+            If Not WorkbookBridge.WorksheetExists(wb, wsName) Then
+                AddLine r, "Register sheet", "'" & wsName & "' is missing from this workbook", _
+                    ST_BLOCKED, "open workbook", "Repoint Workbook"
+            Else
+                Dim problem As String
+                Dim sheet As Sheet
+                sheet = ExcelOutput.ReadSheetForDeckPeriod( _
+                    WorkbookBridge.GetOrAddWorksheet(wb, wsName), periodDisk, problem)
+                If problem <> "" Then
+                    AddLine r, "Rows for " & periodDisk, problem, ST_BLOCKED, _
+                        "open workbook", "Roll Forward"
+                Else
+                    Dim q As ReviewQueueSet
+                    q = ReviewQueue.BuildQueue(sheet, types(i))
+                    AddLine r, "Rows for " & periodDisk, q.RowCount & " row(s), " & _
+                        q.SlideCount & " tagged slide(s)", ST_OK, "open workbook"
+
+                    ' Parity is the question the tool exists to answer, so it is
+                    ' a line here and not a footnote.
+                    If q.OrphanCount = 0 And q.SlideNoRowCount = 0 Then
+                        AddLine r, "Parity", "deck and register agree", ST_OK, _
+                            "deck + open workbook"
+                    Else
+                        AddLine r, "Parity", ReviewQueue.ParityText(q), ST_BLOCKED, _
+                            "deck + open workbook", "Sync Now offers to create missing slides"
+                    End If
+                End If
+            End If
+        End If
+    Next i
+
+    Build = r
+End Function
+
+' Writes the report onto the first tab, replacing whatever was there.
+'
+' REBUILDS, never revisits (rule 4). The banner carries the time it was computed
+' and both files' saved times, so a tab left open overnight says so itself.
+Public Sub WriteSheet(wb As Object, pres As Object, r As ReadyReport)
+    Dim ws As Object
+    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, READY_SHEET_NAME)
+    ws.Cells.Clear
+
+    ws.Cells(1, 1).Value = "DECK SYNC -- WHERE YOU ARE"
+    ws.Cells(1, 1).Font.Bold = True
+    ws.Cells(1, 1).Font.Size = 11
+
+    ws.Cells(2, 1).Value = "rebuilt " & Format(Now, "dd mmm yyyy hh:nn") & _
+        "  --  this sheet is recomputed each time you press the button; it is not live."
+
+    Dim deckName As String
+    On Error Resume Next
+    deckName = pres.Name
+    On Error GoTo 0
+    ws.Cells(3, 1).Value = "deck:     " & deckName
+    ws.Cells(4, 1).Value = "workbook: " & wb.Name & _
+        IIf(WorkbookBridge.IsDirty(wb), "   (UNSAVED EDITS -- numbers below are withheld)", "")
+
+    ws.Cells(6, 1).Value = Headline(r)
+    ws.Cells(6, 1).Font.Bold = True
+    ws.Cells(6, 1).Font.Size = 10
+
+    ws.Cells(8, 1).Value = "What"
+    ws.Cells(8, 2).Value = "State"
+    ws.Cells(8, 3).Value = "Value"
+    ws.Cells(8, 4).Value = "Read from"
+    ws.Cells(8, 5).Value = "Fix with"
+    ws.Rows(8).Font.Bold = True
+
+    Dim rowNo As Long
+    rowNo = 9
+    Dim i As Long
+    For i = 1 To r.Count
+        ws.Cells(rowNo, 1).Value = r.Lines(i).Label
+        ws.Cells(rowNo, 2).Value = r.Lines(i).State
+        ws.Cells(rowNo, 3).Value = r.Lines(i).Value
+        ws.Cells(rowNo, 4).Value = r.Lines(i).Source
+        ws.Cells(rowNo, 5).Value = r.Lines(i).Remedy
+        If r.Lines(i).State <> ST_OK Then ws.Rows(rowNo).Font.Bold = True
+        rowNo = rowNo + 1
+    Next i
+
+    ws.Cells(rowNo + 1, 1).Value = "Nothing here disables a button. Fields do not wait " & _
+        "for each other -- you can sync one while another is still being drafted."
+    ws.Cells(rowNo + 1, 1).Font.Italic = True
+
+    ' The sheet index the old START HERE carried, kept below the readiness block
+    ' rather than deleted: it is the only map of the tabs, and the tabs are where
+    ' the evening actually goes.
+    rowNo = rowNo + 3
+    ws.Cells(rowNo, 1).Value = "THE TABS IN THIS WORKBOOK"
+    ws.Cells(rowNo, 1).Font.Bold = True
+    rowNo = rowNo + 1
+    ws.Cells(rowNo, 1).Value = "Sheet"
+    ws.Cells(rowNo, 3).Value = "What it is"
+    ws.Cells(rowNo, 4).Value = "How long it lives"
+    ws.Rows(rowNo).Font.Bold = True
+    rowNo = rowNo + 1
+
+    Dim sh As Object
+    For Each sh In wb.Worksheets
+        If sh.Name <> READY_SHEET_NAME Then
+            ws.Cells(rowNo, 1).Value = sh.Name
+            ws.Cells(rowNo, 3).Value = WorkbookBridge.DescribeSheet(sh.Name)
+            ws.Cells(rowNo, 4).Value = WorkbookBridge.LifespanOf(sh.Name)
+            rowNo = rowNo + 1
+        End If
+    Next sh
+
+    ws.Cells.Font.Size = 8
+    ws.Cells(1, 1).Font.Size = 11
+    ws.Cells(6, 1).Font.Size = 10
+    ws.Cells.VerticalAlignment = -4160        ' xlTop
+    ws.Columns(1).ColumnWidth = 22
+    ws.Columns(2).ColumnWidth = 12
+    ws.Columns(3).ColumnWidth = 58
+    ws.Columns(4).ColumnWidth = 22
+    ws.Columns(5).ColumnWidth = 26
+    ws.Columns(3).WrapText = True
+
+    On Error Resume Next
+    ws.Move Before:=wb.Worksheets(1)   ' first tab, so it is what you land on
+    On Error GoTo 0
+End Sub
+
+' Brings the sheet to the front. Separate from WriteSheet so the writer stays
+' testable without a visible Excel.
+Public Sub ShowSheet(wb As Object)
+    On Error Resume Next
+    WorkbookBridge.GetOrAddWorksheet(wb, READY_SHEET_NAME).Activate
+    wb.Activate
+    On Error GoTo 0
+End Sub
