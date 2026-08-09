@@ -282,6 +282,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     r = "": On Error Resume Next: Err.Clear
     r = Test_FieldSpec_GuidanceDrivesThePrompt()
     AppendResult report, "FieldSpec_GuidanceDrivesThePrompt", r
+    r = Test_FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob()
+    AppendResult report, "FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -2849,6 +2851,72 @@ Private Function Test_FieldSpec_GuidanceDrivesThePrompt() As String
         "while KEY_EVENTS_BODY is told to do exactly that")
 
     Test_FieldSpec_GuidanceDrivesThePrompt = result
+End Function
+
+' THE FIVE PROSE PANELS MUST EACH DO THEIR OWN JOB, and the recipes are where
+' that is enforced -- Prompt 18 names these as the ones most prone to bleeding
+' into each other, which is precisely the thing a person burns evenings
+' re-deciding. A recipe whose Own-job test does not name its neighbours is not
+' doing the work the recipe exists for.
+Private Function Test_FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+
+    FieldSpec.WriteSpecSheet ws
+
+    Dim wanted As Variant
+    wanted = Array("ABOUT_BODY", "KEY_EVENTS_BODY", "STRATEGIC_ALIGNMENT_BODY", _
+                   "PROBLEM_BODY", "PROGRESS_BODY")
+    Dim v As Variant
+    For Each v In wanted
+        Dim g As FieldGuidance
+        g = FieldSpec.LookupGuidance(ws, CStr(v))
+        result = result & Assert(g.Found, "seeded a recipe for " & CStr(v))
+        result = result & Assert(Len(Trim(g.Purpose)) > 0 And Len(Trim(g.Voice)) > 0 _
+            And Len(Trim(g.Length)) > 0 And Len(Trim(g.OwnJob)) > 0 And Len(Trim(g.DoNot)) > 0, _
+            CStr(v) & " has all five guidance columns filled")
+    Next v
+
+    ' The three that were added 2026-08-09 must name the neighbour they must not
+    ' become. Checked on the OWN-JOB text specifically, because that is the line
+    ' a person reads at 11pm when deciding whether a paragraph belongs here.
+    Dim sa As FieldGuidance
+    sa = FieldSpec.LookupGuidance(ws, "STRATEGIC_ALIGNMENT_BODY")
+    result = result & Assert(InStr(sa.OwnJob, "ABOUT_BODY") > 0 And InStr(sa.OwnJob, "PROBLEM_BODY") > 0, _
+        "Strategic Alignment's own-job test names both neighbours -- got '" & sa.OwnJob & "'")
+    result = result & Assert(InStr(sa.DoNot, "[TBC]") > 0, _
+        "and it says to write [TBC] rather than assert a linkage code it cannot confirm")
+
+    Dim pb As FieldGuidance
+    pb = FieldSpec.LookupGuidance(ws, "PROBLEM_BODY")
+    result = result & Assert(InStr(pb.OwnJob, "WHETHER OR NOT THIS PROJECT HAPPENS") > 0, _
+        "Problem's own-job test is the need existing independently of the project -- got '" & pb.OwnJob & "'")
+
+    Dim pg As FieldGuidance
+    pg = FieldSpec.LookupGuidance(ws, "PROGRESS_BODY")
+    result = result & Assert(InStr(pg.DoNot, "GUESS a quarter tag") > 0, _
+        "Progress refuses to guess a quarter tag -- got '" & pg.DoNot & "'")
+
+    ' And the recipe must actually reach the prompt, or it is decoration.
+    Dim prompt As String
+    prompt = FieldSpec.PromptFrom(sa)
+    result = result & Assert(InStr(prompt, "so what") > 0 And InStr(prompt, "600-800") > 0, _
+        "the seeded recipe reaches the generated prompt")
+    result = result & Assert(InStr(prompt, "no Field Spec row exists") = 0, _
+        "and the prompt is not flagged as unguided")
+
+    On Error Resume Next
+    wb.Close False
+    xl.Quit
+    On Error GoTo 0
+
+    Test_FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob = result
 End Function
 
 Private Function Test_PlaceholderCheck_FindsRecordsNotTheTemplate() As String

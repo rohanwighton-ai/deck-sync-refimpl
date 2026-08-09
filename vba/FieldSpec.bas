@@ -125,6 +125,47 @@ Public Function WriteSpecSheet(ws As Object) As String
             "Restate what the project is (that is ABOUT_BODY). List intentions or plans as though they had occurred. Pad to fill space."
         r = r + 1: added = added + 1
     End If
+    ' THE THREE PANELS THAT HAD NO RECIPE, transcribed from the CRC prompt
+    ' library's Prompt 18 (locked definitions, in use at work). Added 2026-08-09.
+    '
+    ' WHY THESE THREE, AND WHY AHEAD OF EVERYTHING ELSE ON THE LIST. A quarter by
+    ' hand costs Rohan about three weeks of nights and MOST OF IT IS RE-DECIDING --
+    ' re-deriving what each section should say, every quarter, from memory. A
+    ' recipe removes exactly that, and sync cannot touch it. Strategic Alignment
+    ' and Problem are the two hardest sections to re-decide (the "so what" and the
+    ' "why"), and Progress is the one that changes most.
+    '
+    ' The three of them plus ABOUT_BODY are the set Prompt 18 warns are "most
+    ' prone to bleeding into each other", which is why each Own-job test names the
+    ' neighbours it must not stray into. That test is the part doing the work: it
+    ' is what a person checks against at 11pm, not the prose above it.
+    If Not existing.Exists("STRATEGIC_ALIGNMENT_BODY") Then
+        SeedRow ws, r, "STRATEGIC_ALIGNMENT_BODY", "Prose", _
+            "The ""so what"" for SAAFE and Australia. Connects the project's outcomes to SAAFE's strategic objectives, the declared linkage codes, and the broader sector or AMR benefit.", _
+            "Taciturn, interpretive, professional. Forward-looking and value-oriented. No promotional language, no hedging, no padding. Assumes AMR literacy.", _
+            "About two short paragraphs. Target 600-800 characters.", _
+            "Does it say why this MATTERS to SAAFE and Australia -- without describing the technology (that is ABOUT_BODY) or setting out the sector gap (that is PROBLEM_BODY)?", _
+            "Describe the approach or technology in detail. Restate the sector gap. Present an INFERRED linkage code as a declared one -- if it cannot be confirmed, write [TBC] and say so. Invent codes, figures, organisations or outcomes not in the workbook."
+        r = r + 1: added = added + 1
+    End If
+    If Not existing.Exists("PROBLEM_BODY") Then
+        SeedRow ws, r, "PROBLEM_BODY", "Prose", _
+            "The ""why"". The need this project addresses: the sector challenge, why current approaches are inadequate, and briefly why this approach is a candidate.", _
+            "Taciturn and factual. Present tense. Assumes AMR literacy. No promotional language.", _
+            "A few sentences. Target 300-500 characters.", _
+            "Does it establish a need that EXISTS WHETHER OR NOT THIS PROJECT HAPPENS -- rather than describing the project's own activity or claiming its value?", _
+            "Describe what the project does (that is ABOUT_BODY). Claim strategic value (that is STRATEGIC_ALIGNMENT_BODY). Overstate the gap. Invent facts not in the workbook."
+        r = r + 1: added = added + 1
+    End If
+    If Not existing.Exists("PROGRESS_BODY") Then
+        SeedRow ws, r, "PROGRESS_BODY", "Prose", _
+            "What the most recent reporting quarter amounts to, interpreted rather than listed. Opens with a header carrying the quarter label, e.g. ""Last reported quarter update - Q4F26"".", _
+            "Interpretive and taciturn. States material constraints or blockers plainly rather than softening them. No promotional language.", _
+            "Two or three sentences, or short bullets, after the quarter-labelled header.", _
+            "Does it INTERPRET the quarter rather than list activity -- and does every claim carry the quarter it was reported against?", _
+            "Dump a raw activity list. Restate standing facts about the project (that is ABOUT_BODY). Report an event as this quarter's when the workbook does not say so. GUESS a quarter tag -- leave it untagged and flag it instead."
+        r = r + 1: added = added + 1
+    End If
     If Not existing.Exists("PROJECT_STATUS") Then
         SeedRow ws, r, "PROJECT_STATUS", "Controlled", _
             "The project's current state, from a fixed vocabulary.", _
