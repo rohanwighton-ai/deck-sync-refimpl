@@ -221,3 +221,55 @@ field per quarter.
 - **The other 42 slides.** Only slide 4 and the template carry the three new panels.
   Extending them is `Setup A2` → `Setup B`, which has never been walked by Rohan
   unaided — and until it is, "is the setup formulaic?" is unanswered.
+
+---
+
+# Loose ends — found in conversation, at risk of being lost
+
+Small, real, and none of them recorded anywhere else as at 2026-08-09.
+
+## Five status values differ by one capital letter
+
+`Q1F27` rows for `3_P001`, `3_P002`, `2_P003`, `2_P004`, `1_P005` hold `'Not started'`
+against the vocabulary's `'Not Started'`. Reported on every drafting run as
+*"5 value(s) are not in their allowed list. Nothing was changed."* and never chased.
+
+The tool is right not to auto-correct — `ApplyControlledValidation`'s own comment says
+so — but the message never names the five, which is fix-list item 1a again. Five cell
+edits.
+
+## UNVERIFIED: does `||||` render as a paragraph break on the slide?
+
+`2_P004`'s published Strategic Alignment stores a blank line between paragraphs as
+FOUR pipes (`||` is one line break; a blank line is two). Publish encodes it, and
+`Drafting` renders `||` back to real breaks in column C — but **nothing has yet
+confirmed what reaches the SLIDE.** If it arrives as literal `||||`, every multi-
+paragraph field is affected, and it will be visible on 43 slides at once.
+
+**This is the last unverified link in the chain.** Check it the first time anything
+syncs to slide 4.
+
+## Duplicate filenames block the add-in, and the machine is full of them
+
+Excel refuses two open workbooks with the same NAME regardless of folder. A review copy
+called `register-wide.xlsx` in `OneDrive\Claude\` blocked the live one and surfaced as
+*"Could not open the paired workbook"* pointing at the file that was fine.
+
+Also on the machine as at 2026-08-09: `addin52`–`addin56` all in the AddIns folder, plus
+stray `addin55.ppam` and `addin56.ppam` in the OneDrive root. Only `56` is needed. Six
+near-identical add-ins is how the wrong one gets loaded on a tired evening.
+
+**Rule for review copies from here: never reuse the live filename.**
+
+## One judgement call in the first drafted field, left in deliberately
+
+`2_P004`'s Strategic Alignment contains *"rather than monitoring broadly and intervening
+on judgement"*. That edges toward `PROBLEM_BODY`'s territory — the "so what" is hard to
+state without a contrast against current practice. Kept, and flagged: if Rohan reads it
+as a bleed, the own-job test needs a sharper line, and that is a Field Spec edit rather
+than a code change. It is the first live test of whether the boundary wording holds.
+
+## The Run Log fix is not in `addin56`
+
+`addin56` was built before the `NumberFormat = "@"` fix landed. Until the next build,
+every Run Log still loses its body — so "read the Run Log" is not usable advice yet.
