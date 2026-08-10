@@ -74,6 +74,49 @@ Public Type MilestoneDrawResult
     Detail As String
 End Type
 
+' A COLUMN PER PART, NOT A PACKED CELL.
+'
+' The first version put every milestone in one cell as
+' `Kickoff~Oct 2023~Y||Design~Mar 2024~Y`. Rohan: "with one row per project
+' wouldn't the timeline be one column per interval not one row?" He was right,
+' and it killed the packed format the same hour it was written.
+'
+' A packed cell is the spreadsheet equivalent of an invisible tag -- the exact
+' thing this module rejects tags FOR. You cannot sort it, filter it, validate
+' it, or change one date without string surgery in the formula bar.
+'
+' Columns also destroy the alignment hazard properly rather than guarding it:
+' MS1_LABEL, MS1_DATE and MS1_DONE are aligned by COLUMN NAME within one row, so
+' there is no position to get out of step. The parallel-list problem was
+' self-inflicted by splitting one thing into three lists.
+'
+' AND THESE ARE FIELDS, NOT A NEW KIND OF THING. Rohan again: "I'm not sure I
+' understand the difference between that and a field." There isn't one. A field
+' is a register column whose value lands in a shape; MS1_LABEL is a register
+' column whose value lands in a shape. The only difference is how the shape is
+' ADDRESSED -- by role tag, or by name inside a tagged device group. Inventing a
+' second category would have switched the coverage, case and empty-value checks
+' off for two dozen columns and called it tidiness.
+Public Const COL_LABEL As String = "_LABEL"
+Public Const COL_DATE As String = "_DATE"
+Public Const COL_DONE As String = "_DONE"
+
+' The register column names this device reads, for slot `i`. Built here so the
+' column names and the SHAPE names cannot drift apart -- they are deliberately
+' the same strings, because a person looking at either should recognise the
+' other.
+Public Function ColumnFor(i As Long, part As String) As String
+    ColumnFor = SLOT_PREFIX & i & part
+End Function
+
+' Tolerant of how a person writes "yes" in a spreadsheet. Blank means NOT done:
+' a milestone nobody has marked achieved has not been achieved.
+Public Function IsDoneWord(v As String) As Boolean
+    Dim u As String
+    u = UCase(Trim(v))
+    IsDoneWord = (u = "Y" Or u = "YES" Or u = "TRUE" Or u = "1" Or u = "DONE" Or u = "ACHIEVED")
+End Function
+
 ' Every shape inside the device group, by name. Groups walked into, because a
 ' slot's parts may themselves be grouped.
 Private Function PartsOf(grp As Object) As Object
@@ -117,15 +160,83 @@ Public Function SlotCount(grp As Object) As Long
     SlotCount = n
 End Function
 
-' Draws the device. `labels`, `dates` and `done` are the register's three
-' `||`-separated cells, already split by the caller.
+' THE ENTRY POINT SYNC USES: the row's values, straight from the register.
 '
-' A COUNT MISMATCH DRAWS NOTHING. Three lists index-aligned by position is the
-' one real hazard in this design: five labels against four dates would pair
-' every milestone after the gap with the wrong date, and the slide would look
-' finished. There is no way to tell which list is wrong, so nothing is guessed.
+' `rowValues` is the slide's row as ExcelOutput hands it over -- field name to
+' value. This reads MS1_LABEL / MS1_DATE / MS1_DONE for as many slots as the
+' TEMPLATE carries, so adding a milestone means filling in columns, never
+' changing code.
+'
+' A slot whose LABEL is blank is treated as absent, and that is the only rule
+' about how many milestones there are. No count is stored anywhere: the register
+' says what exists by having something in it.
+Public Function DrawFromRow(grp As Object, rowValues As Object) As MilestoneDrawResult
+    Dim result As MilestoneDrawResult
+
+    If grp Is Nothing Then
+        result.ErrorMessage = "no timeline group given"
+        DrawFromRow = result
+        Exit Function
+    End If
+
+    Dim slots As Long
+    slots = SlotCount(grp)
+    If slots = 0 Then
+        result.ErrorMessage = "this group carries no milestone slots -- nothing named " & _
+            SLOT_PREFIX & "1" & PART_ON & ". Name the shapes in PowerPoint's Selection Pane first."
+        DrawFromRow = result
+        Exit Function
+    End If
+
+    Dim labels() As String, dates() As String, done() As String
+    ReDim labels(1 To slots): ReDim dates(1 To slots): ReDim done(1 To slots)
+
+    Dim used As Long
+    Dim gap As String
+    Dim i As Long
+    For i = 1 To slots
+        labels(i) = ValueOr(rowValues, ColumnFor(i, COL_LABEL))
+        dates(i) = ValueOr(rowValues, ColumnFor(i, COL_DATE))
+        done(i) = ValueOr(rowValues, ColumnFor(i, COL_DONE))
+
+        If Trim(labels(i)) <> "" Then
+            ' A GAP IS REPORTED. Slots are drawn in order, so a filled MS3 with
+            ' an empty MS2 means either a typo or a milestone someone meant to
+            ' write. Drawing around it would quietly renumber the timeline.
+            If used < i - 1 Then
+                If gap <> "" Then gap = gap & ", "
+                gap = gap & ColumnFor(i, COL_LABEL) & " is filled but " & _
+                    ColumnFor(used + 1, COL_LABEL) & " is empty"
+            End If
+            used = i
+        End If
+    Next i
+
+    If gap <> "" Then
+        result.ErrorMessage = "the milestone columns have a gap: " & gap & _
+            ". Nothing was drawn -- closing the gap here would renumber the timeline " & _
+            "against what the register says."
+        DrawFromRow = result
+        Exit Function
+    End If
+
+    DrawFromRow = DrawMilestones(grp, labels, dates, done, used)
+End Function
+
+Private Function ValueOr(rowValues As Object, key As String) As String
+    On Error Resume Next
+    If Not rowValues Is Nothing Then
+        If rowValues.Exists(key) Then ValueOr = CStr(rowValues(key))
+    End If
+    On Error GoTo 0
+End Function
+
+' Draws the device. `useCount` says how many of the parallel entries are real;
+' DrawFromRow builds all three from one pass over the same columns, so they
+' cannot disagree. The length check below guards the tests that call this
+' directly.
 Public Function DrawMilestones(grp As Object, labels() As String, dates() As String, _
-                               done() As String) As MilestoneDrawResult
+                               done() As String, Optional useCount As Long = -1) As MilestoneDrawResult
     Dim result As MilestoneDrawResult
 
     If grp Is Nothing Then
@@ -138,6 +249,15 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
     nL = UBound(labels) - LBound(labels) + 1
     nD = UBound(dates) - LBound(dates) + 1
     nX = UBound(done) - LBound(done) + 1
+
+    ' `useCount` says how many entries are REAL. DrawFromRow fills all three
+    ' arrays in one pass over the same slots, so they are the same length by
+    ' construction and only the count differs -- overriding just nL made the
+    ' guard compare 3 against 4 and refuse its own correctly-built data.
+    ' The mismatch check below is for callers that build the arrays themselves.
+    If useCount >= 0 Then
+        nL = useCount: nD = useCount: nX = useCount
+    End If
 
     If nL <> nD Or nL <> nX Then
         result.ErrorMessage = "the milestone lists are different lengths -- " & _
@@ -182,7 +302,7 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
 
         If i <= nL Then
             Dim isDone As Boolean
-            isDone = IsAffirmative(dates, done, i, LBound(done))
+            isDone = IsDoneWord(done(LBound(done) + i - 1))
 
             ' ACHIEVED IS SHOWN BY WHICHEVER CIRCLES THE TEMPLATE CARRIES.
             ' Two circles means toggle between them. One circle means the
@@ -260,14 +380,6 @@ End Function
 
 Private Function PartOrNothing(parts As Object, nm As String) As Object
     If parts.Exists(UCase(nm)) Then Set PartOrNothing = parts(UCase(nm))
-End Function
-
-' Tolerant of how a person writes "yes" in a spreadsheet, and of nothing at all.
-' Blank means NOT achieved: a milestone nobody has marked done is not done.
-Private Function IsAffirmative(dates() As String, done() As String, i As Long, lo As Long) As Boolean
-    Dim v As String
-    v = UCase(Trim(done(lo + i - 1)))
-    IsAffirmative = (v = "Y" Or v = "YES" Or v = "TRUE" Or v = "1" Or v = "DONE" Or v = "ACHIEVED")
 End Function
 
 Private Sub SetVisible(shp As Object, show As Boolean)

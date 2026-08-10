@@ -697,6 +697,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "MilestoneDevice_DrawsFromDataAndCreatesNothing", r
     r = Test_MilestoneDevice_RefusesListsThatCannotBeAligned()
     AppendResult report, "MilestoneDevice_RefusesListsThatCannotBeAligned", r
+    r = Test_MilestoneDevice_ReadsAColumnPerIntervalFromTheRow()
+    AppendResult report, "MilestoneDevice_ReadsAColumnPerIntervalFromTheRow", r
     r = Test_InjectField_RepeatingBarsOneCellManyMilestones()
     AppendResult report, "InjectField_RepeatingBarsOneCellManyMilestones", r
     r = Test_InjectProgress_TracklessPairMeasuresTheirSum()
@@ -9147,6 +9149,70 @@ Private Function Test_MilestoneDevice_RefusesListsThatCannotBeAligned() As Strin
 
     sld.Delete
     Test_MilestoneDevice_RefusesListsThatCannotBeAligned = result
+End Function
+
+
+' ONE COLUMN PER INTERVAL, READ FROM THE ROW.
+'
+' Rohan: "with one row per project wouldn't the timeline be one column per
+' interval not one row?" -- which killed the packed-cell format. And then: "I'm
+' not sure I understand the difference between that and a field." There is
+' none: MS1_LABEL is a register column whose value lands in a shape, same as
+' ABOUT_BODY. Only the addressing differs.
+'
+' The gap assertion is the one that matters. Slots draw in order, so a filled
+' MS3 with an empty MS2 would quietly renumber the timeline -- milestone three
+' would appear in slot two and the slide would look finished.
+Private Function Test_MilestoneDevice_ReadsAColumnPerIntervalFromTheRow() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 4)
+
+    Dim row As Object
+    Set row = CreateObject("Scripting.Dictionary")
+    row("MS1_LABEL") = "Kickoff":  row("MS1_DATE") = "Oct 2023": row("MS1_DONE") = "Y"
+    row("MS2_LABEL") = "Design":   row("MS2_DATE") = "Mar 2024": row("MS2_DONE") = "yes"
+    row("MS3_LABEL") = "Build":    row("MS3_DATE") = "Sep 2024": row("MS3_DONE") = ""
+
+    Dim r As MilestoneDrawResult
+    r = MilestoneDevice.DrawFromRow(grp, row)
+
+    result = result & Assert(r.ErrorMessage = "", "it draws [" & r.ErrorMessage & "]")
+    result = result & Assert(r.Drawn = 3, "three milestones drawn, got " & r.Drawn)
+    result = result & Assert(r.Hidden = 1, "the empty fourth slot is hidden, got " & r.Hidden)
+    result = result & Assert(NamedIn(grp, "MS2_LABEL").TextFrame.TextRange.text = "Design", _
+        "labels come from their own column")
+    result = result & Assert(NamedIn(grp, "MS2_ON").Visible = msoTrue, _
+        "'yes' counts as done")
+    result = result & Assert(NamedIn(grp, "MS3_ON").Visible = msoFalse _
+        And NamedIn(grp, "MS3_OFF").Visible = msoTrue, _
+        "a BLANK done column means NOT done -- never assumed the other way")
+
+    ' A GAP IS REFUSED, not closed.
+    Dim row2 As Object
+    Set row2 = CreateObject("Scripting.Dictionary")
+    row2("MS1_LABEL") = "Kickoff": row2("MS1_DATE") = "Oct 2023": row2("MS1_DONE") = "Y"
+    row2("MS3_LABEL") = "Build":   row2("MS3_DATE") = "Sep 2024": row2("MS3_DONE") = "N"
+
+    Dim bar As Object
+    Set bar = NamedIn(grp, MilestoneDevice.NAME_BAR)
+    Dim barBefore As Single
+    barBefore = bar.Height
+
+    Dim r2 As MilestoneDrawResult
+    r2 = MilestoneDevice.DrawFromRow(grp, row2)
+    result = result & Assert(r2.ErrorMessage <> "", "a gap in the columns is refused")
+    result = result & Assert(InStr(r2.ErrorMessage, "MS3_LABEL") > 0 _
+        And InStr(r2.ErrorMessage, "MS2_LABEL") > 0, _
+        "and names the filled one AND the empty one, got '" & r2.ErrorMessage & "'")
+    result = result & Assert(r2.Drawn = 0 And bar.Height = barBefore, _
+        "nothing drawn and the bar did not move")
+
+    sld.Delete
+    Test_MilestoneDevice_ReadsAColumnPerIntervalFromTheRow = result
 End Function
 
 ' Local copy of the trailing-break normalisation, for comparing what a textbox
