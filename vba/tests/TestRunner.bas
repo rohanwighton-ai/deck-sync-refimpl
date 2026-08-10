@@ -687,6 +687,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "FieldWiring_CoverageCountsSlidesNotPresence", r
     r = Test_FieldWiring_ATrackIsATagNotAField()
     AppendResult report, "FieldWiring_ATrackIsATagNotAField", r
+    r = Test_FieldWiring_BothCompanionsAreTagsNotFields()
+    AppendResult report, "FieldWiring_BothCompanionsAreTagsNotFields", r
     r = Test_InjectField_RepeatingBarsOneCellManyMilestones()
     AppendResult report, "InjectField_RepeatingBarsOneCellManyMilestones", r
     r = Test_InjectProgress_TracklessPairMeasuresTheirSum()
@@ -8841,6 +8843,61 @@ Private Function Test_InjectProgress_TracklessPairMeasuresTheirSum() As String
 
     sld.Delete
     Test_InjectProgress_TracklessPairMeasuresTheirSum = result
+End Function
+
+' A REMAINDER IS A TAG TOO, and forgetting that nearly cost a live run.
+'
+' On 2026-08-10 the exclusion covered `.track` only. Rohan's `Time elapsed` bar
+' is a fill beside a grey REMAINDER with no track, so tagging its companion
+' would have created a `TIME_ELAPSED.rest` register COLUMN -- and the router,
+' finding no companion for THAT, would have handed it to the text writer and
+' written text into the grey tail of a progress bar.
+'
+' The suffix is returned rather than a Boolean so callers can strip it: a check
+' written for `.track` strips six characters, and `.rest` is five.
+Private Function Test_FieldWiring_BothCompanionsAreTagsNotFields() As String
+    Dim result As String
+
+    result = result & Assert(FieldWiring.IsCompanionFieldName("TIME_ELAPSED.track"), _
+        "a track is a companion")
+    result = result & Assert(FieldWiring.IsCompanionFieldName("TIME_ELAPSED.rest"), _
+        "and so is a remainder -- the one that was missed")
+    result = result & Assert(FieldWiring.IsCompanionFieldName("TIME_ELAPSED.REST"), _
+        "case does not matter")
+
+    result = result & Assert(Not FieldWiring.IsCompanionFieldName("TIME_ELAPSED"), _
+        "the bar itself is a field")
+    result = result & Assert(Not FieldWiring.IsCompanionFieldName("REST_PERIOD_BODY"), _
+        "a field merely containing the word is a field")
+    result = result & Assert(Not FieldWiring.IsCompanionFieldName(".rest"), _
+        "a bare suffix with no field in front of it is not a companion")
+
+    ' THE SUFFIX ITSELF, because the orphan check strips it by length. A
+    ' remainder stripped as though it were a track loses a character and looks
+    ' for the wrong base name.
+    result = result & Assert(FieldWiring.CompanionSuffixOf("X.track") = FieldWiring.TRACK_SUFFIX, _
+        "a track reports the track suffix, got '" & FieldWiring.CompanionSuffixOf("X.track") & "'")
+    result = result & Assert(FieldWiring.CompanionSuffixOf("X.rest") = FieldWiring.REST_SUFFIX, _
+        "a remainder reports the rest suffix, got '" & FieldWiring.CompanionSuffixOf("X.rest") & "'")
+    result = result & Assert(FieldWiring.CompanionSuffixOf("X") = "", _
+        "an ordinary field reports no suffix")
+
+    ' And the orphan check must find a REMAINDER with no bar, not just a track.
+    Dim sld As Object
+    Set sld = NewTaggedSlide("wiring-rest", "wr-1")
+    Dim tail As Object
+    Set tail = sld.Shapes.AddShape(1, 240, 200, 17, 7)
+    tail.Tags.Add "role", "TIME_ELAPSED" & FieldWiring.REST_SUFFIX
+
+    Dim r As FieldWiringResult
+    r = FieldWiring.ScanFieldWiring("wiring-rest", FieldsCollection(), Nothing)
+    result = result & Assert(r.OrphanCount = 1, _
+        "a remainder with no bar is an orphan, got " & r.OrphanCount)
+    result = result & Assert(InStr(UCase(r.OrphanTracks), "TIME_ELAPSED") > 0, _
+        "and it is named, got '" & r.OrphanTracks & "'")
+
+    sld.Delete
+    Test_FieldWiring_BothCompanionsAreTagsNotFields = result
 End Function
 
 ' Local copy of the trailing-break normalisation, for comparing what a textbox

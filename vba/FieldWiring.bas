@@ -60,14 +60,24 @@ Option Explicit
 ' deck being extended looks like. So this is reported and never blocks. A
 ' check that fires on a normal state gets clicked through, and then it is not
 ' there for the times it matters.
-' THE SUFFIX IS THE MARKER, defined once.
+' THE SUFFIXES ARE THE MARKERS, defined once.
 '
-' Three separate rules turn on what a track is called: the register-exclusion
-' at commit (a track is tagged, never a column), the orphan check below, and the
-' injector's own lookup of `<field>.track`. Three copies of ".track" would drift
-' the first time anyone renamed it, and the failure would be silent -- a bar
-' that quietly becomes a text field.
+' A progress field is two or three shapes bound by a naming convention, and
+' every one of those relationships is invisible on the slide. Several rules turn
+' on the names: the register-exclusion at commit (a companion is tagged, never a
+' column), the orphan check below, and the injector's own lookups. Copies of
+' ".track" scattered about would drift the first time anyone renamed one, and
+' the failure would be silent -- a bar that quietly becomes a text field.
+'
+' TWO COMPANIONS, NOT ONE, and missing that cost a live run on 2026-08-10.
+' Marking asked only ever for a `.track`, so Rohan's `Time elapsed` bar -- a
+' fill beside a 0.17" grey REMAINDER, with no track anywhere -- was about to
+' have its remainder tagged as the track. The extent would then have been the
+' tail's own width and the bar would have been drawn at 90% OF THE TAIL. The
+' trackless fill/rest mode had shipped two hours earlier and the marking flow
+' knew nothing about it.
 Public Const TRACK_SUFFIX As String = ".track"
+Public Const REST_SUFFIX As String = ".rest"
 
 Public Type FieldWiringResult
     Unmarked As String          ' register fields NO existing slide carries
@@ -99,14 +109,42 @@ Public Function CarriesField(roleSet As Object, fieldName As String) As Boolean
     CarriesField = roleSet.Exists(n) Or roleSet.Exists(n & ".1")
 End Function
 
-' A track is a TAG, not a field: it carries no value, is read and never written,
-' and must never become a register column. Asked at commit time and by the
-' wiring check, so it lives here rather than in either caller.
-Public Function IsTrackFieldName(fieldName As String) As Boolean
+' Which companion suffix this name ends in, or "" if it is an ordinary field.
+'
+' Returning the SUFFIX rather than a Boolean is what lets every caller strip it
+' correctly without knowing which one matched -- the orphan check needs the base
+' name, and hardcoding a length there is how ".rest" would have been mis-stripped
+' by a check written for ".track".
+Public Function CompanionSuffixOf(fieldName As String) As String
     Dim n As String
     n = UCase(Trim(fieldName))
-    If Len(n) <= Len(TRACK_SUFFIX) Then Exit Function
-    IsTrackFieldName = (Right(n, Len(TRACK_SUFFIX)) = UCase(TRACK_SUFFIX))
+
+    If Len(n) > Len(TRACK_SUFFIX) Then
+        If Right(n, Len(TRACK_SUFFIX)) = UCase(TRACK_SUFFIX) Then
+            CompanionSuffixOf = TRACK_SUFFIX
+            Exit Function
+        End If
+    End If
+    If Len(n) > Len(REST_SUFFIX) Then
+        If Right(n, Len(REST_SUFFIX)) = UCase(REST_SUFFIX) Then
+            CompanionSuffixOf = REST_SUFFIX
+            Exit Function
+        End If
+    End If
+End Function
+
+' A companion is a TAG, not a field: it carries no value, and must never become
+' a register column. A `.rest` that became one would be worse than useless --
+' the router would find no companion for IT, hand it to the text writer, and
+' write text into the grey remainder of a progress bar.
+Public Function IsCompanionFieldName(fieldName As String) As Boolean
+    IsCompanionFieldName = (CompanionSuffixOf(fieldName) <> "")
+End Function
+
+' Kept for the track-specific question -- the orphan check reports a track with
+' no bar differently from a remainder with no bar, because the remedies differ.
+Public Function IsTrackFieldName(fieldName As String) As Boolean
+    IsTrackFieldName = (CompanionSuffixOf(fieldName) = TRACK_SUFFIX)
 End Function
 
 
@@ -320,9 +358,11 @@ Private Sub CollectOrphanTracks(seen As Object, prefix As String, ByRef result A
     For Each k In seen.Keys
         Dim tag As String
         tag = CStr(k)
-        If IsTrackFieldName(tag) Then
+        Dim suffix As String
+        suffix = CompanionSuffixOf(tag)
+        If suffix <> "" Then
             Dim baseName As String
-            baseName = Left(tag, Len(tag) - Len(TRACK_SUFFIX))
+            baseName = Left(tag, Len(tag) - Len(suffix))
             If Not seen.Exists(baseName) Then
                 result.OrphanCount = result.OrphanCount + 1
                 If result.OrphanTracks <> "" Then result.OrphanTracks = result.OrphanTracks & ", "

@@ -171,6 +171,11 @@ Private markedDeckId As String
 ' kind of string a person gets subtly wrong once and then cannot see.
 Private pendingTrackFor As String
 
+' WHICH companion is owed -- ".track" or ".rest". Held beside pendingTrackFor
+' because the answer is given when the BAR is marked and used when the NEXT
+' shape is picked, one button press later.
+Private pendingCompanionSuffix As String
+
 ' The last "Last Save Time" value this module saw, and the LOCAL clock reading
 ' at the moment it saw it. Together they answer the only question that matters
 ' here: "has the file actually been written since the last time we looked, and
@@ -1199,6 +1204,17 @@ End Function
 ' blank answer falls back to "text", the safe no-op formatting choice
 ' (harmless here, unlike guessing at real harvested data, since this only
 ' ever affects a bonus NumberFormat, never the synced value itself).
+' The companion's name in a sentence, from its suffix. Derived so the wording
+' and the tag can never disagree -- a message saying "track" while the code
+' writes ".rest" is the class of defect this project keeps paying for.
+Private Function CompanionWord(suffix As String) As String
+    If suffix = FieldWiring.REST_SUFFIX Then
+        CompanionWord = "REMAINDER"
+    Else
+        CompanionWord = "TRACK"
+    End If
+End Function
+
 Public Function NormalizeFieldType(answer As String) As String
     Select Case Trim(LCase(answer))
         Case "1", "text": NormalizeFieldType = "text"
@@ -1378,7 +1394,53 @@ Private Sub MarkFieldForBatchCore()
             Exit Sub
         End If
 
-        Set shp = leaves(pickedIdx)
+        ' SHOW IT, DON'T JUST NAME IT. Rohan, 2026-08-10: "can't it highlight the
+        ' shape that is selected in the list?"
+        '
+        ' A list of names like `Shape 215` / `Shape 217a` is unreadable on a real
+        ' deck -- the timeline group offers nine of them, several sharing a name,
+        ' and picking the wrong one silently tags the wrong shape. Selecting it
+        ' puts PowerPoint's own handles on the slide behind this dialog, so the
+        ' answer is visible rather than inferred.
+        '
+        ' Looping rather than accepting the first answer: being able to look and
+        ' then say "no, not that one" is the whole point, and returning to the
+        ' list costs nothing.
+        Do
+            Set shp = leaves(pickedIdx)
+
+            On Error Resume Next
+            shp.Select
+            On Error GoTo 0
+
+            Dim confirmPick As VbMsgBoxResult
+            confirmPick = MsgBox( _
+                "Selected '" & shp.Name & "' on the slide -- look behind this box." & vbCrLf & vbCrLf & _
+                "Yes -- that is the one." & vbCrLf & _
+                "No  -- pick a different number." & vbCrLf & _
+                "Cancel -- mark nothing.", _
+                vbYesNoCancel + vbQuestion, "Mark Field for Batch -- Is this it?")
+
+            If confirmPick = vbCancel Then
+                RibbonUI.ShowSyncResult "Mark Field for Batch", _
+                    "Nothing was marked. Your other marked fields are untouched."
+                Exit Sub
+            ElseIf confirmPick = vbYes Then
+                Exit Do
+            End If
+
+            pickAnswer = InputBox(pickerPrompt, "Mark Field for Batch -- Pick the Field")
+            pickedIdx = 0
+            If IsNumeric(pickAnswer) Then
+                Dim againIdx As Long
+                againIdx = CLng(pickAnswer)
+                If againIdx >= 1 And againIdx <= leafCount Then pickedIdx = againIdx
+            End If
+            If pickedIdx = 0 Then
+                RibbonUI.ShowSyncResult "Mark Field for Batch", "Cancelled -- no valid field number chosen."
+                Exit Sub
+            End If
+        Loop
     End If
 
     ' Re-marking an already-marked shape prefills its existing name (a quick
@@ -1476,6 +1538,37 @@ Private Sub MarkFieldForBatchCore()
             Exit Sub
         ElseIf emptyAnswer = vbYes Then
             rendersAs = FieldSpec.RENDER_PROGRESS
+
+            ' WHICH COMPANION -- a track behind it, or a remainder beside it.
+            '
+            ' Asked rather than assumed, because assuming cost a live run on
+            ' 2026-08-10: the flow only ever offered `.track`, and Rohan's
+            ' `Time elapsed` bar has a 0.17" grey REMAINDER and no track. Tagged
+            ' as a track, the extent becomes the tail's own width and the bar is
+            ' drawn at 90% OF THE TAIL.
+            '
+            ' The distinction is visible on the slide, which is why a person can
+            ' answer it and the code cannot: a track sits BEHIND the bar at full
+            ' width, a remainder sits BESIDE it and the two together span the
+            ' full width.
+            Dim compAnswer As VbMsgBoxResult
+            compAnswer = MsgBox( _
+                "What says how wide 100% is?" & vbCrLf & vbCrLf & _
+                "Yes -- a TRACK: a full-width shape BEHIND the bar." & vbCrLf & _
+                "No  -- a REMAINDER: a shape BESIDE the bar, the two together " & _
+                "spanning the full width (a grey tail after a coloured bar)." & vbCrLf & _
+                "Cancel -- mark nothing.", _
+                vbYesNoCancel + vbQuestion, "Mark Field for Batch")
+
+            If compAnswer = vbCancel Then
+                RibbonUI.ShowSyncResult "Mark Field for Batch", _
+                    "Nothing was marked. Your other marked fields are untouched."
+                Exit Sub
+            ElseIf compAnswer = vbYes Then
+                pendingCompanionSuffix = FieldWiring.TRACK_SUFFIX
+            Else
+                pendingCompanionSuffix = FieldWiring.REST_SUFFIX
+            End If
         Else
             rendersAs = FieldSpec.RENDER_TEXT
         End If
@@ -1492,21 +1585,21 @@ Private Sub MarkFieldForBatchCore()
     If pendingTrackFor <> "" Then
         Dim trackAnswer As VbMsgBoxResult
         trackAnswer = MsgBox( _
-            "'" & pendingTrackFor & "' was marked as a progress bar and still needs its TRACK -- " & _
-            "the full-width shape behind the bar that says how wide 100% is." & vbCrLf & vbCrLf & _
+            "'" & pendingTrackFor & "' was marked as a progress bar and still needs its " & _
+            CompanionWord(pendingCompanionSuffix) & " -- the shape that says how wide 100% is." & vbCrLf & vbCrLf & _
             "Is '" & shp.Name & "' that track?" & vbCrLf & vbCrLf & _
-            "Yes -- tag it as " & pendingTrackFor & FieldWiring.TRACK_SUFFIX & "." & vbCrLf & _
+            "Yes -- tag it as " & pendingTrackFor & pendingCompanionSuffix & "." & vbCrLf & _
             "No  -- mark this shape as an ordinary field instead.", _
             vbYesNo + vbQuestion, "Mark Field for Batch")
 
         If trackAnswer = vbYes Then
-            typedName = pendingTrackFor & FieldWiring.TRACK_SUFFIX
+            typedName = pendingTrackFor & pendingCompanionSuffix
             ' The track is never written and never drafted, so its metadata is
             ' fixed rather than asked about -- two prompts a person cannot get
             ' wrong are two prompts not worth showing.
             Dim tStatus As String
             tStatus = MarkShapeForBatch(shp, typedName, "text", "static")
-            pendingTrackFor = ""
+            pendingTrackFor = "": pendingCompanionSuffix = ""
             RibbonUI.ShowSyncResult "Mark Field for Batch", _
                 tStatus & vbCrLf & vbCrLf & _
                 "The bar and its track are both marked. The track is tagged on the slide " & _
@@ -1620,11 +1713,11 @@ Private Sub MarkFieldForBatchCore()
     If rendersAs = FieldSpec.RENDER_PROGRESS And InStr(status, "Marked field") > 0 Then
         pendingTrackFor = Trim(typedName)
         status = status & vbCrLf & vbCrLf & _
-            "THIS IS HALF A PROGRESS FIELD. It still needs its TRACK -- the full-width " & _
-            "shape behind the bar that says how wide 100% is. Without one it cannot be " & _
-            "drawn, and it would be treated as a text field." & vbCrLf & vbCrLf & _
+            "THIS IS HALF A PROGRESS FIELD. It still needs its " & _
+            CompanionWord(pendingCompanionSuffix) & " -- the shape that says how wide 100% " & _
+            "is. Without one it cannot be drawn, and it would be treated as a text field." & vbCrLf & vbCrLf & _
             "Click that shape and press '" & CommandBarUI.CAP_SYNC_NOW & "' again -- " & _
-            "it will offer to tag it as " & Trim(typedName) & FieldWiring.TRACK_SUFFIX & _
+            "it will offer to tag it as " & Trim(typedName) & pendingCompanionSuffix & _
             ", so you never have to type that name."
     End If
 
@@ -1648,7 +1741,7 @@ Public Sub ResetMarkingSession()
     Set markedVolatility = Nothing
     markedSlideId = 0
     markedDeckId = ""
-    pendingTrackFor = ""
+    pendingTrackFor = "": pendingCompanionSuffix = ""
     ' Also clears the persisted CustomDocumentProperty (see this module's
     ' persistence header) so a deliberate reset never silently resurrects
     ' on the next reopen. On Error Resume Next inside ClearMarkingSession
@@ -2449,7 +2542,7 @@ Public Function CommitBatch(plan As BatchOnboardPlan, templateSld As Object, oth
                         '
                         ' Tagged on the slide, absent from the register: that
                         ' asymmetry is the whole design, not an oversight.
-                        If Not FieldWiring.IsTrackFieldName(CStr(plan.FieldNames(fieldIdx))) Then
+                        If Not FieldWiring.IsCompanionFieldName(CStr(plan.FieldNames(fieldIdx))) Then
                             harvested(plan.FieldNames(fieldIdx)) = plan.HarvestedText(key)
                         End If
                     End If

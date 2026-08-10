@@ -271,7 +271,7 @@ Public Function InjectField(sld As Object, identityTag As String, sourceValue As
     ' done part has been deleted still routes here and gets InjectProgressField's
     ' specific message, instead of being told it has no text frame.
     If Not trackShp Is Nothing _
-       Or Not FindShapeByRoleTag(sld, identityTag & ".rest") Is Nothing Then
+       Or Not FindShapeByRoleTag(sld, identityTag & FieldWiring.REST_SUFFIX) Is Nothing Then
         InjectField = InjectProgressVia(sld, identityTag, sourceValue, dryRun)
         Exit Function
     End If
@@ -880,7 +880,7 @@ Public Function InjectProgressField(sld As Object, identityTag As String, _
     Dim doneShp As Object, trackShp As Object, restShp As Object
     Set doneShp = FindShapeByRoleTag(sld, identityTag)
     Set trackShp = FindShapeByRoleTag(sld, useTrack)
-    Set restShp = FindShapeByRoleTag(sld, identityTag & ".rest")
+    Set restShp = FindShapeByRoleTag(sld, identityTag & FieldWiring.REST_SUFFIX)
 
     If doneShp Is Nothing Then
         result.ErrorMessage = "no single shape tagged role=" & identityTag
