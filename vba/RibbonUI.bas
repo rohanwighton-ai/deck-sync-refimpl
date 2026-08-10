@@ -99,30 +99,45 @@ Public Const REPORT_CAP As Long = 900
 ' check reports genuine orphans rather than adapters.
 Private Sub WhereAmI()
     On Error GoTo Failed
-    WhereAmICore
+    Dim ignored As String
+    ignored = WhereAmICore(False)
     Exit Sub
 Failed:
     RibbonUI.ShowSyncResult "Where am I", RibbonUI.UnexpectedErrorText("Where am I", Err.Number, Err.Description, Err.Source)
 End Sub
 
-Private Sub WhereAmICore()
+' `quiet` rebuilds the sheet and RETURNS the headline instead of announcing it.
+'
+' Rohan, 2026-08-10: "do we need this msgbox then?" No. It opened every single
+' chain run with a dialog that announces state and asks nothing -- the category
+' he had already named as the problem -- and it was redundant twice over: the
+' marking offer one dialog later names the actual blocker in detail, and the
+' rest was identical boilerplate on every press. Its only real job is rebuilding
+' the sheet, which needs no dialog.
+'
+' The chain's own rule is stop only at decisions, and this broke it on step one.
+Private Function WhereAmICore(Optional quiet As Boolean = False) As String
     Dim pres As Object
     Set pres = Application.ActivePresentation
 
     Dim workbookPath As String
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath = "" Then
+        WhereAmICore = "No paired workbook, so there is nothing to report on."
+        If quiet Then Exit Function
         MsgBox "This deck has no paired workbook yet, so there is nothing to report " & _
                "on." & vbCrLf & vbCrLf & "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", _
                vbExclamation, "Where am I"
-        Exit Sub
+        Exit Function
     End If
 
     Dim wb As Object
     Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
     If wb Is Nothing Then
+        WhereAmICore = "Could not open the paired workbook at: " & workbookPath
+        If quiet Then Exit Function
         MsgBox "Could not open the paired workbook at: " & workbookPath, vbCritical, "Where am I"
-        Exit Sub
+        Exit Function
     End If
 
     Dim r As ReadyReport
@@ -132,13 +147,16 @@ Private Sub WhereAmICore()
     ' The sheet is the answer; the dialog only carries the headline and points at
     ' it. Everything else would be truncated -- CapReport exists because MsgBox
     ' silently cuts near 1024 characters, and this report is longer than that.
+    WhereAmICore = Readiness.Headline(r)
+    If quiet Then Exit Function
+
     Readiness.ShowSheet wb
     MsgBox Readiness.Headline(r) & vbCrLf & vbCrLf & _
            "The full picture is on the '" & Readiness.READY_SHEET_NAME & _
            "' sheet, first tab of the workbook." & vbCrLf & vbCrLf & _
            "Nothing is disabled by what it says -- it reports, it does not gate.", _
            vbInformation, "Where am I"
-End Sub
+End Function
 
 ' NO LONGER A BUTTON TARGET. The chain is the entry point; this stays as the
 ' error-handling wrapper its Core still needs. Private so the reachability
@@ -967,7 +985,10 @@ Private Sub SyncNowChainCore()
     ' WHERE YOU ARE, WITHOUT A BUTTON FOR IT. Folded in per Rohan 2026-08-09.
     ' Rebuilt first so the sheet reflects the state this run is about to act on,
     ' and so a person who cancels at the plan below still gets the picture.
-    WhereAmI
+    Dim readyHeadline As String
+    On Error Resume Next
+    readyHeadline = WhereAmICore(True)
+    On Error GoTo 0
 
     ' THE REPAIR, OFFERED ONLY WHEN IT IS THE ANSWER. Repoint sets the workbook
     ' path; it does NOT rebuild the slide-type link, so it is offered when the
@@ -1036,6 +1057,15 @@ Private Sub SyncNowChainCore()
 
     Dim staged As String
     staged = DraftingUI.EndCollecting()
+
+    ' The readiness headline appears HERE, once, with everything else -- not as
+    ' a dialog before anything has happened. See WhereAmICore's header.
+    If readyHeadline <> "" Then
+        staged = "Where you were when this started: " & readyHeadline & vbCrLf & _
+                 "(full picture on the '" & Readiness.READY_SHEET_NAME & "' sheet)" & _
+                 vbCrLf & vbCrLf & staged
+    End If
+
     If staged <> "" Then
         MsgBox CapReport(staged, "Next: the slide changes."), vbInformation, TITLE
     End If
