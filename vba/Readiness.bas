@@ -81,6 +81,7 @@ Public Enum RemedyCode
     RM_SAVE_DECK_THEN_REBUILD
     RM_SAVE_WORKBOOK_THEN_REBUILD
     RM_DECK_UNREADABLE
+    RM_MARK_MISSING_FIELDS
 End Enum
 
 
@@ -120,6 +121,15 @@ Public Function RemedyText(code As RemedyCode) As String
         Case RM_SAVE_DECK_THEN_REBUILD:  RemedyText = "Save the deck, then rebuild this sheet"
         Case RM_SAVE_WORKBOOK_THEN_REBUILD: RemedyText = "Save the workbook, then rebuild this sheet"
         Case RM_DECK_UNREADABLE:         RemedyText = "Open the deck from a local folder, or see the trace"
+
+        ' TRUE ONLY BECAUSE THE ROUTE WAS BUILT WITH IT. Until 2026-08-10 the
+        ' honest remedy here would have been "there is no way to do this":
+        ' MarkFieldForBatch's single call site sat behind `If Not hasTypes`, so
+        ' a deck with a registered slide type could not tag a new field at all.
+        ' This line and SyncNowChainCore's marking branch are one change; do not
+        ' keep one without the other.
+        Case RM_MARK_MISSING_FIELDS:     RemedyText = _
+            "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it offers to tag them before syncing"
 
         ' An unrecognised code must never render as a confident blank -- the
         ' sheet would show a line with no way forward and look complete.
@@ -306,6 +316,34 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
                     Else
                         AddLine r, "Parity", ReviewQueue.ParityText(q), ST_BLOCKED, _
                             "deck + open workbook", "Sync Now offers to create missing slides"
+                    End If
+
+                    ' IS EVERY FIELD ACTUALLY ATTACHED TO A SHAPE? Parity above
+                    ' answers "do the SLIDES and ROWS line up"; this answers "does
+                    ' each COLUMN have something on the slide to write into". A
+                    ' deck can pass parity perfectly and still carry a register
+                    ' field that nothing on any slide holds -- the field is then
+                    ' carried all the way to the injector and refused there, once
+                    ' per slide, after the drafting work is already done.
+                    Dim wiring As FieldWiringResult
+                    wiring = FieldWiring.ScanFieldWiring(types(i), sheet.Fields, templateSld)
+                    If Not wiring.Scanned Then
+                        AddLine r, "Fields tagged", FieldWiring.WiringText(wiring), _
+                            ST_UNKNOWN, "-- the slides could not be read"
+                    ElseIf wiring.UnmarkedCount > 0 Or wiring.OrphanCount > 0 _
+                           Or wiring.TemplateUnmarkedCount > 0 Then
+                        AddLine r, "Fields tagged", FieldWiring.WiringText(wiring), _
+                            ST_BLOCKED, "deck + open workbook", _
+                            RemedyText(RM_MARK_MISSING_FIELDS)
+                    ElseIf Not wiring.TemplateScanned Then
+                        ' Every field is on a slide, and nothing looked at the
+                        ' template. That is not a pass: rule 1, a check that
+                        ' could not run says so.
+                        AddLine r, "Fields tagged", FieldWiring.WiringText(wiring), _
+                            ST_UNKNOWN, "deck + open workbook"
+                    Else
+                        AddLine r, "Fields tagged", FieldWiring.WiringText(wiring), _
+                            ST_OK, "deck + open workbook"
                     End If
                 End If
             End If

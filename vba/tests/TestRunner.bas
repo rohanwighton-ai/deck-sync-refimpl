@@ -677,6 +677,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "InjectField_RefusesANonNumberForABarWithoutGoingQuiet", r
     r = Test_InjectField_TwoSlidesEachGetTheirOwnValue()
     AppendResult report, "InjectField_TwoSlidesEachGetTheirOwnValue", r
+    r = Test_FieldWiring_NamesTheFieldsNothingCarries()
+    AppendResult report, "FieldWiring_NamesTheFieldsNothingCarries", r
+    r = Test_FieldWiring_TemplateIsCheckedSeparatelyFromInstances()
+    AppendResult report, "FieldWiring_TemplateIsCheckedSeparatelyFromInstances", r
+    r = Test_FieldWiring_OrphanTrackIsAHalfMarkedBar()
+    AppendResult report, "FieldWiring_OrphanTrackIsAHalfMarkedBar", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -8426,6 +8432,147 @@ Private Function Test_InjectField_TwoSlidesEachGetTheirOwnValue() As String
     sldB.Delete
     sldA.Delete
     Test_InjectField_TwoSlidesEachGetTheirOwnValue = result
+End Function
+
+' Builds a real tagged instance of a slide type, so GatherInstances finds it.
+Private Function NewTaggedSlide(slideType As String, instanceKey As String) As Object
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", slideType
+    sld.Tags.Add "instance_key", instanceKey
+    Set NewTaggedSlide = sld
+End Function
+
+Private Function FieldsCollection(ParamArray names() As Variant) As Collection
+    Dim c As New Collection
+    Dim i As Long
+    For i = LBound(names) To UBound(names)
+        c.Add CStr(names(i))
+    Next i
+    Set FieldsCollection = c
+End Function
+
+' A register column with nothing on any slide to write into.
+'
+' The message must NAME the field. A count alone has been true-and-unusable
+' four separate times in this project, and this is the message that decides
+' whether someone goes and tags the right shape or hunts the wrong sheet.
+Private Function Test_FieldWiring_NamesTheFieldsNothingCarries() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewTaggedSlide("wiring-probe", "wp-1")
+    Dim tb As Object
+    Set tb = sld.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    tb.TextFrame.TextRange.Text = "about"
+    tb.Tags.Add "role", "ABOUT_BODY"
+
+    Dim r As FieldWiringResult
+    r = FieldWiring.ScanFieldWiring("wiring-probe", _
+        FieldsCollection("ABOUT_BODY", "PROGRESS_BODY"), Nothing)
+
+    result = result & Assert(r.Scanned, "the scan ran")
+    result = result & Assert(r.Wired = 1, "one field is wired, got " & r.Wired)
+    result = result & Assert(r.UnmarkedCount = 1, _
+        "one field is unmarked, got " & r.UnmarkedCount)
+    result = result & Assert(InStr(r.Unmarked, "PROGRESS_BODY") > 0, _
+        "and it is NAMED, got '" & r.Unmarked & "'")
+    result = result & Assert(InStr(FieldWiring.WiringText(r), "PROGRESS_BODY") > 0, _
+        "the sentence names it too, got '" & FieldWiring.WiringText(r) & "'")
+
+    ' No template was passed, so the template question was never asked. It must
+    ' not read as a clean template.
+    result = result & Assert(Not r.TemplateScanned, _
+        "a missing template is reported as not-scanned, never as fine")
+
+    sld.Delete
+    Test_FieldWiring_NamesTheFieldsNothingCarries = result
+End Function
+
+' THE ONE THAT MATTERS FOR NEW SLIDES. GatherInstances excludes the template by
+' design, so a scan built on it alone reports every field wired while the
+' TEMPLATE is missing one -- and every slide created from then on silently
+' lacks that field, because a new slide is a Duplicate of the template.
+'
+' The instance carries BOTH fields and the template carries only one, so a scan
+' that ignored the template would return a clean result here. That is the shape
+' this test exists to make impossible.
+Private Function Test_FieldWiring_TemplateIsCheckedSeparatelyFromInstances() As String
+    Dim result As String
+
+    Dim inst As Object
+    Set inst = NewTaggedSlide("wiring-tmpl", "wt-1")
+    Dim a As Object, b As Object
+    Set a = inst.Shapes.AddTextbox(1, 40, 40, 200, 30)
+    a.TextFrame.TextRange.Text = "about"
+    a.Tags.Add "role", "ABOUT_BODY"
+    Set b = inst.Shapes.AddTextbox(1, 40, 90, 200, 30)
+    b.TextFrame.TextRange.Text = "problem"
+    b.Tags.Add "role", "PROBLEM_BODY"
+
+    ' The template carries only ABOUT_BODY.
+    Dim tmpl As Object
+    Set tmpl = NewBlankSlide()
+    Dim t1 As Object
+    Set t1 = tmpl.Shapes.AddTextbox(1, 40, 40, 200, 30)
+    t1.TextFrame.TextRange.Text = "<<ABOUT_BODY>>"
+    t1.Tags.Add "role", "ABOUT_BODY"
+
+    Dim r As FieldWiringResult
+    r = FieldWiring.ScanFieldWiring("wiring-tmpl", _
+        FieldsCollection("ABOUT_BODY", "PROBLEM_BODY"), tmpl)
+
+    result = result & Assert(r.TemplateScanned, "the template was scanned")
+    result = result & Assert(r.UnmarkedCount = 0, _
+        "every field IS on an existing slide, got " & r.UnmarkedCount & " unmarked")
+    result = result & Assert(r.TemplateUnmarkedCount = 1, _
+        "but one is missing from the TEMPLATE, got " & r.TemplateUnmarkedCount)
+    result = result & Assert(InStr(r.TemplateUnmarked, "PROBLEM_BODY") > 0, _
+        "and it is named, got '" & r.TemplateUnmarked & "'")
+    result = result & Assert(InStr(FieldWiring.WiringText(r), "TEMPLATE") > 0, _
+        "the sentence says the template is the problem, got '" & FieldWiring.WiringText(r) & "'")
+
+    tmpl.Delete
+    inst.Delete
+    Test_FieldWiring_TemplateIsCheckedSeparatelyFromInstances = result
+End Function
+
+' A `.track` with no bar behind it: a marking started and abandoned.
+'
+' It matters because the failure is otherwise silent AND plausible -- an
+' untracked bar shape is an ordinary rectangle with a text frame, so the router
+' hands it to the text writer and it quietly becomes a text field.
+Private Function Test_FieldWiring_OrphanTrackIsAHalfMarkedBar() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewTaggedSlide("wiring-orphan", "wo-1")
+    Dim track As Object
+    Set track = sld.Shapes.AddShape(1, 40, 200, 400, 12)
+    track.Tags.Add "role", "ELAPSED.track"
+
+    Dim r As FieldWiringResult
+    r = FieldWiring.ScanFieldWiring("wiring-orphan", FieldsCollection(), Nothing)
+
+    result = result & Assert(r.OrphanCount = 1, _
+        "the orphan track is found, got " & r.OrphanCount)
+    result = result & Assert(InStr(UCase(r.OrphanTracks), "ELAPSED") > 0, _
+        "and it is named, got '" & r.OrphanTracks & "'")
+
+    ' CONTROL. Add the bar the track was missing and the finding must GO AWAY --
+    ' otherwise this check reports a problem that cannot be fixed, which is
+    ' worse than not reporting it.
+    Dim done As Object
+    Set done = sld.Shapes.AddShape(1, 40, 200, 100, 12)
+    done.Tags.Add "role", "ELAPSED"
+
+    Dim r2 As FieldWiringResult
+    r2 = FieldWiring.ScanFieldWiring("wiring-orphan", FieldsCollection(), Nothing)
+    result = result & Assert(r2.OrphanCount = 0, _
+        "once the bar exists the finding clears, got " & r2.OrphanCount)
+
+    sld.Delete
+    Test_FieldWiring_OrphanTrackIsAHalfMarkedBar = result
 End Function
 
 ' Local copy of the trailing-break normalisation, for comparing what a textbox

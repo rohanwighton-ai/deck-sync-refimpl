@@ -756,6 +756,94 @@ Failed:
     RibbonUI.ShowSyncResult "Sync Now", partial & RibbonUI.UnexpectedErrorText("Sync Now", Err.Number, Err.Description, Err.Source)
 End Sub
 
+' Returns True to CARRY ON with the chain, False to stop.
+'
+' Stops only when the person chose to go and tag something, or cancelled. A
+' scan that cannot run does NOT stop the chain: refusing to sync because a
+' check was unable to look would be the check gating rather than offering, and
+' Readiness.bas:51 governs the whole design -- it offers, it does not gate.
+Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) As Boolean
+    OfferMarkingForUnwiredFields = True
+
+    Dim wb As Object
+    On Error Resume Next
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(DeckRegistry.GetWorkbookPath(pres))
+    On Error GoTo 0
+    If wb Is Nothing Then Exit Function
+
+    Dim period As String
+    period = DeckRegistry.GetDeckPeriod(pres)
+    If period = "" Then Exit Function
+
+    Dim types() As String
+    types = DeckRegistry.ListRegisteredTypes(pres)
+    Dim lo As Long, hi As Long, hasTypes As Boolean
+    On Error Resume Next
+    lo = LBound(types): hi = UBound(types)
+    hasTypes = (Err.Number = 0)
+    On Error GoTo 0
+    If Not hasTypes Then Exit Function
+
+    Dim i As Long
+    For i = lo To hi
+        Dim templateSld As Object, wsName As String
+        Set templateSld = Nothing
+        If DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
+            If WorkbookBridge.WorksheetExists(wb, wsName) Then
+                Dim problem As String
+                Dim sheet As Sheet
+                sheet = ExcelOutput.ReadSheetForDeckPeriod( _
+                    WorkbookBridge.GetOrAddWorksheet(wb, wsName), period, problem)
+                If problem = "" Then
+                    Dim wiring As FieldWiringResult
+                    wiring = FieldWiring.ScanFieldWiring(types(i), sheet.Fields, templateSld)
+
+                    If wiring.Scanned And (wiring.UnmarkedCount > 0 _
+                            Or wiring.TemplateUnmarkedCount > 0 Or wiring.OrphanCount > 0) Then
+                        ' NAMES THE FIELDS, NOT JUST A COUNT. Fix-list 1a: a
+                        ' true count with no subject sends people to check the
+                        ' wrong thing, four times over now.
+                        Dim answer As VbMsgBoxResult
+                        answer = MsgBox( _
+                            "Slide type '" & types(i) & "' has fields with nothing to write into." & vbCrLf & vbCrLf & _
+                            FieldWiring.WiringText(wiring) & vbCrLf & vbCrLf & _
+                            "Syncing now would carry those fields all the way to the slide and " & _
+                            "refuse them there, once per slide." & vbCrLf & vbCrLf & _
+                            "Yes    -- tag them now, by clicking each shape." & vbCrLf & _
+                            "No     -- sync anyway and leave them untagged." & vbCrLf & _
+                            "Cancel -- change nothing.", _
+                            vbYesNoCancel + vbExclamation, TITLE)
+
+                        If answer = vbYes Then
+                            ' TAG ON THE TEMPLATE WHEN THAT IS WHAT IS MISSING.
+                            ' A new slide is a Duplicate of the template and
+                            ' inherits its shape tags, so tagging the template
+                            ' fixes every slide not yet made; tagging an
+                            ' instance fixes only that one.
+                            If wiring.TemplateUnmarkedCount > 0 And Not templateSld Is Nothing Then
+                                On Error Resume Next
+                                Application.ActiveWindow.View.GotoSlide templateSld.SlideIndex
+                                On Error GoTo 0
+                                MsgBox "Taking you to the TEMPLATE slide." & vbCrLf & vbCrLf & _
+                                       "Tag the missing fields here: a new slide is a copy of this " & _
+                                       "one and inherits its tags, so tagging it here fixes every " & _
+                                       "slide you make from now on.", vbInformation, TITLE
+                            End If
+                            BatchOnboardFlow.MarkFieldForBatch
+                            OfferMarkingForUnwiredFields = False
+                            Exit Function
+                        ElseIf answer = vbCancel Then
+                            MsgBox "Nothing was changed.", vbInformation, TITLE
+                            OfferMarkingForUnwiredFields = False
+                            Exit Function
+                        End If
+                    End If
+                End If
+            End If
+        End If
+    Next i
+End Function
+
 Private Sub SyncNowChainCore()
     Const TITLE As String = "1. Sync Now"
 
@@ -819,6 +907,21 @@ Private Sub SyncNowChainCore()
         End If
         Exit Sub
     End If
+
+    ' A FIELD WITH NOTHING TO WRITE INTO, OFFERED BEFORE THE QUARTER IS SPENT
+    ' DRAFTING IT.
+    '
+    ' Until 2026-08-10 `MarkFieldForBatch` had exactly ONE call site -- the
+    ' `Not hasTypes` branch above -- so a deck whose slide type was already
+    ' registered had NO WAY to tag a new field. Every field added to the rig
+    ' after its first setup was tagged by Claude over COM, which is the
+    ' dependence this tool exists to remove. This branch is what makes
+    ' `RM_MARK_MISSING_FIELDS` a true remedy rather than advice to press a
+    ' button that does not exist.
+    '
+    ' It fires only when there is something to tag, so a steady-state quarter
+    ' never sees it -- the same rule the rest of the chain follows.
+    If Not OfferMarkingForUnwiredFields(pres, TITLE) Then Exit Sub
 
     ' THE PLAN, BEFORE THE FIRST WRITE. This is the hazard a chain creates and a
     ' row of buttons did not: it can do more than the person expected. Saying
