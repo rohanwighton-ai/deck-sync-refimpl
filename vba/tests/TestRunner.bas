@@ -693,6 +693,10 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "FieldWiring_CaseNearMissIsNamedNotSwallowed", r
     r = Test_Drafting_NothingToPublishReadsTheSameCounts()
     AppendResult report, "Drafting_NothingToPublishReadsTheSameCounts", r
+    r = Test_MilestoneDevice_DrawsFromDataAndCreatesNothing()
+    AppendResult report, "MilestoneDevice_DrawsFromDataAndCreatesNothing", r
+    r = Test_MilestoneDevice_RefusesListsThatCannotBeAligned()
+    AppendResult report, "MilestoneDevice_RefusesListsThatCannotBeAligned", r
     r = Test_InjectField_RepeatingBarsOneCellManyMilestones()
     AppendResult report, "InjectField_RepeatingBarsOneCellManyMilestones", r
     r = Test_InjectProgress_TracklessPairMeasuresTheirSum()
@@ -8978,6 +8982,171 @@ Private Function Test_Drafting_NothingToPublishReadsTheSameCounts() As String
         "a failure is DEFINITELY work")
 
     Test_Drafting_NothingToPublishReadsTheSameCounts = result
+End Function
+
+' Builds a milestone device: a track, a bar, and `slots` slots each with an ON
+' circle, an OFF circle, a label and a date -- named the way a person would name
+' them in the Selection Pane, then grouped.
+Private Function NewMilestoneDevice(sld As Object, slots As Long) As Object
+    Dim names() As String
+    ReDim names(1 To 2 + slots * 4)
+    Dim n As Long
+    n = 0
+
+    Dim track As Object, bar As Object
+    Set track = sld.Shapes.AddShape(1, 100, 100, 6, 300)      ' vertical, 300 tall
+    track.Name = MilestoneDevice.NAME_TRACK
+    n = n + 1: names(n) = track.Name
+    Set bar = sld.Shapes.AddShape(1, 100, 100, 6, 10)
+    bar.Name = MilestoneDevice.NAME_BAR
+    n = n + 1: names(n) = bar.Name
+
+    Dim i As Long
+    For i = 1 To slots
+        Dim y As Single
+        y = 100 + (i - 1) * 50                                 ' 50pt apart
+        Dim onS As Object, offS As Object, labS As Object, datS As Object
+        Set onS = sld.Shapes.AddShape(9, 96, y, 14, 14)        ' msoShapeOval
+        onS.Name = MilestoneDevice.SLOT_PREFIX & i & MilestoneDevice.PART_ON
+        n = n + 1: names(n) = onS.Name
+        Set offS = sld.Shapes.AddShape(9, 96, y, 14, 14)
+        offS.Name = MilestoneDevice.SLOT_PREFIX & i & MilestoneDevice.PART_OFF
+        n = n + 1: names(n) = offS.Name
+        Set labS = sld.Shapes.AddTextbox(1, 130, y, 120, 14)
+        labS.Name = MilestoneDevice.SLOT_PREFIX & i & MilestoneDevice.PART_LABEL
+        n = n + 1: names(n) = labS.Name
+        Set datS = sld.Shapes.AddTextbox(1, 130, y + 14, 120, 14)
+        datS.Name = MilestoneDevice.SLOT_PREFIX & i & MilestoneDevice.PART_DATE
+        n = n + 1: names(n) = datS.Name
+    Next i
+
+    Set NewMilestoneDevice = sld.Shapes.Range(names).Group
+End Function
+
+Private Function NamedIn(grp As Object, nm As String) As Object
+    Dim s As Object
+    For Each s In grp.GroupItems
+        If UCase(s.Name) = UCase(nm) Then
+            Set NamedIn = s
+            Exit Function
+        End If
+    Next s
+End Function
+
+Private Function SplitList(v As String) As String()
+    SplitList = Split(v, InjectPrimitive.VALUE_SEPARATOR)
+End Function
+
+' THE TIMELINE, DRAWN FROM DATA, CREATING NOTHING.
+'
+' Rohan, 2026-08-10: "I'd like it all data drawn given I take a robotic approach
+' when updating it anyway." Four slots on the template, three milestones in the
+' register, the middle one done.
+'
+' The assertions that matter are the ones about what did NOT happen: the shape
+' count is unchanged, and the track -- which the bar is measured against -- is
+' never written. "you can see the extremely accurate positioning? we need to
+' maintain that and z order etc."
+Private Function Test_MilestoneDevice_DrawsFromDataAndCreatesNothing() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 4)
+
+    Dim before As Long
+    before = grp.GroupItems.Count
+
+    result = result & Assert(MilestoneDevice.SlotCount(grp) = 4, _
+        "the slots are COUNTED from the template, not configured, got " & MilestoneDevice.SlotCount(grp))
+
+    Dim r As MilestoneDrawResult
+    r = MilestoneDevice.DrawMilestones(grp, _
+        SplitList("Kickoff||Design||Build"), _
+        SplitList("Oct 2023||Mar 2024||Sep 2024"), _
+        SplitList("Y||Y||N"))
+
+    result = result & Assert(r.ErrorMessage = "", "it draws [" & r.ErrorMessage & "]")
+    result = result & Assert(r.Drawn = 3, "three milestones drawn, got " & r.Drawn)
+    result = result & Assert(r.Hidden = 1, "the unused fourth slot is hidden, got " & r.Hidden)
+
+    ' NOTHING WAS CREATED OR DELETED.
+    result = result & Assert(grp.GroupItems.Count = before, _
+        "the shape count is unchanged: " & before & " -> " & grp.GroupItems.Count)
+
+    ' Achieved shows ON and hides OFF; not achieved does the reverse.
+    result = result & Assert(NamedIn(grp, "MS1_ON").Visible = msoTrue _
+        And NamedIn(grp, "MS1_OFF").Visible = msoFalse, "slot 1 is achieved")
+    result = result & Assert(NamedIn(grp, "MS3_ON").Visible = msoFalse _
+        And NamedIn(grp, "MS3_OFF").Visible = msoTrue, "slot 3 is NOT achieved")
+    result = result & Assert(NamedIn(grp, "MS4_ON").Visible = msoFalse _
+        And NamedIn(grp, "MS4_LABEL").Visible = msoFalse, "slot 4 is hidden entirely")
+
+    result = result & Assert(NamedIn(grp, "MS2_LABEL").TextFrame.TextRange.text = "Design", _
+        "labels are written, got '" & NamedIn(grp, "MS2_LABEL").TextFrame.TextRange.text & "'")
+    result = result & Assert(NamedIn(grp, "MS2_DATE").TextFrame.TextRange.text = "Mar 2024", _
+        "and so are dates, got '" & NamedIn(grp, "MS2_DATE").TextFrame.TextRange.text & "'")
+
+    ' THE BAR IS MEASURED TO THE LAST ACHIEVED CIRCLE, not to a fraction.
+    ' Slot 2 is the last done one; its centre is 50pt below slot 1's.
+    Dim bar As Object, track As Object, ms2 As Object
+    Set bar = NamedIn(grp, MilestoneDevice.NAME_BAR)
+    Set track = NamedIn(grp, MilestoneDevice.NAME_TRACK)
+    Set ms2 = NamedIn(grp, "MS2_ON")
+    result = result & Assert(r.BarSet, "the bar was set")
+    result = result & Assert(Abs(bar.Height - ((ms2.Top + ms2.Height / 2) - track.Top)) < 1, _
+        "the bar reaches slot 2's centre, got " & bar.Height)
+    result = result & Assert(Abs(track.Height - 300) < 0.5, _
+        "and the TRACK is never written, got " & track.Height)
+
+    sld.Delete
+    Test_MilestoneDevice_DrawsFromDataAndCreatesNothing = result
+End Function
+
+' THREE LISTS PAIRED BY POSITION IS THE ONE REAL HAZARD IN THIS DESIGN.
+'
+' Five labels against four dates would pair every milestone after the gap with
+' the wrong date, and the slide would look finished. There is no way to tell
+' which list is wrong, so nothing is drawn -- and nothing must MOVE either,
+' which is the assertion that actually matters.
+Private Function Test_MilestoneDevice_RefusesListsThatCannotBeAligned() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 4)
+
+    Dim bar As Object
+    Set bar = NamedIn(grp, MilestoneDevice.NAME_BAR)
+    Dim barBefore As Single
+    barBefore = bar.Height
+
+    Dim r As MilestoneDrawResult
+    r = MilestoneDevice.DrawMilestones(grp, _
+        SplitList("A||B||C"), SplitList("1||2"), SplitList("Y||N||N"))
+
+    result = result & Assert(r.ErrorMessage <> "", "mismatched lists are refused")
+    result = result & Assert(InStr(r.ErrorMessage, "3 label") > 0 _
+        And InStr(r.ErrorMessage, "2 date") > 0, _
+        "and the message names BOTH counts, got '" & r.ErrorMessage & "'")
+    result = result & Assert(r.Drawn = 0, "nothing was drawn, got " & r.Drawn)
+    result = result & Assert(bar.Height = barBefore, "and the bar did not move")
+
+    ' MORE MILESTONES THAN SLOTS is also refused rather than truncated --
+    ' drawing the first four would silently drop the fifth.
+    Dim r2 As MilestoneDrawResult
+    r2 = MilestoneDevice.DrawMilestones(grp, _
+        SplitList("A||B||C||D||E"), SplitList("1||2||3||4||5"), SplitList("Y||Y||Y||Y||Y"))
+    result = result & Assert(r2.ErrorMessage <> "" And r2.Drawn = 0, _
+        "five milestones into four slots is refused, not truncated")
+    result = result & Assert(InStr(r2.ErrorMessage, "5 milestone") > 0 _
+        And InStr(r2.ErrorMessage, "4 slot") > 0, _
+        "and names both numbers, got '" & r2.ErrorMessage & "'")
+
+    sld.Delete
+    Test_MilestoneDevice_RefusesListsThatCannotBeAligned = result
 End Function
 
 ' Local copy of the trailing-break normalisation, for comparing what a textbox

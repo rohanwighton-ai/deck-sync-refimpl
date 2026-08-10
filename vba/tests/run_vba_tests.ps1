@@ -210,7 +210,7 @@ Write-Output "RepoRoot: $RepoRoot"
 Write-Output "vbaSourceDir: $vbaSourceDir"
 Write-Output "fixturesSourceDir: $fixturesSourceDir"
 
-$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "Verification.bas", "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "PlaceholderCheck.bas", "RunSync.bas", "ReviewQueue.bas", "Readiness.bas","FieldWiring.bas","Drafting.bas","FieldSpec.bas","Sources.bas","DraftingUI.bas","DiscoverUI.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "tests\TestRunner.bas")
+$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "Verification.bas", "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "PlaceholderCheck.bas", "RunSync.bas", "ReviewQueue.bas", "Readiness.bas","FieldWiring.bas","MilestoneDevice.bas","Drafting.bas","FieldSpec.bas","Sources.bas","DraftingUI.bas","DiscoverUI.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "tests\TestRunner.bas")
 foreach ($m in $pptModules) {
     Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging
 }

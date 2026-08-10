@@ -65,7 +65,7 @@ $productionModules = @(
     # adding the drafting buttons, not by anyone using the add-in, which is its
     # own finding: nothing verifies that this list covers what the modules
     # actually reference.
-    "ReviewQueue.bas", "Readiness.bas", "FieldWiring.bas",
+    "ReviewQueue.bas", "Readiness.bas", "FieldWiring.bas", "MilestoneDevice.bas",
     # The drafting half. Present in the repo since 2026-07-31 and never shipped
     # in the add-in at all -- reachable only from the PowerShell test harness.
     "Drafting.bas", "FieldSpec.bas", "Sources.bas",  "DraftingUI.bas", "DiscoverUI.bas"

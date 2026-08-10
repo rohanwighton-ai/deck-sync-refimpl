@@ -56,7 +56,7 @@ $modules = @(
     "Discovery.bas","InjectPrimitive.bas","Matching.bas","Resolve.bas",
     "SyncOperations.bas","Onboarding.bas","ExcelOutput.bas","Verification.bas",
     "SlideDuplication.bas","TemplateSlide.bas","TemplateAudit.bas","IdentityCheck.bas",
-    "TagMigration.bas","FieldWiring.bas","Readiness.bas","Register.bas","RegisterSeed.bas","PlaceholderCheck.bas","RunSync.bas","ReviewQueue.bas","Drafting.bas","FieldSpec.bas","Sources.bas","Timeline.bas",
+    "TagMigration.bas","FieldWiring.bas","MilestoneDevice.bas","Readiness.bas","Register.bas","RegisterSeed.bas","PlaceholderCheck.bas","RunSync.bas","ReviewQueue.bas","Drafting.bas","FieldSpec.bas","Sources.bas","Timeline.bas",
     "DeckAdoption.bas","ResolveFields.bas","DeckRegistry.bas","WorkbookBridge.bas",
     "OnboardFlow.bas","RibbonUI.bas","AdoptFlow.bas","BatchOnboardFlow.bas","CommandBarUI.bas","DraftingUI.bas","DiscoverUI.bas"
 )
