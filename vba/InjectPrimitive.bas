@@ -117,11 +117,20 @@ End Function
 Private Sub WalkForRoleTag(shapesColl As Object, identityTag As String, ByRef match As Object, ByRef matchCount As Long)
     Dim shp As Object
     For Each shp In shapesColl
-        If shp.Type = msoGroup Then
-            WalkForRoleTag shp.GroupItems, identityTag, match, matchCount
-        ElseIf ShapeHasRoleTag(shp, identityTag) Then
+        ' A GROUP IS TESTED **AND** RECURSED INTO. This was an ElseIf until
+        ' 2026-08-10, so a group carrying a role tag could never be found by
+        ' anything -- the walk stepped straight past it into its members. That
+        ' made a tagged DEVICE unreachable no matter how the router dispatched,
+        ' and it was invisible until the first test that tagged a group.
+        '
+        ' Safe to widen: nothing tagged a group before now, because the marking
+        ' flow refused one outright.
+        If ShapeHasRoleTag(shp, identityTag) Then
             matchCount = matchCount + 1
             Set match = shp
+        End If
+        If shp.Type = msoGroup Then
+            WalkForRoleTag shp.GroupItems, identityTag, match, matchCount
         End If
     Next shp
 End Sub
@@ -234,10 +243,29 @@ End Function
 ' writer, whose "no text frame" is a true sentence about the wrong question.
 Public Function InjectField(sld As Object, identityTag As String, sourceValue As String, _
                             Optional dryRun As Boolean = False, _
-                            Optional srcWs As Object = Nothing) As InjectResult
+                            Optional srcWs As Object = Nothing, _
+                            Optional rowValues As Object = Nothing) As InjectResult
     Dim shp As Object, trackShp As Object
     Set shp = FindShapeByRoleTag(sld, identityTag)
     Set trackShp = FindShapeByRoleTag(sld, identityTag & ".track")
+
+    ' A DEVICE IS A GROUP ON PURPOSE -- a milestone timeline is ONE field made
+    ' of fifteen shapes, tagged once, its parts found by NAME inside it. Checked
+    ' before everything else because a group is not a picture, has no text
+    ' frame, and would otherwise fall through to the text writer and be refused
+    ' for having nowhere to put a string.
+    '
+    ' It needs the whole ROW rather than one value: its columns are
+    ' MS1_LABEL, MS1_DATE, MS1_DONE and so on, one per interval. Both sync call
+    ' sites already hold the row, so nothing new is read.
+    If Not shp Is Nothing Then
+        If shp.Type = msoGroup Then
+            If MilestoneDevice.SlotCount(shp) > 0 Then
+                InjectField = InjectDeviceVia(shp, identityTag, rowValues, dryRun)
+                Exit Function
+            End If
+        End If
+    End If
 
     If Not shp Is Nothing Then
         If IsPictureShape(shp) Then
@@ -388,6 +416,52 @@ Public Function InjectRepeatingProgress(sld As Object, identityTag As String, _
     result.Written = wroteAll And Not dryRun
     result.Verified = wroteAll
     InjectRepeatingProgress = result
+End Function
+
+
+' A milestone device, driven from the row.
+'
+' DRY RUN READS AND REPORTS WITHOUT DRAWING. A preview that silently drew the
+' timeline would write to the deck during "Preview Sync -- nothing written",
+' which is the promise that surface is built on.
+Private Function InjectDeviceVia(grp As Object, identityTag As String, _
+                                 rowValues As Object, dryRun As Boolean) As InjectResult
+    Dim result As InjectResult
+    result.Found = True
+
+    If rowValues Is Nothing Then
+        result.WouldChange = True
+        result.ErrorMessage = identityTag & " is a milestone timeline and needs its whole " & _
+            "register row (the " & MilestoneDevice.SLOT_PREFIX & "1" & MilestoneDevice.COL_LABEL & _
+            " columns), which was not available here."
+        InjectDeviceVia = result
+        Exit Function
+    End If
+
+    result.CurrentValue = MilestoneDevice.DeviceIntegrity(grp)
+
+    If dryRun Then
+        result.WouldChange = True
+        result.Verified = True
+        InjectDeviceVia = result
+        Exit Function
+    End If
+
+    Dim drawn As MilestoneDrawResult
+    drawn = MilestoneDevice.DrawFromRow(grp, rowValues)
+
+    If drawn.ErrorMessage <> "" Then
+        result.WouldChange = True
+        result.ErrorMessage = drawn.ErrorMessage
+        InjectDeviceVia = result
+        Exit Function
+    End If
+
+    result.Written = True
+    result.Verified = True
+    result.WouldChange = True
+    result.ErrorMessage = drawn.Detail
+    InjectDeviceVia = result
 End Function
 
 ' A picture field's register cell holds a SOURCE ID, not a path -- the stamp

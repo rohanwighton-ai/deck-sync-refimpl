@@ -798,7 +798,11 @@ Private Function OfferMarkingForSelectedShape(TITLE As String) As Boolean
     Dim existingRole As String
     existingRole = ""
     On Error Resume Next
-    If shp.Type <> msoGroup Then existingRole = shp.Tags("role")
+    ' READ FOR A GROUP TOO, since 2026-08-10. A group could not carry a role
+    ' tag before then -- WalkForRoleTag stepped past it -- so excluding groups
+    ' here was free. Now a DEVICE is a tagged group, and skipping the read would
+    ' offer to tag a timeline that is already tagged, every single press.
+    existingRole = shp.Tags("role")
     On Error GoTo 0
     If existingRole <> "" Then Exit Function
 

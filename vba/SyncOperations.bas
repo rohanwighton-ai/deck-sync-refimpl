@@ -158,7 +158,7 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                 ' is handed rows, not a workbook, so a picture field here reports
                 ' that it could not be resolved rather than being written wrongly.
                 ' Progress bars need nothing extra and work on this path.
-                r = InjectPrimitive.InjectField(instanceSlide, CStr(fieldName), sourceValue, dryRun)
+                r = InjectPrimitive.InjectField(instanceSlide, CStr(fieldName), sourceValue, dryRun, Nothing, rowValues)
 
                 ' r.Found = False covers both "no shape carries this
                 ' field's tag" (skip -- matches resolve.py's

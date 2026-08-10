@@ -701,6 +701,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "MilestoneDevice_ReadsAColumnPerIntervalFromTheRow", r
     r = Test_MilestoneDevice_IntegrityNamesWhatIsMissing()
     AppendResult report, "MilestoneDevice_IntegrityNamesWhatIsMissing", r
+    r = Test_InjectField_RoutesADeviceGroupToTheTimeline()
+    AppendResult report, "InjectField_RoutesADeviceGroupToTheTimeline", r
     r = Test_InjectField_RepeatingBarsOneCellManyMilestones()
     AppendResult report, "InjectField_RepeatingBarsOneCellManyMilestones", r
     r = Test_InjectProgress_TracklessPairMeasuresTheirSum()
@@ -9265,6 +9267,67 @@ Private Function Test_MilestoneDevice_IntegrityNamesWhatIsMissing() As String
 
     sld.Delete
     Test_MilestoneDevice_IntegrityNamesWhatIsMissing = result
+End Function
+
+
+' THE DEVICE IS REACHABLE FROM SYNC, which is the assertion that stops this
+' being the fourth built-and-unreachable component found today.
+'
+' A group is not a picture and has no text frame, so before this branch existed
+' it fell through to the TEXT writer and was refused for having nowhere to put a
+' string -- exactly how the picture and progress injectors sat unreachable for
+' weeks.
+Private Function Test_InjectField_RoutesADeviceGroupToTheTimeline() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 3)
+    grp.Tags.Add "role", "MILESTONE_TIMELINE"
+
+    Dim row As Object
+    Set row = CreateObject("Scripting.Dictionary")
+    row("MS1_LABEL") = "Kickoff": row("MS1_DATE") = "Oct 2023": row("MS1_DONE") = "Y"
+    row("MS2_LABEL") = "Design":  row("MS2_DATE") = "Mar 2024": row("MS2_DONE") = "N"
+
+    ' Routed through the SAME entry point sync uses, with the row threaded in.
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectField(sld, "MILESTONE_TIMELINE", "", False, Nothing, row)
+
+    result = result & Assert(r.Found, "the device is found")
+    result = result & Assert(r.Written, "and drawn [" & r.ErrorMessage & "]")
+    result = result & Assert(InStr(r.ErrorMessage, "text frame") = 0, _
+        "NOT refused as a text field, got '" & r.ErrorMessage & "'")
+    result = result & Assert(NamedIn(grp, "MS1_LABEL").TextFrame.TextRange.text = "Kickoff", _
+        "the label was written through the router")
+    result = result & Assert(NamedIn(grp, "MS3_ON").Visible = msoFalse, _
+        "the unused third slot is hidden")
+
+    ' A DRY RUN MUST NOT DRAW. Preview Sync promises nothing is written.
+    Dim sld2 As Object
+    Set sld2 = NewBlankSlide()
+    Dim grp2 As Object
+    Set grp2 = NewMilestoneDevice(sld2, 3)
+    grp2.Tags.Add "role", "MILESTONE_TIMELINE"
+    Dim before As String
+    before = NamedIn(grp2, "MS1_LABEL").TextFrame.TextRange.text
+
+    Dim r2 As InjectResult
+    r2 = InjectPrimitive.InjectField(sld2, "MILESTONE_TIMELINE", "", True, Nothing, row)
+    result = result & Assert(Not r2.Written, "a dry run does not write")
+    result = result & Assert(NamedIn(grp2, "MS1_LABEL").TextFrame.TextRange.text = before, _
+        "and the slide is untouched")
+
+    ' WITHOUT THE ROW it says so, rather than drawing an empty timeline.
+    Dim r3 As InjectResult
+    r3 = InjectPrimitive.InjectField(sld, "MILESTONE_TIMELINE", "")
+    result = result & Assert(InStr(r3.ErrorMessage, "MS1_LABEL") > 0, _
+        "no row means it names the columns it needed, got '" & r3.ErrorMessage & "'")
+
+    sld2.Delete
+    sld.Delete
+    Test_InjectField_RoutesADeviceGroupToTheTimeline = result
 End Function
 
 ' Local copy of the trailing-break normalisation, for comparing what a textbox

@@ -1294,7 +1294,7 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
             Else
                 ' Dry inject reads the slide's current text without touching it.
                 Dim probe As InjectResult
-                probe = InjectPrimitive.InjectField(sld, q.Items(n).FieldID, proposed, True, srcWs)
+                probe = InjectPrimitive.InjectField(sld, q.Items(n).FieldID, proposed, True, srcWs, rowValues)
 
                 Dim liveHash As String
                 liveHash = ChangeHash(q.Items(n).EntityKey, q.Items(n).FieldID, _
@@ -1312,7 +1312,7 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                     AppendLogLine logWs, q.RunStamp, q.Items(n), "failed: " & probe.ErrorMessage
                 Else
                     Dim wrote As InjectResult
-                    wrote = InjectPrimitive.InjectField(sld, q.Items(n).FieldID, proposed, False, srcWs)
+                    wrote = InjectPrimitive.InjectField(sld, q.Items(n).FieldID, proposed, False, srcWs, rowValues)
                     If wrote.Verified Then
                         writtenCount = writtenCount + 1
                         report = report & "  written: " & q.Items(n).EntityKey & "/" & q.Items(n).FieldID & vbCrLf
