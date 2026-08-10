@@ -689,6 +689,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "FieldWiring_ATrackIsATagNotAField", r
     r = Test_InjectField_RepeatingBarsOneCellManyMilestones()
     AppendResult report, "InjectField_RepeatingBarsOneCellManyMilestones", r
+    r = Test_InjectProgress_TracklessPairMeasuresTheirSum()
+    AppendResult report, "InjectProgress_TracklessPairMeasuresTheirSum", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -8775,6 +8777,70 @@ Private Function Test_InjectField_RepeatingBarsOneCellManyMilestones() As String
 
     sld.Delete
     Test_InjectField_RepeatingBarsOneCellManyMilestones = result
+End Function
+
+' A BAR WITH NO TRACK, measured against its own remainder.
+'
+' Geometry taken from the real deck, slide 1, 2026-08-10: `Time elapsed` is a
+' filled rect 1.45" wide beside a grey one 0.17" wide, with no full-width shape
+' behind them. 1.45 / (1.45 + 0.17) = 89.5%, against a label reading 90%.
+' Scaled x100 here so PowerPoint's points are comfortable.
+'
+' THE THIRD RUN IS THE TEST. Measuring the done part against ITSELF compounds --
+' the bar shrinks a little further every run while every report says success --
+' and that is exactly what the no-track refusal was protecting against. The sum
+' does not compound, because both halves are written in one operation and add
+' back to the same extent. Running the SAME value twice and then a different one
+' is the only way to tell those two apart: one run proves nothing, and two runs
+' of the same value would pass even if the extent were quietly shrinking.
+Private Function Test_InjectProgress_TracklessPairMeasuresTheirSum() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    Dim done As Object, rest As Object
+    Set done = sld.Shapes.AddShape(1, 100, 200, 145, 7)   ' msoShapeRectangle
+    done.Tags.Add "role", "TIME_ELAPSED"
+    Set rest = sld.Shapes.AddShape(1, 245, 200, 17, 7)
+    rest.Tags.Add "role", "TIME_ELAPSED.rest"
+
+    ' No shape tagged TIME_ELAPSED.track exists anywhere on this slide.
+    Dim extent As Single
+    extent = done.Width + rest.Width                       ' 162
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectField(sld, "TIME_ELAPSED", "0.5")
+    result = result & Assert(r.Written, "the bar is written with no track [" & r.ErrorMessage & "]")
+    result = result & Assert(Abs(done.Width - 81) < 1, _
+        "50% of the 162pt extent is 81pt, got " & done.Width)
+    result = result & Assert(Abs(rest.Left - 181) < 1 And Abs(rest.Width - 81) < 1, _
+        "the remainder takes the other half, got left " & rest.Left & " width " & rest.Width)
+    result = result & Assert(Abs((done.Width + rest.Width) - extent) < 0.5, _
+        "and the two still sum to the original extent, got " & (done.Width + rest.Width))
+
+    ' SAME VALUE AGAIN. A no-op, and the sum must not move.
+    Dim r2 As InjectResult
+    r2 = InjectPrimitive.InjectField(sld, "TIME_ELAPSED", "0.5")
+    result = result & Assert(Not r2.WouldChange, "a second run at the same value changes nothing")
+    result = result & Assert(Abs((done.Width + rest.Width) - extent) < 0.5, _
+        "the extent is still " & extent & ", got " & (done.Width + rest.Width))
+
+    ' A DIFFERENT VALUE, measured against the SAME extent. A bar measuring
+    ' itself would compute 25% of 81 = 20pt here instead of 25% of 162 = 40pt.
+    Dim r3 As InjectResult
+    r3 = InjectPrimitive.InjectField(sld, "TIME_ELAPSED", "0.25")
+    result = result & Assert(Abs(done.Width - 40.5) < 1, _
+        "25% is measured against the FULL extent (40.5pt), not the shrunken bar (20pt), got " & done.Width)
+    result = result & Assert(Abs((done.Width + rest.Width) - extent) < 0.5, _
+        "and the extent is STILL " & extent & " after three runs, got " & (done.Width + rest.Width))
+
+    ' Neither half moved from the pair's own left edge.
+    result = result & Assert(Abs(done.Left - 100) < 0.5, _
+        "the bar still starts where it started, got " & done.Left)
+
+    sld.Delete
+    Test_InjectProgress_TracklessPairMeasuresTheirSum = result
 End Function
 
 ' Local copy of the trailing-break normalisation, for comparing what a textbox

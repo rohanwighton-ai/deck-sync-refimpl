@@ -256,12 +256,22 @@ Public Function InjectField(sld As Object, identityTag As String, sourceValue As
         Exit Function
     End If
 
-    ' The track, not the done part, is the discriminator: the done part is an
-    ' ordinary rectangle and looks like any other shape. Asking for the track
-    ' also means a bar whose done part has been deleted still routes here and
-    ' gets InjectProgressField's specific message, rather than being told it
-    ' has no text frame.
-    If Not trackShp Is Nothing Then
+    ' EITHER COMPANION MAKES IT A BAR -- a track, or a remainder.
+    '
+    ' The done part is an ordinary rectangle and looks like any other shape, so
+    ' the discriminator has to be something beside it. Keying on the TRACK alone
+    ' was wrong the moment the trackless pair existed: Rohan's `Time elapsed`
+    ' bar is a filled rect and a grey one with no track anywhere, so it fell
+    ' through to the TEXT writer, which wrote "0.5" into the rectangle as a
+    ' string and reported success. Caught by the trackless test, invisible to
+    ' every unit test of the injector itself -- the injector was never the thing
+    ' that was wrong.
+    '
+    ' Asking for a companion rather than the done part also means a bar whose
+    ' done part has been deleted still routes here and gets InjectProgressField's
+    ' specific message, instead of being told it has no text frame.
+    If Not trackShp Is Nothing _
+       Or Not FindShapeByRoleTag(sld, identityTag & ".rest") Is Nothing Then
         InjectField = InjectProgressVia(sld, identityTag, sourceValue, dryRun)
         Exit Function
     End If
@@ -879,13 +889,43 @@ Public Function InjectProgressField(sld As Object, identityTag As String, _
     End If
     result.Found = True
 
-    ' NO TRACK, NO ANSWER. Falling back to the done part's own width is the
-    ' shrinking-bar bug above; falling back to the slide width would invent a
-    ' scale nobody chose. Both are worse than saying so.
-    If trackShp Is Nothing Then
-        result.ErrorMessage = "no shape tagged role=" & useTrack & " -- " & _
-            "a progress bar needs a track to measure against. Tag the full-width " & _
-            "shape behind the bar and this will work."
+    ' WHERE THE 100% MARK COMES FROM. Two ways, and never a third.
+    '
+    ' 1. A TRACK. A shape this code never writes, so it cannot drift. Robust,
+    '    and the right answer when the template can carry one.
+    '
+    ' 2. A DONE + REST PAIR WITH NO TRACK -- the extent is their SUM.
+    '
+    ' The pair case is how Rohan's decks are already authored. Measured from
+    ' slide 1 on 2026-08-10: `Time elapsed` is a 1.45" filled rect beside a
+    ' 0.17" grey one, and 1.45 / (1.45 + 0.17) = 89.5% against a label reading
+    ' 90%. There is no full-width shape anywhere behind them.
+    '
+    ' THIS IS NOT THE SHRINKING-BAR BUG, and the distinction is the whole
+    ' justification. Measuring the done part against ITSELF compounds: the bar
+    ' is shorter after each run, so the next run takes a fraction of a fraction
+    ' and walks to zero. The SUM does not compound, because both halves are
+    ' written together in one operation and always add back to the same extent.
+    ' 1.45 + 0.17 and 0.81 + 0.81 are both 1.62.
+    '
+    ' WHAT IT COSTS, stated because it is real: the sum is only invariant while
+    ' nothing moves one half on its own. Nudge the remainder in the deck and the
+    ' extent silently changes, and nothing here can tell -- there is no
+    ' authority left to check against. A track cannot fail that way, so a
+    ' template that can carry one should.
+    Dim extentLeft As Single, extentWidth As Single
+    If Not trackShp Is Nothing Then
+        extentLeft = trackShp.Left
+        extentWidth = trackShp.Width
+    ElseIf Not restShp Is Nothing Then
+        extentLeft = doneShp.Left
+        If restShp.Left < extentLeft Then extentLeft = restShp.Left
+        extentWidth = doneShp.Width + restShp.Width
+    Else
+        result.ErrorMessage = "no shape tagged role=" & useTrack & ", and no " & _
+            identityTag & ".rest either -- a progress bar needs either a track to " & _
+            "measure against or a remainder to share its extent with. Tag the " & _
+            "full-width shape behind the bar, or the grey part beside it."
         InjectProgressField = result
         Exit Function
     End If
@@ -902,8 +942,8 @@ Public Function InjectProgressField(sld As Object, identityTag As String, _
     End If
 
     Dim wantLeft As Single, wantWidth As Single
-    wantLeft = trackShp.Left
-    wantWidth = trackShp.Width * f
+    wantLeft = extentLeft
+    wantWidth = extentWidth * f
 
     result.CurrentValue = CStr(doneShp.Width)
     result.WouldChange = (Abs(doneShp.Width - wantWidth) > 0.5) Or (Abs(doneShp.Left - wantLeft) > 0.5)
@@ -924,10 +964,13 @@ Public Function InjectProgressField(sld As Object, identityTag As String, _
     doneShp.Left = wantLeft
     doneShp.Width = wantWidth
 
-    ' The remainder, if the slide carries one, takes what is left of the track.
+    ' The remainder takes what is left of the extent. WRITTEN IN THE SAME
+    ' OPERATION as the done part, always -- that is what keeps their sum
+    ' invariant and makes the trackless case safe. Writing one without the
+    ' other is the only way to turn this into the shrinking-bar bug.
     If Not restShp Is Nothing Then
         restShp.Left = wantLeft + wantWidth
-        restShp.Width = trackShp.Width - wantWidth
+        restShp.Width = extentWidth - wantWidth
     End If
 
     If Err.Number <> 0 Then
