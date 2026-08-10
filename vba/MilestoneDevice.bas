@@ -160,6 +160,95 @@ Public Function SlotCount(grp As Object) As Long
     SlotCount = n
 End Function
 
+' IS THIS DEVICE INTACT? -- the check that makes renaming safe.
+'
+' Parts are addressed by NAME, which is the whole reason a person can set this
+' up in the Selection Pane in fifteen minutes instead of thirty marking
+' sessions. The cost is that nothing protects a name: rename MS2_DATE and that
+' milestone silently stops updating.
+'
+' The answer is NOT a second copy of the fact as a tag -- two copies of one fact
+' drift, and then the Selection Pane lies. The answer is to check the set is
+' complete and say what is missing, which catches a rename, a typo and a deleted
+' shape with one mechanism.
+'
+' Rohan, 2026-08-10: "doesn't each shape in the group have its own tag if it
+' contains variable info?" They are all fields. They are simply addressed by
+' name, and this is what stands in for the robustness a tag would have given.
+'
+' Reports SLOT BY SLOT. "3 parts missing" would send someone hunting; naming
+' MS2_DATE sends them to the shape.
+Public Function DeviceIntegrity(grp As Object) As String
+    If grp Is Nothing Then
+        DeviceIntegrity = "no group given"
+        Exit Function
+    End If
+
+    Dim parts As Object
+    Set parts = PartsOf(grp)
+
+    Dim slots As Long
+    slots = SlotCount(grp)
+    If slots = 0 Then
+        DeviceIntegrity = "no milestone slots -- nothing named " & SLOT_PREFIX & "1" & PART_ON & _
+            ". Name the shapes in PowerPoint's Selection Pane (Home > Select > Selection Pane)."
+        Exit Function
+    End If
+
+    Dim missing As String
+    Dim i As Long
+    For i = 1 To slots
+        ' _OFF is genuinely optional -- a template that shows achievement by
+        ' something other than a second circle is a real design, and
+        ' DrawMilestones already reports where it cannot show the difference.
+        ' Reporting it as MISSING here would cry wolf on a valid template.
+        missing = missing & MissingPart(parts, i, PART_LABEL)
+        missing = missing & MissingPart(parts, i, PART_DATE)
+    Next i
+
+    ' THE SLOT AFTER THE LAST ONE, checked deliberately. A device with MS1..MS3
+    ' complete and a stray MS5_LABEL means someone renamed MS4_ON and the whole
+    ' tail went invisible -- SlotCount stops at the first gap, so without this
+    ' the device would look perfectly healthy at three slots.
+    Dim strays As String
+    Dim probe As Long
+    For probe = slots + 1 To slots + 6
+        If parts.Exists(UCase(ColumnFor(probe, COL_LABEL))) _
+           Or parts.Exists(UCase(ColumnFor(probe, COL_DATE))) _
+           Or parts.Exists(UCase(SLOT_PREFIX & probe & PART_OFF)) Then
+            If strays <> "" Then strays = strays & ", "
+            strays = strays & SLOT_PREFIX & probe
+        End If
+    Next probe
+
+    If parts.Exists(UCase(NAME_BAR)) = False Or parts.Exists(UCase(NAME_TRACK)) = False Then
+        If missing <> "" Then missing = missing & ", "
+        missing = missing & "the bar pair (" & NAME_BAR & " and/or " & NAME_TRACK & ")"
+    End If
+
+    Dim out As String
+    If missing <> "" Then
+        If Right(missing, 2) = ", " Then missing = Left(missing, Len(missing) - 2)
+        out = slots & " slot(s) found, but these are missing: " & missing
+    Else
+        out = slots & " slot(s), all parts present"
+    End If
+
+    If strays <> "" Then
+        out = out & ". AND parts exist for " & strays & " beyond the last complete slot -- " & _
+            "something named " & SLOT_PREFIX & (slots + 1) & PART_ON & " is missing or misspelled, " & _
+            "so every milestone after " & SLOT_PREFIX & slots & " is invisible to the tool."
+    End If
+
+    DeviceIntegrity = out
+End Function
+
+Private Function MissingPart(parts As Object, i As Long, part As String) As String
+    If Not parts.Exists(UCase(SLOT_PREFIX & i & part)) Then
+        MissingPart = SLOT_PREFIX & i & part & ", "
+    End If
+End Function
+
 ' THE ENTRY POINT SYNC USES: the row's values, straight from the register.
 '
 ' `rowValues` is the slide's row as ExcelOutput hands it over -- field name to

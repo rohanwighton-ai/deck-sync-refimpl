@@ -1123,7 +1123,7 @@ End Function
 ' genuinely static can only really be known after watching it across real
 ' periods, and Rohan explicitly agreed to defer that until there's real
 ' data to act on rather than a Day-1 guess.
-Public Function MarkShapeForBatch(shp As Object, fieldName As String, fieldType As String, fieldVolatility As String) As String
+Public Function MarkShapeForBatch(shp As Object, fieldName As String, fieldType As String, fieldVolatility As String, Optional allowGroup As Boolean = False) As String
     ' Shape.Parent resolves directly to the containing Slide regardless of
     ' whether `shp` is top-level or nested inside a group -- confirmed live
     ' 2026-07-26 (a prior version of this function wrongly assumed .Parent
@@ -1147,7 +1147,11 @@ Public Function MarkShapeForBatch(shp As Object, fieldName As String, fieldType 
     ' the wrong object entirely -- InjectPrimitive/verification expect the
     ' real text-bearing shape, not its container -- so it's rejected with
     ' guidance instead.
-    If shp.Type = msoGroup Then
+    ' A GROUP IS NORMALLY THE WRONG OBJECT -- but a DEVICE is a group on
+    ' purpose. A milestone timeline is one field made of fifteen shapes, and
+    ' tagging the group is how it gets addressed; the parts inside are found by
+    ' NAME. So the refusal stands for ordinary groups and lifts for devices.
+    If shp.Type = msoGroup And Not allowGroup Then
         MarkShapeForBatch = "That's the whole group, not a single field -- click the same spot again to select just the field shape inside it, then run this again."
         Exit Function
     End If
@@ -1403,7 +1407,39 @@ Private Sub MarkFieldForBatchCore()
     ' groups) and let the human pick the intended field by number from a
     ' list with a text preview -- same "numbered list, pick by number"
     ' idiom ResolveFields.BuildRolePickerPrompt already established.
+    ' IS THIS A DEVICE? Asked before the picker offers the shapes inside,
+    ' because for a device the GROUP is the thing to tag -- opening it up would
+    ' invite tagging one circle out of fifteen. Derived from what the group
+    ' contains, so it is never asked about an ordinary group.
     If shp.Type = msoGroup Then
+        If MilestoneDevice.SlotCount(shp) > 0 Then
+            If MsgBox("'" & shp.Name & "' looks like a MILESTONE TIMELINE." & vbCrLf & vbCrLf & _
+                      MilestoneDevice.DeviceIntegrity(shp) & vbCrLf & vbCrLf & _
+                      "Tag the whole group as ONE field? Its parts are found by their " & _
+                      "names, so you do not tag them individually." & vbCrLf & vbCrLf & _
+                      "Yes -- tag the group." & vbCrLf & _
+                      "No  -- pick a single shape inside it instead.", _
+                      vbYesNo + vbQuestion, "Mark Field for Batch") = vbYes Then
+                Dim devName As String
+                devName = InputBox("Name for this timeline (it becomes the group's tag):", _
+                                   "Mark Field for Batch", "MILESTONE_TIMELINE")
+                If Trim(devName) = "" Then
+                    RibbonUI.ShowSyncResult "Mark Field for Batch", "Cancelled -- no name given."
+                    Exit Sub
+                End If
+                Dim devStatus As String
+                devStatus = MarkShapeForBatch(shp, Trim(devName), "text", "variable", True)
+                RibbonUI.ShowSyncResult "Mark Field for Batch", _
+                    devStatus & vbCrLf & vbCrLf & _
+                    MilestoneDevice.DeviceIntegrity(shp) & vbCrLf & vbCrLf & _
+                    "The register needs a column per part: " & _
+                    MilestoneDevice.ColumnFor(1, MilestoneDevice.COL_LABEL) & ", " & _
+                    MilestoneDevice.ColumnFor(1, MilestoneDevice.COL_DATE) & ", " & _
+                    MilestoneDevice.ColumnFor(1, MilestoneDevice.COL_DONE) & ", then the same for 2, 3 ..."
+                Exit Sub
+            End If
+        End If
+
         Dim leaves() As Object
         Dim leafCount As Long
         leafCount = FlattenGroupLeaves(shp, leaves)

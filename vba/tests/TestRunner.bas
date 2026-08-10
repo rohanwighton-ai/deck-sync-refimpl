@@ -699,6 +699,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "MilestoneDevice_RefusesListsThatCannotBeAligned", r
     r = Test_MilestoneDevice_ReadsAColumnPerIntervalFromTheRow()
     AppendResult report, "MilestoneDevice_ReadsAColumnPerIntervalFromTheRow", r
+    r = Test_MilestoneDevice_IntegrityNamesWhatIsMissing()
+    AppendResult report, "MilestoneDevice_IntegrityNamesWhatIsMissing", r
     r = Test_InjectField_RepeatingBarsOneCellManyMilestones()
     AppendResult report, "InjectField_RepeatingBarsOneCellManyMilestones", r
     r = Test_InjectProgress_TracklessPairMeasuresTheirSum()
@@ -9213,6 +9215,56 @@ Private Function Test_MilestoneDevice_ReadsAColumnPerIntervalFromTheRow() As Str
 
     sld.Delete
     Test_MilestoneDevice_ReadsAColumnPerIntervalFromTheRow = result
+End Function
+
+
+' THE CHECK THAT MAKES RENAMING SAFE.
+'
+' Parts are addressed by NAME, so nothing protects them -- rename MS2_DATE and
+' that milestone silently stops updating. Rohan asked whether each shape should
+' carry its own tag instead; the answer was no, because two copies of one fact
+' drift and then the Selection Pane lies. This is what stands in for it.
+'
+' THE STRAY-SLOT ASSERTION IS THE ONE THAT MATTERS. SlotCount stops at the first
+' gap, so a device with MS1..MS3 complete and MS4_ON renamed reports a perfectly
+' healthy three-slot device -- while MS4 and MS5 are invisible to the tool. That
+' is a silent, plausible, wrong answer, which is the exact failure class this
+' project keeps paying for.
+Private Function Test_MilestoneDevice_IntegrityNamesWhatIsMissing() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 3)
+
+    Dim clean As String
+    clean = MilestoneDevice.DeviceIntegrity(grp)
+    result = result & Assert(InStr(clean, "all parts present") > 0, _
+        "an intact device says so, got '" & clean & "'")
+
+    ' A RENAMED PART is named, not counted.
+    NamedIn(grp, "MS2_DATE").Name = "Rectangle 99"
+    Dim broken As String
+    broken = MilestoneDevice.DeviceIntegrity(grp)
+    result = result & Assert(InStr(broken, "MS2_DATE") > 0, _
+        "the missing part is NAMED, got '" & broken & "'")
+    result = result & Assert(InStr(broken, "MS1_") = 0 And InStr(broken, "MS3_") = 0, _
+        "and the intact slots are not, got '" & broken & "'")
+    NamedIn(grp, "Rectangle 99").Name = "MS2_DATE"
+
+    ' A RENAMED _ON HIDES EVERY SLOT AFTER IT, and that must be caught.
+    NamedIn(grp, "MS2_ON").Name = "Oval 77"
+    Dim tail As String
+    tail = MilestoneDevice.DeviceIntegrity(grp)
+    result = result & Assert(InStr(tail, "1 slot(s)") > 0, _
+        "SlotCount stops at the gap -- one slot, got '" & tail & "'")
+    result = result & Assert(InStr(tail, "MS2") > 0 And InStr(tail, "invisible") > 0, _
+        "and it says the rest are INVISIBLE rather than reporting a healthy 1-slot device, got '" & tail & "'")
+    NamedIn(grp, "Oval 77").Name = "MS2_ON"
+
+    sld.Delete
+    Test_MilestoneDevice_IntegrityNamesWhatIsMissing = result
 End Function
 
 ' Local copy of the trailing-break normalisation, for comparing what a textbox
