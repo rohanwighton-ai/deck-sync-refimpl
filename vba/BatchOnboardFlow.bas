@@ -1207,6 +1207,52 @@ End Function
 ' The companion's name in a sentence, from its suffix. Derived so the wording
 ' and the tag can never disagree -- a message saying "track" while the code
 ' writes ".rest" is the class of defect this project keeps paying for.
+' THE FIELD NAMES THE REGISTER ALREADY HAS, so the name can be PICKED.
+'
+' Typed free-hand it produced `project_progress` against a register reading
+' `PROJECT_PROGRESS` -- and the injector matches role tags case-sensitively, so
+' those never meet. The wiring check now REPORTS that near-miss, which is second
+' best: picking removes the whole category instead of detecting it. Same rule as
+' periods and allowed values -- picked, never typed.
+'
+' Best-effort and silent on failure: marking must still work on a deck whose
+' workbook cannot be opened, so a missing list means the old free-text prompt.
+Private Function KnownFieldNames(pres As Object) As Collection
+    Dim out As New Collection
+    Set KnownFieldNames = out
+
+    On Error Resume Next
+    Dim wb As Object
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(DeckRegistry.GetWorkbookPath(pres))
+    If wb Is Nothing Then Exit Function
+
+    Dim period As String
+    period = DeckRegistry.GetDeckPeriod(pres)
+    If period = "" Then Exit Function
+
+    Dim types() As String
+    types = DeckRegistry.ListRegisteredTypes(pres)
+    Dim i As Long
+    For i = LBound(types) To UBound(types)
+        Dim templateSld As Object, wsName As String
+        If DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
+            If WorkbookBridge.WorksheetExists(wb, wsName) Then
+                Dim problem As String
+                Dim sheet As Sheet
+                sheet = ExcelOutput.ReadSheetForDeckPeriod( _
+                    WorkbookBridge.GetOrAddWorksheet(wb, wsName), period, problem)
+                If problem = "" Then
+                    Dim f As Variant
+                    For Each f In sheet.Fields
+                        out.Add CStr(f)
+                    Next f
+                End If
+            End If
+        End If
+    Next i
+    On Error GoTo 0
+End Function
+
 Private Function CompanionWord(suffix As String) As String
     If suffix = FieldWiring.REST_SUFFIX Then
         CompanionWord = "REMAINDER"
@@ -1527,7 +1573,7 @@ Private Sub MarkFieldForBatchCore()
             "'" & shp.Name & "' has no text in it." & vbCrLf & vbCrLf & _
             "An empty text box and the bar of a progress field look identical, so " & _
             "this is the one thing the tool cannot work out by looking." & vbCrLf & vbCrLf & _
-            "Yes    -- it is a PROGRESS BAR (you will click its track next)." & vbCrLf & _
+            "Yes    -- it is a PROGRESS BAR (you will click its TRACK next)." & vbCrLf & _
             "No     -- it is a TEXT field that has nothing in it yet." & vbCrLf & _
             "Cancel -- mark nothing.", _
             vbYesNoCancel + vbQuestion, "Mark Field for Batch")
@@ -1539,36 +1585,28 @@ Private Sub MarkFieldForBatchCore()
         ElseIf emptyAnswer = vbYes Then
             rendersAs = FieldSpec.RENDER_PROGRESS
 
-            ' WHICH COMPANION -- a track behind it, or a remainder beside it.
+            ' ONE KIND OF PROGRESS BAR, and Rohan is the reason it is one.
             '
-            ' Asked rather than assumed, because assuming cost a live run on
-            ' 2026-08-10: the flow only ever offered `.track`, and Rohan's
-            ' `Time elapsed` bar has a 0.17" grey REMAINDER and no track. Tagged
-            ' as a track, the extent becomes the tail's own width and the bar is
-            ' drawn at 90% OF THE TAIL.
+            ' There were two: a TRACK behind the bar, or a REMAINDER beside it.
+            ' Both are real -- his `Time elapsed` is a fill beside a grey tail,
+            ' his vertical timeline is a fill on a full-height track -- so the
+            ' marking flow asked which one followed. He asked why: "can't they
+            ' both be the same if we make them?"
             '
-            ' The distinction is visible on the slide, which is why a person can
-            ' answer it and the code cannot: a track sits BEHIND the bar at full
-            ' width, a remainder sits BESIDE it and the two together span the
-            ' full width.
-            Dim compAnswer As VbMsgBoxResult
-            compAnswer = MsgBox( _
-                "What says how wide 100% is?" & vbCrLf & vbCrLf & _
-                "Yes -- a TRACK: a full-width shape BEHIND the bar." & vbCrLf & _
-                "No  -- a REMAINDER: a shape BESIDE the bar, the two together " & _
-                "spanning the full width (a grey tail after a coloured bar)." & vbCrLf & _
-                "Cancel -- mark nothing.", _
-                vbYesNoCancel + vbQuestion, "Mark Field for Batch")
-
-            If compAnswer = vbCancel Then
-                RibbonUI.ShowSyncResult "Mark Field for Batch", _
-                    "Nothing was marked. Your other marked fields are untouched."
-                Exit Sub
-            ElseIf compAnswer = vbYes Then
-                pendingCompanionSuffix = FieldWiring.TRACK_SUFFIX
-            Else
-                pendingCompanionSuffix = FieldWiring.REST_SUFFIX
-            End If
+            ' They can. THE TWO CONSTRUCTIONS ARE VISUALLY IDENTICAL. A
+            ' full-width grey shape with a coloured bar on top draws exactly the
+            ' same picture as a coloured bar with a grey stub beside it. So the
+            ' deck can be built entirely on tracks with no visual change, and a
+            ' track is the better half of the pair: the tool never writes it, so
+            ' it cannot drift, while a fill/rest pair stays correct only while
+            ' nothing moves one half on its own.
+            '
+            ' So the question is GONE, not answered better. The second shape is
+            ' always the track. `.rest` stays fully supported at write time --
+            ' the injector still measures a trackless pair by its sum, which is
+            ' what makes today's deck work before any template editing -- it is
+            ' simply no longer something to be asked about or got wrong.
+            pendingCompanionSuffix = FieldWiring.TRACK_SUFFIX
         Else
             rendersAs = FieldSpec.RENDER_TEXT
         End If
@@ -1609,10 +1647,37 @@ Private Sub MarkFieldForBatchCore()
         End If
     End If
 
-    typedName = InputBox("Field name for this shape (current value: '" & currentValue & "'):", "Mark Field for Batch", defaultName)
+    ' PICKED, NOT TYPED, when the register already knows the name. See
+    ' KnownFieldNames. Typing stays available for a genuinely new field --
+    ' refusing that would make it impossible to add one.
+    Dim known As Collection
+    Set known = KnownFieldNames(pres)
+
+    Dim namePrompt As String
+    namePrompt = "Field name for this shape (current value: '" & currentValue & "'):"
+    If known.Count > 0 Then
+        namePrompt = namePrompt & vbCrLf & vbCrLf & _
+            "Type the NUMBER of a field the register already has -- spelling and " & _
+            "capitals must match exactly, and picking guarantees they do:" & vbCrLf
+        Dim kn As Long
+        For kn = 1 To known.Count
+            namePrompt = namePrompt & kn & ") " & known(kn) & vbCrLf
+        Next kn
+        namePrompt = namePrompt & vbCrLf & "...or type a new name for a field the register does not have yet."
+    End If
+
+    typedName = InputBox(namePrompt, "Mark Field for Batch", defaultName)
     If Trim(typedName) = "" Then
         RibbonUI.ShowSyncResult "Mark Field for Batch", "Cancelled -- no field name given."
         Exit Sub
+    End If
+
+    ' A BARE NUMBER MEANS THE LIST. A field genuinely called "3" would be
+    ' unresolvable either way, and no register here has one.
+    If known.Count > 0 And IsNumeric(Trim(typedName)) Then
+        Dim pickN As Long
+        pickN = CLng(Trim(typedName))
+        If pickN >= 1 And pickN <= known.Count Then typedName = known(pickN)
     End If
 
     Dim defaultType As String
