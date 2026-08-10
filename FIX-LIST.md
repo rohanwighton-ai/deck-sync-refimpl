@@ -435,6 +435,93 @@ ones before anything is built.
 
 ---
 
+# THE TIMELINE, READ FROM THE REAL DECK 2026-08-10 -- READ BEFORE TOUCHING BARS
+
+Rohan: *"you can see the extremely accurate positioning? we need to maintain
+that and z order etc."* Everything below is measured from `slide4.xml`, not
+described from memory.
+
+## What the timeline actually is
+
+- **A VERTICAL bar of two rounded rectangles sharing an origin.** Track
+  `Shape 188` is 0.05 x 3.03; fill `Shape 189` is 0.05 x 1.46 at the same x/y.
+  The fill grows DOWNWARD from a fixed top, so drawing it changes exactly one
+  property -- `Height`. No `Top`, no `Left`, no z-order.
+- **`InjectProgressField` IS HORIZONTAL ONLY and refuses to guess the axis.**
+  It cannot draw this slide today. That is a blocker, not a tweak.
+- **Milestone state is FORMATTING, not content.** Circles are 0.35 except one
+  at 0.43, and fills split `005832` (start, 6-month) against `003C23` (the
+  rest). No register value can express size and colour.
+- **The fill length is DERIVED** -- it runs to the next unachieved circle. So
+  the register should carry WHICH MILESTONES ARE ACHIEVED, and the length is
+  measured from circle positions the template already defines. The earlier
+  `0.25||0.5||1` model assumed independent fractions per bar and is wrong for
+  this layout.
+- **Counts vary and are therefore data.** Ellipses per slide across the 44:
+  mostly 6, but 4, 5, 7, 12 and 14 all occur.
+
+## Three things that make naive manipulation dangerous
+
+1. **Nothing is hidden.** No pre-placed big/small pair exists today, so a
+   visibility model needs the TEMPLATE built for it. The tool cannot retrofit
+   it.
+2. **Shapes are stacked and share names.** THREE separate shapes are called
+   `Shape 202`, two of them at the identical position `10.96` -- one filled,
+   one not. Name-based addressing is hopeless; tags are the only safe handle.
+3. **Structure varies within one slide.** Most circles are groups of
+   circle+number; the 12-month one is a bigger loose ellipse with its number
+   floating separately on top. Any "assume the pattern" logic breaks here.
+
+## What is safe to change, and what is not
+
+| operation | verdict |
+|---|---|
+| fill bar `Height` | SAFE -- origin fixed, one property |
+| circle **fill colour** | SAFE -- no geometry touched |
+| circle **size** | **NOT SAFE** -- resizing about a centre needs Top/Left compensation, which is the arithmetic that hid `LockAspectRatio` for five rounds |
+| replacing any shape | NEVER -- a new shape lands on top and z-order is lost |
+| writing label text | needs the existing geometry save/restore -- autofit moves the box |
+
+## DECIDED 2026-08-10: THE VISIBILITY MODEL
+
+Rohan: *"I like the idea of the visibility model."*
+
+**Achievement is shown by toggling `.Visible` on pre-placed shapes, never by
+resizing or recolouring computed by the tool.** The template carries both
+states -- an achieved circle and an unachieved circle, at the same centre --
+and the tool shows one and hides the other.
+
+Why this and not the alternatives:
+
+- **Position is preserved exactly**, because nothing moves. The tool computes
+  no geometry, which is the standing rule the deck's own precision demands.
+- **Z-order is preserved exactly**, because no shape is created, deleted or
+  reordered. `.Visible` does not touch the stack.
+- **The tool never invents a colour or a size.** Both states were authored by a
+  person in the template, which is the same division as everywhere else here:
+  the template owns geometry and formatting, the register owns values.
+
+**What it requires next, in order:**
+
+1. **A template decision by Rohan** -- the template gains a second, hidden
+   circle per milestone in the achieved styling. Until that exists there is
+   nothing to toggle. This is deck work, not code.
+2. **A vertical mode for the bar.** Derive the axis from the TRACK's own
+   dimensions (0.05 wide x 3.03 tall is unambiguous) and refuse only when the
+   track is square-ish -- the existing refusal-to-guess comment is right about
+   a square and wrong to give up on a 60:1 rectangle.
+3. **Achievement in the register**, per milestone, `||`-separated like the
+   values -- then the fill height is measured to the next unachieved circle
+   rather than supplied.
+
+**STILL UNKNOWN, needs Rohan's slides:** whether the achieved/unachieved pair
+should be two shapes per milestone or one shape per state for the whole
+timeline; and whether the 0.43 circle marks ACHIEVED or CURRENT -- on slide 4
+it is dark (`003C23`, the unachieved colour) while the two lighter circles
+above it are 0.35, which does not fit "big means achieved" on its own.
+
+---
+
 # STATE AT 2026-08-10 07:45 -- READ BEFORE PLANNING ANYTHING
 
 ## THE ONE THAT MATTERS: two features are built and unreachable
