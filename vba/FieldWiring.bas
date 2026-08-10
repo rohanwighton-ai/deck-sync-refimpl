@@ -86,6 +86,8 @@ Public Type FieldWiringResult
     TemplateUnmarkedCount As Long
     OrphanTracks As String      ' `X.track` present with no `X`, either place
     OrphanCount As Long
+    CaseMismatch As String      ' register name vs the differently-cased tag
+    CaseMismatchCount As Long
     Coverage As String          ' "FIELD on X of Y", only when X < Y
     PartialCount As Long
     Wired As Long               ' register fields that resolve on some slide
@@ -198,7 +200,12 @@ Private Sub WalkForRoles(shapesColl As Object, ByRef seen As Object)
             On Error Resume Next
             role = shp.Tags("role")
             On Error GoTo 0
-            If role <> "" Then seen(UCase(Trim(role))) = True
+            ' KEY uppercased, VALUE the original casing. The injector matches
+            ' role tags with `=` under VBA's default binary comparison, so it is
+            ' CASE SENSITIVE, while this check has always uppercased both sides.
+            ' Keeping the original is what lets the near-miss be reported by name
+            ' instead of the two quietly disagreeing.
+            If role <> "" Then seen(UCase(Trim(role))) = Trim(role)
         End If
     Next shp
 End Sub
@@ -317,6 +324,34 @@ Public Function ScanFieldWiring(slideType As String, fields As Collection, _
                     If CarriesField(rolesByKey(k), fieldName) Then carriers = carriers + 1
                 Next k
 
+                ' THE NEAR-MISS. `PROJECT_PROGRESS` on the register against a
+                ' shape tagged `Project_Progress` passes this check (it
+                ' uppercases) and FAILS at write time (the injector does not).
+                ' That combination is a green readiness sheet over a sync that
+                ' writes nothing -- this project's defining defect, arriving
+                ' from the check rather than the writer.
+                Dim actualTag As String
+                actualTag = ""
+                Dim kk As Variant
+                For Each kk In rolesByKey.Keys
+                    If rolesByKey(kk).Exists(fieldName) Then
+                        actualTag = CStr(rolesByKey(kk)(fieldName))
+                        Exit For
+                    End If
+                Next kk
+                If actualTag = "" And result.TemplateScanned Then
+                    If tmpl.Exists(fieldName) Then actualTag = CStr(tmpl(fieldName))
+                End If
+
+                If actualTag <> "" Then
+                    If StrComp(actualTag, CStr(f), vbBinaryCompare) <> 0 Then
+                        result.CaseMismatchCount = result.CaseMismatchCount + 1
+                        If result.CaseMismatch <> "" Then result.CaseMismatch = result.CaseMismatch & ", "
+                        result.CaseMismatch = result.CaseMismatch & _
+                            "register '" & CStr(f) & "' vs slide '" & actualTag & "'"
+                    End If
+                End If
+
                 If carriers > 0 Then
                     result.Wired = result.Wired + 1
                 Else
@@ -381,7 +416,8 @@ Public Function WiringText(r As FieldWiringResult) As String
         Exit Function
     End If
 
-    If r.UnmarkedCount = 0 And r.OrphanCount = 0 And r.TemplateUnmarkedCount = 0 Then
+    If r.UnmarkedCount = 0 And r.OrphanCount = 0 And r.TemplateUnmarkedCount = 0 _
+       And r.CaseMismatchCount = 0 Then
         Dim ok As String
         ok = r.Wired & " field(s) tagged on " & r.SlidesScanned & " slide(s)"
 
@@ -411,8 +447,13 @@ Public Function WiringText(r As FieldWiringResult) As String
     End If
 
     Dim s As String
+    If r.CaseMismatchCount > 0 Then
+        s = r.CaseMismatchCount & " field(s) spelled differently on the slide -- these will NOT " & _
+            "match when syncing, because tags are matched exactly: " & r.CaseMismatch
+    End If
     If r.UnmarkedCount > 0 Then
-        s = r.UnmarkedCount & " field(s) on the register that no slide carries: " & r.Unmarked
+        If s <> "" Then s = s & ". "
+        s = s & r.UnmarkedCount & " field(s) on the register that no slide carries: " & r.Unmarked
     End If
     If r.PartialCount > 0 Then
         If s <> "" Then s = s & ". "
@@ -428,4 +469,36 @@ Public Function WiringText(r As FieldWiringResult) As String
         s = s & r.OrphanCount & " progress track(s) with no bar: " & r.OrphanTracks
     End If
     WiringText = s
+End Function
+
+' WHAT ACTUALLY BLOCKS, for a dialog that is about to stop someone.
+'
+' WiringText carries everything, including partial coverage -- which is
+' deliberately NOT a problem and was never meant to prompt. Printing the whole
+' sentence in the blocking dialog put three informational "on 1 of 43" lines
+' beside the one real blocker, under a heading saying syncing would carry those
+' fields and refuse them. That is true of the unwired field and false of the
+' other three, whose rows are blank so nothing is carried at all.
+'
+' So the prompt gets this, and the START HERE sheet keeps the full picture.
+Public Function BlockingText(r As FieldWiringResult) As String
+    Dim s As String
+    If r.CaseMismatchCount > 0 Then
+        s = r.CaseMismatchCount & " field(s) spelled differently on the slide -- these will NOT " & _
+            "match when syncing: " & r.CaseMismatch
+    End If
+    If r.UnmarkedCount > 0 Then
+        If s <> "" Then s = s & vbCrLf
+        s = s & r.UnmarkedCount & " field(s) on the register that no slide carries: " & r.Unmarked
+    End If
+    If r.TemplateUnmarkedCount > 0 Then
+        If s <> "" Then s = s & vbCrLf
+        s = s & r.TemplateUnmarkedCount & " field(s) missing from the TEMPLATE, so every new " & _
+            "slide will lack them: " & r.TemplateUnmarked
+    End If
+    If r.OrphanCount > 0 Then
+        If s <> "" Then s = s & vbCrLf
+        s = s & r.OrphanCount & " progress bar part(s) with no bar: " & r.OrphanTracks
+    End If
+    BlockingText = s
 End Function

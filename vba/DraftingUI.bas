@@ -631,6 +631,27 @@ Public Sub PublishDraftsForField()
     preview = Drafting.PublishDrafts(ws, regWs, fieldId, period, True, srcWs)
 
     WorkbookBridge.WriteRunLog wb, "Publish " & fieldId & " -- preview", preview
+
+    ' NOTHING TO PUBLISH IS NOT A DECISION, SO DO NOT ASK.
+    '
+    ' Seen live 2026-08-10: this stopped the whole chain to ask "write these into
+    ' the register?" over a preview reading `0 published, 0 drafted but not
+    ' ticked, 0 ticked but empty, 0 with no register row, 0 failed`, then
+    ' reported that it had written nothing, then SAVED the workbook. Three
+    ' interruptions for a stage with no work in it -- exactly the "about five of
+    ' them a stage announcing it did nothing" Rohan named as the biggest thing
+    ' between this tool and one he would use willingly.
+    '
+    ' Detected from the preview's own counts rather than a separate calculation,
+    ' so the question and the report can never disagree about whether there was
+    ' anything to do.
+    If Drafting.NothingToPublish(preview) Then
+        Say "Nothing to publish for " & fieldId & " in " & period & "." & vbCrLf & vbCrLf & _
+            "Type your wording into the SUBMIT column and tick APPROVE, then run this again." & _
+            IIf(macroWarn <> "", vbCrLf & vbCrLf & macroWarn, ""), vbInformation, CAP
+        Exit Sub
+    End If
+
     If MsgBox(RibbonUI.CapReport(macroWarn & preview) & vbCrLf & vbCrLf & _
               "Write these into the register for " & period & "?" & vbCrLf & vbCrLf & _
               "This does NOT touch any slide -- press '" & CommandBarUI.CAP_SYNC_NOW & "' " & _

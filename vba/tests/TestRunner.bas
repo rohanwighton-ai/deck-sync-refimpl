@@ -689,6 +689,10 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "FieldWiring_ATrackIsATagNotAField", r
     r = Test_FieldWiring_BothCompanionsAreTagsNotFields()
     AppendResult report, "FieldWiring_BothCompanionsAreTagsNotFields", r
+    r = Test_FieldWiring_CaseNearMissIsNamedNotSwallowed()
+    AppendResult report, "FieldWiring_CaseNearMissIsNamedNotSwallowed", r
+    r = Test_Drafting_NothingToPublishReadsTheSameCounts()
+    AppendResult report, "Drafting_NothingToPublishReadsTheSameCounts", r
     r = Test_InjectField_RepeatingBarsOneCellManyMilestones()
     AppendResult report, "InjectField_RepeatingBarsOneCellManyMilestones", r
     r = Test_InjectProgress_TracklessPairMeasuresTheirSum()
@@ -8898,6 +8902,82 @@ Private Function Test_FieldWiring_BothCompanionsAreTagsNotFields() As String
 
     sld.Delete
     Test_FieldWiring_BothCompanionsAreTagsNotFields = result
+End Function
+
+' THE NEAR-MISS: right field, wrong capitalisation.
+'
+' The injector matches role tags with `=` under VBA's default binary comparison,
+' so it is CASE SENSITIVE. This check has always uppercased both sides. Left
+' alone, a register reading `PROJECT_PROGRESS` against a shape tagged
+' `Project_Progress` produces a GREEN readiness sheet over a sync that writes
+' nothing -- the check disagreeing with the writer, which is worse than either
+' being wrong alone.
+'
+' Nearly cost a real run on 2026-08-10: Rohan's header went in as
+' `PROJECT_PROGRESS` and the marking dialog had proposed `Project_Progress`.
+Private Function Test_FieldWiring_CaseNearMissIsNamedNotSwallowed() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewTaggedSlide("wiring-case", "wc-1")
+    Dim tb As Object
+    Set tb = sld.Shapes.AddTextbox(1, 40, 40, 200, 30)
+    tb.TextFrame.TextRange.Text = "x"
+    tb.Tags.Add "role", "Project_Progress"          ' mixed case on the slide
+
+    ' The register asks for it in caps.
+    Dim r As FieldWiringResult
+    r = FieldWiring.ScanFieldWiring("wiring-case", FieldsCollection("PROJECT_PROGRESS"), Nothing)
+
+    result = result & Assert(r.CaseMismatchCount = 1, _
+        "the near-miss is found, got " & r.CaseMismatchCount)
+    result = result & Assert(InStr(r.CaseMismatch, "PROJECT_PROGRESS") > 0 _
+        And InStr(r.CaseMismatch, "Project_Progress") > 0, _
+        "and BOTH spellings are shown, got '" & r.CaseMismatch & "'")
+    result = result & Assert(InStr(FieldWiring.BlockingText(r), "Project_Progress") > 0, _
+        "the blocking sentence carries it, got '" & FieldWiring.BlockingText(r) & "'")
+
+    ' It must NOT read as ok -- that combination is the whole danger.
+    result = result & Assert(InStr(FieldWiring.WiringText(r), "field(s) tagged on") = 0, _
+        "and it does not report the clean 'N fields tagged' line, got '" & _
+        FieldWiring.WiringText(r) & "'")
+
+    ' CONTROL. Spell it the same and the finding must clear.
+    Dim r2 As FieldWiringResult
+    r2 = FieldWiring.ScanFieldWiring("wiring-case", FieldsCollection("Project_Progress"), Nothing)
+    result = result & Assert(r2.CaseMismatchCount = 0, _
+        "an exact match reports no near-miss, got " & r2.CaseMismatchCount)
+
+    sld.Delete
+    Test_FieldWiring_CaseNearMissIsNamedNotSwallowed = result
+End Function
+
+' The "nothing to publish" test must read the SAME counts the person is shown.
+'
+' Written separately it would be a second copy of the same fact, and the stage
+' could then skip its question while the report said work had happened, or ask
+' about nothing while the report said zero.
+Private Function Test_Drafting_NothingToPublishReadsTheSameCounts() As String
+    Dim result As String
+
+    Dim allZero As String
+    allZero = "some preamble" & vbCrLf & Drafting.PublishSummaryLine(0, True, 0, 0, 0, 0) & vbCrLf
+    result = result & Assert(Drafting.NothingToPublish(allZero), _
+        "an all-zero preview is nothing to publish")
+
+    ' Each count on its own is WORK, and must not be skipped.
+    result = result & Assert(Not Drafting.NothingToPublish(Drafting.PublishSummaryLine(1, True, 0, 0, 0, 0)), _
+        "one to publish is work")
+    result = result & Assert(Not Drafting.NothingToPublish(Drafting.PublishSummaryLine(0, True, 1, 0, 0, 0)), _
+        "a draft waiting on a tick is work -- it is the thing to tell someone about")
+    result = result & Assert(Not Drafting.NothingToPublish(Drafting.PublishSummaryLine(0, True, 0, 1, 0, 0)), _
+        "a tick with no text is work")
+    result = result & Assert(Not Drafting.NothingToPublish(Drafting.PublishSummaryLine(0, True, 0, 0, 1, 0)), _
+        "a row with no register row is work")
+    result = result & Assert(Not Drafting.NothingToPublish(Drafting.PublishSummaryLine(0, True, 0, 0, 0, 1)), _
+        "a failure is DEFINITELY work")
+
+    Test_Drafting_NothingToPublishReadsTheSameCounts = result
 End Function
 
 ' Local copy of the trailing-break normalisation, for comparing what a textbox

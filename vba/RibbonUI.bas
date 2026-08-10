@@ -758,6 +758,44 @@ End Sub
 
 ' Returns True to CARRY ON with the chain, False to stop.
 '
+' The shape-first door. Offers to tag whatever single UNTAGGED shape is
+' selected, whether or not the register knows about it yet -- which is the case
+' the register-first route could never cover.
+Private Function OfferMarkingForSelectedShape(TITLE As String) As Boolean
+    OfferMarkingForSelectedShape = True
+
+    Dim shp As Object
+    On Error Resume Next
+    If Application.ActiveWindow.Selection.Type = 2 Then          ' ppSelectionShapes
+        If Application.ActiveWindow.Selection.ShapeRange.Count = 1 Then
+            Set shp = Application.ActiveWindow.Selection.ShapeRange(1)
+        End If
+    End If
+    On Error GoTo 0
+    If shp Is Nothing Then Exit Function
+
+    ' A GROUP IS STILL WORTH OFFERING -- the picker opens it and lists what is
+    ' inside, which is exactly how the timeline's nine shapes get reached. Only
+    ' an already-tagged single shape is skipped.
+    Dim existingRole As String
+    existingRole = ""
+    On Error Resume Next
+    If shp.Type <> msoGroup Then existingRole = shp.Tags("role")
+    On Error GoTo 0
+    If existingRole <> "" Then Exit Function
+
+    If MsgBox("'" & shp.Name & "' is selected and is not tracked as a field yet." & vbCrLf & vbCrLf & _
+              "Tag it now?" & vbCrLf & vbCrLf & _
+              "Yes -- tag this shape." & vbCrLf & _
+              "No  -- leave it and carry on with the sync.", _
+              vbYesNo + vbQuestion, TITLE) = vbYes Then
+        BatchOnboardFlow.MarkFieldForBatch
+        OfferMarkingForSelectedShape = False
+    End If
+End Function
+
+' Returns True to CARRY ON with the chain, False to stop.
+'
 ' Stops only when the person chose to go and tag something, or cancelled. A
 ' scan that cannot run does NOT stop the chain: refusing to sync because a
 ' check was unable to look would be the check gating rather than offering, and
@@ -804,16 +842,16 @@ Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) A
                     ' would cost the times it matters. It is reported on the
                     ' START HERE sheet instead.
                     If wiring.Scanned And (wiring.UnmarkedCount > 0 _
-                            Or wiring.TemplateUnmarkedCount > 0 Or wiring.OrphanCount > 0) Then
+                            Or wiring.TemplateUnmarkedCount > 0 Or wiring.OrphanCount > 0 _
+                            Or wiring.CaseMismatchCount > 0) Then
                         ' NAMES THE FIELDS, NOT JUST A COUNT. Fix-list 1a: a
                         ' true count with no subject sends people to check the
                         ' wrong thing, four times over now.
                         Dim answer As VbMsgBoxResult
                         answer = MsgBox( _
                             "Slide type '" & types(i) & "' has fields with nothing to write into." & vbCrLf & vbCrLf & _
-                            FieldWiring.WiringText(wiring) & vbCrLf & vbCrLf & _
-                            "Syncing now would carry those fields all the way to the slide and " & _
-                            "refuse them there, once per slide." & vbCrLf & vbCrLf & _
+                            FieldWiring.BlockingText(wiring) & vbCrLf & vbCrLf & _
+                            "Until these are tagged, those fields have nowhere to go on the slide." & vbCrLf & vbCrLf & _
                             "Yes    -- tag them now, by clicking each shape." & vbCrLf & _
                             "No     -- sync anyway and leave them untagged." & vbCrLf & _
                             "Cancel -- change nothing.", _
@@ -956,6 +994,18 @@ Private Sub SyncNowChainCore()
     '
     ' It fires only when there is something to tag, so a steady-state quarter
     ' never sees it -- the same rule the rest of the chain follows.
+    ' TAGGING FROM THE SLIDE, which is the direction a person actually works in.
+    '
+    ' Rohan, 2026-08-10: "that's an obscure use." He was right. The only route to
+    ' marking ran through the register being AHEAD of the deck -- to tag a shape
+    ' you first had to invent a column for it. The natural direction is the
+    ' opposite: point at the thing on the slide and say "track this".
+    '
+    ' Fires only on a single shape that carries NO role tag, so selecting a
+    ' tagged field to look at it does not prompt, and neither does having nothing
+    ' selected. Answering No carries straight on to the sync.
+    If Not OfferMarkingForSelectedShape(TITLE) Then Exit Sub
+
     If Not OfferMarkingForUnwiredFields(pres, TITLE) Then Exit Sub
 
     ' THE PLAN, BEFORE THE FIRST WRITE. This is the hazard a chain creates and a

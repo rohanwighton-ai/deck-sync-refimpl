@@ -298,7 +298,16 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
                     "would be copied from a real project's slide", ST_BLOCKED, "deck", _
                     RemedyText(RM_TEMPLATE_FROM_ONBOARDING)
             Else
-                AddLine r, "Template slide", "present", ST_OK, "deck"
+                ' NAMES THE SLIDE. There is no button that goes to the
+                ' template -- the only navigation to it is inside the marking
+                ' offer, and that only fires when the template is missing a
+                ' field. Knowing the number is the cheap half of the fix.
+                Dim tmplWhere As String
+                tmplWhere = "present"
+                On Error Resume Next
+                tmplWhere = "present -- slide " & templateSld.SlideIndex
+                On Error GoTo 0
+                AddLine r, "Template slide", tmplWhere, ST_OK, "deck"
             End If
 
             If Not WorkbookBridge.WorksheetExists(wb, wsName) Then
@@ -335,13 +344,50 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
                     ' field that nothing on any slide holds -- the field is then
                     ' carried all the way to the injector and refused there, once
                     ' per slide, after the drafting work is already done.
+                    ' NOTHING TO WRITE, which is different from nowhere to
+                    ' write it. A field can be tagged on every slide and still
+                    ' have no value in any row for this period -- and then sync
+                    ' runs clean, writes nothing, and says so nowhere. Tagging
+                    ' correctly and getting an empty result is exactly the kind
+                    ' of silent no-op that costs an evening.
+                    Dim emptyFields As String, emptyCount As Long
+                    Dim ef As Variant
+                    If Not sheet.Fields Is Nothing Then
+                        For Each ef In sheet.Fields
+                            Dim anyValue As Boolean
+                            anyValue = False
+                            Dim ik As Variant
+                            For Each ik In sheet.Rows.Keys
+                                If sheet.Rows(ik).Exists(CStr(ef)) Then
+                                    If Trim(CStr(sheet.Rows(ik)(CStr(ef)))) <> "" Then
+                                        anyValue = True
+                                        Exit For
+                                    End If
+                                End If
+                            Next ik
+                            If Not anyValue Then
+                                emptyCount = emptyCount + 1
+                                If emptyFields <> "" Then emptyFields = emptyFields & ", "
+                                emptyFields = emptyFields & CStr(ef)
+                            End If
+                        Next ef
+                    End If
+                    If emptyCount > 0 Then
+                        AddLine r, "Fields with no value", emptyCount & " field(s) have no value in " & _
+                            "any " & periodDisk & " row, so syncing them would write nothing: " & _
+                            emptyFields, ST_BLOCKED, "open workbook"
+                    Else
+                        AddLine r, "Fields with no value", "every field has a value in at least one " & _
+                            periodDisk & " row", ST_OK, "open workbook"
+                    End If
+
                     Dim wiring As FieldWiringResult
                     wiring = FieldWiring.ScanFieldWiring(types(i), sheet.Fields, templateSld)
                     If Not wiring.Scanned Then
                         AddLine r, "Fields tagged", FieldWiring.WiringText(wiring), _
                             ST_UNKNOWN, "-- the slides could not be read"
                     ElseIf wiring.UnmarkedCount > 0 Or wiring.OrphanCount > 0 _
-                           Or wiring.TemplateUnmarkedCount > 0 Then
+                           Or wiring.TemplateUnmarkedCount > 0 Or wiring.CaseMismatchCount > 0 Then
                         AddLine r, "Fields tagged", FieldWiring.WiringText(wiring), _
                             ST_BLOCKED, "deck + open workbook", _
                             RemedyText(RM_MARK_MISSING_FIELDS)

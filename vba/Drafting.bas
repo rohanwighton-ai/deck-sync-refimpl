@@ -662,6 +662,31 @@ End Function
 '     slide that has no row in this period, which would mean publishing invents
 '     slides that were never onboarded. The read below is what makes the refusal
 '     possible, so it happens once, up front, rather than per row.
+' THE SUMMARY LINE AND THE "IS THERE ANYTHING TO DO" TEST, BUILT FROM ONE PLACE.
+'
+' The publish stage stopped to ask "write these into the register?" over a
+' preview reading all zeros, then reported it had written nothing, then saved.
+' Skipping that needs a test for "nothing to do" -- and a test written
+' separately from the sentence is a second copy of the same fact, which drifts.
+' So the sentence is built here and the test reads the SAME counts.
+Public Function PublishSummaryLine(published As Long, dryRun As Boolean, _
+                                   skippedNoTick As Long, skippedEmpty As Long, _
+                                   noRow As Long, failed As Long) As String
+    PublishSummaryLine = "Summary: " & published & IIf(dryRun, " would be published", " published") & _
+        ", " & skippedNoTick & " drafted but not ticked, " & skippedEmpty & " ticked but empty, " & _
+        noRow & " with no register row, " & failed & " failed"
+End Function
+
+' True when a publish preview found no work of any kind.
+'
+' Reads the report the person is shown, so the question asked and the numbers
+' displayed cannot disagree -- if the summary ever says something happened, this
+' will not claim otherwise.
+Public Function NothingToPublish(previewReport As String) As Boolean
+    NothingToPublish = (InStr(previewReport, _
+        PublishSummaryLine(0, True, 0, 0, 0, 0)) > 0)
+End Function
+
 Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, _
                               period As String, _
                               Optional dryRun As Boolean = True, _
@@ -814,9 +839,8 @@ Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, 
         r = r + 1
     Loop
 
-    report = report & vbCrLf & "Summary: " & published & IIf(dryRun, " would be published", " published") & _
-        ", " & skippedNoTick & " drafted but not ticked, " & skippedEmpty & " ticked but empty, " & _
-        noRow & " with no register row, " & failed & " failed" & vbCrLf
+    report = report & vbCrLf & PublishSummaryLine(published, dryRun, skippedNoTick, _
+        skippedEmpty, noRow, failed) & vbCrLf
 
     If skippedNoTick > 0 Then
         report = report & vbCrLf & skippedNoTick & " draft(s) are waiting on a tick. Nothing reaches a" & vbCrLf & _
