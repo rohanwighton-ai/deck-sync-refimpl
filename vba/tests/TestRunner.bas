@@ -8627,6 +8627,29 @@ Private Function Test_FieldWiring_CoverageCountsSlidesNotPresence() As String
     result = result & Assert(InStr(FieldWiring.WiringText(r), "1 of 2") > 0, _
         "the sentence carries it, got '" & FieldWiring.WiringText(r) & "'")
 
+    ' ORDER, not just presence. With a template in play the sentence read
+    ' "...PROBLEM_BODY on 1 of 2, and on the template" on the real deck, where
+    ' the template looks like a fourth entry in the coverage list. The template
+    ' clause has to come FIRST, before the list it is not part of.
+    Dim tmpl As Object
+    Set tmpl = NewBlankSlide()
+    Dim t1 As Object, t2 As Object
+    Set t1 = tmpl.Shapes.AddTextbox(1, 40, 40, 200, 30)
+    t1.TextFrame.TextRange.Text = "<<ABOUT_BODY>>"
+    t1.Tags.Add "role", "ABOUT_BODY"
+    Set t2 = tmpl.Shapes.AddTextbox(1, 40, 90, 200, 30)
+    t2.TextFrame.TextRange.Text = "<<PROBLEM_BODY>>"
+    t2.Tags.Add "role", "PROBLEM_BODY"
+
+    Dim rt As FieldWiringResult
+    rt = FieldWiring.ScanFieldWiring("wiring-cover", _
+        FieldsCollection("ABOUT_BODY", "PROBLEM_BODY"), tmpl)
+    Dim txt As String
+    txt = FieldWiring.WiringText(rt)
+    result = result & Assert(InStr(txt, "on the template. Not on every slide yet:") > 0, _
+        "the template clause comes BEFORE the coverage list, got '" & txt & "'")
+    tmpl.Delete
+
     ' CONTROL. Tag the second slide and the finding must CLEAR -- a coverage
     ' warning that cannot be satisfied would just be noise to click through.
     Dim s4 As Object

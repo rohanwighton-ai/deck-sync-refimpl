@@ -311,20 +311,28 @@ Public Function WiringText(r As FieldWiringResult) As String
     If r.UnmarkedCount = 0 And r.OrphanCount = 0 And r.TemplateUnmarkedCount = 0 Then
         Dim ok As String
         ok = r.Wired & " field(s) tagged on " & r.SlidesScanned & " slide(s)"
-        ' NOT A PROBLEM TODAY, AND WORTH KNOWING BEFORE DRAFTING. A field on 2
+
+        ' THE TEMPLATE CLAUSE GOES HERE, BEFORE THE COVERAGE LIST. Appended
+        ' after it, the sentence read "...PROGRESS_BODY on 1 of 43, and on the
+        ' template", which parses as a fourth entry in the coverage list rather
+        ' than the separate reassurance it is. Seen on the real deck 2026-08-10.
+        '
+        ' Stated either way: a silent omission would be the same defect the
+        ' template split exists to fix -- a clean-looking line that never looked
+        ' at the slide the future is made from.
+
+        ' NOT A PROBLEM TODAY, AND WORTH KNOWING BEFORE DRAFTING. A field on 1
         ' of 43 slides strands nothing while only that one project has text for
         ' it; it strands the SECOND project's work, after that work is done.
-        If r.PartialCount > 0 Then
-            ok = ok & ". Not on every slide yet: " & r.Coverage
-        End If
-        ' The template is stated either way. A silent omission here would be the
-        ' same defect the split exists to fix -- a clean-looking line that never
-        ' looked at the slide the future is made from.
         If r.TemplateScanned Then
             ok = ok & ", and on the template"
         Else
             ok = ok & " -- NO TEMPLATE was checked"
         End If
+        If r.PartialCount > 0 Then
+            ok = ok & ". Not on every slide yet: " & r.Coverage
+        End If
+
         WiringText = ok
         Exit Function
     End If

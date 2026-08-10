@@ -100,6 +100,15 @@ Public Type ReadyReport
     Count As Long
     Blocked As Long
     Unknown As Long
+    ' READ BEFORE ANYTHING WAS WRITTEN, and carried on the report so the sheet
+    ' cannot re-test it later and answer for its own footprint. WriteSheet
+    ' dirties the workbook by existing -- GetOrAddWorksheet, Cells.Clear, three
+    ' rows of banner -- so an IsDirty call from inside WriteSheet is always True
+    ' and the warning it printed could only ever appear when it was false: a
+    ' genuinely dirty workbook makes Build exit early, with no numbers at all.
+    ' Same defect as Preview Sync warning about the Run Log it had just written
+    ' (fix-list item 1); the wbWasDirty fix used there was never applied here.
+    WorkbookWasDirty As Boolean
 End Type
 
 ' The single place a remedy becomes words. Button remedies are built from the
@@ -245,7 +254,8 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
         Exit Function
     End If
 
-    If WorkbookBridge.IsDirty(wb) Then
+    r.WorkbookWasDirty = WorkbookBridge.IsDirty(wb)
+    If r.WorkbookWasDirty Then
         AddLine r, "Register", "not read -- Excel is holding unsaved edits", ST_UNKNOWN, _
             "Excel (unsaved)", RemedyText(RM_SAVE_WORKBOOK_THEN_REBUILD)
         Build = r
@@ -374,8 +384,9 @@ Public Sub WriteSheet(wb As Object, pres As Object, r As ReadyReport)
     deckName = pres.Name
     On Error GoTo 0
     ws.Cells(3, 1).Value = "deck:     " & deckName
+    ' From the report, NOT re-tested here -- see ReadyReport.WorkbookWasDirty.
     ws.Cells(4, 1).Value = "workbook: " & wb.Name & _
-        IIf(WorkbookBridge.IsDirty(wb), "   (UNSAVED EDITS -- numbers below are withheld)", "")
+        IIf(r.WorkbookWasDirty, "   (UNSAVED EDITS -- numbers below are withheld)", "")
 
     ws.Cells(6, 1).Value = Headline(r)
     ws.Cells(6, 1).Font.Bold = True
