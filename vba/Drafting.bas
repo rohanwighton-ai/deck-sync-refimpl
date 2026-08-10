@@ -194,6 +194,142 @@ Private Function ColumnInLayout(layoutVersion As Long, which As String) As Long
     End Select
 End Function
 
+
+' NOTHING IS DESTROYED, ONLY SUPERSEDED.
+'
+' Rohan, 2026-08-10: "we can't have drafting risk losing information."
+'
+' Rebuilding a drafting sheet discards whatever it cannot carry across -- on a
+' layout mismatch that is EVERYTHING, and on a period change it is every
+' quarterly row. Both were announced but still lost, and announcing a loss is
+' not preventing one.
+'
+' So the sheet is COPIED ASIDE before it is rebuilt. Migration is hard and can
+' fail silently; a copy cannot. The old sheet sits in the workbook to be read,
+' compared, or copied out of by hand.
+'
+' Only when there is something to lose: an empty sheet, or one whose work all
+' carries across, is rebuilt in place as before. A copy per run regardless would
+' bury the workbook in tabs and train someone to ignore them.
+'
+' Excel caps a sheet name at 31 characters, so the field id is truncated -- the
+' sheet's own contents identify it, and the timestamp makes it findable.
+
+' What became of the work that could not be carried across.
+'
+' THE OLD WORDING WAS "gone -- this workbook is not backed up", which was true
+' and is now false, and a message that overstates a loss trains someone to
+' ignore the one that does not. A FAILED copy says so plainly instead of
+' inheriting the reassuring half of the sentence.
+Private Function ParkedNote(parkedName As String, parkFailed As Boolean) As String
+    If parkFailed Then
+        ParkedNote = " COULD NOT SAVE A COPY of the previous sheet, so unpublished drafts, " & _
+            "source IDs and notes on it are gone. Anything already published is safe in " & _
+            "the register."
+    ElseIf parkedName <> "" Then
+        ParkedNote = " The previous sheet was kept as '" & parkedName & "' -- nothing was lost. " & _
+            "Delete that tab once you have taken what you need from it."
+    Else
+        ParkedNote = " Anything already published is safe in the register."
+    End If
+End Function
+
+
+' KEEPS THE TWO MOST RECENT ARCHIVES PER FIELD.
+'
+' Unbounded archives are their own failure: a workbook with thirty hidden tabs
+' is one nobody reads, and "nothing was lost" stops meaning anything when the
+' thing it was lost into is unfindable. Two is enough to recover from a mistake
+' and from the rebuild that followed it.
+'
+' Matched on the field id the name ends with, so archives of one field never
+' prune another's.
+Private Sub PruneParked(wb As Object, fieldId As String)
+    On Error Resume Next
+    Dim keepNewest As Long
+    keepNewest = 2
+
+    Dim names As Collection
+    Set names = New Collection
+
+    Dim sh As Object
+    For Each sh In wb.Sheets
+        If Left(sh.Name, 6) = "SAVED " Then
+            If InStr(sh.Name, Left(fieldId, 12)) > 0 Then names.Add sh.Name
+        End If
+    Next sh
+
+    ' The timestamp is mmdd-hhnn inside the name, so alphabetical order IS
+    ' chronological order within a year -- no date parsing needed.
+    Do While names.Count > keepNewest
+        Dim oldest As String, i As Long
+        oldest = names(1)
+        For i = 2 To names.Count
+            If names(i) < oldest Then oldest = names(i)
+        Next i
+        wb.Sheets(oldest).Delete
+        Dim j As Long
+        For j = 1 To names.Count
+            If names(j) = oldest Then
+                names.Remove j
+                Exit For
+            End If
+        Next j
+    Loop
+    On Error GoTo 0
+End Sub
+
+Private Function ParkSheetCopy(ws As Object, fieldId As String, ByRef parkedName As String) As Boolean
+    parkedName = ""
+    On Error GoTo Failed
+
+    Dim stamp As String
+    stamp = Format(Now, "mmdd-hhnn")
+
+    Dim base As String
+    base = "SAVED " & stamp & " " & fieldId
+    If Len(base) > 31 Then base = Left(base, 31)
+
+    ' A second rebuild in the same minute must not collide with the first.
+    Dim candidate As String, n As Long
+    candidate = base
+    Do While WorkbookBridge.WorksheetExists(ws.Parent, candidate) And n < 20
+        n = n + 1
+        Dim suffix As String
+        suffix = "~" & n
+        candidate = Left(base, 31 - Len(suffix)) & suffix
+    Loop
+
+    ws.Copy After:=ws
+    Dim copied As Object
+    Set copied = ws.Parent.Sheets(ws.Index + 1)
+    copied.Name = candidate
+
+    ' NOT A WORKSPACE, AND SAID SO ON THE SHEET ITSELF. A copy that looks like a
+    ' drafting sheet is a second place to type, and typing there is silent --
+    ' publish reads the live sheet only. Rohan, 2026-08-10: "how do you stop it
+    ' confusing point of truth?" By making it impossible to work in by accident,
+    ' and by saying what it is to anyone who goes looking.
+    copied.Cells(1, 1).Value = "ARCHIVE of " & fieldId & " taken " & _
+        Format(Now, "d mmm yyyy hh:nn") & " -- THE TOOL NEVER READS THIS SHEET. " & _
+        "Copy anything you still want into the live drafting sheet, then delete this tab."
+    copied.Cells(1, 1).Font.Bold = True
+    copied.Visible = 0                       ' xlSheetHidden
+
+    PruneParked ws.Parent, fieldId
+
+    parkedName = candidate
+    ParkSheetCopy = True
+    Exit Function
+
+Failed:
+    ' A COPY THAT FAILED MUST NOT LOOK LIKE ONE THAT WORKED. The caller decides
+    ' what to do about it; silently carrying on would be the loss this exists to
+    ' prevent, wearing a reassuring message.
+    parkedName = ""
+    ParkSheetCopy = False
+End Function
+
 Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String, _
                                    Optional guidance As Variant, _
                                    Optional periodStamp As String = "", _
@@ -300,9 +436,59 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     periodChanged = (Not periodMatches) And (Not isNewSheet)
 
     Dim droppedQuarterly As Long, keptStatic As Long
+    ' WORK ABOUT TO BE DISCARDED BY A LAYOUT MISMATCH, counted so it can be
+    ' SAID rather than silently lost. See the block below.
+    Dim strandedRows As Long, strandedDetail As String
+    Dim lostWithContent As Long
 
     Dim r As Long
     r = DRAFT_FIRST_ROW
+
+    ' A LAYOUT MISMATCH USED TO DROP EVERYTHING WITHOUT SAYING SO.
+    '
+    ' Carry-over runs only `If layoutMatches`, and when it does, work follows its
+    ' PROJECT KEY -- so reordering or adding projects is safe. When it does not
+    ' match, every draft, note, submission and citation on the sheet was simply
+    ' gone: no refusal, no count, no line in the report.
+    '
+    ' Rohan, 2026-08-10: "I think the register and drafting sheets sound a bit
+    ' fragile?" The durable sheets are guarded and the disposable ones are
+    ' rebuilt, which is the right shape -- the fragility was all in the
+    ' transitions, and this was the one that failed QUIETLY. Counted here,
+    ' reported below, and still discarded: the columns genuinely cannot be
+    ' located on a sheet whose layout is unknown, so the honest act is to say
+    ' what is being lost, not to pretend it can be saved.
+    If Not layoutMatches Then
+        Dim sr As Long
+        sr = DRAFT_FIRST_ROW
+        On Error Resume Next
+        Do While Trim(CStr(ws.Cells(sr, COL_D_ENTITY).Value)) <> ""
+            Dim anyText As Boolean
+            anyText = False
+            Dim c As Long
+            For c = 3 To 12
+                If Trim(CStr(ws.Cells(sr, c).Value)) <> "" Then anyText = True
+            Next c
+            If anyText Then
+                strandedRows = strandedRows + 1
+                If strandedRows <= 5 Then
+                    If strandedDetail <> "" Then strandedDetail = strandedDetail & ", "
+                    strandedDetail = strandedDetail & Trim(CStr(ws.Cells(sr, COL_D_ENTITY).Value))
+                End If
+            End If
+            sr = sr + 1
+        Loop
+        On Error GoTo 0
+    End If
+
+    ' PARK A COPY BEFORE ANYTHING IS CLEARED. Two cases lose work: a layout
+    ' mismatch loses everything, and a period change clears the quarterly rows.
+    ' Both are now preserved rather than merely announced.
+    Dim parkedName As String, parkFailed As Boolean
+    If strandedRows > 0 Then
+        If Not ParkSheetCopy(ws, fieldId, parkedName) Then parkFailed = True
+    End If
+
     If layoutMatches Then
         On Error Resume Next
         Do While Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value)) <> ""
@@ -325,7 +511,21 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
                     ' make a later sync disagree with itself.
                     If cadence.Exists(cadKey) Then carryThisRow = Not CBool(cadence(cadKey))
                 End If
-                If carryThisRow Then keptStatic = keptStatic + 1 Else droppedQuarterly = droppedQuarterly + 1
+                If carryThisRow Then
+                    keptStatic = keptStatic + 1
+                Else
+                    droppedQuarterly = droppedQuarterly + 1
+                    ' CLEARING A ROW IS NOT LOSS IF ITS TEXT WAS PUBLISHED --
+                    ' that lives in the register and returns as column C. Only
+                    ' UNPUBLISHED work is worth parking a whole sheet for, and
+                    ' without this distinction a rollover would park every field
+                    ' every quarter and bury the workbook in tabs.
+                    If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "DRAFT")).Value)) <> "" _
+                       Or Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SUBMIT")).Value)) <> "" _
+                       Or Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "NOTES")).Value)) <> "" Then
+                        lostWithContent = lostWithContent + 1
+                    End If
+                End If
             End If
 
             If carryThisRow Then
@@ -609,21 +809,26 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
         '
         ' Says what survives before what does not, because the register really does
         ' still hold anything published and that is the actionable half.
-        WriteDraftingSheet = WriteDraftingSheet & vbCrLf & _
+        If lostWithContent > 0 And parkedName = "" And Not parkFailed Then
+        If Not ParkSheetCopy(ws, fieldId, parkedName) Then parkFailed = True
+    End If
+
+    WriteDraftingSheet = WriteDraftingSheet & vbCrLf & _
             "  Rebuilt " & IIf(sheetPeriod = "", "(no period recorded)", sheetPeriod) & _
             " -> " & periodStamp & ": " & droppedQuarterly & " row(s) cleared for redrafting" & _
             IIf(keptStatic > 0, ", " & keptStatic & " carried over", "") & _
-            ". Anything already published is safe in the register. Drafts, source IDs " & _
-            "and notes that were NOT published are gone -- this workbook is not backed up."
+            "." & ParkedNote(parkedName, parkFailed)
     ElseIf Not layoutMatches And Not isNewSheet Then
         ' Same false claim as above, same fix -- see the comment there. Fixed in
         ' both places at once because this is one defect with two call sites, and
         ' fixing only where it was noticed is how the truncation bug came back
         ' four times.
         WriteDraftingSheet = WriteDraftingSheet & vbCrLf & _
-            "  Rebuilt on a new sheet layout: nothing carried across. Anything already " & _
-            "published is safe in the register. Drafts, source IDs and notes that were " & _
-            "NOT published are gone -- this workbook is not backed up."
+            "  Rebuilt on a new sheet layout: nothing carried across." & _
+            IIf(strandedRows > 0, " " & strandedRows & " row(s) had unpublished work" & _
+                IIf(strandedDetail <> "", " (" & strandedDetail & _
+                    IIf(strandedRows > 5, ", ...", "") & ")", "") & ".", "") & _
+            ParkedNote(parkedName, parkFailed)
     End If
 End Function
 

@@ -714,6 +714,21 @@ Public Sub PublishDraftsForField()
     ' decision for a button to mark. Offered rather than done, because it opens
     ' the deck and a person may not want that yet.
     WorkbookBridge.WriteRunLog wb, "Publish " & fieldId & " -- published", result
+
+    ' INSIDE THE CHAIN THIS QUESTION IS ALREADY ANSWERED, so it is not asked.
+    '
+    ' The chain's own plan -- agreed two dialogs earlier -- says step 5 shows
+    ' every slide change and asks before writing any of it. Asking here whether
+    ' to preview is the same question a second time, and a chain that asks twice
+    ' about one thing is how a person learns to click through both.
+    '
+    ' Pressed on its own, publish has no step 5 to follow it, so the offer
+    ' stands. mCollecting is exactly "am I running inside the chain".
+    If mCollecting Then
+        Say RibbonUI.CapReport(result), vbInformation, CAP
+        Exit Sub
+    End If
+
     If MsgBox(RibbonUI.CapReport(result) & vbCrLf & vbCrLf & _
               "Show what this would change on the slides?" & vbCrLf & _
               "Preview only -- reads the deck, writes nothing.", _
