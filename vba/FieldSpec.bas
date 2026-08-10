@@ -84,6 +84,33 @@ Public Const BEHAVIOUR_FILL As String = "Fill the frame"
 Public Const BEHAVIOUR_FIT As String = "Fit inside"
 Public Const BEHAVIOUR_ASIS As String = "Leave as is"
 
+' WHAT THE FIELD RENDERS AS -- the axis the comment above calls FieldType.
+'
+' NOT named `FieldType` in code, deliberately: BatchOnboardFlow already has a
+' `fieldType` meaning text/number/currency/date, a hint about the CONTENT. Two
+' things called FieldType is the exact defect the axes comment above warns
+' about, and this project has already lost a feature to one word doing two
+' jobs. `Renders as` is the sheet's word and RENDER_* is the code's.
+'
+' WHY IT MUST BE DECLARED AND CANNOT BE DERIVED, which is the whole reason this
+' column exists when the sync router happily reads the shape instead:
+'
+'   at WRITE time  the shape answers "what am I" -- a picture is a picture, a
+'                  shape with a `.track` sibling is a bar. InjectField reads it
+'                  and cannot be wrong, because it IS the thing being written.
+'   at MARK time   there is no shape yet, or there are two anonymous
+'                  rectangles. Nothing can answer, so someone has to say.
+'
+' That is intent versus reality, not two answers to one question -- and
+' comparing them is precisely what FieldWiring's check is for. Blank means
+' Text: every field that existed before this column was added is text, and a
+' blank that meant "unknown" would make every old sheet report a problem.
+Public Const COL_S_RENDERS As Long = 11
+
+Public Const RENDER_TEXT As String = "Text"
+Public Const RENDER_PICTURE As String = "Picture"
+Public Const RENDER_PROGRESS As String = "Progress bar"
+
 Public Const COL_S_GLOBAL As Long = 9
 Public Const SPEC_GLOBAL_ROW As Long = 2
 
@@ -223,6 +250,27 @@ Public Function WriteSpecSheet(ws As Object) As String
     ' is the owner's and must survive a rebuild.
     ws.Cells(SPEC_HEADER_ROW, COL_S_BEHAVIOUR).Value = "Behaviour  --  how the content is PLACED (pictures and objects)"
     ws.Columns(COL_S_BEHAVIOUR).ColumnWidth = 18
+
+    ' WHAT IT RENDERS AS. Read when the field is TAGGED, not when it is written
+    ' -- at tag time a bar is two anonymous rectangles and nothing else can say
+    ' which is which.
+    ws.Cells(SPEC_HEADER_ROW, COL_S_RENDERS).Value = _
+        "Renders as  --  what the field IS on the slide. A '" & RENDER_PROGRESS & _
+        "' is tagged as a PAIR: the bar and its track."
+    ws.Columns(COL_S_RENDERS).ColumnWidth = 16
+
+    ' Blank is filled with Text rather than left empty. Every field that existed
+    ' before this column is text, and a blank meaning "unknown" would make every
+    ' pre-existing sheet report a problem it does not have. An owner who wants
+    ' something else picks it from the dropdown.
+    Dim rr As Long
+    rr = SPEC_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(rr, COL_S_FIELDID).Value)) <> ""
+        If Trim(CStr(ws.Cells(rr, COL_S_RENDERS).Value)) = "" Then
+            ws.Cells(rr, COL_S_RENDERS).Value = RENDER_TEXT
+        End If
+        rr = rr + 1
+    Loop
     ws.Cells(SPEC_HEADER_ROW, COL_S_GLOBAL).Value = "GLOBAL RULES  --  added to EVERY field's prompt. Edit freely."
     If Trim(CStr(ws.Cells(SPEC_GLOBAL_ROW, COL_S_GLOBAL).Value)) = "" Then
         ws.Cells(SPEC_GLOBAL_ROW, COL_S_GLOBAL).Value = "'" & DefaultGlobalRules()
@@ -573,4 +621,89 @@ Public Function ApplyBehaviourValidation(ws As Object) As String
     On Error GoTo 0
 
     ApplyBehaviourValidation = "Behaviour: list applied to " & (lastRow - SPEC_FIRST_ROW) & " field row(s)."
+End Function
+
+' What a field is declared to render as, from the sheet.
+'
+' Blank is Text, and that is a decision rather than a fallback: every field that
+' predates this column is text, so a blank meaning "unknown" would turn every
+' existing workbook into a sheet full of warnings about nothing.
+'
+' An UNRECOGNISED value is a different matter and is REPORTED through `note`,
+' never absorbed. Excel validation is a help to the person, not a guarantee to
+' the code -- Sources.ApplyPeriodValidation already documents five paths where
+' the dropdown does not get applied and the run carries on -- so a value this
+' code does not know can and will arrive here.
+Public Function RendersAsFor(specWs As Object, fieldId As String, Optional ByRef note As String) As String
+    note = ""
+    RendersAsFor = RENDER_TEXT
+    If specWs Is Nothing Then Exit Function
+    If Trim(fieldId) = "" Then Exit Function
+
+    Dim want As String
+    want = UCase(Trim(fieldId))
+
+    Dim r As Long
+    r = SPEC_FIRST_ROW
+    Do While Trim(CStr(specWs.Cells(r, COL_S_FIELDID).Value)) <> ""
+        If UCase(Trim(CStr(specWs.Cells(r, COL_S_FIELDID).Value))) = want Then
+            Dim raw As String
+            raw = Trim(CStr(specWs.Cells(r, COL_S_RENDERS).Value))
+            If raw = "" Then Exit Function
+
+            Select Case LCase(raw)
+                Case LCase(RENDER_TEXT):     RendersAsFor = RENDER_TEXT
+                Case LCase(RENDER_PICTURE):  RendersAsFor = RENDER_PICTURE
+                Case LCase(RENDER_PROGRESS): RendersAsFor = RENDER_PROGRESS
+                Case Else
+                    note = "'" & fieldId & "' has 'Renders as' = '" & raw & _
+                        "', which is not one of " & RENDER_TEXT & " / " & RENDER_PICTURE & _
+                        " / " & RENDER_PROGRESS & ". Treated as " & RENDER_TEXT & "."
+                    RendersAsFor = RENDER_TEXT
+            End Select
+            Exit Function
+        End If
+        r = r + 1
+    Loop
+End Function
+
+' PICKED, NEVER TYPED, same as Behaviour and periods. Fails loud for the same
+' reason: a dropdown that silently did not apply reads as care taken.
+Public Function ApplyRendersValidation(ws As Object) As String
+    If ws Is Nothing Then
+        ApplyRendersValidation = "Renders-as validation: skipped (no Field Spec sheet)."
+        Exit Function
+    End If
+
+    Dim listText As String
+    listText = RENDER_TEXT & "," & RENDER_PICTURE & "," & RENDER_PROGRESS
+
+    Dim lastRow As Long
+    lastRow = SPEC_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(lastRow, COL_S_FIELDID).Value)) <> ""
+        lastRow = lastRow + 1
+    Loop
+    If lastRow <= SPEC_FIRST_ROW Then
+        ApplyRendersValidation = "Renders-as validation: no field rows yet."
+        Exit Function
+    End If
+
+    Dim rng As Object
+    Set rng = ws.Range(ws.Cells(SPEC_FIRST_ROW, COL_S_RENDERS), ws.Cells(lastRow - 1, COL_S_RENDERS))
+
+    On Error Resume Next
+    Err.Clear
+    rng.Validation.Delete
+    rng.Validation.Add 3, 1, 1, listText      ' xlValidateList, xlValidAlertStop, xlBetween
+    If Err.Number <> 0 Then
+        Dim e As String
+        e = Err.Description
+        On Error GoTo 0
+        ApplyRendersValidation = "Renders-as validation NOT APPLIED (" & e & _
+            ") -- the column still works, it just will not offer the list."
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    ApplyRendersValidation = "Renders as: list applied to " & (lastRow - SPEC_FIRST_ROW) & " field row(s)."
 End Function

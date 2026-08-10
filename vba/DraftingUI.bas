@@ -426,6 +426,17 @@ Public Sub RefreshDraftingSheets()
     Dim outOfVocab As Long
     valNote = FieldSpec.ApplyControlledValidation(regWs, specWs, outOfVocab)
 
+    ' THE OTHER TWO DROPDOWNS, which had no caller at all.
+    '
+    ' ApplyBehaviourValidation was written, tested by nothing, and invoked from
+    ' nowhere -- so the Behaviour column has never once offered its list. Found
+    ' 2026-08-10 while wiring the Renders-as column beside it; the same
+    ' built-and-unreachable shape as the injectors and the marking route, in a
+    ' third place. Both are applied here because this is the one routine that
+    ' rebuilds the Field Spec sheet.
+    valNote = valNote & vbCrLf & FieldSpec.ApplyBehaviourValidation(specWs)
+    valNote = valNote & vbCrLf & FieldSpec.ApplyRendersValidation(specWs)
+
     ShowSheet wb, firstSheet
 
     ' THE DETAIL GOES ON A SHEET; THE DIALOG KEEPS FOUR LINES.

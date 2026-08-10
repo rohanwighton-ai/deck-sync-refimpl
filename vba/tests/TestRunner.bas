@@ -685,6 +685,10 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "FieldWiring_OrphanTrackIsAHalfMarkedBar", r
     r = Test_FieldWiring_CoverageCountsSlidesNotPresence()
     AppendResult report, "FieldWiring_CoverageCountsSlidesNotPresence", r
+    r = Test_FieldWiring_ATrackIsATagNotAField()
+    AppendResult report, "FieldWiring_ATrackIsATagNotAField", r
+    r = Test_InjectField_RepeatingBarsOneCellManyMilestones()
+    AppendResult report, "InjectField_RepeatingBarsOneCellManyMilestones", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -8668,6 +8672,109 @@ Private Function Test_FieldWiring_CoverageCountsSlidesNotPresence() As String
     b.Delete
     a.Delete
     Test_FieldWiring_CoverageCountsSlidesNotPresence = result
+End Function
+
+' A TRACK IS A TAG, NEVER A REGISTER COLUMN.
+'
+' CommitBatch writes every marked field into the register through UpsertRow,
+' which creates a COLUMN per field. A track marked as a field would therefore
+' grow a `PROGRESS_BODY.track` column that nothing can ever fill, that drafting
+' would build a sheet for, and that the wiring check would report as unwired
+' forever. The exclusion is what keeps the tag and the column apart.
+'
+' The boundary cases matter more than the obvious one: a field merely CONTAINING
+' the word track, and a field called exactly ".track" with nothing in front of
+' it, must not be mistaken for one.
+Private Function Test_FieldWiring_ATrackIsATagNotAField() As String
+    Dim result As String
+
+    result = result & Assert(FieldWiring.IsTrackFieldName("PROGRESS_BODY.track"), _
+        "the suffix is recognised")
+    result = result & Assert(FieldWiring.IsTrackFieldName("PROGRESS_BODY.TRACK"), _
+        "and case does not matter -- a person typing it will not match ours")
+
+    result = result & Assert(Not FieldWiring.IsTrackFieldName("PROGRESS_BODY"), _
+        "the bar itself is a field")
+    result = result & Assert(Not FieldWiring.IsTrackFieldName("TRACK_RECORD_BODY"), _
+        "a field that merely contains the word is a field")
+    result = result & Assert(Not FieldWiring.IsTrackFieldName(".track"), _
+        "a bare suffix with no field in front of it is not a track")
+    result = result & Assert(Not FieldWiring.IsTrackFieldName(""), _
+        "and neither is nothing")
+
+    Test_FieldWiring_ATrackIsATagNotAField = result
+End Function
+
+' THE MILESTONE CASE: one metric, several milestones, one register cell.
+'
+' Rohan, 2026-08-10: "same metric but different progress against different
+' milestones". Three bars tagged `.1 .2 .3`, values `0.25||0.5||1`.
+'
+' The bars are given DIFFERENT track widths so a value written against the wrong
+' milestone's track cannot land on the right number by coincidence -- the same
+' precaution as the two-slide test, applied within one slide.
+'
+' The count-mismatch assertion is the one that matters: three values against
+' three bars is the easy case, and it is the FOURTH bar that decides whether
+' this refuses or draws a plausible wrong slide.
+Private Function Test_InjectField_RepeatingBarsOneCellManyMilestones() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    ' A shared axis rather than a track per bar -- the layout the design has to
+    ' resolve rather than assume, and the one a milestone timeline uses.
+    Dim axis As Object
+    Set axis = sld.Shapes.AddShape(1, 40, 300, 400, 8)
+    axis.Tags.Add "role", "MILESTONE_PROGRESS" & FieldWiring.TRACK_SUFFIX
+
+    Dim b1 As Object, b2 As Object, b3 As Object
+    Set b1 = sld.Shapes.AddShape(1, 40, 100, 10, 8)
+    b1.Tags.Add "role", "MILESTONE_PROGRESS.1"
+    Set b2 = sld.Shapes.AddShape(1, 40, 140, 10, 8)
+    b2.Tags.Add "role", "MILESTONE_PROGRESS.2"
+    Set b3 = sld.Shapes.AddShape(1, 40, 180, 10, 8)
+    b3.Tags.Add "role", "MILESTONE_PROGRESS.3"
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectField(sld, "MILESTONE_PROGRESS", "0.25||0.5||1")
+
+    result = result & Assert(r.Written, "all three bars are written [" & r.ErrorMessage & "]")
+    result = result & Assert(Abs(b1.Width - 100) < 1, _
+        "milestone 1 is 25% of the 400pt axis = 100pt, got " & b1.Width)
+    result = result & Assert(Abs(b2.Width - 200) < 1, _
+        "milestone 2 is 50% = 200pt, got " & b2.Width)
+    result = result & Assert(Abs(b3.Width - 400) < 1, _
+        "milestone 3 is 100% = 400pt, got " & b3.Width)
+    result = result & Assert(Abs(axis.Width - 400) < 0.5, _
+        "the shared axis is never written, got " & axis.Width)
+
+    ' COUNT MISMATCH REFUSES OUTRIGHT. Writing the ones that match would leave
+    ' the remaining milestone showing an older figure on a slide that looks
+    ' finished -- plausible and wrong is worse than refused.
+    Dim w1 As Single, w2 As Single, w3 As Single
+    w1 = b1.Width: w2 = b2.Width: w3 = b3.Width
+
+    Dim r2 As InjectResult
+    r2 = InjectPrimitive.InjectField(sld, "MILESTONE_PROGRESS", "0.1||0.2")
+    result = result & Assert(Not r2.Written, "two values against three bars is refused")
+    result = result & Assert(InStr(r2.ErrorMessage, "2 value") > 0 And InStr(r2.ErrorMessage, "3 bar") > 0, _
+        "and the message names BOTH counts, got '" & r2.ErrorMessage & "'")
+    result = result & Assert(b1.Width = w1 And b2.Width = w2 And b3.Width = w3, _
+        "and not one bar moved")
+
+    ' A repeating field carries no shape of its own name, so the wiring check
+    ' has to recognise `.1` or it reports every milestone field as unwired.
+    Dim roles As Object
+    Set roles = FieldWiring.RoleTagsOnSlide(sld)
+    result = result & Assert(FieldWiring.CarriesField(roles, "MILESTONE_PROGRESS"), _
+        "the wiring check sees a repeating field as carried")
+    result = result & Assert(Not FieldWiring.CarriesField(roles, "NOT_ON_THIS_SLIDE"), _
+        "and still says no to a field that is genuinely absent")
+
+    sld.Delete
+    Test_InjectField_RepeatingBarsOneCellManyMilestones = result
 End Function
 
 ' Local copy of the trailing-break normalisation, for comparing what a textbox

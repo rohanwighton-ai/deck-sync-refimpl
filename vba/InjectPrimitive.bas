@@ -75,6 +75,22 @@ Private Const PPT_LINE_BREAK As String = vbCr
 ' What a picture field was last filled from, stamped on the shape itself.
 Public Const PICTURE_SOURCE_TAG As String = "picsrc"
 
+' ONE FIELD, MANY VALUES -- the milestone case.
+'
+' Rohan, 2026-08-10: some slides carry several progress bars, "same metric but
+' different progress against different milestones". Five bars is five values for
+' one concept, and a register column holds one value per slide, so the values
+' share a cell: `0.9||0.5||0.2`, against shapes tagged `<field>.1`, `.2`, `.3`.
+'
+' SAME CHARACTERS AS LINE_BREAK_DELIMITER, DELIBERATELY DERIVED FROM IT rather
+' than typed again -- but named separately, because it is doing a different job
+' and this project has already paid for one token meaning two things. In a text
+' field `||` is a line break; in a repeating progress field it separates values.
+' They never collide: a progress value is a number and cannot contain a break.
+' Deriving means a future change to one is a deliberate choice about both,
+' instead of a silent divergence.
+Public Const VALUE_SEPARATOR As String = LINE_BREAK_DELIMITER
+
 Private Function FindShapeByRoleTag(sld As Object, identityTag As String) As Object
     Dim match As Object
     Dim matchCount As Long
@@ -230,6 +246,16 @@ Public Function InjectField(sld As Object, identityTag As String, sourceValue As
         End If
     End If
 
+    ' REPEATING BEFORE SINGLE. A slide carrying `<field>.1` is the milestone
+    ' case -- one metric measured against several milestones -- and it is
+    ' checked before the single-bar branch because such a slide may ALSO carry a
+    ' shared `<field>.track` axis, which would otherwise capture it and inject
+    ' one value into a bar that does not exist.
+    If Not FindShapeByRoleTag(sld, identityTag & ".1") Is Nothing Then
+        InjectField = InjectRepeatingProgress(sld, identityTag, sourceValue, dryRun)
+        Exit Function
+    End If
+
     ' The track, not the done part, is the discriminator: the done part is an
     ' ordinary rectangle and looks like any other shape. Asking for the track
     ' also means a bar whose done part has been deleted still routes here and
@@ -269,6 +295,89 @@ Private Function InjectProgressVia(sld As Object, identityTag As String, _
     End If
 
     InjectProgressVia = InjectProgressField(sld, identityTag, CDbl(Trim(sourceValue)), dryRun)
+End Function
+
+' SEVERAL BARS, ONE CELL -- the milestone case.
+'
+' `0.9||0.5||0.2` against shapes tagged `<field>.1`, `.2`, `.3`.
+'
+' A COUNT MISMATCH IS REFUSED, NOT TRUNCATED, and that is the whole reason this
+' is a function rather than a loop at the call site. Three values against five
+' bars could be "write three and leave two", which draws a slide that is
+' PLAUSIBLE and wrong -- two milestones silently showing last quarter's
+' progress. Writing nothing and saying which counts disagree is the only
+' honest answer, and it is the same rule as the out-of-range check: a bar that
+' cannot be drawn correctly is not drawn at all.
+'
+' The track for bar N is `<field>.N.track` if the slide carries one, otherwise
+' the shared `<field>.track`. Both are real layouts -- milestones may each have
+' their own track, or all sit against one timeline axis -- so it resolves
+' rather than assumes, and says which it looked for when neither is there.
+Public Function InjectRepeatingProgress(sld As Object, identityTag As String, _
+                                        sourceValue As String, _
+                                        Optional dryRun As Boolean = False) As InjectResult
+    Dim result As InjectResult
+    result.Found = True
+    result.WouldChange = True
+
+    Dim bars As Long
+    bars = 0
+    Do While Not FindShapeByRoleTag(sld, identityTag & "." & (bars + 1)) Is Nothing
+        bars = bars + 1
+    Loop
+
+    Dim parts() As String
+    parts = Split(sourceValue, VALUE_SEPARATOR)
+    Dim vals As Long
+    vals = UBound(parts) - LBound(parts) + 1
+
+    If vals <> bars Then
+        result.ErrorMessage = identityTag & ": the register holds " & vals & " value(s) (" & _
+            sourceValue & ") but the slide has " & bars & " bar(s) tagged " & identityTag & _
+            ".1.." & identityTag & "." & bars & ". Nothing was drawn -- writing the ones " & _
+            "that match would leave the rest showing an older figure."
+        InjectRepeatingProgress = result
+        Exit Function
+    End If
+
+    ' Reported as one value so a preview and a change-hash see the whole field,
+    ' not one bar of it.
+    Dim currents As String, wroteAll As Boolean, anyChange As Boolean
+    wroteAll = True
+
+    Dim i As Long
+    For i = 1 To bars
+        Dim barTag As String, trackTag As String
+        barTag = identityTag & "." & i
+        trackTag = barTag & FieldWiring.TRACK_SUFFIX
+        If FindShapeByRoleTag(sld, trackTag) Is Nothing Then
+            trackTag = identityTag & FieldWiring.TRACK_SUFFIX
+        End If
+
+        Dim one As InjectResult
+        If Not IsNumeric(Trim(parts(LBound(parts) + i - 1))) Then
+            one.ErrorMessage = barTag & " needs a number between 0 and 1, and the register holds '" & _
+                Trim(parts(LBound(parts) + i - 1)) & "'"
+        Else
+            one = InjectProgressField(sld, barTag, CDbl(Trim(parts(LBound(parts) + i - 1))), _
+                                      dryRun, trackTag)
+        End If
+
+        If currents <> "" Then currents = currents & VALUE_SEPARATOR
+        currents = currents & one.CurrentValue
+        If one.WouldChange Then anyChange = True
+        If Not (one.Written Or one.Verified) Then
+            wroteAll = False
+            If result.ErrorMessage <> "" Then result.ErrorMessage = result.ErrorMessage & "; "
+            result.ErrorMessage = result.ErrorMessage & one.ErrorMessage
+        End If
+    Next i
+
+    result.CurrentValue = currents
+    result.WouldChange = anyChange
+    result.Written = wroteAll And Not dryRun
+    result.Verified = wroteAll
+    InjectRepeatingProgress = result
 End Function
 
 ' A picture field's register cell holds a SOURCE ID, not a path -- the stamp
@@ -743,14 +852,24 @@ End Function
 ' HORIZONTAL ONLY, deliberately, and it says so when it cannot help: a vertical
 ' bar is the same arithmetic on Top/Height, but guessing the axis from which
 ' dimension happens to be larger would silently do the wrong thing to a square.
+' `trackTag` overrides which shape is measured against, and exists for the
+' repeating case: five milestone bars may each carry their own track, or may all
+' sit against ONE shared axis. Both are real layouts and the caller resolves
+' which, so this function never has to guess. Empty means the usual
+' `<field>.track`.
 Public Function InjectProgressField(sld As Object, identityTag As String, _
                                     fraction As Double, _
-                                    Optional dryRun As Boolean = False) As InjectResult
+                                    Optional dryRun As Boolean = False, _
+                                    Optional trackTag As String = "") As InjectResult
     Dim result As InjectResult
+
+    Dim useTrack As String
+    useTrack = trackTag
+    If useTrack = "" Then useTrack = identityTag & FieldWiring.TRACK_SUFFIX
 
     Dim doneShp As Object, trackShp As Object, restShp As Object
     Set doneShp = FindShapeByRoleTag(sld, identityTag)
-    Set trackShp = FindShapeByRoleTag(sld, identityTag & ".track")
+    Set trackShp = FindShapeByRoleTag(sld, useTrack)
     Set restShp = FindShapeByRoleTag(sld, identityTag & ".rest")
 
     If doneShp Is Nothing Then
@@ -764,7 +883,7 @@ Public Function InjectProgressField(sld As Object, identityTag As String, _
     ' shrinking-bar bug above; falling back to the slide width would invent a
     ' scale nobody chose. Both are worse than saying so.
     If trackShp Is Nothing Then
-        result.ErrorMessage = "no shape tagged role=" & identityTag & ".track -- " & _
+        result.ErrorMessage = "no shape tagged role=" & useTrack & " -- " & _
             "a progress bar needs a track to measure against. Tag the full-width " & _
             "shape behind the bar and this will work."
         InjectProgressField = result

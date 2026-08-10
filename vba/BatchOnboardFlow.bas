@@ -162,6 +162,15 @@ Private markedSlideId As Long
 ' close/reopen, and the saved property read back perfectly at the same moment.
 Private markedDeckId As String
 
+' A progress field is TWO shapes and VBA can only be handed one per invocation:
+' each toolbar click is its own synchronous macro run, and there is no way to
+' pause mid-run and wait for the next canvas click (same constraint the header
+' above records for marking generally). So the bar is marked, this remembers
+' which field is still owed a track, and the NEXT mark offers to be it -- with
+' the name derived, never typed, because `PROGRESS_BODY.track` is exactly the
+' kind of string a person gets subtly wrong once and then cannot see.
+Private pendingTrackFor As String
+
 ' The last "Last Save Time" value this module saw, and the LOCAL clock reading
 ' at the moment it saw it. Together they answer the only question that matters
 ' here: "has the file actually been written since the last time we looked, and
@@ -1426,24 +1435,50 @@ Private Sub MarkFieldForBatchCore()
     ' It also settles a disagreement that was already there: Onboarding.
     ' IsCandidateField accepts a picture ("picture" Or HasText), so discovery
     ' offered one while marking refused it.
-    Dim markable As Boolean
-    markable = False
+    ' WHAT DOES THIS SHAPE RENDER AS -- DERIVED WHERE IT CAN BE, ASKED WHERE IT
+    ' CANNOT, AND NEVER ASKED TWICE.
+    '
+    ' A picture answers for itself. A shape with text answers for itself. An
+    ' EMPTY shape is the only genuinely ambiguous case -- an empty text field
+    ' and the bar of a progress field are the same object to look at -- and it
+    ' is exactly the case this gate used to refuse outright, with a message
+    ' saying progress bars "are not supported yet".
+    '
+    ' Asking every time would be five extra dialogs on a five-field slide, which
+    ' is the popup chain Rohan has already called out. Asking only here costs
+    ' one question, on the one shape where no other answer exists.
+    Dim rendersAs As String
+    rendersAs = ""
     On Error Resume Next
     If InjectPrimitive.IsPictureShape(shp) Then
-        markable = True
+        rendersAs = FieldSpec.RENDER_PICTURE
     ElseIf shp.HasTextFrame Then
-        If shp.TextFrame.HasText Then markable = (Trim(shp.TextFrame.TextRange.Text) <> "")
+        If shp.TextFrame.HasText Then
+            If Trim(shp.TextFrame.TextRange.Text) <> "" Then rendersAs = FieldSpec.RENDER_TEXT
+        End If
     End If
     On Error GoTo 0
 
-    If Not markable Then
-        RibbonUI.ShowSyncResult "Mark Field for Batch", _
-            "'" & shp.Name & "' cannot be marked as a field." & vbCrLf & vbCrLf & _
-            "Only shapes that contain TEXT, and PICTURES, can be tracked. Icons, " & _
-            "graphics and progress bars are not supported yet -- marking one " & _
-            "would fail later, at Bulk Onboard, and take the whole batch with it." & vbCrLf & vbCrLf & _
-            "Nothing was marked. Your other marked fields are untouched."
-        Exit Sub
+    If rendersAs = "" Then
+        Dim emptyAnswer As VbMsgBoxResult
+        emptyAnswer = MsgBox( _
+            "'" & shp.Name & "' has no text in it." & vbCrLf & vbCrLf & _
+            "An empty text box and the bar of a progress field look identical, so " & _
+            "this is the one thing the tool cannot work out by looking." & vbCrLf & vbCrLf & _
+            "Yes    -- it is a PROGRESS BAR (you will click its track next)." & vbCrLf & _
+            "No     -- it is a TEXT field that has nothing in it yet." & vbCrLf & _
+            "Cancel -- mark nothing.", _
+            vbYesNoCancel + vbQuestion, "Mark Field for Batch")
+
+        If emptyAnswer = vbCancel Then
+            RibbonUI.ShowSyncResult "Mark Field for Batch", _
+                "Nothing was marked. Your other marked fields are untouched."
+            Exit Sub
+        ElseIf emptyAnswer = vbYes Then
+            rendersAs = FieldSpec.RENDER_PROGRESS
+        Else
+            rendersAs = FieldSpec.RENDER_TEXT
+        End If
     End If
 
     Dim currentValue As String
@@ -1451,7 +1486,36 @@ Private Sub MarkFieldForBatchCore()
         If shp.TextFrame.HasText Then currentValue = FieldPreview(shp.TextFrame.TextRange.Text)
     End If
 
+    ' THE TRACK THE LAST MARK IS STILL OWED. Offered before the name prompt so
+    ' the answer is one click instead of typing `PROGRESS_BODY.track` correctly.
     Dim typedName As String
+    If pendingTrackFor <> "" Then
+        Dim trackAnswer As VbMsgBoxResult
+        trackAnswer = MsgBox( _
+            "'" & pendingTrackFor & "' was marked as a progress bar and still needs its TRACK -- " & _
+            "the full-width shape behind the bar that says how wide 100% is." & vbCrLf & vbCrLf & _
+            "Is '" & shp.Name & "' that track?" & vbCrLf & vbCrLf & _
+            "Yes -- tag it as " & pendingTrackFor & FieldWiring.TRACK_SUFFIX & "." & vbCrLf & _
+            "No  -- mark this shape as an ordinary field instead.", _
+            vbYesNo + vbQuestion, "Mark Field for Batch")
+
+        If trackAnswer = vbYes Then
+            typedName = pendingTrackFor & FieldWiring.TRACK_SUFFIX
+            ' The track is never written and never drafted, so its metadata is
+            ' fixed rather than asked about -- two prompts a person cannot get
+            ' wrong are two prompts not worth showing.
+            Dim tStatus As String
+            tStatus = MarkShapeForBatch(shp, typedName, "text", "static")
+            pendingTrackFor = ""
+            RibbonUI.ShowSyncResult "Mark Field for Batch", _
+                tStatus & vbCrLf & vbCrLf & _
+                "The bar and its track are both marked. The track is tagged on the slide " & _
+                "and is NOT a register column -- it holds no value, it only says how wide " & _
+                "100% is."
+            Exit Sub
+        End If
+    End If
+
     typedName = InputBox("Field name for this shape (current value: '" & currentValue & "'):", "Mark Field for Batch", defaultName)
     If Trim(typedName) = "" Then
         RibbonUI.ShowSyncResult "Mark Field for Batch", "Cancelled -- no field name given."
@@ -1549,6 +1613,21 @@ Private Sub MarkFieldForBatchCore()
         End If
     End If
 
+    ' THE BAR IS HALF A FIELD UNTIL ITS TRACK EXISTS, so say so at the moment
+    ' the bar is marked rather than letting it be discovered later. Set only on
+    ' a successful mark: remembering a track for a field that was not marked
+    ' would offer to attach it to nothing.
+    If rendersAs = FieldSpec.RENDER_PROGRESS And InStr(status, "Marked field") > 0 Then
+        pendingTrackFor = Trim(typedName)
+        status = status & vbCrLf & vbCrLf & _
+            "THIS IS HALF A PROGRESS FIELD. It still needs its TRACK -- the full-width " & _
+            "shape behind the bar that says how wide 100% is. Without one it cannot be " & _
+            "drawn, and it would be treated as a text field." & vbCrLf & vbCrLf & _
+            "Click that shape and press '" & CommandBarUI.CAP_SYNC_NOW & "' again -- " & _
+            "it will offer to tag it as " & Trim(typedName) & FieldWiring.TRACK_SUFFIX & _
+            ", so you never have to type that name."
+    End If
+
     If restoreReport <> "" Then status = restoreReport & vbCrLf & vbCrLf & status
     If saveWarning <> "" Then status = status & vbCrLf & vbCrLf & saveWarning
     RibbonUI.ShowSyncResult "Mark Field for Batch", status
@@ -1569,6 +1648,7 @@ Public Sub ResetMarkingSession()
     Set markedVolatility = Nothing
     markedSlideId = 0
     markedDeckId = ""
+    pendingTrackFor = ""
     ' Also clears the persisted CustomDocumentProperty (see this module's
     ' persistence header) so a deliberate reset never silently resurrects
     ' on the next reopen. On Error Resume Next inside ClearMarkingSession
@@ -2354,7 +2434,24 @@ Public Function CommitBatch(plan As BatchOnboardPlan, templateSld As Object, oth
                             Set shp = plan.Correspondence(key)
                         End If
                         Onboarding.ConfirmFieldMatch shp, plan.FieldNames(fieldIdx)
-                        harvested(plan.FieldNames(fieldIdx)) = plan.HarvestedText(key)
+
+                        ' A `.track` IS A TAG, NEVER A FIELD.
+                        '
+                        ' The track of a progress bar is the shape that says how
+                        ' wide 100% is. It is READ and never written, it holds no
+                        ' value, and InjectProgressField measures against it
+                        ' precisely because nothing ever changes it. Adding it to
+                        ' `harvested` would hand it to UpsertRow, which creates a
+                        ' COLUMN per field -- so the register would grow a
+                        ' PROGRESS_BODY.track column that nothing can ever fill,
+                        ' that drafting would offer a sheet for, and that the
+                        ' wiring check would then report as unwired forever.
+                        '
+                        ' Tagged on the slide, absent from the register: that
+                        ' asymmetry is the whole design, not an oversight.
+                        If Not FieldWiring.IsTrackFieldName(CStr(plan.FieldNames(fieldIdx))) Then
+                            harvested(plan.FieldNames(fieldIdx)) = plan.HarvestedText(key)
+                        End If
                     End If
                     ' No correspondence found for this field on this slide:
                     ' silently skipped for this slide only, same "missing

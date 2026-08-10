@@ -60,6 +60,15 @@ Option Explicit
 ' deck being extended looks like. So this is reported and never blocks. A
 ' check that fires on a normal state gets clicked through, and then it is not
 ' there for the times it matters.
+' THE SUFFIX IS THE MARKER, defined once.
+'
+' Three separate rules turn on what a track is called: the register-exclusion
+' at commit (a track is tagged, never a column), the orphan check below, and the
+' injector's own lookup of `<field>.track`. Three copies of ".track" would drift
+' the first time anyone renamed it, and the failure would be silent -- a bar
+' that quietly becomes a text field.
+Public Const TRACK_SUFFIX As String = ".track"
+
 Public Type FieldWiringResult
     Unmarked As String          ' register fields NO existing slide carries
     UnmarkedCount As Long
@@ -74,6 +83,32 @@ Public Type FieldWiringResult
     Scanned As Boolean          ' False = could not look; never report a pass
     TemplateScanned As Boolean  ' False = no template found to look at
 End Type
+
+' Does this set of role tags carry `fieldName` at all?
+'
+' A REPEATING FIELD NEVER CARRIES ITS OWN NAME. The milestone case tags shapes
+' `<field>.1`, `.2`, `.3` and nothing is tagged `<field>` -- so a check that
+' asked only for the bare name would report every repeating field as unwired,
+' on every slide, forever. `.1` is the marker: a repeating field always has a
+' first one.
+Public Function CarriesField(roleSet As Object, fieldName As String) As Boolean
+    If roleSet Is Nothing Then Exit Function
+    Dim n As String
+    n = UCase(Trim(fieldName))
+    If n = "" Then Exit Function
+    CarriesField = roleSet.Exists(n) Or roleSet.Exists(n & ".1")
+End Function
+
+' A track is a TAG, not a field: it carries no value, is read and never written,
+' and must never become a register column. Asked at commit time and by the
+' wiring check, so it lives here rather than in either caller.
+Public Function IsTrackFieldName(fieldName As String) As Boolean
+    Dim n As String
+    n = UCase(Trim(fieldName))
+    If Len(n) <= Len(TRACK_SUFFIX) Then Exit Function
+    IsTrackFieldName = (Right(n, Len(TRACK_SUFFIX)) = UCase(TRACK_SUFFIX))
+End Function
+
 
 ' Every distinct `role` tag value carried by any shape on any instance of
 ' `slideType`, groups walked into.
@@ -241,7 +276,7 @@ Public Function ScanFieldWiring(slideType As String, fields As Collection, _
 
                 Dim k As Variant
                 For Each k In rolesByKey.Keys
-                    If rolesByKey(k).Exists(fieldName) Then carriers = carriers + 1
+                    If CarriesField(rolesByKey(k), fieldName) Then carriers = carriers + 1
                 Next k
 
                 If carriers > 0 Then
@@ -260,7 +295,7 @@ Public Function ScanFieldWiring(slideType As String, fields As Collection, _
                 End If
 
                 If result.TemplateScanned Then
-                    If Not tmpl.Exists(fieldName) Then
+                    If Not CarriesField(tmpl, fieldName) Then
                         result.TemplateUnmarkedCount = result.TemplateUnmarkedCount + 1
                         If result.TemplateUnmarked <> "" Then _
                             result.TemplateUnmarked = result.TemplateUnmarked & ", "
@@ -285,15 +320,13 @@ Private Sub CollectOrphanTracks(seen As Object, prefix As String, ByRef result A
     For Each k In seen.Keys
         Dim tag As String
         tag = CStr(k)
-        If Len(tag) > 6 Then
-            If Right(tag, 6) = ".TRACK" Then
-                Dim baseName As String
-                baseName = Left(tag, Len(tag) - 6)
-                If Not seen.Exists(baseName) Then
-                    result.OrphanCount = result.OrphanCount + 1
-                    If result.OrphanTracks <> "" Then result.OrphanTracks = result.OrphanTracks & ", "
-                    result.OrphanTracks = result.OrphanTracks & prefix & tag
-                End If
+        If IsTrackFieldName(tag) Then
+            Dim baseName As String
+            baseName = Left(tag, Len(tag) - Len(TRACK_SUFFIX))
+            If Not seen.Exists(baseName) Then
+                result.OrphanCount = result.OrphanCount + 1
+                If result.OrphanTracks <> "" Then result.OrphanTracks = result.OrphanTracks & ", "
+                result.OrphanTracks = result.OrphanTracks & prefix & tag
             End If
         End If
     Next k
