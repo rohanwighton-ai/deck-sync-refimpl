@@ -825,16 +825,46 @@ Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) A
                             ' inherits its shape tags, so tagging the template
                             ' fixes every slide not yet made; tagging an
                             ' instance fixes only that one.
-                            If wiring.TemplateUnmarkedCount > 0 And Not templateSld Is Nothing Then
-                                On Error Resume Next
-                                Application.ActiveWindow.View.GotoSlide templateSld.SlideIndex
-                                On Error GoTo 0
-                                MsgBox "Taking you to the TEMPLATE slide." & vbCrLf & vbCrLf & _
-                                       "Tag the missing fields here: a new slide is a copy of this " & _
-                                       "one and inherits its tags, so tagging it here fixes every " & _
-                                       "slide you make from now on.", vbInformation, TITLE
+                            ' A SHAPE HAS TO BE SELECTED BEFORE MARKING CAN DO
+                            ' ANYTHING, and this branch used to call it
+                            ' regardless -- so the FIRST press always produced
+                            ' "Select exactly one shape first" and always would.
+                            ' Navigating to the template guarantees it: arriving
+                            ' at a slide selects nothing. Rohan hit it twice.
+                            '
+                            ' A dialog that cannot succeed on its first showing
+                            ' is the same defect as a check that cannot fail --
+                            ' it looks like a step and is furniture.
+                            Dim selCount As Long
+                            selCount = 0
+                            On Error Resume Next
+                            If Application.ActiveWindow.Selection.Type = 2 Then   ' ppSelectionShapes
+                                selCount = Application.ActiveWindow.Selection.ShapeRange.Count
                             End If
-                            BatchOnboardFlow.MarkFieldForBatch
+                            On Error GoTo 0
+
+                            If selCount = 1 Then
+                                BatchOnboardFlow.MarkFieldForBatch
+                            Else
+                                Dim whereTo As String
+                                If wiring.TemplateUnmarkedCount > 0 And Not templateSld Is Nothing Then
+                                    On Error Resume Next
+                                    Application.ActiveWindow.View.GotoSlide templateSld.SlideIndex
+                                    On Error GoTo 0
+                                    whereTo = "You are now on the TEMPLATE slide. Tag the missing " & _
+                                        "fields HERE: a new slide is a copy of this one and inherits " & _
+                                        "its tags, so tagging it here fixes every slide you make " & _
+                                        "from now on." & vbCrLf & vbCrLf
+                                End If
+
+                                MsgBox whereTo & _
+                                    "Now CLICK THE SHAPE you want to tag, then press '" & _
+                                    CommandBarUI.CAP_SYNC_NOW & "' again." & vbCrLf & vbCrLf & _
+                                    "Nothing was changed." & vbCrLf & vbCrLf & _
+                                    "(If the shape sits inside a group, one click selects the whole " & _
+                                    "group -- that is fine, you will be offered the shapes inside it.)", _
+                                    vbInformation, TITLE
+                            End If
                             OfferMarkingForUnwiredFields = False
                             Exit Function
                         ElseIf answer = vbCancel Then
