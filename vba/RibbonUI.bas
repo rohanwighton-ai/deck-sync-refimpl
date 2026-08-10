@@ -798,6 +798,11 @@ Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) A
                     Dim wiring As FieldWiringResult
                     wiring = FieldWiring.ScanFieldWiring(types(i), sheet.Fields, templateSld)
 
+                    ' PARTIAL COVERAGE ALONE DOES NOT STOP YOU. A field part-way
+                    ' across a deck is a real state, and prompting about it on
+                    ' every press is how a dialog gets clicked through -- which
+                    ' would cost the times it matters. It is reported on the
+                    ' START HERE sheet instead.
                     If wiring.Scanned And (wiring.UnmarkedCount > 0 _
                             Or wiring.TemplateUnmarkedCount > 0 Or wiring.OrphanCount > 0) Then
                         ' NAMES THE FIELDS, NOT JUST A COUNT. Fix-list 1a: a

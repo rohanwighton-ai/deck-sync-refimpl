@@ -683,6 +683,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "FieldWiring_TemplateIsCheckedSeparatelyFromInstances", r
     r = Test_FieldWiring_OrphanTrackIsAHalfMarkedBar()
     AppendResult report, "FieldWiring_OrphanTrackIsAHalfMarkedBar", r
+    r = Test_FieldWiring_CoverageCountsSlidesNotPresence()
+    AppendResult report, "FieldWiring_CoverageCountsSlidesNotPresence", r
     r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
@@ -8573,6 +8575,76 @@ Private Function Test_FieldWiring_OrphanTrackIsAHalfMarkedBar() As String
 
     sld.Delete
     Test_FieldWiring_OrphanTrackIsAHalfMarkedBar = result
+End Function
+
+' COVERAGE, which is the question presence was too weak to ask.
+'
+' On the rig, 2026-08-10, three fields were tagged on 2 slides of 44 and the
+' check reported a bare `ok`, because each was carried by *a* slide. Nothing
+' was stranded that day -- only one project had text for them -- and that is
+' exactly why the bare `ok` was dangerous: it would have stayed `ok` right up
+' until the second project's drafting had nowhere to land.
+'
+' Two slides, one carrying the field, is the smallest case that can tell
+' "tagged somewhere" apart from "tagged everywhere".
+Private Function Test_FieldWiring_CoverageCountsSlidesNotPresence() As String
+    Dim result As String
+
+    Dim a As Object, b As Object
+    Set a = NewTaggedSlide("wiring-cover", "wc-1")
+    Set b = NewTaggedSlide("wiring-cover", "wc-2")
+
+    ' Both slides carry ABOUT_BODY; only one carries PROBLEM_BODY.
+    Dim s1 As Object, s2 As Object, s3 As Object
+    Set s1 = a.Shapes.AddTextbox(1, 40, 40, 200, 30)
+    s1.TextFrame.TextRange.Text = "about a"
+    s1.Tags.Add "role", "ABOUT_BODY"
+    Set s2 = b.Shapes.AddTextbox(1, 40, 40, 200, 30)
+    s2.TextFrame.TextRange.Text = "about b"
+    s2.Tags.Add "role", "ABOUT_BODY"
+    Set s3 = a.Shapes.AddTextbox(1, 40, 90, 200, 30)
+    s3.TextFrame.TextRange.Text = "problem a"
+    s3.Tags.Add "role", "PROBLEM_BODY"
+
+    Dim r As FieldWiringResult
+    r = FieldWiring.ScanFieldWiring("wiring-cover", _
+        FieldsCollection("ABOUT_BODY", "PROBLEM_BODY"), Nothing)
+
+    result = result & Assert(r.SlidesScanned = 2, _
+        "two slides were scanned, got " & r.SlidesScanned)
+
+    ' PRESENCE STILL PASSES -- both fields ARE carried by a slide. That is the
+    ' whole point: a check asking only presence reports nothing here.
+    result = result & Assert(r.UnmarkedCount = 0, _
+        "neither field is unmarked, got " & r.UnmarkedCount)
+
+    result = result & Assert(r.PartialCount = 1, _
+        "exactly one field is not on every slide, got " & r.PartialCount)
+    result = result & Assert(InStr(r.Coverage, "PROBLEM_BODY on 1 of 2") > 0, _
+        "and the count is per slide and NAMED, got '" & r.Coverage & "'")
+    result = result & Assert(InStr(r.Coverage, "ABOUT_BODY") = 0, _
+        "a field on every slide is not reported, got '" & r.Coverage & "'")
+    result = result & Assert(InStr(FieldWiring.WiringText(r), "1 of 2") > 0, _
+        "the sentence carries it, got '" & FieldWiring.WiringText(r) & "'")
+
+    ' CONTROL. Tag the second slide and the finding must CLEAR -- a coverage
+    ' warning that cannot be satisfied would just be noise to click through.
+    Dim s4 As Object
+    Set s4 = b.Shapes.AddTextbox(1, 40, 90, 200, 30)
+    s4.TextFrame.TextRange.Text = "problem b"
+    s4.Tags.Add "role", "PROBLEM_BODY"
+
+    Dim r2 As FieldWiringResult
+    r2 = FieldWiring.ScanFieldWiring("wiring-cover", _
+        FieldsCollection("ABOUT_BODY", "PROBLEM_BODY"), Nothing)
+    result = result & Assert(r2.PartialCount = 0, _
+        "once both slides carry it the finding clears, got " & r2.PartialCount)
+    result = result & Assert(r2.Coverage = "", _
+        "and the coverage text is empty, got '" & r2.Coverage & "'")
+
+    b.Delete
+    a.Delete
+    Test_FieldWiring_CoverageCountsSlidesNotPresence = result
 End Function
 
 ' Local copy of the trailing-break normalisation, for comparing what a textbox
