@@ -186,3 +186,117 @@ told the truth. Evidence must come from the far side of the boundary.
 behind PowerPoint. Before diagnosing a dead button, Alt+Tab. A calibrated test:
 PowerPoint stops answering COM (`ActivePresentation.Name` comes back empty) while a modal
 is open, and answers normally when idle.
+
+---
+
+## ARCHITECTURE — DECIDED IN PRINCIPLE 2026-08-13, NOT YET BUILT
+
+Two calls made at the end of the first successful publish. Both are Rohan's, both are
+right, and both should be settled properly before more feature work.
+
+### 1. TEMPLATE-FIRST, NOT DISCOVERY-FIRST
+
+Rohan: *"Are we better off gearing it to be an expert template builder and pushing a
+pattern we know? ... maybe that's best rather than a sensory beast that doesn't quite
+know what it is trying to be."*
+
+**Yes.** The strongest argument is the WORK MACHINE. A sensory tool needs an operator with
+judgement at every step — tonight it needed Claude to decide which of 59 shapes were
+fields, whether the `MS*` warning was real, which register to pair, whether `TESTFILL` was
+junk, and whether 88 proposed changes were safe. At work there is no Claude. A
+template-driven tool needs no run-time judgement, because the judgement was made once, in
+advance, and frozen into an artifact.
+
+**The cost asymmetry says the same.** Discovery runs ONCE per slide type, ever. Publishing
+runs 43 slides x 9 fields x 4 quarters, forever. Nearly all the code, nearly all the
+defects and nearly all of 13 Aug went into the once-ever path.
+
+**And look where the defects actually were:** the grid that loses marks, the blank grid
+that unmarks, the 21 `MS*` false positive, 50 "unmanaged" items it can only guess at,
+"which register?", the pairing. Every one is a PERCEPTION defect. The publish path — the
+thing that runs every quarter — had one defect, four lines long.
+
+**The mechanical diagnosis under "doesn't know what it's trying to be":** the tool holds
+THREE sources of truth about what a field is — a tagged shape, a register column, and a
+Field Spec row — and reconciles them at run time. Every reconciliation is a place to be
+wrong. A template collapses all three into one, decided at design time.
+
+**What that means concretely**
+- The template is the authority; register schema derives from it.
+- `FieldWiring`'s orphan-column question dissolves: nothing can be orphaned if the
+  template defines the set.
+- Discovery is DEMOTED to a one-off migration tool. Run once per deck, then never
+  developed again. It has already been run — 13 Aug — so for this deck it is done.
+- New projects clone slide 44 and are conformant by construction.
+
+**What NOT to throw away:** the verification discipline (the file is the evidence; prove a
+check can fail; a defect is a class), the Office/COM/OOXML knowledge, the consent-gate
+design, and the register-deck contract. None of it is discovery-specific; all of it
+transfers to the next project.
+
+**The honest risk:** real slides are messier than any taxonomy — the finding that made
+discovery seem necessary in the first place. But that now cuts the other way: owning the
+template BOUNDS the mess instead of trying to perceive it, and the messy migration has
+already happened.
+
+### 2. A DEVICE REGISTRY — PROTECT COMPOUND SHAPES FROM THE GENERIC MACHINERY
+
+Rohan: *"I can already see the need for a specialist module spot to protect complex shape
+mechanisms like the timeline being pulled into marking etc."*
+
+Three pieces of evidence from one evening:
+
+- `MS1_DATE` … `MS7_LABEL` appeared as 21 rows in the Discover Fields grid, and the only
+  thing that stopped them being tagged was **Claude telling Rohan not to**.
+- `FieldWiring.ScanFieldWiring` reported those same 21 columns as orphaned on EVERY run —
+  the recurring "21 field(s) on the register that no slide carries" warning.
+- The Template Audit counted device internals among its "50 unmanaged text items, 21 of
+  which look like project data".
+
+Three generic mechanisms seeing the device's PARTS; none of them seeing the device.
+
+**The model already exists, in exactly one place.** Injection has it right:
+
+```vba
+InjectPrimitive.InjectField(sld, "MILESTONE_TIMELINE", "", False, Nothing, row)
+```
+
+One addressable thing, consuming its own columns off the register row. That understanding
+never propagated to discovery, wiring, marking or audit — so a device is a first-class
+citizen at write time and a pile of loose shapes everywhere else.
+
+**Principle: the device is the unit of addressing, not its parts.**
+
+**Shape of the fix.** One declaration per device — its role tag, the register columns it
+consumes, its internal shape-name pattern — read by four consumers:
+
+| consumer | today | with the registry |
+|---|---|---|
+| Discovery | lists 21 internals as candidate fields | skips anything inside a declared device |
+| `FieldWiring` | reports 21 orphan columns every run | counts them as OWNED by the device |
+| Marking | will happily tag a device internal | refuses |
+| Template Audit | counts internals as unmanaged project data | classifies as device internals |
+
+One declaration, four consumers — versus four independent special cases, which is what
+would get written if this is approached site by site.
+
+**Why it is urgent rather than tidy:** "leave rows 41-65 alone" was ADVICE GIVEN TO A
+HUMAN. Zettel `20260719-telling-an-agent-not-to-do-something-isnt-a-control` — and it is
+not a control when you tell a person either. At work, with nobody to say it, the next run
+of Discover Fields tags 21 timeline shapes as individual fields and quietly destroys the
+device.
+
+**It folds into the template pivot.** In a template-owned world the device is PART of the
+template, so it is declared by construction rather than looked up — the registry stops
+being a side-table and becomes a property of the thing already controlled. The expensive
+half, knowing what a device is, is already written.
+
+### 3. ALSO REQUESTED, NOT STARTED
+
+**Logical tab numbering and Excel best practice across all workbooks.** `register-wide.xlsx`
+has 18 sheets in arrival order with no scheme (`START HERE`, `Sources`, `SRC_EXTRACTS`,
+`Field Spec`, seven `TPL_*`, `Register`, `Run Log`, `Sync Log`, `Field Discovery`,
+`Template Audit`, a stale `Review project-status-2D3D`, plus the live review sheet).
+`WorkbookBridge.ArrangeTabs` already orders them, so the scheme belongs there rather than
+in a manual pass. Do this FIRST next session — it is small, bounded, and was explicitly
+asked for.
