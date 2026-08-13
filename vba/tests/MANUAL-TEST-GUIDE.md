@@ -1,5 +1,9 @@
 # Manual test guide
 
+> **HISTORICAL — written 2026-07-29**, when the toolbar had sixteen buttons. The
+> interactive surface it walks no longer exists in that shape; the reasoning about what
+> only a human can test still holds.
+
 For the parts no automated test can reach: the interactive layer (every `InputBox`
 and `MsgBox` flow), the toolbar, and the install. The 93 automated tests cover
 everything underneath these.

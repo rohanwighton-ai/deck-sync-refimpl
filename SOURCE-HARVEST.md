@@ -1,5 +1,9 @@
 # Source harvest form
 
+> **CURRENT — a paper form, not a tool surface.** Written 2026-08-08 and unaffected by
+> toolbar or layout changes: it is filled in wherever you are and transcribed into the
+> `Sources` sheet afterwards.
+
 Gist: a one-page form for writing down where each bit of quarterly slide text actually came from, using the rules the CRC prompt library already locked in rather than new ones.
 
 Fill it in wherever you are — it needs no tools. Transcribe into the `Sources` sheet
@@ -115,7 +119,8 @@ CITED BY        [projects/fields you expect to cite it — pencil, not a
 | F | Added | `Added` | **manual — no code writes this** |
 | G | Applies to | `Applies to` | dropdown, fed from the register's own periods |
 
-Then put the ID in **column G of the drafting sheet** for each row that used it,
+Then put the ID in the **SOURCES column of the drafting sheet** (column D in layout 4 -- 
+but go by the header, not the letter) for each row that used it,
 comma-separated: `S07,S09`.
 
 Gist: write each source down once in the Sources tab, then type its short code next to every project that used it.
@@ -140,7 +145,7 @@ check, prefixed `EXAMPLE (not a real document)`. They also have the Applies-to v
 wrongly duplicated into `Added`, which is a fair illustration of why they should not
 survive contact with real data.
 
-**They are cited, on real rows.** `TPL_ABOUT_BODY` column G carries citations on 37
+**They are cited, on real rows.** `TPL_ABOUT_BODY`'s SOURCES column carries citations on 37
 project rows — `S01,S03`, `S01,S02` and so on — against real SAAFE project text. So
 right now the drafting sheet shows fabricated provenance next to genuine content, which
 reads as a record and is not one. (`TPL_KEY_EVENTS_BODY` is clean; header only.)
@@ -148,7 +153,7 @@ reads as a record and is not one. (`TPL_KEY_EVENTS_BODY` is clean; header only.)
 Clearing it is two jobs, not one:
 
 1. Delete rows 6–11 of the `Sources` sheet.
-2. Blank column G on `TPL_ABOUT_BODY` for all 37 rows.
+2. Blank the SOURCES column on `TPL_ABOUT_BODY` for all 37 rows.
 
 Doing only the first is worse than doing neither: the citations survive, now pointing at
 IDs that no longer exist, and publish reports them as unknown refs on every run.

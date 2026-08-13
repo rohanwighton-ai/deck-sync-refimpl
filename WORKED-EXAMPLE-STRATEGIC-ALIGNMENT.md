@@ -1,5 +1,9 @@
 # Worked example — STRATEGIC_ALIGNMENT, end to end
 
+> **HISTORICAL — written 2026-08-08.** Names the old multi-button toolbar and the
+> drafting layout of the time. Kept because the METHOD is the point: one field, one real
+> project, recipe through to text. Do not follow its button names or column letters.
+
 Gist: one field, one real project, taken all the way from writing the recipe to producing the text — so we can see whether the recipe actually works before doing it 43 times.
 
 Project: **`2_P004` — Bayesian Network Models for Effective AMR Management in Water

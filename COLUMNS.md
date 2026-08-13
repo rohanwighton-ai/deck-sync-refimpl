@@ -1,5 +1,9 @@
 # Columns — what the register holds, and why
 
+> **CURRENT — the design record.** Written 2026-08-11 from a real work-deck slide. Once
+> the Field Spec sheet carries the column list, THE SHEET is authoritative for the list
+> and this file keeps only the reasoning.
+
 Derived from a **real work-deck slide** (`1_P006`, screenshot 2026-08-11), not from the
 rig. The rig's nine columns were an artefact of two weeks of scaffolding; the real slide
 carries roughly 35–40 addressable values.

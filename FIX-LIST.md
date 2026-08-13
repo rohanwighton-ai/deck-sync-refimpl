@@ -1,5 +1,9 @@
 # Fix list
 
+> **CURRENT — the live list of what is known-broken and not yet fixed.** Re-audited
+> against the code 2026-08-14. Entries say whether they are still live; anything marked
+> fixed names the build it was fixed in.
+
 One place for what is known-broken and not yet fixed, so each new review stops
 re-deriving the same findings. Three reviews have now paid to rediscover items that
 were already known — that cost is what this file exists to stop.
@@ -159,7 +163,14 @@ cadence machinery if 1c is resolved by deletion.
 
 ---
 
-## 2. `4. Sync Now` always refuses on the main field, and names a sheet that does not exist
+## 2. SUPERSEDED — the button this described no longer exists
+
+> The toolbar had `0`–`4` numbered buttons when this was written; there are now two.
+> Kept because the CAUSE is still live: `ContentKindOf` returns `KIND_PROSE` for
+> everything outside three hardcoded names, so `HasBatchableWork` is never true for a
+> prose field. Under the chain that is simply the normal route to the review sheet.
+
+### As written, against the old toolbar
 
 `AssignBatches` batches only `KIND_CONTROLLED` fields, so for prose —
 `ABOUT_BODY`, the field the whole drafting apparatus exists for — `HasBatchableWork` is

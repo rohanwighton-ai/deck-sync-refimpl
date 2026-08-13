@@ -27,7 +27,7 @@ Original pause note follows.
 > `..._Round8.md`.
 
 **Updated:** 31 July 2026, after round 5 of the Excel Control Layer exchange.
-Supersedes the workplan in `specs/excel-control-layer-round4.md` §6, which is now history.
+Supersedes the workplan in `specs/Excel_Control_Layer_Round4.md` §6, which is now history.
 
 The design conversation is **closed** — round 5 delivered E2, decided both amendments, and
 raised no new questions. What follows is build work against settled decisions.

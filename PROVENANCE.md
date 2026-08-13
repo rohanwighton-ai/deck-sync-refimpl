@@ -21,7 +21,7 @@ which is rebuilt every period.
 | | survives a rollover |
 |---|---|
 | the published text | **yes** — register row, per period |
-| which sources it was drafted from | **no** — drafting sheet column D, cleared |
+| which sources it was drafted from | **no** — the drafting sheet's SOURCES column, cleared |
 | the AI draft before it was edited | **no** — drafting sheet, cleared |
 | the recipe as it stood at the time | **no** — Field Spec is permanent but edited **in place** |
 
@@ -114,7 +114,7 @@ suggest last week" — which is the window where it is genuinely wanted.
    shape. They are register-only: they explain a value, they never reach a
    slide. This is the one genuine exemption in the model, and it is narrow
    enough to be derived from the suffix rather than configured.
-5. **Drafting sheet** — column D (sources) already exists and is already read at
+5. **Drafting sheet** — the SOURCES column already exists and is already read at
    publish. No change to what a person types.
 
 ## What it must refuse

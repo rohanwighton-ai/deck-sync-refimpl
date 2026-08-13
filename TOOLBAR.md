@@ -1,6 +1,6 @@
 # The toolbar: three buttons, three chains
 
-> **DESIGN DOC — NOT WHAT SHIPPED. Corrected 2026-08-14.** The toolbar has **two**
+> **DESIGN DOC. ITS UI DESCRIPTION IS SUPERSEDED — corrected 2026-08-14.** The toolbar has **two**
 > buttons, not three: `CommandBarUI.AddButton` is called exactly twice, for
 > `CAP_SYNC_NOW` ("1. Sync Now" → `RibbonUI.SyncNowChain`) and `CAP_REBUILD_SHEETS`
 > ("2. Rebuild my sheets" → `DraftingUI.RefreshDraftingSheets`).

@@ -1,5 +1,9 @@
 # Manual test — the drafting loop, end to end
 
+> **SUPERSEDED — written for layout 2 on 2026-08-01.** Its column letters are wrong for
+> layout 4 (submit is F, the tick is G). Kept as the record of how the loop was first
+> walked by hand; `vba/tests/check_docs.py` will not chase its letters.
+
 > **REWRITTEN 2026-08-01 for layout 2.** The sheet gained a third text column
 > that day: **C = ORIGINAL** (read-only), **F = AI DRAFT** (what Copilot wrote,
 > *never* published), **G = SUBMIT** (your text — the only column that reaches a
