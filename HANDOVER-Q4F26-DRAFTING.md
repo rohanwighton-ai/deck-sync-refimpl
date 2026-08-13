@@ -262,8 +262,12 @@ question is the correct output when the evidence is not there.
 
 - Six fabricated `Sources` rows (§6) cited by 37 real rows.
 - One `TESTFILL-1256` placeholder left in `ABOUT_BODY` for `3_P001`.
-- Three projects have **no real `ABOUT_BODY` text at all** — `3_P001`, `3_P002`,
-  `2_P003` — and it is not recoverable from any backup. They need real text.
+- ~~Three projects have no real `ABOUT_BODY` text at all — `3_P001`, `3_P002`, `2_P003`
+  — and it is not recoverable from any backup.~~ **WRONG, corrected 2026-08-14.** The
+  real text was on the slides all along (376, 432 and 539 characters respectively); only
+  the register held placeholders (`TESTFILL-1256`, `New text for update 2`/`3`). Harvested
+  back into the register on 14 Aug, so `ABOUT_BODY` is now 43/43 at `Q4F26` with no
+  placeholders. "Not recoverable" was asserted without checking the deck.
 - `STRATEGIC_ALIGNMENT_BODY`, `PROBLEM_BODY` and `PROGRESS_BODY` each have a
   value on **1 of 43** rows.
 

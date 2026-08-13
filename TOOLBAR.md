@@ -1,5 +1,21 @@
 # The toolbar: three buttons, three chains
 
+> **DESIGN DOC — NOT WHAT SHIPPED. Corrected 2026-08-14.** The toolbar has **two**
+> buttons, not three: `CommandBarUI.AddButton` is called exactly twice, for
+> `CAP_SYNC_NOW` ("1. Sync Now" → `RibbonUI.SyncNowChain`) and `CAP_REBUILD_SHEETS`
+> ("2. Rebuild my sheets" → `DraftingUI.RefreshDraftingSheets`).
+>
+> The three-chain split below (`1. Start the quarter` / `2. Draft and publish` /
+> `3. Put it on the slides`) was collapsed into the single `Sync Now` chain. Its caption
+> constants still exist in `CommandBarUI` and are **dead** — 17 of the 19 `CAP_*`
+> constants are never used to build anything.
+>
+> **The reasoning below is still the governing rule** and is why the current chain is
+> wrong in the way Rohan named on 14 Aug: three of its prompts have an invariant answer,
+> which is precisely the "boundary with no decision in the gap" this file argues against.
+> Read it as the standard the two-button chain fails, not as a description of the UI.
+
+
 Was 16 buttons across three bars. This is the design that replaces them, and
 nothing is deleted -- every capability is reached, just not from the bar.
 

@@ -222,19 +222,30 @@ at mark time.
 
 ---
 
-## 6. Five user-facing strings that describe a tool that no longer exists
+## 6. User-facing strings that describe a tool that no longer exists
+
+**Re-audited against the code 2026-08-14** — the list grew rather than shrank. Each entry
+below now says whether it is still live.
 
 Fix as a CLASS, with a grep for the shape, not one at a time. The 3de4be8 sheet rename
 left four stale readers and they have been found in three separate sessions.
 
 - `FastPathRefusalText` still says sync "does not create slides" — untrue since the
   25% create path landed.
-- `WorkbookBridge.DescribeSheet` / `LifespanOf` / `IsToolOwnedSheet` still match
-  `"Sync Review"`, so `START HERE` labels the live review sheet
-  *"(not created by this tool)"*, lifespan *"unknown"*.
+- `IsToolOwnedSheet` still matches the prefix `"Sync Review"`, while
+  `ReviewQueue.ReviewSheetNameFor` produces `"Review project-progress-A32C"`. **Re-checked
+  2026-08-14: STILL LIVE.** So the review sheet a person is actually working in is not
+  recognised as tool-owned, and `START HERE` labels it *"(not created by this tool)"*.
+- **`IsToolOwnedSheet` is missing `Run Log` AND `Register`.** Re-checked 2026-08-14: still
+  true of both. `LifespanOf` knows `Register` perfectly well two functions away — the two
+  disagree about the most important sheet in the workbook.
 - `DescribeSheet("Register")` describes the LONG register — one row per project, field
   and quarter, with approval state. That model was retired 2026-08-03.
-- `IsToolOwnedSheet` is missing `"Run Log"` entirely.
+- **Dead caption constants.** `CommandBarUI` defines 19 `CAP_*` strings; `AddButton` is
+  called twice. The other 17 name buttons that do not exist, including the whole
+  three-chain design (`1. Start the quarter`, `2. Draft and publish`,
+  `3. Put it on the slides`). Any message interpolating one of those is describing a
+  button nobody can press — which is the exact failure `TOOLBAR.md` predicted.
 - `WORKFLOW.md` still says columns G/I, "no button for roll forward", and "nothing ties
   a source to a period" — all three fixed in code, none in the doc.
 
@@ -283,8 +294,13 @@ field per quarter.
 - **Retire a slide or a project.** Nothing removes a slide the register no longer
   mentions. It shows only as a parity mismatch, resolved by hand.
 - **A maintained list of linkage codes.** Strategic Alignment must cite codes it can
-  check. Rohan owns it, colleagues later — so it needs an `as at` date and probably a
-  home outside the register workbook, which the tool rebuilds.
+  check. **Rohan owns it** (settled; do not re-ask), colleagues later — so it needs an
+  `as at` date and a home. **CORRECTED 2026-08-14: that home is a PERMANENT sheet in the
+  register workbook, beside `Sources`.** The earlier wording here said "probably outside
+  the register workbook, which the tool rebuilds" and that is wrong —
+  `WorkbookBridge.LifespanOf` classifies `Register`, `Field Spec` and `Sources` as
+  PERMANENT; only `TPL_*` and review sheets are rebuilt. An external file would be a
+  second artefact to keep in step, which is the class of problem template-first removes.
 - **Provenance that survives a rollover.** Source citations live only on the drafting
   sheet, which is cleared at every period change. The record answering "why does it say
   90%?" has a lifespan of one quarter.
@@ -368,9 +384,10 @@ scaffolding removed itself; the six sheet rows did not.
    row and unblocks the `[TBC]` in `2_P004`'s published text.
 3. **Use the form.** `SOURCE-HARVEST.md` has the rubric and the fields; it needs no
    tools and can be filled in at work.
-4. **Decide where a maintained list lives.** Rohan owns it now, colleagues later — so it
-   needs an `as at` date, and probably a home outside the register workbook, which the
-   tool rebuilds and clears.
+4. **Decide where a maintained list lives.** Rohan owns it (settled). It needs an `as at`
+   date and a PERMANENT sheet in the register workbook, beside `Sources` — see the
+   correction under Capability gaps. The workbook is not rebuilt; only `TPL_*` and review
+   sheets are.
 
 **And the structural point stays open:** citations live only on the drafting sheet,
 which is cleared at every period change. Until that moves to the register — same grain

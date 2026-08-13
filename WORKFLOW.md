@@ -6,6 +6,22 @@
 > and `2. Rebuild my sheets`, and every step below is reached from inside those chains.
 > Periods are also written `Q3F26` now, not `FY26Q4`. The DESCRIPTIONS of what each stage
 > does are still accurate; only the way you reach them is wrong.
+>
+> **COLUMN LETTERS BELOW ARE WRONG (corrected 2026-08-14).** This file says drafts go in
+> **G** and the tick in **I**; that was layout 3. `Drafting.bas` has been layout 4 for
+> some time and the constants are authoritative:
+>
+> | col | constant | meaning |
+> |---|---|---|
+> | C | `COL_D_CURRENT` | ORIGINAL — what the slide says now, read-only |
+> | D | `COL_D_SOURCES` | source IDs |
+> | E | `COL_D_DRAFT` | AI draft — **never published** |
+> | F | `COL_D_SUBMIT` | your words — **this is what publishes** |
+> | G | `COL_D_APPROVED` | the tick |
+> | J | `COL_D_NOTES` | notes |
+>
+> Do not re-state these letters in prose anywhere. Derive them from the constants, per the
+> standing rule that a description of a machine fact goes stale silently.
 
 
 What a person actually does, what the tool does back, and what it touches — so the

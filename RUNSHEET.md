@@ -1,5 +1,12 @@
 # Run sheet — full manual rehearsal on the personal machine
 
+> **HISTORICAL — written 2026-08-07, kept for the method not the steps.** It names the
+> 15-button toolbar (`0. Start a Quarter`, `Setup A/A2/B`, `4. Sync Now`) which no longer
+> exists — there are two buttons — and it works on the rig copy
+> `e2e-deck.wide-test.pptx`, not the real deck. The *rules* at the top still hold: fake
+> data, never the original, say what you saw, and a confusing dialog IS the finding.
+
+
 **Gist:** a step-by-step script for doing one complete fake quarter by hand on this
 machine, so every button gets pressed once before the real deck at work is involved.
 
