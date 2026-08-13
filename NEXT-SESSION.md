@@ -62,16 +62,19 @@
 
 **Written 13 August 2026, ~16:15.** Previous version archived as `NEXT-SESSION-2026-08-12.md`.
 
-> ## THE DECK IS ONBOARDED. THE DELIVERY COUNT IS STILL ZERO.
+> ## SUPERSEDED — written mid-session, kept for the reasoning below it
 >
-> 43 slides tagged and linked, 0 failed verification, register saved, deck period
-> `Q4F26` on disk. **No drafted value has reached a slide.**
+> This banner read "THE DELIVERY COUNT IS STILL ZERO". **It is no longer true.** 21 drafted
+> `KEY_EVENTS_BODY` values reached real slides at 17:23 on 13 Aug, verified three ways: the
+> apply dialog, the slide XML in the saved file, and a screenshot of the rendered slide.
 >
-> **The reason was found tonight, and it is one line of code.**
+> 43 slides tagged and linked, 0 failed verification, register saved, deck period `Q4F26`
+> on disk. The section below explains the defect that had blocked it, which is now fixed
+> and proven — keep it for the reasoning, not as a description of current state.
 
 ---
 
-## THE BLOCKER, AND THE TWO-ROW WORKAROUND
+## THE BLOCKER — FIXED AND PROVEN. Kept for the reasoning and the rejected workaround.
 
 `RibbonUI.SyncNowChainCore` step 4 is `DraftingUI.PublishDraftsForField`, which begins:
 
@@ -199,14 +202,25 @@ pre-empts the whole path.
 
 ---
 
-## FILES CHANGED THIS SESSION (repo `deck-sync-refimpl`, uncommitted)
+## FILES CHANGED THIS SESSION — ALL COMMITTED AND PUSHED
 
-- `vba/DraftingUI.bas` — refusal count/names surfaced in the dialog; warning icon
-- `vba/tests/TestRunner.bas` — two tests rewritten + renamed, runner registrations updated
-- `FIX-LIST.md` — new items **1c** and **1d**
-- `NEXT-SESSION.md` — this file
+`deck-sync-refimpl` (main, in sync with origin):
+- `vba/DraftingUI.bas` — refusal surfaced in the dialog; `FieldForRun`; roll-forward skip
+- `vba/RibbonUI.bas` — `PickType`; sync-log constant at two creators
+- `vba/AdoptFlow.bas` — third `PickType` call site
+- `vba/ExcelOutput.bas` — `PeriodRowCount`
+- `vba/WorkbookBridge.bas` — `SYNC_LOG_SHEET_NAME`; lifecycle tab ordering
+- `vba/tests/TestRunner.bas` — two tests rewritten + renamed
+- `FIX-LIST.md`, `NEXT-SESSION.md`
 
-Not committed. Nothing else in the repo was touched.
+`claude-brain`: `DECISIONS.md` — the template-first decision.
+`Zettelkasten`: `20260813-the-device-is-the-unit-of-addressing-not-its-parts.md`.
+`OneDrive\Claude`: `reply-from-claude-code-2026-08-13-evening.md` — answers chat side's
+three questions; not a repo, so not versioned.
+
+Builds: `addin81` (stamp 14:37 → superseded), **`addin82` (stamp 19:22, currently loaded and
+the only add-in)**. Suite green at 192 passed / 0 failed with the compile gate clean across
+33 modules.
 
 ---
 
