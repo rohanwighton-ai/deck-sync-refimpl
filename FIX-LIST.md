@@ -743,3 +743,101 @@ line.
   a `Given` filled from a link, not a sync field.
 - Sharing turns on **portability, install, single truth** -- his words. Single
   truth forces a shared register, which forces the cloud path.
+
+---
+
+## PAPERCUTS FROM THE FIRST SUCCESSFUL PUBLISH — 2026-08-13
+
+All found by pressing buttons on the real deck, none visible to 192 passing tests.
+Ranked by how much of an evening they cost.
+
+### P1. A dialog opens BEHIND the PowerPoint window, and reads as "nothing happened"
+
+**Three times in one session.** Rohan pressed a button, nothing appeared, and the run
+looked dead. Each time a VBA modal was sitting behind another window — twice behind
+Excel, once behind PowerPoint itself. It cost two separate diagnostic detours before a
+reliable test was found.
+
+**The calibrated test, worth keeping:** while a modal is open PowerPoint stops answering
+COM — `ActivePresentation.Name` comes back empty and `Slides.Count` reads 0. Idle, it
+answers normally. That distinguishes "waiting for you" from "finished" in one call, and it
+was the only thing that settled it.
+
+**Fix:** activate the PowerPoint window immediately before showing any prompt
+(`AppActivate`, or `Application.Activate`). A question nobody can see is not a question.
+
+**Do NOT fix by adding waits.** Rohan asked whether the code should "cycle through
+applications to allow adequate initialisation time". Tempting and wrong: nothing here is
+an initialisation problem — Excel was doing genuine work, building 13 drafting sheets of
+~43 rows. A sleep long enough to help is wrong on a faster machine and still wrong on a
+slower one, and it would mask the real defect. Zettel
+`20260810-compensating-arithmetic-hides-the-mechanism-you-never-probed`.
+
+**Second half of the same defect: nothing says "working".** A long Excel operation with a
+silent PowerPoint is indistinguishable from a crash. A status-bar line, or making Excel
+visible while it writes, is the honest fix.
+
+### P2. The field-picker InputBox has its text field OFF THE BOTTOM OF THE SCREEN
+
+`AskForField`'s prompt lists every field in the workbook — around 40 lines by the time it
+names the drafting fields, then the Given/Derived/Controlled ones with their kinds. On a
+1080p screen that pushes the actual entry box below the screen edge. Rohan: **"what box?"**
+
+He could not type into it because he could not see it. This is not a cosmetic problem: the
+box returns "" when dismissed, which silently cancels the stage.
+
+**Fix:** cut the prompt to the drafting fields only (the ones that can be answered), and
+put the "these do not need a drafting sheet" explanation on a sheet, not in the dialog.
+Same lesson as the Sync Now report: the container was the problem, not the wording.
+
+### P3. The 21 `MS*` "fields with nothing to write into" warning is a FALSE POSITIVE
+
+Fires on **every single run**, and the answer is always No. `FieldWiring.ScanFieldWiring`
+compares register columns against individually tagged fields and has no concept of a
+device consuming a column set, so every device-driven column reads as orphaned.
+
+Answering Yes would walk the person through tagging 21 timeline internals as ordinary
+fields — destroying the device.
+
+**Fix is the device registry.** See NEXT-SESSION.md, "A DEVICE REGISTRY". Do not special-
+case this one call site.
+
+### P4. The 17-column prompt is ALL-OR-NOTHING across a mixed set
+
+"17 field(s) on the Field Spec have no column in the register. Add a column for each?"
+Sixteen are uncontroversial (`INDUSTRY_CASH`, `START_DATE`, `PROJECT_LEAD` …). One is
+`HIGHLIGHTS_BODY`, which **must not** get a single column — it is three shapes per slide
+and needs slot columns like the milestones.
+
+So a real architectural decision is made, silently, by a Yes on a bundled prompt. Declined
+twice on 13 Aug for exactly this reason.
+
+**Fix:** offer the set per field, or exclude fields whose Renders-as implies slots.
+
+### P5. Re-running the Template Audit REPLACES the sheet, decisions included
+
+The dialog says so — *"Re-running this REPLACES that sheet, decisions included"* — which is
+honest, and still wrong. The audit's whole purpose is to record field/chrome/drop
+decisions against 50 items; losing them on re-run means the work can only ever be done in
+one sitting. Same shape as the Discover Fields grid (item 3) which rebuilds from scratch
+and loses marks.
+
+**Fix:** carry decisions across by shape ID, the way `WriteDraftingSheet` carries drafts.
+
+### P6. `PROGRESS_BODY` has more approvals than submitted text
+
+42 ticks against 34 pieces of text. Publishing correctly requires BOTH, so the 8 extra
+publish nothing — but the reported count will not match the ticks, and there is no message
+explaining why. Either the ticks are stale or the text was lost; nothing currently says
+which.
+
+### Confirmed FIXED 2026-08-13 (addin81), listed so they are not re-found
+
+- **Publish/Copy-AI could only ever reach the FIRST `Kind = Prose` field.** `FieldForRun`
+  now asks inside a chain. Two call sites. Proven on the real deck at 17:23.
+- **Roll Forward asked a question whose every answer was refused.** `PeriodRowCount` lets
+  the caller check first; inside the chain it is now one line in the report.
+- **The slide-type picker demanded typed input for a one-item list** (item 7). `PickType`
+  auto-selects a sole type and still asks when there is a real choice. Three call sites.
+- **`RefreshDraftingSheets` reported "drafting sheets are ready. Workbook saved." over
+  seven refusals.** Refusal now leads, names the fields, and carries a warning icon.
