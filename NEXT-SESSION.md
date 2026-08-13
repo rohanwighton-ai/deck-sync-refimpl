@@ -341,12 +341,21 @@ happened to land. That, rather than any cosmetic gain, is what this fixes. `SAVE
 archives now sort last so they cannot be mistaken for the live sheet they were copied from;
 typing in one is silent, because publish reads the live sheet only.
 
-### NOT compile-verified
+### Compile-verified 13 Aug, after Rohan closed Office
 
-Static checks pass across 34 modules and both cross-module constants are `Public` in
-modules that are in the compile and build sets. **The whole-project compile gate has NOT
-run** — it requires Office closed and Rohan's real deck and register were open. Run
-`run_vba_tests.ps1` before building `addin82`.
+```
+COMPILE OK: whole project compiled clean (33 modules).
+RESULT: OK
+=== 192 passed, 0 failed ===
+```
+
+Static checks also clean across 34 modules. The new cross-module references
+(`DiscoverUI.DISCOVERY_SHEET_NAME` and `TemplateAudit.AUDIT_SHEET_NAME` read from
+`WorkbookBridge`) compile.
+
+**NOT YET IN AN ADD-IN.** The ordering and the `SYNC_LOG_SHEET_NAME` constant are in source
+only — `addin81` predates them. Nothing changes in the workbook until `addin82` is built
+and installed, so do not expect to see the new tab order before then.
 
 ### Deferred deliberately: numbering the NAMES
 
