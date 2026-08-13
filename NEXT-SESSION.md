@@ -468,3 +468,43 @@ Typing it into 43 drafting rows gets the same pixels this quarter and a mess nex
 
 **Do not bulk-type placeholders into the drafting sheets before deciding 1–3.** Undoing 43
 rows of typed placeholder is harder than generating it once.
+
+### ANSWERED 13 Aug — the placeholder rule
+
+Rohan on the three open decisions: *"1) whatever makes MECE logical sense 2) only the
+quarterly ones, good instinct 3) not sure it should be one of a set selection yeah? like
+validated data?"*
+
+**2 is settled: quarterly fields only** (`PROGRESS_BODY`, `KEY_EVENTS_BODY`). Entity-static
+fields are excluded — a closed project still *is* what it always was, so a placeholder on
+`ABOUT_BODY` would be false.
+
+**3 is settled: a validated set, not free text.** The wording is SELECTED, never typed —
+same mechanism as the Controlled fields and `ApplyControlledValidation`. Selecting it is
+the consent, and it cannot drift across 43 projects.
+
+**1, the MECE partition. It is over `status x has-text`, not status alone** — that is what
+makes it collectively exhaustive:
+
+| project state | field empty | treatment |
+|---|---|---|
+| Closed | yes | placeholder — no further update will ever come |
+| Not yet commenced | yes | placeholder — none due yet |
+| Active, explicitly marked nothing-to-report | yes | placeholder — a deliberate statement |
+| **Active, no explicit mark** | yes | **NOT placeholdered. Reported as a GAP.** |
+| any | no | real text always wins |
+
+**Row four is the whole point.** An active project with an empty quarterly field is a
+MISSING UPDATE, not a non-update. Auto-placeholdering it would silently convert "chase this
+up" into a tidy sentence on a funder-facing slide — the same shape as every
+reports-success-without-confirming-the-effect defect in this file, pointed at content
+instead of code.
+
+So the vocabulary needs a fourth member that a person CHOOSES, e.g. `Nothing to report`.
+Its presence is what authorises a placeholder on an active project; its absence is a gap
+the run should name.
+
+**Prerequisite: normalise `PROJECT_STATUS` first.** The vocabulary is currently inconsistent
+(`In progress`/`In Progress`, `Not started`/`Not Started`, plus `Not yet commenced`) — see
+"Five status values differ by one capital letter". A MECE rule keyed on status cannot be
+built on a status set that has near-duplicate members. Fix that before implementing this.
