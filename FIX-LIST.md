@@ -72,7 +72,12 @@ would be crude, but it would hold.
 **Found 2026-08-09, on the first real drafting run of a new field.** Two faults, one
 cheap and one structural.
 
-**The cheap one — the global rules assume a prior value exists.** They say *"Column C
+**FIXED (verified in the workbook 2026-08-14).** The global rules now carry an
+explicit empty-column-C clause: *"Where column C is EMPTY, this field has never been
+published for that project. Write it fresh against the Length above. Do not leave the row
+blank on account of an empty column C."* The account below is kept for the reasoning.
+
+**The cheap one -- the global rules assumed a prior value existed.** They say *"Column C
 is the standard, not a draft to improve on… if the text in column C already does its
 job, say so and leave the row blank."* On a field added today, column C is empty for
 every project that has not been harvested — 42 of 43. Read literally, that clause tells
