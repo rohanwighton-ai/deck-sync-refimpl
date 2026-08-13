@@ -412,6 +412,37 @@ and today proved it empirically rather than theoretically.
 
 ---
 
+## PARKED: name each prose field's recipe, so it can be discussed plainly
+
+Rohan, 2026-08-14, and parked by him in the same breath: *"giving the particular
+generative agents goblin names associated with their coding task so I can talk about them
+more plainly with non-AI, non-code, non-data people. We do not need to get too carried
+away by that now."*
+
+**The thing being named already exists -- it is the Field Spec row.** A recipe holds a
+purpose, a voice, a length, a Do-NOT list and an *own-job test* whose entire function is
+to stop one field wandering into a neighbouring field's territory. That is a job
+description, not a config row. Thirteen `Kind = Prose` fields, thirteen of them.
+
+**What it buys, beyond plain speech:** the bug report writes itself. *"The Strategic
+Alignment goblin keeps doing Problem's job"* is a precise statement that an own-job test
+is failing, and it is intelligible to someone who has never heard of a register. This
+project's hardest recurring problem is boundary bleed between adjacent panels; a named
+owner per panel makes that boundary a thing people can point at.
+
+**If it is built, it is ONE COLUMN on the Field Spec, not a roster in a document.** A
+markdown list of names is a second copy of a machine-knowable fact and will drift -- the
+class of defect this repo spent 2026-08-14 removing. As a column it derives out wherever
+the field does: prompts, drafting tab labels, review sheets, run reports.
+
+**The risk worth holding:** a name makes the output easier to over-trust. A goblin has a
+brief, not judgement. It is why the approve gate exists and why naming must not soften it.
+
+**Not scheduled.** The interesting half of the design session is what each goblin
+*refuses* to do, which is the Do-NOT column read aloud.
+
+---
+
 ## PARKED, nice-to-have: show/hide control for fields on a slide
 
 Rohan, 2026-08-09, asked for it and then ranked it himself: **nice to have.** Not
