@@ -143,7 +143,9 @@ the picture injection and the progress bars, found the same way: by pressing the
 - **Backups** `OneDrive\Claude\backups\2026-08-13-1520-post-onboard-Q3F26 - *` — deck and
   register, both verified byte-identical by md5 at the time of copy.
 - **Build `addin82`**, stamp `2026-08-13 19:22` — CURRENT, confirmed loaded and the only
-  add-in registered. In `OneDrive\Claude\` and the trusted location
+  add-in registered. **Source is one commit ahead of it** (`20dc2a9`, six sheet-name
+  literals replaced by their constants). The values are identical, so behaviour is
+  unchanged and a rebuild is not required — but `addin82` is not byte-equivalent to `HEAD`. In `OneDrive\Claude\` and the trusted location
   `AppData\Roaming\Microsoft\AddIns\`. (Superseded: `addin80` stamp 14:37, `addin81`
   stamp 16:24.)
 
