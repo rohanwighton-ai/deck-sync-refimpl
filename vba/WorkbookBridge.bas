@@ -4,7 +4,7 @@ Option Explicit
 Public Const RUN_LOG_SHEET_NAME As String = "Run Log"
 
 ' THE SYNC LOG HAD NO CONSTANT, ALONE AMONG THE TOOL-OWNED SHEETS. It was a bare
-' SYNC_LOG_SHEET_NAME literal in SEVEN places across two modules -- and two of them are
+' "Sync Log" literal in SEVEN places across two modules -- and two of them are
 ' GetOrAddWorksheet calls, which CREATE the sheet when the name does not match.
 ' So a single divergent literal would not fail: it would quietly start a second
 ' log sheet while IsToolOwnedSheet and ArrangeTabs went on guarding the first,
@@ -493,13 +493,13 @@ Public Function DescribeSheet(sheetName As String) As String
     ElseIf sheetName = SYNC_LOG_SHEET_NAME Then
         DescribeSheet = "What was written to slides, and when. Written as it happens, so a run " & _
             "that dies halfway still leaves a record."
-    ElseIf sheetName = "Field Spec" Then
+    ElseIf sheetName = FieldSpec.SPEC_SHEET_NAME Then
         DescribeSheet = "How each field should be WRITTEN -- purpose, voice, length, and what " & _
             "not to do. Edit this to change the instructions the AI is given. Yours, not the tool's."
-    ElseIf sheetName = "Sources" Then
+    ElseIf sheetName = Sources.SOURCES_SHEET_NAME Then
         DescribeSheet = "WHERE THE WORDS CAME FROM. One row per source, referenced by ID from " & _
             "column G of a drafting sheet. Point at documents; do not paste them in here."
-    ElseIf sheetName = "Register" Then
+    ElseIf sheetName = REGISTER_SHEET_NAME Then
         DescribeSheet = "THE RECORD. One row per project, field and quarter, with its text and " & _
             "whether a human approved it. Everything else in this workbook feeds it or reads it."
     Else
@@ -508,7 +508,7 @@ Public Function DescribeSheet(sheetName As String) As String
 End Function
 
 Public Function LifespanOf(sheetName As String) As String
-    If sheetName = "Register" Then
+    If sheetName = REGISTER_SHEET_NAME Then
         LifespanOf = "PERMANENT -- grows each quarter"
     ElseIf Left(sheetName, 4) = "TPL_" Then
         LifespanOf = "Rebuilt each drafting round"
@@ -516,9 +516,9 @@ Public Function LifespanOf(sheetName As String) As String
         LifespanOf = "One per run, then consumed"
     ElseIf sheetName = SYNC_LOG_SHEET_NAME Then
         LifespanOf = "Append-only history"
-    ElseIf sheetName = "Field Spec" Then
+    ElseIf sheetName = FieldSpec.SPEC_SHEET_NAME Then
         LifespanOf = "PERMANENT -- edit it freely"
-    ElseIf sheetName = "Sources" Then
+    ElseIf sheetName = Sources.SOURCES_SHEET_NAME Then
         LifespanOf = "PERMANENT -- accumulates, never rebuilt"
     Else
         LifespanOf = "unknown"
