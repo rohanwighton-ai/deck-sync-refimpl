@@ -1,5 +1,13 @@
 # The workflow, in English
 
+> **STALE IN PART — read `NEXT-SESSION.md` first.** Written when the toolbar had
+> numbered steps (`0. Start a Quarter`, `Setup A/A2/B`, `0b. Roll Forward`). **Those
+> buttons no longer exist** — since 2026-08-09 the toolbar is TWO buttons, `1. Sync Now`
+> and `2. Rebuild my sheets`, and every step below is reached from inside those chains.
+> Periods are also written `Q3F26` now, not `FY26Q4`. The DESCRIPTIONS of what each stage
+> does are still accurate; only the way you reach them is wrong.
+
+
 What a person actually does, what the tool does back, and what it touches — so the
 time-and-motion can be argued about on paper instead of discovered in a UI.
 

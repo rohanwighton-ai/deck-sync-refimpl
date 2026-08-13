@@ -435,6 +435,51 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     Dim periodChanged As Boolean
     periodChanged = (Not periodMatches) And (Not isNewSheet)
 
+    ' REFUSE, DO NOT DISCARD. A rollover must never destroy typed work.
+    '
+    ' Until 2026-08-13 a period mismatch silently dropped every quarterly row's
+    ' drafting -- deliberately, so last quarter's prose could not be republished
+    ' as this quarter's. The intent is right and the remedy was wrong: losing a
+    ' person's typing to protect them is the wrong trade, and it is not
+    ' recoverable from inside the tool.
+    '
+    ' It was one button press from taking 129 drafted values. All seven drafting
+    ' sheets were stamped Q4F26 while the deck declared Q3F26 -- a legitimate
+    ' state, since the deck had been set to Q3F26 to capture a baseline -- and
+    ' Sync Now's main chain calls RefreshDraftingSheets as step 3. Rohan asked
+    ' "but the Q4 text I generated is real? How are you preserving that?", which
+    ' is the only reason it was looked at.
+    '
+    ' Refusing costs a person one message and a decision. Discarding costs them
+    ' an evening they cannot get back. This runs BEFORE any clear or write, so a
+    ' refusal leaves the sheet exactly as it was found.
+    If periodChanged Then
+        Dim atRisk As Long, riskRow As Long
+        riskRow = DRAFT_FIRST_ROW
+        On Error Resume Next
+        Do While Trim(CStr(ws.Cells(riskRow, COL_D_ENTITY).Value)) <> ""
+            If Trim(CStr(ws.Cells(riskRow, COL_D_SUBMIT).Value)) <> "" _
+               Or Trim(CStr(ws.Cells(riskRow, COL_D_DRAFT).Value)) <> "" Then
+                atRisk = atRisk + 1
+            End If
+            riskRow = riskRow + 1
+        Loop
+        On Error GoTo 0
+
+        If atRisk > 0 Then
+            WriteDraftingSheet = "REFUSED -- this sheet holds writing for a different quarter." & vbCrLf & vbCrLf & _
+                "Sheet says:  " & IIf(sheetPeriod = "", "(no quarter recorded)", sheetPeriod) & vbCrLf & _
+                "Deck says:   " & periodStamp & vbCrLf & vbCrLf & _
+                atRisk & " row(s) on '" & ws.Name & "' have drafted or submitted text. Rebuilding " & _
+                "would discard it, because text written for one quarter must not be republished " & _
+                "as another's." & vbCrLf & vbCrLf & _
+                "Nothing was changed. Either set the deck's quarter to " & _
+                IIf(sheetPeriod = "", "the one this sheet was written for", sheetPeriod) & _
+                ", or publish this sheet's work before rebuilding."
+            Exit Function
+        End If
+    End If
+
     Dim droppedQuarterly As Long, keptStatic As Long
     ' WORK ABOUT TO BE DISCARDED BY A LAYOUT MISMATCH, counted so it can be
     ' SAID rather than silently lost. See the block below.

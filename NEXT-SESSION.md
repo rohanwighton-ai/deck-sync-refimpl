@@ -1,5 +1,27 @@
 # NEXT SESSION — start here
 
+> ## THE SUITE IS RED. FIX THIS FIRST — IT IS 15 MINUTES.
+>
+> **190 passed / 2 failed**, and both failures are expected and understood:
+> `Drafting_PeriodRolloverDropsStaleSubmit` and
+> `Drafting_RolloverKeepsEntityStaticRows`.
+>
+> Those two tests assert the OLD behaviour — that a period mismatch silently DROPS
+> drafting. That behaviour was changed on 13 Aug because it was one button press from
+> destroying 129 drafted values. `WriteDraftingSheet` now REFUSES and changes nothing
+> when a mismatch would discard typed work.
+>
+> **The two tests are asserting the defect.** They need rewriting to the new contract:
+> a mismatch with typed work REFUSES; a mismatch with EMPTY rows may still rebuild and
+> drop, which is what those fixtures should exercise.
+>
+> `Test_Drafting_RefusesRatherThanDiscardOnPeriodChange` is new, passes, and was made
+> to fail on purpose first — with the guard disabled it reported the submitted text as
+> `''`, which is the loss demonstrated in miniature.
+>
+> Do NOT revert the guard to make the suite green. The guard is the fix.
+
+
 **Written 13 August 2026.** Previous version archived as `NEXT-SESSION-2026-08-12.md`.
 Bridge copy: `OneDrive\Claude\NEXT-SESSION-deck-sync-v6.md`.
 

@@ -1,5 +1,9 @@
 # Deck Sync — tracker
 
+> **Current status lives in `NEXT-SESSION.md`, not here.** This file holds the framing
+> and the baseline, which are still right. Anything below describing what is DONE may lag.
+
+
 **Finished =** Rohan produces a real quarter's deck and the tool saved him time.
 Not a field count. Not a test count.
 

@@ -269,6 +269,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "BatchOnboard_NormalisesWorkbookPath", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_Drafting_RefusesRatherThanDiscardOnPeriodChange()
+    AppendResult report, "Drafting_RefusesRatherThanDiscardOnPeriodChange", r
+    On Error GoTo 0
+
     ' REGISTERED BY HAND, like every other test here. Writing the Function is
     ' not enough -- RunAllTests dispatches explicitly, so an unregistered test
     ' simply never runs and the suite still says PASS. Added both of these and
@@ -7549,6 +7554,69 @@ Private Function Test_BatchOnboard_NormalisesWorkbookPath() As String
         BatchOnboardFlow.NormaliseWorkbookPath("C:\my.pptx stuff\Data.xlsx") & "'")
 
     Test_BatchOnboard_NormalisesWorkbookPath = result
+End Function
+
+' A ROLLOVER MUST NOT DESTROY TYPED WORK.
+'
+' The period guard used to silently DROP every quarterly row's drafting when a
+' sheet's stamp disagreed with the deck. Intent right, remedy wrong: it was one
+' button press from taking 129 drafted values off Rohan, in a state that was
+' entirely legitimate -- sheets stamped Q4F26 while the deck was deliberately
+' set to Q3F26 to capture a baseline. Found 2026-08-13 because he asked "but the
+' Q4 text I generated is real? How are you preserving that?"
+Private Function Test_Drafting_RefusesRatherThanDiscardOnPeriodChange() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+    ws.Name = "TPL_TEST_BODY"
+
+    ' A sheet built by the CURRENT layout, stamped for one quarter, carrying work.
+    ws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_LAYOUT).Value = Drafting.DRAFT_LAYOUT_VERSION
+    ws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value = "Q4F26"
+    ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_ENTITY).Value = "3_P001"
+    ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value = "MY REAL Q4 WRITING"
+    ws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_ENTITY).Value = "3_P002"
+    ws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_DRAFT).Value = "an AI draft"
+
+    Dim reg As Sheet
+    Set reg.Rows = CreateObject("Scripting.Dictionary")
+    Set reg.Fields = New Collection
+    Set reg.InstanceOrder = New Collection
+
+    ' Rebuild for a DIFFERENT period.
+    Dim report As String
+    report = Drafting.WriteDraftingSheet(ws, reg, "TEST_BODY", Empty, "Q3F26")
+
+    result = result & Assert(InStr(report, "REFUSED") > 0, _
+        "it REFUSES rather than rebuilding, got '" & Left(report, 70) & "'")
+    result = result & Assert(InStr(report, "Q4F26") > 0 And InStr(report, "Q3F26") > 0, _
+        "and names BOTH quarters so the person can tell which is which, got '" & Left(report, 90) & "'")
+    result = result & Assert(InStr(report, "2 row(s)") > 0, _
+        "and counts the rows at risk, got '" & Left(report, 90) & "'")
+
+    ' THE ONE THAT MATTERS. A refusal that happens after the clear is no refusal.
+    result = result & Assert(ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value = "MY REAL Q4 WRITING", _
+        "and the submitted text is UNTOUCHED, got '" & _
+        ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value & "'")
+    result = result & Assert(ws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_DRAFT).Value = "an AI draft", _
+        "and so is the AI draft")
+
+    ' A MATCHING PERIOD MUST STILL REBUILD. A guard that refuses everything would
+    ' pass every assertion above and break the tool completely.
+    Dim ok As String
+    ok = Drafting.WriteDraftingSheet(ws, reg, "TEST_BODY", Empty, "Q4F26")
+    result = result & Assert(InStr(ok, "REFUSED") = 0, _
+        "a MATCHING period still rebuilds, got '" & Left(ok, 70) & "'")
+
+    wb.Saved = True
+    wb.Close
+    xl.Quit
+
+    Test_Drafting_RefusesRatherThanDiscardOnPeriodChange = result
 End Function
 
 Private Function Test_ExcelOutput_MissingRegisterColumns() As String
