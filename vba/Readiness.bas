@@ -116,16 +116,23 @@ End Type
 Public Function RemedyText(code As RemedyCode) As String
     Select Case code
         Case RM_NONE:                    RemedyText = ""
-        Case RM_START_QUARTER:           RemedyText = "Press '" & CommandBarUI.CAP_START_QUARTER & "'"
-        Case RM_ROLL_FORWARD:            RemedyText = "Press '" & CommandBarUI.CAP_ROLL_FORWARD & "'"
-        Case RM_REPOINT_WORKBOOK:        RemedyText = "Press '" & CommandBarUI.CAP_REPOINT_WORKBOOK & "'"
-        Case RM_ONBOARD_SLIDES:          RemedyText = "Press '" & CommandBarUI.CAP_ONBOARD_SLIDES & "'"
+        ' ALL FOUR NAMED BUTTONS THAT DO NOT EXIST (corrected 2026-08-14).
+        ' "Start a Quarter", "Roll Forward", "Repoint Workbook" and "Onboard
+        ' Slides" were absorbed into the Sync Now chain on 2026-08-09; the
+        ' toolbar has two buttons and CommandBarUI.AddButton is called twice.
+        ' A remedy telling a person to press a button that is not there is
+        ' worse than no remedy: it reads as authoritative and sends them
+        ' hunting. Each stage still runs -- it is reached from inside the chain.
+        Case RM_START_QUARTER:           RemedyText = "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it sets the quarter"
+        Case RM_ROLL_FORWARD:            RemedyText = "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it offers to roll the rows forward"
+        Case RM_REPOINT_WORKBOOK:        RemedyText = "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it repairs the pairing"
+        Case RM_ONBOARD_SLIDES:          RemedyText = "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup"
 
         ' NOT A BUTTON, and saying so is the whole point of this entry. The
         ' template slide is created from inside onboarding; there has never been
         ' a way to press for it directly.
         Case RM_TEMPLATE_FROM_ONBOARDING: RemedyText = _
-            "Create it from within '" & CommandBarUI.CAP_ONBOARD_SLIDES & "' -- there is no separate button"
+            "Create it from within '" & CommandBarUI.CAP_SYNC_NOW & "' -- there is no separate button"
 
         Case RM_SAVE_DECK_THEN_REBUILD:  RemedyText = "Save the deck, then rebuild this sheet"
         Case RM_SAVE_WORKBOOK_THEN_REBUILD: RemedyText = "Save the workbook, then rebuild this sheet"

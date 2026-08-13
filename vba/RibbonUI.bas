@@ -591,7 +591,7 @@ Private Sub ReviewChanges()
     ReviewChangesCore False
     Exit Sub
 Failed:
-    RibbonUI.ShowSyncResult CommandBarUI.CAP_REVIEW_CHANGES, RibbonUI.UnexpectedErrorText(CommandBarUI.CAP_REVIEW_CHANGES, Err.Number, Err.Description, Err.Source)
+    RibbonUI.ShowSyncResult CommandBarUI.STAGE_REVIEW_CHANGES, RibbonUI.UnexpectedErrorText(CommandBarUI.STAGE_REVIEW_CHANGES, Err.Number, Err.Description, Err.Source)
 End Sub
 
 ' The loosened setting (Round 13 §0.1). Builds the identical queue, then ticks
@@ -616,7 +616,7 @@ End Sub
 
 Private Sub ReviewChangesCore(approveAll As Boolean)
     Dim title As String
-    title = IIf(approveAll, "Review Changes (approve all)", CommandBarUI.CAP_REVIEW_CHANGES)
+    title = IIf(approveAll, "Review Changes (approve all)", CommandBarUI.STAGE_REVIEW_CHANGES)
 
     Dim pres As Object
     Set pres = Application.ActivePresentation
@@ -1258,7 +1258,7 @@ Private Sub ApplyApprovedChanges()
     ApplyApprovedCore
     Exit Sub
 Failed:
-    RibbonUI.ShowSyncResult CommandBarUI.CAP_APPLY_APPROVED, RibbonUI.UnexpectedErrorText(CommandBarUI.CAP_APPLY_APPROVED, Err.Number, Err.Description, Err.Source)
+    RibbonUI.ShowSyncResult CommandBarUI.STAGE_APPLY_APPROVED, RibbonUI.UnexpectedErrorText(CommandBarUI.STAGE_APPLY_APPROVED, Err.Number, Err.Description, Err.Source)
 End Sub
 
 ' The only path in this add-in that writes a field value to a slide as part of a
@@ -1271,7 +1271,7 @@ Private Sub ApplyApprovedCore()
     Dim workbookPath As String
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath = "" Then
-        MsgBox "This deck has no paired workbook yet -- nothing to apply.", vbExclamation, CommandBarUI.CAP_APPLY_APPROVED
+        MsgBox "This deck has no paired workbook yet -- nothing to apply.", vbExclamation, CommandBarUI.STAGE_APPLY_APPROVED
         Exit Sub
     End If
 
@@ -1285,14 +1285,14 @@ Private Sub ApplyApprovedCore()
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet -- nothing to apply.", vbExclamation, CommandBarUI.CAP_APPLY_APPROVED
+        MsgBox "This deck has no registered slide types yet -- nothing to apply.", vbExclamation, CommandBarUI.STAGE_APPLY_APPROVED
         Exit Sub
     End If
 
     Dim wb As Object
     Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
     If wb Is Nothing Then
-        MsgBox "Could not open the paired workbook at: " & workbookPath, vbCritical, CommandBarUI.CAP_APPLY_APPROVED
+        MsgBox "Could not open the paired workbook at: " & workbookPath, vbCritical, CommandBarUI.STAGE_APPLY_APPROVED
         Exit Sub
     End If
 
@@ -1301,7 +1301,7 @@ Private Sub ApplyApprovedCore()
     ' the review step, for the same reason.
     If WorkbookBridge.IsDirty(wb) Then
         If MsgBox(WorkbookBridge.UnsavedWorkbookText(workbookPath), _
-                  vbYesNo + vbExclamation, CommandBarUI.CAP_APPLY_APPROVED) <> vbYes Then
+                  vbYesNo + vbExclamation, CommandBarUI.STAGE_APPLY_APPROVED) <> vbYes Then
             Exit Sub
         End If
 
@@ -1314,7 +1314,7 @@ Private Sub ApplyApprovedCore()
         If promptSaveProblem <> "" Then
             MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
                    "Stopping here rather than reading values that are not in the file.", _
-                   vbCritical, CommandBarUI.CAP_APPLY_APPROVED
+                   vbCritical, CommandBarUI.STAGE_APPLY_APPROVED
             Exit Sub
         End If
     End If
@@ -1365,7 +1365,7 @@ Private Sub ApplyApprovedCore()
 
     fullReport = fullReport & PersistBothFiles(pres, wb)
     WorkbookBridge.WriteRunLog wb, "Apply Approved -- full report", fullReport
-    ShowSyncResult CommandBarUI.CAP_APPLY_APPROVED, fullReport
+    ShowSyncResult CommandBarUI.STAGE_APPLY_APPROVED, fullReport
 End Sub
 
 ' Toolbar entry point. The real work is in SyncPreviewCore; this exists only to

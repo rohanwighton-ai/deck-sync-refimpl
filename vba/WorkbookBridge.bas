@@ -510,9 +510,17 @@ End Sub
 ' is testable without a workbook.
 Public Function DescribeSheet(sheetName As String) As String
     If Left(sheetName, 4) = "TPL_" Then
+        ' COLUMN LETTERS ARE DERIVED, NEVER TYPED. This sentence said "type new
+        ' wording in D, put Y in E" -- layout 3 letters, two layouts out of date,
+        ' pointing a person at the SOURCES and AI DRAFT columns. A sentence cannot
+        ' fail a test; the constants can.
         DescribeSheet = "Drafting sheet for " & Mid(sheetName, 5) & _
-            ". Read column C, type new wording in D, put Y in E. Instructions are on the sheet."
-    ElseIf Left(sheetName, 11) = "Sync Review" Then
+            ". Read column " & Chr$(64 + Drafting.COL_D_CURRENT) & _
+            ", type new wording in " & Chr$(64 + Drafting.COL_D_SUBMIT) & _
+            ", put Y in " & Chr$(64 + Drafting.COL_D_APPROVED) & _
+            ". Instructions are on the sheet."
+    ElseIf Left(sheetName, Len("Review ")) = "Review " _
+        Or Left(sheetName, Len("Sync Review")) = "Sync Review" Then
         DescribeSheet = "Every change waiting to be approved before it reaches a slide. " & _
             "Tick what you agree with, then press '" & CommandBarUI.CAP_SYNC_NOW & "' again."
     ElseIf sheetName = SYNC_LOG_SHEET_NAME Then
@@ -523,10 +531,15 @@ Public Function DescribeSheet(sheetName As String) As String
             "not to do. Edit this to change the instructions the AI is given. Yours, not the tool's."
     ElseIf sheetName = Sources.SOURCES_SHEET_NAME Then
         DescribeSheet = "WHERE THE WORDS CAME FROM. One row per source, referenced by ID from " & _
-            "column G of a drafting sheet. Point at documents; do not paste them in here."
+            "column " & Chr$(64 + Drafting.COL_D_SOURCES) & " of a drafting sheet. " & _
+            "Point at documents; do not paste them in here."
     ElseIf sheetName = REGISTER_SHEET_NAME Then
-        DescribeSheet = "THE RECORD. One row per project, field and quarter, with its text and " & _
-            "whether a human approved it. Everything else in this workbook feeds it or reads it."
+        ' Described the LONG register -- one row per project/field/quarter with an
+        ' approval column -- a model retired 2026-08-03. The wide sheet is one row
+        ' per SLIDE per quarter, one COLUMN per field, and carries no approval state.
+        DescribeSheet = "THE RECORD. One row per slide per quarter, one column per field. " & _
+            "Approval lives on the review sheet, not here. Everything else in this " & _
+            "workbook feeds it or reads it."
     Else
         DescribeSheet = "(not created by this tool)"
     End If
@@ -732,15 +745,33 @@ End Function
 ' prefix rules stay literal because there is no constant for a prefix, and their
 ' lengths are now derived with Len() rather than counted by hand -- which is how
 ' the 13-versus-14 error happened in the first place.
+' THE REVIEW-SHEET PREFIX WAS STALE FOR THREE WEEKS, AND IT MATTERED.
+' This matched only "Sync Review" while ReviewQueue.ReviewSheetNameFor has
+' produced "Review <type>-<hash>" since the 3de4be8 rename -- so the ONE sheet
+' a person actually works in was reported as "(not created by this tool)" and
+' given lifespan "unknown" on the START HERE sheet. Rohan ticked 43 approvals
+' into an unrecognised sheet on 2026-08-14.
+'
+' REGISTER AND RUN LOG WERE MISSING ENTIRELY, while LifespanOf two functions
+' below has always known Register perfectly well. Two functions in one module
+' disagreeing about the most important sheet in the workbook.
+'
+' Both prefixes are matched: "Review " is current, "Sync Review" is the legacy
+' name and any workbook onboarded before the rename still carries one.
 Public Function IsToolOwnedSheet(sheetName As String) As Boolean
     If sheetName = INDEX_SHEET_NAME Then IsToolOwnedSheet = True
+    If sheetName = REGISTER_SHEET_NAME Then IsToolOwnedSheet = True
     If sheetName = FieldSpec.SPEC_SHEET_NAME Then IsToolOwnedSheet = True
     If sheetName = Sources.SOURCES_SHEET_NAME Then IsToolOwnedSheet = True
     If sheetName = DiscoverUI.DISCOVERY_SHEET_NAME Then IsToolOwnedSheet = True
+    If sheetName = TemplateAudit.AUDIT_SHEET_NAME Then IsToolOwnedSheet = True
+    If sheetName = RUN_LOG_SHEET_NAME Then IsToolOwnedSheet = True
     If sheetName = SYNC_LOG_SHEET_NAME Then IsToolOwnedSheet = True
     If Left(sheetName, Len("TPL_")) = "TPL_" Then IsToolOwnedSheet = True
+    If Left(sheetName, Len("SRC_")) = "SRC_" Then IsToolOwnedSheet = True
+    If Left(sheetName, Len("SAVED ")) = "SAVED " Then IsToolOwnedSheet = True
+    If Left(sheetName, Len("Review ")) = "Review " Then IsToolOwnedSheet = True
     If Left(sheetName, Len("Sync Review")) = "Sync Review" Then IsToolOwnedSheet = True
-    If Left(sheetName, Len("Template Audit")) = "Template Audit" Then IsToolOwnedSheet = True
 End Function
 
 ' A warning if this path is a macro-enabled Office file, or "" if it is fine.

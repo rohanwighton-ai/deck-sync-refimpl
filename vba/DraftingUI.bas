@@ -1043,7 +1043,7 @@ End Sub
 ' -- so this has never bitten. It becomes the first support call the moment the
 ' two are separated, with no self-service fix.
 Public Sub RepointWorkbookUI()
-    Const CAP As String = CommandBarUI.CAP_REPOINT_WORKBOOK
+    Const CAP As String = CommandBarUI.CAP_SYNC_NOW
     On Error GoTo Failed
 
     Dim pres As Object

@@ -14,25 +14,21 @@ Option Explicit
 ' split as Kind and the Sources period list -- the code owns the words, the
 ' caller owns the choice. Renaming a button is now one edit here.
 ' ---------------------------------------------------------------------
-Public Const CAP_MARK_FIELDS As String = "Setup A: Mark Fields"
-Public Const CAP_DISCOVER_FIELDS As String = "Setup A2: Discover Fields"
-Public Const CAP_ONBOARD_SLIDES As String = "Setup B: Onboard Slides"
-Public Const CAP_CHECK_COVERAGE As String = "Setup C: Check Coverage"
-Public Const CAP_CLEAR_MARKS As String = "Setup: Clear Marks"
-Public Const CAP_WHERE_AM_I As String = "Where am I?"
-Public Const CAP_START_QUARTER As String = "1. Start the quarter"
-Public Const CAP_ROLL_FORWARD As String = "0b. Roll Forward"
-Public Const CAP_DRAFTING_SHEETS As String = "1. Drafting Sheets"
-Public Const CAP_COPY_AI As String = "2. Copy AI to Submit"
-Public Const CAP_PUBLISH As String = "3. Publish & Preview"
-Public Const CAP_DRAFT_AND_PUBLISH As String = "2. Draft and publish"
-Public Const CAP_PUT_ON_SLIDES As String = "3. Put it on the slides"
+' ONLY TWO CAPTIONS EXIST, BECAUSE ONLY TWO BUTTONS DO.
+'
+' This block held 19 CAP_* constants while AddButton was called twice. The other
+' 17 named buttons removed on 2026-08-09 -- and they were not inert: Readiness
+' built four remedies from them, so the tool told a person to press things that
+' were not on the toolbar. Deleted 2026-08-14 rather than left "in case", since
+' a caption constant with no button is a stale string waiting for a reader.
+'
+' The two dialog TITLES that used to live here ("Review Changes", "Apply
+' Approved") are now STAGE_* -- they name a stage of the chain, not a button,
+' and the CAP_ prefix is what made them read as buttons.
 Public Const CAP_SYNC_NOW As String = "1. Sync Now"
 Public Const CAP_REBUILD_SHEETS As String = "2. Rebuild my sheets"
-Public Const CAP_REVIEW_CHANGES As String = "Review Changes"
-Public Const CAP_APPLY_APPROVED As String = "Apply Approved"
-Public Const CAP_APPROVE_ALL As String = "Review + Approve All"
-Public Const CAP_REPOINT_WORKBOOK As String = "Repoint Workbook"
+Public Const STAGE_REVIEW_CHANGES As String = "Review Changes"
+Public Const STAGE_APPLY_APPROVED As String = "Apply Approved"
 
 
 ' The actual shipped UI surface for specs/ribbon-ui.md, after a real

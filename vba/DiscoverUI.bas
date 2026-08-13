@@ -22,7 +22,8 @@ Option Explicit
 '
 ' Field marking never got that treatment. This is it.
 '
-' ADDITIVE, DELIBERATELY. CommandBarUI.CAP_MARK_FIELDS is untouched and still works.
+' ADDITIVE, DELIBERATELY. The per-shape marking flow is untouched and still works;
+' it is reached from inside the Sync Now chain rather than from its own button.
 ' A new flow built in one evening and never run against Rohan's real deck should
 ' not be the only road; if this misbehaves he marks the old way and loses
 ' nothing but the time he would have spent anyway.
