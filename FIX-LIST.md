@@ -97,6 +97,68 @@ Every new field, and every new project, hits this.
 
 ---
 
+## 1c. The at-risk scan misses SOURCES and NOTES, so the refusal does not cover all typed work
+
+**Found 2026-08-13 while rewriting the two tests the refusal guard turned red.**
+
+`WriteDraftingSheet`'s refusal counts a row as at risk only if `COL_D_SUBMIT` or
+`COL_D_DRAFT` holds text (`Drafting.bas`, the `If periodChanged Then` block). But the
+rebuild carries **four** columns of human work — DRAFT, SUBMIT, SOURCES, NOTES — and the
+rollover drop clears all four. So a row where a person has assigned citations or written
+notes, but has not drafted yet, does not trip the refusal, and its work is discarded.
+
+Citations are not incidental: per `project_deck_sync_provenance_is_field_architecture`,
+the source IDs are the control on the generative step. Losing them silently is the same
+failure the guard was built to stop, one column over.
+
+**Not live on the real workbook right now** — the 129 drafted values sit in columns E and
+F, exactly what the scan does cover, so every sheet refuses and everything is protected.
+This is the next instance of the class, not an active threat.
+
+**Fix:** count all four columns as at-risk. **Then check whether the per-row cadence
+machinery should be deleted rather than fixed** — see below.
+
+**The bigger question this exposes.** Once the refusal covers all four columns, the
+rollover drop is reachable only for rows holding *nothing*, where there is nothing to
+drop. The whole cadence mechanism — the `cadence` dictionary, `carryThisRow`,
+`droppedQuarterly`/`keptStatic`, and the test that covers them — would become dead code
+whose most heavily-commented property ("the drop is per row, not per sheet, and that
+distinction is the whole of this guard's correctness") no longer decides anything. It was
+correct machinery for a design that the refusal replaced. Deleting it is probably right,
+and is Rohan's call, not a silent cleanup.
+
+---
+
+## 1d. The park that proves a rollover lost nothing runs *after* the sheet is cleared
+
+**Found 2026-08-13, in the code directly beneath the comment warning about this.**
+
+`Drafting.bas`: `ws.Cells.Clear` runs at the top of the rebuild. The `ParkSheetCopy` call
+for the rollover case runs in the *reporting* section, hundreds of lines later —
+`If lostWithContent > 0 And parkedName = "" ...`. `ParkSheetCopy` does `ws.Copy`, which
+copies the sheet **as it is at that moment**: already cleared, already rebuilt, with the
+dropped rows' content gone. `ParkedNote` then reports *"The previous sheet was kept as
+'<name>' — nothing was lost."*
+
+The archive is real, named, and hidden on the workbook. It just does not contain the
+thing it was taken to preserve.
+
+This sits immediately below the comment quoting ReviewQueue's own rule: *"A REPORTED
+BACKUP THAT IS NOT ON DISK IS WORSE THAN NO BACKUP: it is the reason you feel safe
+running the destructive write that follows."* The layout-mismatch park at the top of the
+function is correctly placed, before the clear; only this second call site is wrong —
+the same "fixed where it was found, not everywhere the shape exists" pattern the repo has
+now logged five times.
+
+**Narrow but reachable:** needs a rollover where a dropped row has NOTES content and no
+row anywhere has SUBMIT or DRAFT (otherwise the refusal pre-empts it). Fixing 1c closes
+it by making the path unreachable, which is the cleaner fix of the two.
+
+**Fix:** park before `ws.Cells.Clear`, or delete the second call site along with the
+cadence machinery if 1c is resolved by deletion.
+
+---
+
 ## 2. `4. Sync Now` always refuses on the main field, and names a sheet that does not exist
 
 `AssignBatches` batches only `KIND_CONTROLLED` fields, so for prose —

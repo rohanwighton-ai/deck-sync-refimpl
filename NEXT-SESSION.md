@@ -1,172 +1,179 @@
 # NEXT SESSION — start here
 
-> ## THE SUITE IS RED. FIX THIS FIRST — IT IS 15 MINUTES.
+**Written 13 August 2026, ~16:15.** Previous version archived as `NEXT-SESSION-2026-08-12.md`.
+
+> ## THE DECK IS ONBOARDED. THE DELIVERY COUNT IS STILL ZERO.
 >
-> **190 passed / 2 failed**, and both failures are expected and understood:
-> `Drafting_PeriodRolloverDropsStaleSubmit` and
-> `Drafting_RolloverKeepsEntityStaticRows`.
+> 43 slides tagged and linked, 0 failed verification, register saved, deck period
+> `Q4F26` on disk. **No drafted value has reached a slide.**
 >
-> Those two tests assert the OLD behaviour — that a period mismatch silently DROPS
-> drafting. That behaviour was changed on 13 Aug because it was one button press from
-> destroying 129 drafted values. `WriteDraftingSheet` now REFUSES and changes nothing
-> when a mismatch would discard typed work.
->
-> **The two tests are asserting the defect.** They need rewriting to the new contract:
-> a mismatch with typed work REFUSES; a mismatch with EMPTY rows may still rebuild and
-> drop, which is what those fixtures should exercise.
->
-> `Test_Drafting_RefusesRatherThanDiscardOnPeriodChange` is new, passes, and was made
-> to fail on purpose first — with the guard disabled it reported the submitted text as
-> `''`, which is the loss demonstrated in miniature.
->
-> Do NOT revert the guard to make the suite green. The guard is the fix.
-
-
-**Written 13 August 2026.** Previous version archived as `NEXT-SESSION-2026-08-12.md`.
-Bridge copy: `OneDrive\Claude\NEXT-SESSION-deck-sync-v6.md`.
+> **The reason was found tonight, and it is one line of code.**
 
 ---
 
-## THE ONE THING THAT MATTERS
+## THE BLOCKER, AND THE TWO-ROW WORKAROUND
 
-**Zero fields have ever reached a slide.** 48 recipes, 129 drafted values, a source
-pipeline, a timeline device, 191 passing tests — and the delivery count has never left
-zero. Publishing one project's three drafted fields is the only item that moves it, and it
-keeps getting deferred behind mechanism.
+`RibbonUI.SyncNowChainCore` step 4 is `DraftingUI.PublishDraftsForField`, which begins:
 
-Do that first. Everything below serves it.
+```vba
+fieldId = ActiveDraftField(wb)          ' whatever TPL_ sheet is ACTIVE in Excel
+If fieldId = "" Then fieldId = AskForField(CAP, wb)
+```
 
----
+It only asks **if** the active sheet is not a drafting sheet. But the step immediately
+before it — `RefreshDraftingSheets` — ends with `ShowSheet wb, firstSheet`, and
+`firstSheet` is the **first `Kind = Prose` row on the Field Spec sheet**
+(`DraftingUI.ProseFields`, row order).
 
-## IMMEDIATE STATE
+That row is `ABOUT_BODY`, which has **0 submitted, 0 approved**. So every run publishes
+an empty sheet, reports "0 would be published", and finishes quietly. **The chain cannot
+reach any other field.** There is no field picker on the toolbar (two buttons only), so
+this is the only publish route.
 
-**The real deck** is `OneDrive\Claude\3. Project Progress.pptx` (Rohan's ruling, 13 Aug —
-his original at work is superseded). 43 slides, one layout.
+This is very likely a large part of why this project has never got a field onto a slide.
 
-- **Period `Q3F26`** — written directly into `docProps/custom.xml` from WSL, because
-  `Start a Quarter` could not write it (defect 2 below)
-- **Nine fields TAGGED on slide 1**, each verified by read-back: `PROJECT_CODE`,
-  `PROJECT_NAME`, `PROJECT_PROGRESS`, `PROJECT_STATUS`, `STRATEGIC_ALIGNMENT_BODY`,
-  `ABOUT_BODY`, `PROBLEM_BODY`, `PROGRESS_BODY`, `KEY_EVENTS_BODY`
-- **NOT onboarded** — no slide type registered, no pairing on disk, no tags on slides 2–43
-- **Timeline on slide 1 complete**: `MILESTONE_TIMELINE`, 37 shapes, one level, no
-  duplicate names. Slides 2–43 still have their original single-circle timelines.
+**A ROW-REORDER WORKAROUND WAS PROPOSED AND REJECTED — DO NOT USE IT.** Moving
+`KEY_EVENTS_BODY` above `ABOUT_BODY` on the Field Spec would work, because
+`FieldSpec.WriteSpecSheet` only seeds *missing* FieldIDs and never reorders existing rows.
+It is still the wrong move, and Rohan stopped it with one question: *"Why are you having
+to move register rows manually? Worries me that the code won't work when it needs to."*
 
-**The register** is `OneDrive\Claude\register-wide.xlsx` — 17 sheets, 32 columns,
-Q3F26 43 / Q4F26 43 / Q1F27 5. **21 `MS*` columns added, 38 of 43 projects populated.**
-Drafting sheets hold 129 drafted values in columns E and F.
+He is right, for three reasons:
 
-**Build: `addin79`**, installed here and in the Claude folder for work.
+1. **It makes which field reaches a slide depend on spreadsheet row order** — invisible,
+   unstated coupling of exactly the kind that has bitten this project repeatedly.
+2. **It is not available at work.** No Claude, no WSL, no Python there — a quarter has to
+   be runnable from toolbar buttons. "Reorder rows in a spec sheet so the right field
+   publishes" is not a procedure; it is a defect with instructions attached.
+3. **It would have hidden the defect behind a successful-looking run**, which is the
+   failure mode this project keeps rediscovering.
 
-**Backups**: `OneDrive\Claude\backups\2026-08-13-1202-pre-ONBOARD-run2 - *`.
+**REAL FIX, and the only one:** either have `PublishDraftsForField` always ask when
+running inside the chain, or stop `RefreshDraftingSheets` forcing the active sheet during
+a collected run. Small change, needs a rebuild (`addin81`) and reinstall.
 
----
-
-## NEXT ACTION
-
-Onboarding should now work in one pass: the fields are already tagged, so the Discover
-Fields grid — which lost his marks twice — is bypassed.
-
-1. Open the deck, `1. Sync Now` → **Yes**
-2. Period already set → OK
-3. Workbook path → `C:\Users\rohan\OneDrive\Claude\register-wide.xlsx`
-4. Should skip discovery and go to **Bulk Onboard** → 42 slides
-5. Slide type name → `project-progress`
-6. Register prompt → use existing `Register` → **Yes**
-
-**LEAVE EVERY EXCEL WINDOW OPEN until the chain finishes.** Closing the scratch review
-workbook killed a run with Error 424.
-
-### THEN STOP. DO NOT PRESS SYNC NOW A SECOND TIME.
-
-**All seven drafting sheets are stamped `Q4F26`; the deck declares `Q3F26`.**
-`WriteDraftingSheet`'s period guard DROPS drafting when the stamps disagree, and
-`Sync Now`'s main chain calls `RefreshDraftingSheets` as step 3. Once the deck is
-onboarded, the next press silently discards 129 drafted values.
-
-**Fix before that button is pressed again: the guard must REPORT AND REFUSE, not
-discard.** Losing a person's typing to protect them is the wrong trade.
+**Note what the test suite did NOT do here.** 192 tests pass. Not one of them asks "can a
+person cause `KEY_EVENTS_BODY` to be published?" — they test that publishing works when
+called, not that the chain can reach it. Same "tested unit behind a locked door" shape as
+the picture injection and the progress bars, found the same way: by pressing the button.
 
 ---
 
-## DEFECTS, IN PRIORITY ORDER
+## STATE, VERIFIED FROM FILES (not from dialogs)
 
-**1. The period guard destroys drafting** (above). Not fixed. Blocks the next press.
+- **Deck** `OneDrive\Claude\3. Project Progress.pptx` — 44 slides, 49,247,250 bytes.
+  `DeckSyncPeriod = Q4F26` confirmed by property name in `docProps/custom.xml`.
+  Slide 44 is the hidden master template, 9 fields set to `<<placeholders>>`.
+- **Register** `OneDrive\Claude\register-wide.xlsx` — 308,072 bytes, `Register` sheet has
+  92 rows (1 header + 91: 43 Q3F26 + 43 Q4F26 + 5 Q1F27). All 43 Q4F26 instance keys
+  match the Q3F26 keys exactly — **the handover's "stale/foreign Q4F26 rows" warning was
+  wrong**, they describe the same slides.
+- **Backups** `OneDrive\Claude\backups\2026-08-13-1520-post-onboard-Q3F26 - *` — deck and
+  register, both verified byte-identical by md5 at the time of copy.
+- **Build `addin80`**, stamp `2026-08-13 14:37`, in `OneDrive\Claude\` and in the trusted
+  location `AppData\Roaming\Microsoft\AddIns\`.
 
-**2. `SaveAs` returns clean and writes nothing** on this 49MB deck in a synced folder —
-four attempts, file untouched, `Err` never set. Ordinary `Save` works. **Partially fixed**:
-`SetDeckPeriodVerified` and `SetWorkbookPathVerified` now try `Save` first and escalate.
-**Never actually run on the real deck** — the period was written from WSL instead, so the
-fix is unverified. `SaveDeckVerified` already had the correct order sixty lines away.
+### Drafting sheets — real counts (header row EXCLUDED)
 
-**3. The Discover Fields grid loses marks on every re-run.** Rebuilt from scratch each
-time, so a failed chain costs all the typing. This is the intended route at work.
+| sheet | submitted | approved |
+|---|---|---|
+| `TPL_KEY_EVENTS_BODY` | 43 | 39 |
+| `TPL_PROGRESS_BODY` | 34 | **42** |
+| `TPL_HIGHLIGHTS_BODY` | 43 | 42 |
+| `TPL_ABOUT_BODY` | 0 | 0 |
+| `TPL_STRATEGIC_ALIGNMENT_BODY`, `TPL_PROBLEM_BODY`, `TPL_STRATEGIC_LINKAGES` | 0 | 0 |
 
-**4. The workbook picker uses PowerPoint's Save As dialog**, which takes no file-type
-filter and appends `.pptx`. Fixed with `NormaliseWorkbookPath`, but the dialog still
-offers presentation types.
+`PROGRESS_BODY` has **more approvals than submitted text** (42 vs 34). Those 8 rows
+publish nothing — both text and tick are required — but the count will look wrong.
 
-**5. No period dropdown.** Free-typed, exact-matched; a typo reads as a clean run of zero
-rows. Needs a UserForm from the register's own periods — "picked, never typed".
-
-**6. A dead pairing cannot be repaired** from the setup path.
-
----
-
-## FIXED AND SHIPPED TODAY (191 green behind the compile gate)
-
-- **Pairing fix** — onboarding no longer invents an empty register beside a populated one.
-  `RegisterShapedSheets` scans the header ROW (not A1 — a test fixture caught that); more
-  than one register is refused.
-- **Re-onboard guard** — keys off "has this deck been onboarded before", not a value
-  comparison, because on a first onboard register and slides legitimately differ.
-- **Quarter before onboarding** — a virgin deck could not reach `StartQuarter`.
-- **Discover Fields establishes the pairing** instead of refusing and pointing back at the
-  button just pressed.
-- **An existing workbook is opened, never created over**, and `CreateWorkbook` refuses an
-  existing file outright. This was one click from destroying the register.
-- **Register column creation from the Field Spec**, with a `Derived` carve-out.
-- **Milestone device**: `MSn_NOW` four-state visibility, track shortens to the last USED
-  slot, integrity check now verifies circles at all.
-- **`START HERE` column letters derived** from constants.
+`HIGHLIGHTS_BODY` has the most work in it and **cannot publish**: it is not one of the
+nine tagged fields and needs slot columns, not one column. See FIX-LIST.
 
 ---
 
-## THE TIMELINE
+## ENVIRONMENT FINDING — SAVES AND ONEDRIVE
 
-Slide 1 done. Slides 2–43 need the group copied — **only after** their milestone values
-are in the register, or the paste destroys them. 38 of 43 harvested; five have no timeline
-(`P008`, `2_P009`, `1_P010`, `2_P012`, `S023`) — theirs were off-slide and were deleted.
+Both files are open via **OneDrive URLs**, not local paths:
+`https://d.docs.live.net/96b9ec593ee3ba55/Claude/…`
 
-**Rohan's insight, which removes a job:** those five don't need restoring. Put values in
-the register, copy the group, sync — the slide is just a renderer.
+With AutoSave **off**, the deck period write failed **4 verified attempts**, and a manual
+`Ctrl+S` did not change the file's mtime either. `SetDeckPeriodVerified` correctly
+detected this and refused to continue:
 
-**Copy method: programmatic, one-time, NOT an add-in feature.** Measured 13 Aug: a copied
-group keeps its shape names AND its group tag. Slide 1 is GREEN; K and S need their own
-colourways, read from each slide's existing circles rather than hardcoded.
+> `THE PERIOD DID NOT REACH THE FILE after 4 attempt(s). Asked for: Q4F26  On disk: Q3F26`
 
-**Harvest rule that works** (verified against three screenshots, one per palette): the
-**oversized circle** marks current; everything at or above it is achieved. The bar tracks
-nothing — slides 1 and 7 have identical bars at different stages.
-
----
-
-## STILL OPEN, NOT BLOCKING
-
-Stale `Q4F26`/`Q1F27` rows predate this deck and should be cleared before rolling forward ·
-`HIGHLIGHTS_BODY` is three separate shapes per slide, so it needs slot columns like the
-milestones · money/dates/team/subtitle have no register columns · the contribution-scale
-question (if backbone Column R is legacy, every linkage inverts).
+**Turning AutoSave ON made the write land.** This is an environment condition, not a code
+defect — and it is the configuration the work machine will be in. The tool's behaviour
+here was correct and is what a week ago was missing: it checked the file, not its own
+cache, and refused rather than reporting success.
 
 ---
 
-## TWO LESSONS WORTH KEEPING
+## WHAT SHIPPED TONIGHT
 
-**When the file and the object model disagree, the file is the evidence.** COM reported
-the timeline group as flat; the XML said six nested sub-groups. Believing COM stranded six
-shapes. Office also returns `Fill.ForeColor.RGB` as **BGR** — caught only because a
-screenshot showed teal where the number said khaki.
+- **Suite green: 192 passed, 0 failed** (was 190/2), behind the compile gate.
+- The two tests asserting the deleted defect were rewritten **and renamed**, because the
+  old names stated the defect as the requirement:
+  - `Drafting_PeriodRolloverDropsStaleSubmit` → `Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk`
+  - `Drafting_RolloverKeepsEntityStaticRows` → `Drafting_RolloverCadenceGovernsUntypedRows`
+- **`RefreshDraftingSheets` no longer reports success over a refusal.** It collected
+  refusals into the Run Log and then said *"drafting sheets are ready. Workbook saved."*
+  with an information icon. Now: refusal first (so MsgBox truncation eats the guidance,
+  not the warning), refused field names listed, warning icon.
 
-**A defect is a class, not an instance.** The quarter-before-onboarding fix was made and
-the identical shape two functions away — Discover Fields before pairing — was not looked
-for, and cost a second failed run the same hour.
+### NOT YET TRUSTED
+
+**Neither rewritten test has been made to fail on purpose.** Green alone is not evidence.
+Break each before relying on it — for `...RolloverCadenceGovernsUntypedRows`, put SUBMIT
+text back on the fixture and it should stop testing anything, because the refusal
+pre-empts the whole path.
+
+---
+
+## FILES CHANGED THIS SESSION (repo `deck-sync-refimpl`, uncommitted)
+
+- `vba/DraftingUI.bas` — refusal count/names surfaced in the dialog; warning icon
+- `vba/tests/TestRunner.bas` — two tests rewritten + renamed, runner registrations updated
+- `FIX-LIST.md` — new items **1c** and **1d**
+- `NEXT-SESSION.md` — this file
+
+Not committed. Nothing else in the repo was touched.
+
+---
+
+## OPEN, IN PRIORITY ORDER
+
+1. **Publish one field.** Field Spec row move → `Sync Now` → `KEY_EVENTS_BODY` → review →
+   apply. Then verify by reading the slide XML out of the saved deck, not the dialog.
+2. **Fix the publish-target defect properly** (above), then revert the row move.
+3. **FIX-LIST 1c/1d** — at-risk scan misses SOURCES/NOTES; the park that reports "nothing
+   was lost" runs *after* `ws.Cells.Clear`. Fixing 1c makes 1d unreachable.
+4. **The cadence machinery is probably dead code.** The refusal pre-empts it; it now
+   governs only SOURCES/NOTES on untyped rows. If 1c is fixed, delete it rather than
+   maintain it. Rohan's call.
+5. **`MILESTONE_TIMELINE` group tagging is UNVERIFIED.** It was not among the nine tagged
+   fields. If the timeline renders blank after a sync, check this first.
+6. **Field Spec `Kind` values look wrong for the milestones**: `MS1_LABEL`/`MS7_LABEL` are
+   `Given` while `MS2`–`MS6_LABEL` are `Prose`; MS1/MS7 DATE+DONE are `Derived` while
+   MS2–MS6 are `Given`. 13 fields are `Prose` but only 7 have drafting sheets, so the next
+   refresh will create six more tabs.
+7. Slide 44 still carries P001's unmanaged content (figures, photo, team). The audit found
+   **50 unmanaged text items on slide 1, 21 of which look like project data** — that is the
+   next tagging backlog, and the same set the Field Spec wants columns for.
+
+---
+
+## THREE THINGS WORTH KEEPING
+
+**A warning that only reaches the log is not a warning.** The refusal guard was correct
+and invisible; the dialog said "ready" over seven refused sheets. Fixed, but the shape
+recurs — check where a message *lands*, not just that it exists.
+
+**The check that found the save failure was the one that read the file.** Four
+in-process attempts all "succeeded". Only comparing against `docProps/custom.xml` on disk
+told the truth. Evidence must come from the far side of the boundary.
+
+**"Nothing happened" meant a dialog behind the window — twice.** A VBA modal can open
+behind PowerPoint. Before diagnosing a dead button, Alt+Tab. A calibrated test:
+PowerPoint stops answering COM (`ActivePresentation.Name` comes back empty) while a modal
+is open, and answers normally when idle.

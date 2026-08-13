@@ -429,6 +429,16 @@ Public Sub RefreshDraftingSheets()
     parts = Split(fields, ",")
 
     Dim report As String, firstSheet As String
+    ' A REFUSAL IS THE HEADLINE, NOT A LINE IN THE LOG. WriteDraftingSheet was
+    ' changed on 2026-08-13 to REFUSE rather than discard when a rollover would
+    ' destroy typed work -- but this routine still concatenated the refusal into
+    ' `report`, sent it to the Run Log sheet, and then said "drafting sheets are
+    ' ready. Workbook saved." So the one outcome a person must act on was the one
+    ' outcome the dialog denied. With all seven sheets stamped Q4F26 against a
+    ' Q3F26 deck, EVERY sheet refuses and the modal still reads as success.
+    ' Same "reports success without confirming the effect" shape this project has
+    ' now fixed five times; counted here so it can be SAID.
+    Dim refusedCount As Long, refusedFields As String
     Dim i As Long
     Dim draftOrder As String
     Dim seedIndex As Long
@@ -453,7 +463,17 @@ Public Sub RefreshDraftingSheets()
         ' damaging one: RollForwardPeriod COPIES last period's rows, so the
         ' previous text arrives as this sheet's ORIGINAL column instead. The
         ' protection moved; it did not disappear.
-        report = report & fid & ": " & Drafting.WriteDraftingSheet(ws, reg, fid, specWs, period, Nothing, srcWs, seedIndex) & vbCrLf
+        Dim fieldReport As String
+        fieldReport = Drafting.WriteDraftingSheet(ws, reg, fid, specWs, period, Nothing, srcWs, seedIndex)
+        ' Matched on the prefix WriteDraftingSheet returns, which is its contract
+        ' for "nothing was changed" -- not on the prose after it, which is written
+        ' for a person and will be reworded.
+        If Left$(fieldReport, 8) = "REFUSED " Then
+            refusedCount = refusedCount + 1
+            If refusedFields <> "" Then refusedFields = refusedFields & ", "
+            refusedFields = refusedFields & fid
+        End If
+        report = report & fid & ": " & fieldReport & vbCrLf
         seedIndex = seedIndex + 1
     Next i
 
@@ -491,8 +511,20 @@ Public Sub RefreshDraftingSheets()
         "Drafting sheets rebuilt for " & period, _
         report & vbCrLf & valNote & vbCrLf & srcValidation
 
+    ' THE REFUSAL GOES FIRST SO TRUNCATION EATS THE GUIDANCE, NOT THE WARNING.
+    ' MsgBox caps near 1024 characters and truncates silently, so ordering is the
+    ' only guarantee that the actionable half survives.
     Dim msg As String
-    msg = period & " -- drafting sheets are ready." & vbCrLf & vbCrLf & _
+    If refusedCount > 0 Then
+        msg = refusedCount & " drafting sheet(s) were NOT rebuilt." & vbCrLf & vbCrLf & _
+              refusedFields & vbCrLf & vbCrLf & _
+              "They hold writing for a different quarter than the deck declares (" & period & "). " & _
+              "Nothing on them was changed." & vbCrLf & vbCrLf & _
+              "Set the deck's quarter to match, or publish their work first." & vbCrLf & vbCrLf
+    End If
+
+    msg = msg & period & " -- " & IIf(refusedCount > 0, "the remaining drafting sheets are ready.", _
+              "drafting sheets are ready.") & vbCrLf & vbCrLf & _
           "Your wording goes in column " & Chr$(64 + Drafting.COL_D_SUBMIT) & " (SUBMIT). Type Y in column " & _
               Chr$(64 + Drafting.COL_D_APPROVED) & " to approve." & vbCrLf & _
           "Column " & Chr$(64 + Drafting.COL_D_CURRENT) & " is what the slide says now. " & _
@@ -520,7 +552,8 @@ Public Sub RefreshDraftingSheets()
         msg = msg & vbCrLf & vbCrLf & saveProblem
     End If
 
-    Say msg, vbInformation, CAP
+    ' An information icon on a run that refused work reads as "all done".
+    Say msg, IIf(refusedCount > 0, vbExclamation, vbInformation), CAP
     Exit Sub
 
 Failed:

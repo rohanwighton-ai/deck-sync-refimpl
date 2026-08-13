@@ -234,13 +234,13 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Drafting_PeriodRolloverDropsStaleSubmit()
-    AppendResult report, "Drafting_PeriodRolloverDropsStaleSubmit", r
+    r = Test_Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk()
+    AppendResult report, "Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Drafting_RolloverKeepsEntityStaticRows()
-    AppendResult report, "Drafting_RolloverKeepsEntityStaticRows", r
+    r = Test_Drafting_RolloverCadenceGovernsUntypedRows()
+    AppendResult report, "Drafting_RolloverCadenceGovernsUntypedRows", r
     On Error GoTo 0
     On Error GoTo 0
 
@@ -7244,7 +7244,29 @@ End Function
 ' lives in `Quarter = ALL` register rows, which are supposed to survive a
 ' rollover. Nothing here can test that, because nothing can currently put such
 ' a row on a drafting sheet; see the note in Drafting.WriteDraftingSheet.
-Private Function Test_Drafting_PeriodRolloverDropsStaleSubmit() As String
+' A SAME-PERIOD REBUILD COSTS NOTHING, AND A ROLLOVER WITH NOTHING AT RISK
+' STILL REBUILDS.
+'
+' This function was called Test_Drafting_PeriodRolloverDropsStaleSubmit and
+' asserted that a rollover DISCARDED last quarter's typed work. That behaviour
+' was removed on 2026-08-13 -- it was one button press from taking 129 drafted
+' values off Rohan -- and the test was left asserting the defect, which is why
+' the suite went red. Renamed rather than patched: the old name stated the
+' defect as the requirement, so a passing test under it would have read as
+' confirmation that the loss was intended.
+'
+' The refusal contract itself lives in
+' Test_Drafting_RefusesRatherThanDiscardOnPeriodChange and is NOT re-asserted
+' here. What remains, and is covered nowhere else, is the two paths that still
+' rebuild:
+'   1. same period, work present        -> everything is carried across
+'   2. different period, nothing at risk -> rebuilds and re-stamps
+'
+' Path 2 is now the ONLY way a rollover reaches the rebuild at all: a single row
+' holding SUBMIT or DRAFT text refuses the whole sheet. Worth stating plainly,
+' because it makes the per-row cadence machinery below far narrower than it
+' looks -- see Test_Drafting_RolloverCadenceGovernsUntypedRows.
+Private Function Test_Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk() As String
     Dim result As String
 
     Dim xl As Object, wb As Object, dws As Object, rws As Object
@@ -7284,37 +7306,48 @@ Private Function Test_Drafting_PeriodRolloverDropsStaleSubmit() As String
         "a same-period rebuild keeps the notes, got '" & _
         CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value) & "'")
 
-    ' 3. THE ROLLOVER. Nothing a person wrote for FY26Q3 may survive into FY26Q4.
+    ' 3. THE ROLLOVER, WITH WORK ON THE SHEET. It must refuse and change nothing.
+    '    Asserted here only as far as "the sheet is intact afterwards" -- the
+    '    wording and counts of the refusal belong to the test that owns them.
     Dim rep As String
     rep = Drafting.WriteDraftingSheet(dws, reg, "ABOUT_BODY", Empty, "FY26Q4")
 
-    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value)) = "", _
-        "LAST QUARTER'S SUBMIT TEXT IS GONE -- one tick would otherwise republish it as this quarter's, got '" & _
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value) = "P001 last quarter", _
+        "A ROLLOVER OVER TYPED WORK CHANGES NOTHING -- the submitted text survives, got '" & _
         CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value) & "'")
-    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value)) = "", _
-        "last quarter's source IDs go with it -- they cite the wrong quarter's evidence, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value) & "'")
-    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).Value)) = "", _
-        "and last quarter's AI draft, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).Value) & "'")
-    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value)) = "", _
-        "and the notes, which were written about last quarter's text, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value) & "'")
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value)) = "FY26Q3", _
+        "and the sheet still declares the quarter it was built for -- re-stamping a sheet " & _
+        "that was not rebuilt would make the next run think it was current, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value) & "'")
 
-    ' TOLD, NOT JUST DONE. A person discovering by absence that their drafting
-    ' vanished is the failure this project keeps having; the note has to name
-    ' both quarters or it does not explain anything.
+    ' 4. THE ROLLOVER WITH NOTHING AT RISK. Clear the four columns a person types
+    '    into, and the same rollover must now go through: the guard exists to
+    '    protect work, not to freeze a sheet that has none.
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).ClearContents
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).ClearContents
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).ClearContents
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).ClearContents
+
+    rep = Drafting.WriteDraftingSheet(dws, reg, "ABOUT_BODY", Empty, "FY26Q4")
+
+    result = result & Assert(InStr(rep, "REFUSED") = 0, _
+        "AN EMPTY SHEET ROLLS OVER -- nothing is at risk, so nothing is refused, got '" & _
+        Left(rep, 90) & "'")
+
+    ' TOLD, NOT JUST DONE. A person discovering by absence that a rebuild moved
+    ' their sheet to a new quarter is the failure this project keeps having; the
+    ' note has to name both quarters or it does not explain anything.
     result = result & Assert(InStr(rep, "FY26Q3") > 0 And InStr(rep, "FY26Q4") > 0, _
-        "the report NAMES BOTH PERIODS so the drop is explained, got '" & rep & "'")
+        "the report NAMES BOTH PERIODS so the rebuild is explained, got '" & rep & "'")
 
     ' The sheet must now declare the quarter it was actually built for, or the
-    ' next rebuild re-runs this same drop against a stale stamp.
+    ' next rebuild re-runs this same comparison against a stale stamp.
     result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value)) = "FY26Q4", _
         "the sheet now declares FY26Q4, got '" & _
         CStr(dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value) & "'")
 
     ' The rebuild is otherwise a normal, correct rebuild -- the register still
-    ' lands in ORIGINAL. Dropping the drafting is not licence to drop the rest.
+    ' lands in ORIGINAL. Rolling the period is not licence to drop the rest.
     result = result & Assert(InStr(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_CURRENT).Value), "register one") > 0, _
         "the register value still reaches ORIGINAL after a rollover, got '" & _
         CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_CURRENT).Value) & "'")
@@ -7322,26 +7355,35 @@ Private Function Test_Drafting_PeriodRolloverDropsStaleSubmit() As String
     wb.Close False
     xl.Quit
     Set wb = Nothing: Set xl = Nothing
-    Test_Drafting_PeriodRolloverDropsStaleSubmit = result
+    Test_Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk = result
 End Function
 
 ' THE ROLLOVER DROP IS PER ROW, AND THIS IS THE ASSERTION THAT SAYS SO.
 '
 ' Two projects, same field, different cadence in the register: P001's value came
 ' from a period row, P002's from a `Quarter = ALL` row. A rollover must clear
-' P001's drafting and leave P002's completely alone.
+' P001's carried-over work and leave P002's completely alone.
 '
-' Why this is not a nicety: Round 5 §3 classes ABOUT_BODY -- the flagship prose
-' field, the one the whole drafting sheet was built around -- as entity-static,
-' and Rohan confirmed 2026-08-02 that he writes it once and edits it rarely. The
-' first version of this guard dropped every row on the sheet, which would have
-' destroyed his ABOUT_BODY drafting on every single rollover, for no safety
-' whatsoever: an ALL row's previous text IS its current text, so there is no
-' stale value to republish.
+' WHY THIS TEST NOW USES SOURCES AND NOTES INSTEAD OF SUBMIT.
 '
-' Made to fail on purpose by keying the drop on the sheet instead of the row --
-' P002's SUBMIT then comes back empty.
-Private Function Test_Drafting_RolloverKeepsEntityStaticRows() As String
+' It used to prove the point with SUBMIT text, and that is why it went red on
+' 2026-08-13: the refusal guard added that day fires on the FIRST row holding
+' SUBMIT or DRAFT text and refuses the whole sheet, so a fixture with submitted
+' text never reaches the per-row logic at all. The old assertions were testing a
+' path their own fixture had closed.
+'
+' What that leaves is narrow and worth saying out loud: the cadence machinery
+' below now governs only SOURCES and NOTES, on rows carrying neither a draft nor
+' a submission. Everything richer than that is settled by the refusal instead.
+'
+' OPEN QUESTION, NOT SETTLED BEHAVIOUR -- see FIX-LIST.md "at-risk scan misses
+' SOURCES and NOTES". Citations and notes are also work a person typed, and the
+' refusal does not currently count them, which is the only reason this path can
+' still discard anything. If that gets fixed, the drop becomes unreachable for
+' any row with content at all and this whole mechanism should be DELETED rather
+' than kept passing. The test asserts what the code does today; it is not a vote
+' that today's answer is right.
+Private Function Test_Drafting_RolloverCadenceGovernsUntypedRows() As String
     Dim result As String
 
     Dim xl As Object, wb As Object, dws As Object, rws As Object
@@ -7368,29 +7410,35 @@ Private Function Test_Drafting_RolloverKeepsEntityStaticRows() As String
     cadence("P002" & Chr(1) & "ABOUT_BODY") = False     ' Quarter = ALL
 
     Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Empty, "FY26Q3", cadence
-    dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SUBMIT).Value = "P001 quarterly draft"
+    ' NO SUBMIT AND NO DRAFT ANYWHERE ON THIS SHEET, deliberately: either one
+    ' would trip the refusal guard and the rollover below would change nothing,
+    ' so the per-row logic this test exists for would never run.
     dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SOURCES).Value = "S01"
-    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SUBMIT).Value = "P002 the project description"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_NOTES).Value = "chase the finance number"
     dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value = "S07"
     dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_NOTES).Value = "settled, do not touch"
 
     Dim rep As String
     rep = Drafting.WriteDraftingSheet(dws, reg, "ABOUT_BODY", Empty, "FY26Q4", cadence)
 
+    ' THE GUARD MUST NOT HAVE FIRED. If it did, every assertion below would pass
+    ' for the wrong reason -- an untouched sheet looks identical to a correctly
+    ' carried-over one on the rows that are meant to survive.
+    result = result & Assert(InStr(rep, "REFUSED") = 0, _
+        "the sheet REBUILT rather than refusing -- with no submitted or drafted text " & _
+        "there is nothing for the refusal to protect, got '" & Left(rep, 90) & "'")
+
     ' The quarterly row goes.
-    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SUBMIT).Value)) = "", _
-        "THE QUARTERLY ROW IS CLEARED on rollover, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SUBMIT).Value) & "'")
     result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SOURCES).Value)) = "", _
-        "and its source IDs with it, got '" & _
+        "THE QUARTERLY ROW'S SOURCE IDS ARE CLEARED on rollover -- they cite the wrong quarter's evidence, got '" & _
         CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SOURCES).Value) & "'")
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_NOTES).Value)) = "", _
+        "and its notes with them, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_NOTES).Value) & "'")
 
     ' THE ENTITY-STATIC ROW SURVIVES INTACT. This is the whole test.
-    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SUBMIT).Value) = "P002 the project description", _
-        "THE Quarter = ALL ROW KEEPS ITS SUBMIT TEXT -- it was never quarterly and there is nothing stale about it, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SUBMIT).Value) & "'")
     result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value) = "S07", _
-        "the static row keeps its source IDs -- they cite the project, not the quarter, got '" & _
+        "THE Quarter = ALL ROW KEEPS ITS SOURCE IDS -- they cite the project, not the quarter, got '" & _
         CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value) & "'")
     result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_NOTES).Value) = "settled, do not touch", _
         "and its notes, got '" & _
@@ -7412,16 +7460,18 @@ Private Function Test_Drafting_RolloverKeepsEntityStaticRows() As String
     ' stale prose, and this guard exists to prevent exactly that.
     Dim empt As Object
     Set empt = CreateObject("Scripting.Dictionary")
-    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SUBMIT).Value = "unclassified text"
+    ' SOURCES, not SUBMIT -- submitted text would refuse the rebuild outright and
+    ' this assertion would then pass against a sheet nothing had touched.
+    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value = "S99"
     Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Empty, "FY27Q1", empt
-    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SUBMIT).Value)) = "", _
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value)) = "", _
         "A ROW THE REGISTER CANNOT CLASSIFY IS DROPPED, not assumed static, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SUBMIT).Value) & "'")
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value) & "'")
 
     wb.Close False
     xl.Quit
     Set wb = Nothing: Set xl = Nothing
-    Test_Drafting_RolloverKeepsEntityStaticRows = result
+    Test_Drafting_RolloverCadenceGovernsUntypedRows = result
 End Function
 
 ' THE WIDE SHEET CARRIES ITS OWN PERIOD -- one row per slide per period, rows
