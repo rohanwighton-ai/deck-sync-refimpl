@@ -105,11 +105,22 @@
 > 4. **Then the template pivot** — but not making the template authoritative for the field
 >    set until a quarter has been produced from it.
 >
-> **Blocked on Rohan:** whether the recipe told him what to write, or he still worked it
-> out himself. Open since 10 Aug and it is the load-bearing question of the whole project
-> — the recipes are the asset, sync is only delivery.
+> **ANSWERED 2026-08-14, and do not re-ask it.** The load-bearing question of the whole
+> project -- did the recipe tell him what to write, or did he still work it out himself --
+> got its answer minutes after he was shown the `PROGRESS_BODY` Field Spec row:
+> **"It worked and we will continue to refine over time."** The central bet holds: the
+> recipes remove the re-deciding. A first affirmative read across two fields, not a full
+> pass over thirteen; refinement is expected and he said so. `TRACKER.md` item 9 is ticked
+> on the strength of it -- 9 of 10.
 >
-> **NOT blocked, and do not re-ask it: Rohan owns the declared-linkage list.** FIX-LIST
+> **NOT blocked, and both halves are settled: Rohan owns the declared-linkage list, and
+> its home is a PERMANENT sheet in the register workbook beside `Sources`.** It was put
+> back to him as an open question on 14 Aug after both parts had already been answered --
+> twice for ownership, and once by reading `WorkbookBridge.LifespanOf`. What remains is a
+> task, not a decision: create the sheet, give it an `as at` date, and put the four codes
+> already visible on the real slide (`1.1.1`, `2.1.1`, `3.3.1`, `3.4.1`) into it.
+>
+> Original note follows. FIX-LIST
 > records this twice (*"Rohan owns it, colleagues later"*) and it was still written up as
 > a question for him on 14 Aug, from a file that had been read in full the same morning.
 > The real gap is that the list does not exist as an artifact yet: it needs a home

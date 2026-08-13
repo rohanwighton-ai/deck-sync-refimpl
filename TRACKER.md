@@ -41,7 +41,10 @@ Two consequences, and the second should govern the order of work:
 drafting, chasing source material, pasting into slides, and checking. The split
 decides whether anything after the recipes is worth building at all.
 
-**8 of 10.**
+**9 of 10.**
+
+*Item 9 ticked 2026-08-14. Item 10 -- one real quarter produced, and it saved time -- is
+the only one left, and it is a sentence from Rohan, not a number.*
 
 *Said "7 of 10" for two hours after item 8 was ticked. The file that exists to police
 stale counts carried a stale count — caught by the PM agent, not by anyone editing it.*
@@ -83,8 +86,22 @@ stale counts carried a stale count — caught by the PM agent, not by anyone edi
       *"Not perfect" is unspecified and NOT yet a defect list — if item 9 turns up what
       bothered him, capture it then rather than guessing at it now.*
 
-- [ ] **9. Rohan drafts a real quarter's content** — text he actually needed written, not test
+- [x] **9. Rohan drafts a real quarter's content** — text he actually needed written, not test
       edits. *Done when: 10 projects drafted, ticked, applied on the e2e copy.*
+      **DONE 2026-08-14, and on the REAL deck rather than the e2e copy.** 43 `PROGRESS_BODY`
+      values drafted against the recipe, reviewed and ticked by Rohan, applied to 43 slides
+      and verified from the saved `.pptx`. 21 `KEY_EVENTS_BODY` the evening before.
+
+      **AND THE QUESTION UNDER IT IS ANSWERED.** `HANDOVER-Q4F26-DRAFTING.md` §7 asked the
+      one thing no agent can answer for him — did the recipe tell him what to write, or did
+      he still work it out himself. Rohan, 2026-08-14, immediately after being shown the
+      `PROGRESS_BODY` Field Spec row: **"It worked and we will continue to refine over
+      time."**
+
+      That is the project's central bet paying off: the recipes are the product, sync is
+      delivery, and the recipe removed the re-deciding. Treat it as a first affirmative read
+      across two fields, not a full pass over thirteen — refinement is expected and he said
+      so. But it is no longer an open question, and it should not be re-asked.
 
 - [ ] **10. One real quarter produced, and it saved time** — on a copy of the live deck, which
       then becomes the deck. *Done when: Rohan says the sentence. "No" is a valid answer and a
