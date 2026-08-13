@@ -1,66 +1,133 @@
 # NEXT SESSION — start here
 
-> ## DO THIS FIRST — publish `PROGRESS_BODY`
+> ## TWO FIELDS ARE ON REAL SLIDES. The delivery count is 2, not 0.
 >
-> **State at handoff (19:40, 13 Aug), read from files not dialogs:**
-> register `register-wide.xlsx` unchanged since **16:57** · deck **19:27** ·
-> `addin82` built, stamped `2026-08-13 19:22`, **confirmed loaded and the only add-in**.
+> **14 Aug 2026, 08:21 — `PROGRESS_BODY` written to 43 slides.** Verified from the saved
+> `.pptx`, not from a dialog: 43 match the register, **0 differ**, 27 carry real paragraph
+> breaks, no literal `||` anywhere. Build `addin83`, stamp `2026-08-14 08:09`.
 >
-> **A `PROGRESS_BODY` run was attempted and did nothing.** Excel never opened, the register
-> never changed. Most likely cause: **`Cancel` was pressed on the `MS*` dialog**, which is
-> the only button there that ends the whole chain and sits beside the `No` you want. Not
-> confirmed — the screenshot channel failed (see below) — so treat it as the first thing to
-> rule out, not as fact.
+> The workbook's **`Sync Log` is the durable record** (it appends; `Run Log` is replaced
+> every run and cannot answer "what has this ever delivered"):
 >
-> **The sequence.** One button, `1. Sync Now`, pressed twice. First press publishes drafting
-> to the register and builds the review; you tick the review; second press applies it.
+> ```
+> 2026-08-13 16:55   KEY_EVENTS_BODY   written  21
+> 2026-08-14 08:21   PROGRESS_BODY     written  43
+> ```
 >
-> | prompt | answer |
-> |---|---|
-> | `MS*` fields warning | **No** — NOT Cancel |
-> | 5-step plan | Yes |
-> | Quarter | OK (already `Q4F26`) |
-> | Roll Forward | should not appear — reports instead |
-> | 17 Field Spec columns | **No** (`HIGHLIGHTS_BODY` needs slot columns, not one) |
-> | Which field? | **`PROGRESS_BODY`** |
+> **Closed with it:** whether `||` reaches a slide as a real paragraph break. It does.
+> FIX-LIST called that "the last unverified link in the chain".
 >
-> **Two traps.** The `MS*` `Cancel` above. And the field dialog's **text box sits below the
-> bottom of a 1080p screen** — drag the dialog up by its title bar before typing, or it gets
-> dismissed empty and the publish is silently skipped. That is FIX-LIST P2.
+> ### But read this before claiming the loop works
 >
-> **Watch the published count against 34.** 43 rows are ticked, only 34 have text, so 9
-> should be skipped. Whether the report *says* so is a live test of FIX-LIST P6.
+> **The 43 values were written into the register BY HAND** (Excel COM), because the
+> publish path cannot be reached — see 1 below. So what is proven is *register → slides*.
+> *Drafting → register* has still never happened through the tool. They are different
+> claims and only one of them is true.
 >
-> **Then expect a small diff.** As with Key Events (21 of 43), many slides may already match.
+> Those 43 values also carry no sources and no recipe hash, because publish is where
+> provenance would be written.
 >
 > ---
 >
-> ### Two things that are true but not yet visible
+> ## STATE
 >
-> **`addin82`'s tab ordering has not taken effect.** `ArrangeTabs` runs during a drafting
-> rebuild, and no full run has completed since the add-in was swapped. Sheet order is still
-> `START HERE, Field Spec, Sources, TPL_*, …` with `Register` unplaced. It will reorder on
-> the next successful `Sync Now`.
+> - **Deck** `OneDrive\Claude\3. Project Progress.pptx` — 44 slides, period `Q4F26`,
+>   nine `ROLE` tags per slide. Tags live in `ppt/tags/tagN.xml`, **not** in the slide XML;
+>   grepping `slideN.xml` for them returns nothing and looks exactly like an untagged deck.
+> - **Register** `OneDrive\Claude\register-wide.xlsx` — 25 sheets, 43 rows each at
+>   `Q3F26` / `Q4F26`, 5 at `Q1F27`. `PROGRESS_BODY` and `ABOUT_BODY` both 43/43 at Q4F26.
+> - **Build `addin83` is the ONLY registered add-in** (`AutoLoad=1`; 82 was unticked and
+>   removed from the registry). Thirteen stale `.ppam` files still clutter
+>   `AppData\Roaming\Microsoft\AddIns` — delete them before one gets loaded by accident.
+> - Backups from 14 Aug in `OneDrive\Claude\backups\`: `PREPUBLISH-20260813-204031` is
+>   the last Excel-written baseline and is guaranteed openable.
 >
-> **Slide 1 is inconsistently de-identified, live, right now.** `KEY_EVENTS_BODY` was
-> published and reads *"The industry partner's withdrawal halted further development"* — but
-> `PROGRESS_BODY` directly below it still reads *"...ceased following Calix withdrawal"*, and
-> the partner is also named in the header subtitle and the Project Team box. Publishing
-> `PROGRESS_BODY` fixes one of the three. **The other two are untagged shapes** — part of the
-> 50 unmanaged items the Template Audit found, so they need tagging, not publishing. This is
-> a funder-facing deck; worth treating as content risk rather than tidiness.
+> ---
 >
-> ### Practical note: screenshots stopped reaching Claude Code
+> ## THE THREE DEFECTS THAT COST THE MORNING
 >
-> From ~19:30 no image reached the clipboard and **no PNG was written anywhere under the
-> profile**, including the OneDrive `Claude` folder where earlier ones landed. Verbal
-> description plus COM state reads worked fine as a substitute. Useful calibrated check,
-> worth keeping: **while a modal is open PowerPoint stops answering COM** —
-> `ActivePresentation.Name` returns empty — and answers normally when idle. That single call
-> distinguishes "waiting for you behind a window" from "the run has ended".
-
+> ### 1. The publish path cannot be reached. Still unfixed.
+>
+> `Drafting.bas:694` clears `COL_D_APPROVED` on every drafting-sheet rebuild. Draft,
+> submit, sources and notes are carried; the tick is not. `SyncNowChainCore` runs
+> **rebuild (step 3) immediately before publish (step 4)**, and nothing but a person ever
+> writes that column. So a tick can never survive to be read.
+>
+> Demonstrated, not inferred: 43 rows ticked `Y`, saved to disk, `Sync Now` pressed,
+> publish reported `0 would be published, 43 drafted but not ticked`.
+>
+> **Do not "fix" it by never clearing the column** — a tick approves a *specific* text.
+> The real question is whether approval belongs on the **register row** instead of on a
+> surface that is rebuilt by design. That is a design call, not a patch.
+>
+> ### 2. The chain fails when the register is open in Excel, and does not say so
+>
+> `Refresh Drafting Sheets` raises **`Error 50290`** when Excel already holds the
+> workbook; every later stage then reports *"Could not open the paired workbook at
+> C:\...\register-wide.xlsx"* — naming the file that is fine and discarding Excel's real
+> reason. Self-defeating too: step 3 leaves the workbook dirty, and the apply's own guard
+> then correctly refuses to read values that exist only in Excel's memory.
+>
+> **Workaround until fixed: close Excel before pressing `1. Sync Now`.** Cost four failed
+> runs on 14 Aug before the pattern was visible.
+>
+> ### 3. Three prompts have an invariant answer
+>
+> Two presses produced ~20 dialogs; four were real decisions. The `MS*` warning, the
+> 17-column question and Roll Forward can only ever be answered the same way. Rohan:
+> *"way too many msgboxes and having to answer no is confusing."* This is not polish —
+> it trains click-through past the one dialog where `No` destroys 43 ticks.
+>
+> ---
+>
+> ## FIXED IN `addin83`
+>
+> `DeckRegistry.SaveDeckVerified` and `WorkbookBridge.SaveWorkbookVerified` now resolve a
+> OneDrive URL through `LocalPathForUrl` before touching the filesystem. Previously
+> `fso.FileExists(url)` returned **False** for an `https://` path, so both functions
+> returned "this workbook has never been saved to a file" and **exited before calling
+> Save** — the one function written to guarantee the save was the only thing skipping it.
+> Nine call sites for the workbook, two for the deck. Where the path cannot be resolved
+> the save is now *attempted* and reported as unverified, rather than silently refused.
+>
+> ---
+>
+> ## NEXT, IN ORDER
+>
+> 1. **Approve-tick placement** (defect 1). Unblocks drafting → register, which is the
+>    whole point of the recipes.
+> 2. **Delete the invariant prompts** (defect 3), and make defect 2 say "close Excel first".
+> 3. **Tag the sixteen standing `Given` fields on the template.** Propagation to
+>    already-linked slides **is supported and tested** — `ExistingInstanceKey` protects
+>    their keys, hardened after the 2026-07-26 incident that orphaned 46 slides. Only the
+>    entry point is wrong: it asks *"Name for this new slide type"*. Verify what it does
+>    on re-registering `project-progress`, on a carved copy, first.
+> 4. **Then the template pivot** — but not making the template authoritative for the field
+>    set until a quarter has been produced from it.
+>
+> **Blocked on Rohan, both since 10 Aug:** who owns the declared-linkage list now the
+> Family Tree is retiring; and whether the recipe told him what to write or he still
+> worked it out himself. The second is the load-bearing question of the whole project.
+>
+> ---
+>
+> ## RULES THIS MORNING EARNED
+>
+> **Never hand-write an `.xlsx`.** Re-serialising a worksheet with ElementTree produced a
+> file that passed zip integrity, XML parsing, relationship, content-type, cell-order and
+> inline-string checks — and Excel refused to open it, because only two namespaces were
+> registered and `mc`/`x14ac`/`xr` got invented prefixes. **The only valid test of "can
+> Excel open this" is Excel opening it**, A/B'd against a known-good file in the same
+> session. Drive Excel over COM to write; read by hand is still fine.
+>
+> **A defect is a class, and so is a diagnostic.** "Could not open the paired workbook"
+> appeared three times this morning with three different underlying causes, all hidden by
+> the same discarded error. FIX-LIST item 1 is now the highest-value cheap fix in the repo.
+>
+> ---
 
 **Written 13 August 2026, ~16:15.** Previous version archived as `NEXT-SESSION-2026-08-12.md`.
+
 
 > ## SUPERSEDED — written mid-session, kept for the reasoning below it
 >

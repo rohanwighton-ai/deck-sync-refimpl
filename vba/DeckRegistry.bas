@@ -720,23 +720,59 @@ Public Function SaveDeckVerified(pres As Object) As String
     Dim path As String
     path = pres.FullName
 
+    ' A CLOUD-HOSTED DECK REPORTS ITS FullName AS AN https:// URL, AND
+    ' FileSystemObject ANSWERS False FOR ONE RATHER THAN RAISING. So the guard
+    ' below used to read "the deck has never been saved to a file" about a 49MB
+    ' deck that had been saved all evening, and -- far worse -- Exit Function
+    ' before pres.Save was ever called. The one function written to guarantee the
+    ' save was the one that skipped it, silently, on exactly the configuration the
+    ' work machine is always in. Measured 2026-08-13 from the Run Log's own
+    ' "---- NOT SAVED ----" block, which printed the URL inside the sentence
+    ' claiming no file existed. AutoSave being on was the only reason the evening's
+    ' KEY_EVENTS publish survived; with it off, the period write had already failed
+    ' four times the same way.
+    '
+    ' LocalPathForUrl resolves the URL to the local synced file and returns "" when
+    ' it cannot. Note the ORDER: this is used ONLY for the existence and
+    ' modification-time checks. pres.Save still targets the document itself, which
+    ' is what PowerPoint knows how to write; the local copy is merely where the
+    ' evidence lands.
+    Dim checkPath As String
+    checkPath = LocalPathForUrl(path)
+
     Dim fso As Object
     Set fso = CreateObject("Scripting.FileSystemObject")
-    If Not fso.FileExists(path) Then
-        SaveDeckVerified = "The deck has never been saved to a file, so there is " & _
-            "nothing to save into. Use File > Save As first."
+
+    ' THREE STATES, NOT TWO -- Readiness.bas:32's rule, and the reason this
+    ' function exists at all. "I could not check" must never be reported as either
+    ' "saved" or "never existed". The save is ATTEMPTED regardless, because a deck
+    ' we cannot verify is still a deck that must be written.
+    If checkPath = "" Or Not fso.FileExists(checkPath) Then
+        On Error Resume Next
+        pres.Save
+        Dim blindErr As String
+        If Err.Number <> 0 Then blindErr = "Error " & Err.Number & ": " & Err.Description
+        Err.Clear
+        On Error GoTo 0
+
+        SaveDeckVerified = "THE SAVE COULD NOT BE VERIFIED." & vbCrLf & vbCrLf & _
+            path & vbCrLf & vbCrLf & _
+            "The deck was told to save, but its file could not be located on this " & _
+            "PC to confirm the bytes moved. Open the deck's folder and check the " & _
+            "modified time yourself before closing it." & _
+            IIf(blindErr = "", "", vbCrLf & vbCrLf & blindErr)
         Exit Function
     End If
 
     Dim before As Date
-    before = fso.GetFile(path).DateLastModified
+    before = fso.GetFile(checkPath).DateLastModified
 
     On Error Resume Next
     pres.Save
     Err.Clear
     On Error GoTo 0
 
-    If fso.GetFile(path).DateLastModified > before Then Exit Function     ' "" = saved
+    If fso.GetFile(checkPath).DateLastModified > before Then Exit Function     ' "" = saved
 
     ' Save reported nothing and moved nothing. Force the full rewrite.
     Dim retryErr As String
@@ -746,7 +782,7 @@ Public Function SaveDeckVerified(pres As Object) As String
     Err.Clear
     On Error GoTo 0
 
-    If fso.GetFile(path).DateLastModified > before Then Exit Function     ' "" = saved
+    If fso.GetFile(checkPath).DateLastModified > before Then Exit Function     ' "" = saved
 
     SaveDeckVerified = "THE DECK WAS NOT SAVED." & vbCrLf & vbCrLf & _
         path & vbCrLf & vbCrLf & _

@@ -348,15 +348,40 @@ Public Function SaveWorkbookVerified(wb As Object) As String
     Dim path As String
     path = wb.FullName
 
+    ' SAME DEFECT AS DeckRegistry.SaveDeckVerified, AND FOUND THE SAME WAY -- by
+    ' reading the Run Log this function wrote, which said "This workbook has never
+    ' been saved to a file: https://d.docs.live.net/...", printing the URL inside
+    ' the sentence denying a file existed. FileSystemObject answers False for a URL
+    ' rather than raising, so the guard fell through and wb.Save was NEVER CALLED.
+    ' Fixed here as a class rather than only where it was noticed: this one has
+    ' NINE call sites against the deck's two, so it is the larger half.
+    Dim checkPath As String
+    checkPath = DeckRegistry.LocalPathForUrl(path)
+
     Dim fso As Object
     Set fso = CreateObject("Scripting.FileSystemObject")
-    If Not fso.FileExists(path) Then
-        SaveWorkbookVerified = "This workbook has never been saved to a file: " & path
+
+    ' Attempt the save even when it cannot be verified, and say so plainly -- the
+    ' third state. Skipping the write was the whole defect; reporting a write we
+    ' did not witness would be the next one.
+    If checkPath = "" Or Not fso.FileExists(checkPath) Then
+        On Error Resume Next
+        wb.Save
+        Dim blindErr As String
+        If Err.Number <> 0 Then blindErr = "Error " & Err.Number & ": " & Err.Description
+        Err.Clear
+        On Error GoTo 0
+
+        SaveWorkbookVerified = "THE SAVE COULD NOT BE VERIFIED." & vbCrLf & vbCrLf & _
+            path & vbCrLf & vbCrLf & _
+            "The workbook was told to save, but its file could not be located on " & _
+            "this PC to confirm the bytes moved. Check it yourself before closing " & _
+            "Excel." & IIf(blindErr = "", "", vbCrLf & vbCrLf & blindErr)
         Exit Function
     End If
 
     Dim before As Date
-    before = fso.GetFile(path).DateLastModified
+    before = fso.GetFile(checkPath).DateLastModified
 
     On Error Resume Next
     wb.Save
@@ -365,7 +390,7 @@ Public Function SaveWorkbookVerified(wb As Object) As String
     Err.Clear
     On Error GoTo 0
 
-    If fso.GetFile(path).DateLastModified > before Then Exit Function      ' "" = saved
+    If fso.GetFile(checkPath).DateLastModified > before Then Exit Function      ' "" = saved
 
     SaveWorkbookVerified = "THE WORKBOOK WAS NOT SAVED." & vbCrLf & vbCrLf & _
         path & vbCrLf & vbCrLf & _
