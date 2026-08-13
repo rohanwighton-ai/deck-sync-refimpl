@@ -839,7 +839,19 @@ TPL_HIGHLIGHTS_BODY         43         43          43
 Constants, so nobody re-infers the mapping: `COL_D_DRAFT = 5` (E), `COL_D_SUBMIT = 6` (F),
 `COL_D_APPROVED = 7` (G), `DRAFT_HEADER_ROW = 9`, `DRAFT_FIRST_ROW = 10`.
 
-**43 ticks against 34 pieces of text — nine rows approved with nothing in SUBMIT.** Publishing correctly requires BOTH, so the nine extra
+**RETRACTED 13 Aug, later the same evening. The count was mine and it was wrong.**
+
+Column G holds `'0'` on at least some rows, not `Y` — `3_P001` on `TPL_PROGRESS_BODY` is
+`SUBMIT` empty, `APPROVED = '0'`. My figure counted **non-empty** G cells, so it counted
+`'0'` as an approval. Publishing tests `ReviewQueue.IsApprovalMark`, which is an
+*affirmative* test, not a non-empty one.
+
+So "43 approvals against 34 texts" is not established. The real approved count is lower and
+unknown until someone counts affirmative marks rather than filled cells.
+
+**This is the exact error this file exists to catch, committed by the person writing the
+file.** A check that asks "is there something here" cannot answer "does this say yes".
+Recount with `IsApprovalMark`'s own rule before treating the mismatch as real. Publishing correctly requires BOTH, so the nine extra
 publish nothing — but the reported count will not match the ticks, and there is no message
 explaining why. Either the ticks are stale or the text was lost; nothing currently says
 which, and it should.
