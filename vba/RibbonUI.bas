@@ -385,7 +385,7 @@ Private Sub SyncNowCore(Optional ByVal afterCreate As Boolean = False)
     ' The grid is still written and still consumed, so a fast-path run leaves
     ' exactly the same audit trail as a reviewed one (F7).
     Dim logWs As Object
-    Set logWs = WorkbookBridge.GetOrAddWorksheet(wb, "Sync Log")
+    Set logWs = WorkbookBridge.GetOrAddWorksheet(wb, WorkbookBridge.SYNC_LOG_SHEET_NAME)
 
     For i = lo To hi
         Dim tmplSld As Object
@@ -1320,7 +1320,7 @@ Private Sub ApplyApprovedCore()
     End If
 
     Dim logWs As Object
-    Set logWs = WorkbookBridge.GetOrAddWorksheet(wb, "Sync Log")
+    Set logWs = WorkbookBridge.GetOrAddWorksheet(wb, WorkbookBridge.SYNC_LOG_SHEET_NAME)
 
     Dim fullReport As String
     Dim i As Long

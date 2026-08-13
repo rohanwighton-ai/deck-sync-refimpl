@@ -300,3 +300,62 @@ has 18 sheets in arrival order with no scheme (`START HERE`, `Sources`, `SRC_EXT
 `WorkbookBridge.ArrangeTabs` already orders them, so the scheme belongs there rather than
 in a manual pass. Do this FIRST next session — it is small, bounded, and was explicitly
 asked for.
+
+---
+
+## EXCEL TAB ORDER — DONE BY POSITION, DEFERRED BY NAME (13 Aug, late)
+
+Rohan asked for logical tab numbering and Excel best practice across the workbooks, then
+added: **"anything that threatens the data chain fix it"** and **"if you are going to
+renumber use logic"**. Both shaped what was and was not done.
+
+### Done: a data-chain fix found while auditing the sheet names
+
+**`"Sync Log"` was a bare literal in SEVEN places across two modules** — alone among the
+tool-owned sheets, every one of which otherwise has a constant. Two of the seven are
+`GetOrAddWorksheet` calls, which **create** the sheet when the name does not match. So one
+divergent literal would not fail loudly: it would quietly open a second log sheet while
+`IsToolOwnedSheet` and `ArrangeTabs` went on guarding the first, splitting the audit trail
+while looking healthy. Now `WorkbookBridge.SYNC_LOG_SHEET_NAME`, all seven replaced.
+
+### Done: tab order follows the lifecycle of a quarter
+
+`ArrangeTabs` now orders by position — no renaming, so nothing can break a lookup:
+
+```
+ 1  START HERE     where a person begins; the readiness checklist
+ 2  Field Spec     what fields exist at all -- configuration before data
+ 3  Sources        the evidence values may cite
+ 4  SRC_*          harvested source data
+ 5  Register       THE DATA. The reason the workbook exists.
+ 6  TPL_*          where a person works, in Field Spec order
+ 7  Review *       the approval gate, between work and the deck
+ 8  Field Discovery, Template Audit    diagnostics, off the normal path
+ 9  Run Log, Sync Log                  the audit trail
+10  SAVED *        parked archives, absolutely last
+```
+
+**`Register` was previously unplaced** — it fell into "everything else in its current
+order" beside the diagnostics, so the most important sheet in the workbook sat wherever it
+happened to land. That, rather than any cosmetic gain, is what this fixes. `SAVED *`
+archives now sort last so they cannot be mistaken for the live sheet they were copied from;
+typing in one is silent, because publish reads the live sheet only.
+
+### NOT compile-verified
+
+Static checks pass across 34 modules and both cross-module constants are `Public` in
+modules that are in the compile and build sets. **The whole-project compile gate has NOT
+run** — it requires Office closed and Rohan's real deck and register were open. Run
+`run_vba_tests.ps1` before building `addin82`.
+
+### Deferred deliberately: numbering the NAMES
+
+`01_FIELD_SPEC`-style names would be better still, and are a **migration, not a tidy-up**:
+sheet names are this tool's addressing mechanism — nine constants, dozens of literals, plus
+the `TPL_`, `Review ` and `SAVED ` prefix matches. It needs the constants changed, every
+literal found, and a rename pass over a live workbook holding drafted work, with a fallback
+for a workbook that has not been migrated yet.
+
+**If it is done, the scheme should be the ordering above**, so position and name agree and
+neither can drift from the other. Do it as its own session with the suite green before and
+after — not alongside anything else.

@@ -3,6 +3,16 @@ Option Explicit
 
 Public Const RUN_LOG_SHEET_NAME As String = "Run Log"
 
+' THE SYNC LOG HAD NO CONSTANT, ALONE AMONG THE TOOL-OWNED SHEETS. It was a bare
+' SYNC_LOG_SHEET_NAME literal in SEVEN places across two modules -- and two of them are
+' GetOrAddWorksheet calls, which CREATE the sheet when the name does not match.
+' So a single divergent literal would not fail: it would quietly start a second
+' log sheet while IsToolOwnedSheet and ArrangeTabs went on guarding the first,
+' splitting the audit trail in a way that looks entirely healthy. Same shape as
+' every other stale-string defect in this codebase -- a wrong string with a
+' plausible orphan beside it is worse than a wrong string on its own.
+Public Const SYNC_LOG_SHEET_NAME As String = "Sync Log"
+
 ' The sheet that explains the workbook. First tab, so it is what you land on.
 Public Const INDEX_SHEET_NAME As String = "START HERE"
 
@@ -480,7 +490,7 @@ Public Function DescribeSheet(sheetName As String) As String
     ElseIf Left(sheetName, 11) = "Sync Review" Then
         DescribeSheet = "Every change waiting to be approved before it reaches a slide. " & _
             "Tick what you agree with, then press '" & CommandBarUI.CAP_SYNC_NOW & "' again."
-    ElseIf sheetName = "Sync Log" Then
+    ElseIf sheetName = SYNC_LOG_SHEET_NAME Then
         DescribeSheet = "What was written to slides, and when. Written as it happens, so a run " & _
             "that dies halfway still leaves a record."
     ElseIf sheetName = "Field Spec" Then
@@ -504,7 +514,7 @@ Public Function LifespanOf(sheetName As String) As String
         LifespanOf = "Rebuilt each drafting round"
     ElseIf Left(sheetName, 11) = "Sync Review" Then
         LifespanOf = "One per run, then consumed"
-    ElseIf sheetName = "Sync Log" Then
+    ElseIf sheetName = SYNC_LOG_SHEET_NAME Then
         LifespanOf = "Append-only history"
     ElseIf sheetName = "Field Spec" Then
         LifespanOf = "PERMANENT -- edit it freely"
@@ -702,7 +712,7 @@ Public Function IsToolOwnedSheet(sheetName As String) As Boolean
     If sheetName = FieldSpec.SPEC_SHEET_NAME Then IsToolOwnedSheet = True
     If sheetName = Sources.SOURCES_SHEET_NAME Then IsToolOwnedSheet = True
     If sheetName = DiscoverUI.DISCOVERY_SHEET_NAME Then IsToolOwnedSheet = True
-    If sheetName = "Sync Log" Then IsToolOwnedSheet = True
+    If sheetName = SYNC_LOG_SHEET_NAME Then IsToolOwnedSheet = True
     If Left(sheetName, Len("TPL_")) = "TPL_" Then IsToolOwnedSheet = True
     If Left(sheetName, Len("Sync Review")) = "Sync Review" Then IsToolOwnedSheet = True
     If Left(sheetName, Len("Template Audit")) = "Template Audit" Then IsToolOwnedSheet = True
@@ -781,30 +791,80 @@ End Function
 ' Never creates or deletes. A name that is not present is skipped, so this is
 ' safe on a workbook that has only some of them.
 Public Sub ArrangeTabs(wb As Object, draftOrder As String)
+    ' TAB ORDER FOLLOWS THE LIFECYCLE OF A QUARTER, not the order sheets happened
+    ' to be created in. Rohan asked for logical numbering across the workbooks;
+    ' this is that ordering expressed as POSITION rather than as renamed tabs.
+    '
+    ' WHY NOT NUMBER THE NAMES. Sheet names are this tool's addressing mechanism
+    ' -- nine constants, dozens of literals, plus the TPL_, "Review " and "SAVED "
+    ' prefix matches. Renaming to "01_FIELD_SPEC" and the like means a code change
+    ' AND a migration of a live workbook holding drafted work. That is a
+    ' deliberate migration to plan, not a tidy-up to slip into a session, and it
+    ' is written up in NEXT-SESSION.md. Ordering costs nothing and cannot break a
+    ' lookup, so it goes in now.
+    '
+    ' The sequence, and the reason for it:
+    '   1  START HERE     where a person begins, and the readiness checklist
+    '   2  Field Spec     what fields exist at all -- configuration before data
+    '   3  Sources        the evidence values are allowed to cite
+    '   4  SRC_*          harvested source data, feeding the above
+    '   5  Register       THE DATA. The reason the workbook exists.
+    '   6  TPL_*          where a person actually works, in Field Spec order
+    '   7  Review *       the approval gate, between work and the deck
+    '   8  diagnostics    Field Discovery, Template Audit -- read when something
+    '                     looks wrong, not part of the normal path
+    '   9  logs           the audit trail, appended to and rarely read forward
+    '  10  SAVED *        parked archives, last, so they cannot be mistaken for
+    '                     the live sheet they were copied from
+    '
+    ' REGISTER WAS PREVIOUSLY UNPLACED. It fell into "everything else in its
+    ' current order" along with the diagnostics -- so the single most important
+    ' sheet in the workbook sat wherever it happened to land. That is the defect
+    ' this ordering fixes, more than any cosmetic gain.
     Dim wanted As String
     wanted = Readiness.READY_SHEET_NAME & vbLf & _
              FieldSpec.SPEC_SHEET_NAME & vbLf & _
              Sources.SOURCES_SHEET_NAME
+
+    ' Source sheets, by prefix -- there is no constant per SRC_ sheet.
+    Dim ws As Object
+    For Each ws In wb.Worksheets
+        If Left(ws.Name, 4) = "SRC_" Then wanted = wanted & vbLf & ws.Name
+    Next ws
+
+    wanted = wanted & vbLf & REGISTER_SHEET_NAME
+
     If Trim(draftOrder) <> "" Then wanted = wanted & vbLf & draftOrder
 
     ' Review sheets next, whatever they are called -- the name carries a slide
     ' type and a hash, so it is matched by prefix rather than named.
-    Dim ws As Object
     For Each ws In wb.Worksheets
         If Left(ws.Name, 7) = "Review " Then wanted = wanted & vbLf & ws.Name
     Next ws
 
-    ' Then everything else in its current order, EXCEPT the logs.
+    ' Diagnostics: read when something looks wrong, not on the normal path.
+    wanted = wanted & vbLf & DiscoverUI.DISCOVERY_SHEET_NAME & _
+                      vbLf & TemplateAudit.AUDIT_SHEET_NAME
+
+    ' Then anything unrecognised, in its current order -- a person's own sheet
+    ' keeps its place rather than being shuffled by a tool that does not own it.
+    ' Logs and parked archives are held back deliberately.
     For Each ws In wb.Worksheets
         If InStr(vbLf & wanted & vbLf, vbLf & ws.Name & vbLf) = 0 Then
-            If ws.Name <> RUN_LOG_SHEET_NAME And ws.Name <> "Sync Log" Then
+            If ws.Name <> RUN_LOG_SHEET_NAME And ws.Name <> SYNC_LOG_SHEET_NAME _
+               And Left(ws.Name, 6) <> "SAVED " Then
                 wanted = wanted & vbLf & ws.Name
             End If
         End If
     Next ws
 
-    ' Logs last.
-    wanted = wanted & vbLf & RUN_LOG_SHEET_NAME & vbLf & "Sync Log"
+    ' Logs, then parked archives absolutely last. A "SAVED ..." copy sitting
+    ' beside the live sheet it was taken from is a second place to type, and
+    ' typing there is silent -- publish reads the live sheet only.
+    wanted = wanted & vbLf & RUN_LOG_SHEET_NAME & vbLf & SYNC_LOG_SHEET_NAME
+    For Each ws In wb.Worksheets
+        If Left(ws.Name, 6) = "SAVED " Then wanted = wanted & vbLf & ws.Name
+    Next ws
 
     Dim names() As String
     names = Split(wanted, vbLf)
