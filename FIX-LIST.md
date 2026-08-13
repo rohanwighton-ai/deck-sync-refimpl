@@ -824,12 +824,30 @@ and loses marks.
 
 **Fix:** carry decisions across by shape ID, the way `WriteDraftingSheet` carries drafts.
 
-### P6. `PROGRESS_BODY` has more approvals than submitted text
+### P6. `PROGRESS_BODY` has more approvals than submitted text — CONFIRMED, not a miscount
 
-42 ticks against 34 pieces of text. Publishing correctly requires BOTH, so the 8 extra
+**Settled 2026-08-13 against the saved file**, after chat side and Claude Code disagreed on
+which column held which number. Authoritative counts, header row excluded, 43 data rows:
+
+```
+                       E draft   F submit   G approve
+TPL_KEY_EVENTS_BODY          1         43          43
+TPL_PROGRESS_BODY            0         34          43
+TPL_HIGHLIGHTS_BODY         43         43          43
+```
+
+Constants, so nobody re-infers the mapping: `COL_D_DRAFT = 5` (E), `COL_D_SUBMIT = 6` (F),
+`COL_D_APPROVED = 7` (G), `DRAFT_HEADER_ROW = 9`, `DRAFT_FIRST_ROW = 10`.
+
+**43 ticks against 34 pieces of text — nine rows approved with nothing in SUBMIT.** Publishing correctly requires BOTH, so the nine extra
 publish nothing — but the reported count will not match the ticks, and there is no message
 explaining why. Either the ticks are stale or the text was lost; nothing currently says
-which.
+which, and it should.
+
+**A counting habit this cost an exchange to learn:** these sheets are rebuilt by any
+`Sync Now`, so a count is only true of one moment. Quote the workbook's mtime beside any
+figure taken from it — two correct counts taken an hour apart will disagree and look like a
+defect.
 
 ### Confirmed FIXED 2026-08-13 (addin81), listed so they are not re-found
 
