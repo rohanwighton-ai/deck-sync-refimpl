@@ -428,3 +428,43 @@ for a workbook that has not been migrated yet.
 **If it is done, the scheme should be the ordering above**, so position and name agree and
 neither can drift from the other. Do it as its own session with the suite green before and
 after — not alongside anything else.
+
+---
+
+## REQUESTED 13 Aug: a standard placeholder for projects that have stopped reporting
+
+Rohan: *"if it's missing because they have stopped reporting please include a standard
+placeholder for now."*
+
+**The need is real.** `3_P001` is `Project Closed` and its `PROGRESS_BODY` drafting row is
+`SUBMIT` empty / `APPROVED = '0'`. A closed project should not silently render last
+quarter's prose or an empty box.
+
+**Proposed standard wording:**
+
+> `No update this quarter — project closed Q3F26. Last reported Q1F26.`
+
+States that the absence is intentional, why, and where the last real content is.
+
+**THE TRAP, and why this was not just typed in.** A placeholder typed into `SUBMIT`
+publishes as ordinary content and is then indistinguishable from drafted prose — next
+quarter nobody can tell which rows are real. That is exactly the `TESTFILL-1256` string
+found in the Q4F26 register tonight, which was one bundled "Yes" from reaching a slide.
+
+**So it should be DERIVED, not typed.** The register already knows `PROJECT_STATUS` and the
+period. A placeholder generated at publish time for rows where status is closed/not-started
+AND the field is empty is:
+- consistent by construction, so the wording cannot drift between projects;
+- distinguishable from human prose, so a later review can find every one;
+- self-correcting — the moment real text is drafted it takes precedence.
+
+Typing it into 43 drafting rows gets the same pixels this quarter and a mess next quarter.
+
+**Open decisions for Rohan:**
+1. Which statuses trigger it — `Project Closed` only, or `Not Started` too?
+2. Does it apply to every prose field, or only the quarterly ones (`PROGRESS_BODY`,
+   `KEY_EVENTS_BODY`) and not entity-static ones like `ABOUT_BODY`?
+3. Exact wording, including whether to name the closing quarter dynamically.
+
+**Do not bulk-type placeholders into the drafting sheets before deciding 1–3.** Undoing 43
+rows of typed placeholder is harder than generating it once.
