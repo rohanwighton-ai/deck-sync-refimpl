@@ -56,7 +56,7 @@ that need it do not ask twice.
 **It had TWO call sites.** `CopyAiDraftsToSubmit` carried the identical line and the
 identical consequence — fixed together rather than only where it was noticed.
 
-**STILL UNPROVEN.** 192 tests pass and the project compiles, but no test exercises the
+**PROVEN 2026-08-13 17:23 on the real deck.** 21 KEY_EVENTS_BODY values written and confirmed by reading slide XML from the saved file -- slide 1 now carries the drafted "The industry partner's withdrawal..." wording. The delivery count is no longer zero. Previously read: 192 tests pass and the project compiles, but no test exercises the
 chain's field selection — which is precisely the gap that allowed this defect. Green here
 means "nothing broke", not "the fix works". Prove it by pressing the button: `Sync Now`
 must now ASK which field, and `KEY_EVENTS_BODY` must be selectable.
