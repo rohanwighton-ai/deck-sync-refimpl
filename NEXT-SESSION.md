@@ -48,9 +48,18 @@ He is right, for three reasons:
 3. **It would have hidden the defect behind a successful-looking run**, which is the
    failure mode this project keeps rediscovering.
 
-**REAL FIX, and the only one:** either have `PublishDraftsForField` always ask when
-running inside the chain, or stop `RefreshDraftingSheets` forcing the active sheet during
-a collected run. Small change, needs a rebuild (`addin81`) and reinstall.
+**FIXED in `addin81`** (build stamp `2026-08-13 16:24`). New `DraftingUI.FieldForRun`:
+inside a collected chain it ASKS; standalone it still reads the active sheet, because
+there the answer really is on screen. Asked ONCE per run and reused, so the two stages
+that need it do not ask twice.
+
+**It had TWO call sites.** `CopyAiDraftsToSubmit` carried the identical line and the
+identical consequence — fixed together rather than only where it was noticed.
+
+**STILL UNPROVEN.** 192 tests pass and the project compiles, but no test exercises the
+chain's field selection — which is precisely the gap that allowed this defect. Green here
+means "nothing broke", not "the fix works". Prove it by pressing the button: `Sync Now`
+must now ASK which field, and `KEY_EVENTS_BODY` must be selectable.
 
 **Note what the test suite did NOT do here.** 192 tests pass. Not one of them asks "can a
 person cause `KEY_EVENTS_BODY` to be published?" — they test that publishing works when

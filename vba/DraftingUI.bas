@@ -47,8 +47,15 @@ Option Explicit
 Private mReport As String
 Private mCollecting As Boolean
 
+' THE FIELD THIS CHAIN RUN IS ABOUT, asked once and reused. Two stages need it
+' -- Copy AI to Submit and Publish -- and asking the same question twice in one
+' run is its own defect. Cleared by BeginCollecting for the same fail-closed
+' reason the buffer is: a chain that died halfway must not answer for the next.
+Private mChainField As String
+
 Public Sub BeginCollecting()
     mReport = ""
+    mChainField = ""
     mCollecting = True
 End Sub
 
@@ -232,6 +239,49 @@ Private Function FieldIsKnown(wb As Object, fieldId As String) As Boolean
         End If
         r = r + 1
     Loop
+End Function
+
+' WHICH FIELD THIS STAGE IS ACTING ON.
+'
+' Standalone, the answer is on screen: ActiveDraftField reads whichever TPL_
+' sheet Excel is showing, and asking would be asking a question the person has
+' already answered by looking at it.
+'
+' INSIDE THE CHAIN IT IS THE OPPOSITE, and this is the defect this function
+' exists to close. RefreshDraftingSheets ends with `ShowSheet wb, firstSheet`,
+' where firstSheet is the FIRST `Kind = Prose` row on the Field Spec -- so the
+' following stages inherited a sheet the chain had just chosen for itself, and
+' could only ever act on that one field whatever the person intended.
+'
+' On the real deck that field was ABOUT_BODY, 0 submitted and 0 approved, while
+' KEY_EVENTS_BODY held 43 submitted and 39 approved and could not be reached from
+' the toolbar at all -- there is no field picker, deliberately. Every Sync Now
+' published nothing, reported "0 would be published", and finished quietly. That
+' is a large part of why no drafted value had ever reached a slide.
+'
+' Found 2026-08-13 by pressing the button on the real deck. 192 tests pass and
+' none of them asks whether a person can CAUSE a given field to publish -- they
+' test that publishing works once called. Same shape as the picture injector and
+' the progress bars: built, tested, and behind a locked door.
+'
+' TWO CALL SITES, FIXED TOGETHER. CopyAiDraftsToSubmit had the identical line and
+' the identical consequence. Fixing only where it was noticed is how the
+' quarter-ordering defect cost a second failed run in the same hour.
+'
+' Rejected fix: reorder the Field Spec so the wanted field comes first. Rohan,
+' on being offered it: "why are you having to move register rows manually?
+' Worries me that the code won't work when it needs to." Right on both counts --
+' it makes which field reaches a slide depend on spreadsheet row order, and it
+' does not exist on the work machine, where a quarter must run from buttons.
+Private Function FieldForRun(caption As String, wb As Object) As String
+    If mCollecting Then
+        If mChainField = "" Then mChainField = AskForField(caption, wb)
+        FieldForRun = mChainField
+        Exit Function
+    End If
+
+    FieldForRun = ActiveDraftField(wb)
+    If FieldForRun = "" Then FieldForRun = AskForField(caption, wb)
 End Function
 
 Private Function AskForField(caption As String, wb As Object) As String
@@ -601,8 +651,7 @@ Public Sub CopyAiDraftsToSubmit()
     If Not Resolve(CAP, pres, wb, regWs) Then Exit Sub
 
     Dim fieldId As String
-    fieldId = ActiveDraftField(wb)
-    If fieldId = "" Then fieldId = AskForField(CAP, wb)
+    fieldId = FieldForRun(CAP, wb)
     If fieldId = "" Then Exit Sub
 
     Dim sheetName As String
@@ -662,8 +711,7 @@ Public Sub PublishDraftsForField()
     If Not Resolve(CAP, pres, wb, regWs) Then Exit Sub
 
     Dim fieldId As String
-    fieldId = ActiveDraftField(wb)
-    If fieldId = "" Then fieldId = AskForField(CAP, wb)
+    fieldId = FieldForRun(CAP, wb)
     If fieldId = "" Then Exit Sub
 
     Dim sheetName As String
@@ -931,6 +979,25 @@ Public Sub RollForwardUI()
                "Set the deck's quarter first -- '" & CommandBarUI.CAP_SYNC_NOW & "' does that. Rolling forward copies rows INTO " & _
                "the period the deck declares, so it cannot run without one.", _
                vbExclamation, CAP
+        Exit Sub
+    End If
+
+    ' DON'T ASK A QUESTION WHOSE EVERY ANSWER IS REFUSED.
+    '
+    ' RollForwardPeriod refuses when the destination already holds rows, because
+    ' copying again would duplicate every project. That guard is right and stays.
+    ' What was wrong is that it fired AFTER a modal and a free-text prompt: on the
+    ' real deck, Q4F26 already had 43 rows, so "which period should they be copied
+    ' FROM?" had no answer that could succeed. Checked here instead, and reported
+    ' through Say -- which inside the Sync Now chain means a line in the run report
+    ' rather than a dialog at all.
+    Dim already As Long
+    already = ExcelOutput.PeriodRowCount(regWs, toPeriod)
+    If already > 0 Then
+        Say toPeriod & " already has " & already & " row(s), so there is nothing to " & _
+               "roll forward." & vbCrLf & vbCrLf & _
+               "Rolling forward again would duplicate every project. Nothing was changed.", _
+               vbInformation, CAP
         Exit Sub
     End If
 

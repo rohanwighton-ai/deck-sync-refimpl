@@ -802,6 +802,37 @@ End Function
 '
 ' Refuses when `toPeriod` already has rows. Rolling forward twice would double
 ' every project, and the second run would look identical to the first.
+' HOW MANY ROWS A PERIOD ALREADY HAS, so a caller can decide BEFORE asking a
+' person anything. RollForwardPeriod refuses outright when the destination is
+' already populated -- correctly -- but it only discovers that after the caller
+' has demanded an answer to "which period should they be copied FROM?". On the
+' real deck that meant a modal and a free-text prompt whose every possible
+' answer led to the same refusal. Rohan, 2026-08-13, on the run that found it:
+' "get rid of needless popup messages."
+'
+' Returns 0 on a sheet with no Quarter column, which is the honest answer: such a
+' sheet holds no periods, so this period has no rows on it.
+Public Function PeriodRowCount(ws As Object, period As String) As Long
+    If Trim$(period) = "" Then Exit Function
+
+    Dim lastCol As Long
+    lastCol = LastUsedColumn(ws)
+
+    Dim cQuarter As Long, c As Long
+    For c = 1 To lastCol
+        If StrComp(Trim$(CStr(ws.Cells(1, c).Value)), QUARTER_HEADER, vbTextCompare) = 0 Then cQuarter = c
+    Next c
+    If cQuarter = 0 Then Exit Function
+
+    Dim lastRow As Long, r As Long, n As Long
+    lastRow = LastUsedRow(ws)
+    For r = 2 To lastRow
+        If StrComp(Trim$(CStr(ws.Cells(r, cQuarter).Value)), period, vbTextCompare) = 0 Then n = n + 1
+    Next r
+
+    PeriodRowCount = n
+End Function
+
 Public Function RollForwardPeriod(ws As Object, fromPeriod As String, toPeriod As String) As String
     If Trim$(fromPeriod) = "" Or Trim$(toPeriod) = "" Then
         Err.Raise vbObjectError + 3, "ExcelOutput.RollForwardPeriod", _

@@ -163,10 +163,8 @@ Public Function PromptAdoptExistingSlides() As String
         Exit Function
     End If
 
-    Dim typeAnswer As String
-    typeAnswer = InputBox(RibbonUI.BuildTypePickerPrompt(types), "Adopt Existing Slides -- Choose Type")
     Dim slideType As String
-    slideType = RibbonUI.ResolveTypeAnswer(typeAnswer, types)
+    slideType = RibbonUI.PickType(types, "Adopt Existing Slides -- Choose Type")
     If slideType = "" Then
         PromptAdoptExistingSlides = "Cancelled -- no type selected."
         Exit Function

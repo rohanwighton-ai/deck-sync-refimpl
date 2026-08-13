@@ -1543,8 +1543,7 @@ Private Sub AuditFieldsCore()
     End If
 
     Dim slideType As String
-    slideType = InputBox(BuildTypePickerPrompt(types), "Audit Fields -- Choose Type")
-    slideType = ResolveTypeAnswer(slideType, types)
+    slideType = PickType(types, "Audit Fields -- Choose Type")
     If slideType = "" Then Exit Sub
 
     Dim instances() As Object
@@ -1720,8 +1719,7 @@ Private Sub CreateTemplateSlideCore()
     End If
 
     Dim slideType As String
-    slideType = InputBox(BuildTypePickerPrompt(types), "Create Template Slide -- Choose Type")
-    slideType = ResolveTypeAnswer(slideType, types)
+    slideType = PickType(types, "Create Template Slide -- Choose Type")
     If slideType = "" Then Exit Sub
 
     ' Already has one: stop here rather than at MakeTemplateFrom's own guard,
@@ -1794,6 +1792,31 @@ Private Sub CreateTemplateSlideCore()
         "(figures, chart data, notes, untagged text) that belonged to " & sourceLabel & "."
     ShowSyncResult "Create Template Slide", report
 End Sub
+
+' A QUESTION WITH ONE POSSIBLE ANSWER IS NOT A QUESTION.
+'
+' Three call sites asked a person to TYPE a slide type -- by number or name --
+' from a list that on every real deck so far has held exactly one entry. Rohan
+' hit it twice inside a single setup run on 2026-08-13, and a typo returns ""
+' which cancels the step outright. At one type the prompt had no upside at all:
+' it could only cost something.
+'
+' It still asks whenever there is a genuine choice. FIX-LIST item 7, "things
+' typed that could be picked", closed for this prompt.
+'
+' All three sites go through here rather than the fix landing only where it was
+' noticed -- the same reason FieldForRun covers both of its call sites.
+Public Function PickType(types() As String, caption As String) As String
+    Dim lo As Long, hi As Long
+    lo = LBound(types): hi = UBound(types)
+
+    If lo = hi Then
+        PickType = types(lo)
+        Exit Function
+    End If
+
+    PickType = ResolveTypeAnswer(InputBox(BuildTypePickerPrompt(types), caption), types)
+End Function
 
 Public Function BuildTypePickerPrompt(types() As String) As String
     Dim s As String
