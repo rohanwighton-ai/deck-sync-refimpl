@@ -105,9 +105,17 @@
 > 4. **Then the template pivot** — but not making the template authoritative for the field
 >    set until a quarter has been produced from it.
 >
-> **Blocked on Rohan, both since 10 Aug:** who owns the declared-linkage list now the
-> Family Tree is retiring; and whether the recipe told him what to write or he still
-> worked it out himself. The second is the load-bearing question of the whole project.
+> **Blocked on Rohan:** whether the recipe told him what to write, or he still worked it
+> out himself. Open since 10 Aug and it is the load-bearing question of the whole project
+> — the recipes are the asset, sync is only delivery.
+>
+> **NOT blocked, and do not re-ask it: Rohan owns the declared-linkage list.** FIX-LIST
+> records this twice (*"Rohan owns it, colleagues later"*) and it was still written up as
+> a question for him on 14 Aug, from a file that had been read in full the same morning.
+> The real gap is that the list does not exist as an artifact yet: it needs a home
+> **outside** the register workbook, which the tool rebuilds and clears, plus an `as at`
+> date. Four declared codes are already on the real slide (`1.1.1`, `2.1.1`, `3.3.1`,
+> `3.4.1`) with nowhere to live.
 >
 > ---
 >
