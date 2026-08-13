@@ -68,14 +68,29 @@ Public Sub DiscoverFields()
         Exit Sub
     End If
 
+    ' NO PAIRING YET? ESTABLISH ONE, DO NOT REFUSE.
+    '
+    ' This used to say "press Sync Now -- that is what establishes the pairing",
+    ' which on a virgin deck is the button the person had just pressed: Sync
+    ' Now's setup branch calls THIS, and the onboarding step that would have
+    ' created the pairing runs afterwards and refuses for want of the fields
+    ' this produces. Two refusals pointing at each other and no way in. Found on
+    ' the real deck, 2026-08-13, on its first ever run.
+    '
+    ' Pairing is a question about WHICH WORKBOOK and has nothing to do with
+    ' fields, so asking it here costs nothing and unblocks the only order a
+    ' first-time user can actually follow.
     Dim workbookPath As String
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath = "" Then
-        MsgBox "This deck has no paired workbook yet." & vbCrLf & vbCrLf & _
-               "Discover Fields writes its grid into the paired workbook, so there has to be one." & vbCrLf & _
-               "Press '" & CommandBarUI.CAP_SYNC_NOW & "' for the very first slide type -- " & _
-               "that is what establishes the pairing.", vbExclamation, CAP
-        Exit Sub
+        Dim pairCancel As String
+        Dim wbPair As Object
+        Set wbPair = BatchOnboardFlow.ResolveDataWorkbook(pres, workbookPath, pairCancel)
+        If wbPair Is Nothing Or workbookPath = "" Then
+            MsgBox "Discover Fields writes its grid into the paired workbook, so there has to be one." & vbCrLf & vbCrLf & _
+                   IIf(pairCancel = "", "No workbook was chosen.", pairCancel), vbExclamation, CAP
+            Exit Sub
+        End If
     End If
 
     Dim wb As Object

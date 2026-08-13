@@ -189,6 +189,27 @@ End Function
 ' to open. Returns Nothing (never raises) if the path's containing folder
 ' doesn't exist or SaveAs otherwise fails.
 Public Function CreateWorkbook(path As String) As Object
+    ' REFUSES AN EXISTING FILE. Defence in depth, added 2026-08-13.
+    '
+    ' This function does `Workbooks.Add` then `SaveAs path`, which writes a
+    ' BLANK workbook over whatever is already there. Its only caller reached it
+    ' by asking a person for a path, and a person naming a path they already
+    ' know is usually naming a file that already exists -- so the dangerous case
+    ' was also the likeliest one. That caller now opens instead of creating, but
+    ' the primitive should not be capable of it either: the next caller will not
+    ' know, and the cost of being wrong here is a quarter's work.
+    '
+    ' Nothing in this codebase legitimately overwrites a workbook. A caller that
+    ' one day needs to must say so explicitly rather than get it by omission.
+    Dim cwfso As Object
+    Set cwfso = CreateObject("Scripting.FileSystemObject")
+    If cwfso.FileExists(path) Then
+        Err.Raise vbObjectError + 515, "WorkbookBridge.CreateWorkbook", _
+            "There is already a file at " & path & ". Refusing to create over it -- " & _
+            "creating writes an EMPTY workbook and would destroy whatever is there. " & _
+            "Open it instead, or choose a different name."
+    End If
+
     Dim xl As Object
     Set xl = GetExcelApp()
 

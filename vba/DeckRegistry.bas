@@ -778,12 +778,36 @@ Public Function SetDeckPeriodVerified(pres As Object, period As String, ByVal at
 
     Dim n As Long
     For n = 1 To attempts
+        ' PLAIN SAVE FIRST, SaveAs ONLY IF THAT DID NOT LAND.
+        '
+        ' SaveAs was chosen because a plain Save is incremental and does not
+        ' always regenerate docProps/custom.xml -- true, and the reason this
+        ' used SaveAs alone. But on Rohan's real 49MB deck, opened from a
+        ' OneDrive-synced folder, `SaveAs path, 24` returns WITHOUT RAISING and
+        ' writes nothing at all: four attempts, file untouched, and the error
+        ' text this function appends stayed empty because Err was never set.
+        '
+        ' Plain Save works there -- PowerPoint's own saves landed on that file
+        ' all morning. So try the one that works, verify, and escalate to the
+        ' full rewrite only when the cheap write did not reach the disk. Both
+        ' are verified the same way, so neither is trusted on its own.
         On Error Resume Next
         WriteStringProperty pres, PROP_DECK_PERIOD, period
-        pres.SaveAs path, 24            ' ppSaveAsOpenXMLPresentation -- forces a full rewrite
+        pres.Save
         Dim writeErr As String
         writeErr = ""
-        If Err.Number <> 0 Then writeErr = "Error " & Err.Number & ": " & Err.Description
+        If Err.Number <> 0 Then writeErr = "Save -- Error " & Err.Number & ": " & Err.Description
+        Err.Clear
+        On Error GoTo 0
+
+        If PeriodOnDisk(path) = period Then Exit Function      ' "" = confirmed
+
+        On Error Resume Next
+        pres.SaveAs path, 24            ' ppSaveAsOpenXMLPresentation -- forces a full rewrite
+        If Err.Number <> 0 Then
+            If writeErr <> "" Then writeErr = writeErr & vbCrLf
+            writeErr = writeErr & "SaveAs -- Error " & Err.Number & ": " & Err.Description
+        End If
         Err.Clear
         On Error GoTo 0
 
@@ -833,12 +857,28 @@ Public Function SetWorkbookPathVerified(pres As Object, newPath As String, ByVal
 
     Dim n As Long
     For n = 1 To attempts
+        ' SAME ORDER AS SaveDeckVerified AND SetDeckPeriodVerified: plain Save
+        ' first, full rewrite only if that did not land. SaveAs alone returns
+        ' clean and writes nothing on a large deck in a synced folder, which is
+        ' how the period write failed four times in a row while PowerPoint's own
+        ' saves were landing on the same file all morning.
         On Error Resume Next
         RepointWorkbook pres, newPath
-        pres.SaveAs path, 24            ' ppSaveAsOpenXMLPresentation -- forces a full rewrite
+        pres.Save
         Dim writeErr As String
         writeErr = ""
-        If Err.Number <> 0 Then writeErr = "Error " & Err.Number & ": " & Err.Description
+        If Err.Number <> 0 Then writeErr = "Save -- Error " & Err.Number & ": " & Err.Description
+        Err.Clear
+        On Error GoTo 0
+
+        If StrComp(WorkbookPathOnDisk(path), newPath, vbTextCompare) = 0 Then Exit Function
+
+        On Error Resume Next
+        pres.SaveAs path, 24            ' ppSaveAsOpenXMLPresentation -- forces a full rewrite
+        If Err.Number <> 0 Then
+            If writeErr <> "" Then writeErr = writeErr & vbCrLf
+            writeErr = writeErr & "SaveAs -- Error " & Err.Number & ": " & Err.Description
+        End If
         Err.Clear
         On Error GoTo 0
 

@@ -760,6 +760,58 @@ End Function
 ' depth and is not -- mode 4 comes off the same object as mode 2, so it is
 ' unavailable in exactly the situations mode 2 is. A fallback that fails
 ' whenever the thing it backs up fails is decoration.
+' Turn whatever the Save As dialog hands back into a workbook path.
+'
+' PowerPoint's FileDialog(2) is the HOST's Save As browser and takes no file
+' type filter -- msoFileDialogSaveAs has no .Filters collection, so it will
+' always offer presentation types. Type `register-wide.xlsx` into it and it
+' returns `register-wide.xlsx.pptx`.
+'
+' The previous line here made that worse rather than better. It read:
+'
+'     If Right(picked,5) <> ".xlsx" ... Then picked = picked & ".xlsx"
+'
+' written for a host that returns a name with NO extension. Handed
+' `register-wide.xlsx.pptx` it appended again, producing
+' `register-wide.xlsx.pptx.xlsx` -- which ends in .xlsx, so it passed
+' validation, did not exist, and was created as a BLANK workbook. Rohan then
+' quite reasonably asked where all his data had gone.
+'
+' Nothing was lost, but only because the create-over-existing guard had been
+' added an hour earlier. The lesson is the smaller one: a repair that assumes
+' one shape of wrong input makes every other shape worse.
+'
+' Public so it can be tested without a dialog.
+Public Function NormaliseWorkbookPath(raw As String) As String
+    Dim p As String
+    p = Trim$(raw)
+    If p = "" Then Exit Function
+
+    ' Strip presentation extensions the host may have appended -- more than one,
+    ' since each pass through the dialog can add another.
+    Dim ext As Variant
+    Dim stripped As Boolean
+    Do
+        stripped = False
+        For Each ext In Array(".pptx", ".pptm", ".ppt", ".ppsx", ".pps", ".potx")
+            If Len(p) > Len(ext) Then
+                If StrComp(Right$(p, Len(ext)), CStr(ext), vbTextCompare) = 0 Then
+                    p = Left$(p, Len(p) - Len(ext))
+                    stripped = True
+                End If
+            End If
+        Next ext
+    Loop While stripped
+
+    ' Only now decide whether an extension is missing.
+    If StrComp(Right$(p, 5), ".xlsx", vbTextCompare) <> 0 _
+       And StrComp(Right$(p, 5), ".xlsm", vbTextCompare) <> 0 Then
+        p = p & ".xlsx"
+    End If
+
+    NormaliseWorkbookPath = p
+End Function
+
 Private Function AskForWorkbookPath(pres As Object) As String
     Dim suggested As String
     suggested = "SAAFE-Projects-Data.xlsx"
@@ -778,9 +830,7 @@ Private Function AskForWorkbookPath(pres As Object) As String
         If fd.Show = -1 Then picked = fd.SelectedItems(1)
         On Error GoTo 0
         If picked <> "" Then
-            ' Some hosts return the name without the extension.
-            If LCase(Right(picked, 5)) <> ".xlsx" And LCase(Right(picked, 5)) <> ".xlsm" Then picked = picked & ".xlsx"
-            AskForWorkbookPath = picked
+            AskForWorkbookPath = NormaliseWorkbookPath(picked)
             Exit Function
         End If
         ' Shown and cancelled is a real answer -- don't fall through to a
@@ -833,7 +883,18 @@ End Function
 
 ' Establish (or reuse) the deck-workbook pairing, re-prompting on a bad path
 ' instead of dying. Returns Nothing only when the human cancels or gives up.
-Private Function ResolveDataWorkbook(pres As Object, ByRef outPath As String, ByRef cancelMsg As String) As Object
+' PUBLIC since 2026-08-13, because establishing the pairing is not onboarding's
+' private business -- Discover Fields needs it too.
+'
+' The deadlock this breaks: on a virgin deck, Sync Now's setup branch called
+' Discover Fields, which refused for want of a paired workbook and told the
+' person to press Sync Now -- the button they had just pressed. Meanwhile
+' Bulk Onboard refused for want of marked fields, which is what Discover Fields
+' produces. Two refusals pointing at each other, and no way in.
+'
+' Pairing is a question about WHICH WORKBOOK. It has nothing to do with fields,
+' so it should never have been reachable only through the path that needs them.
+Public Function ResolveDataWorkbook(pres As Object, ByRef outPath As String, ByRef cancelMsg As String) As Object
     Set ResolveDataWorkbook = Nothing
     cancelMsg = ""
     outPath = ""
@@ -867,9 +928,36 @@ Private Function ResolveDataWorkbook(pres As Object, ByRef outPath As String, By
         Dim problem As String
         problem = WorkbookPathProblem(candidate)
         If problem = "" Then
-            Dim createErr As String
+            ' AN EXISTING FILE IS OPENED, NEVER CREATED OVER.
+            '
+            ' This branch used to call CreateWorkbookSafely unconditionally,
+            ' and CreateWorkbook does `Workbooks.Add` then `SaveAs path` -- so
+            ' choosing a workbook that already exists wrote a BLANK one over
+            ' the top of it. Pointing this at a real register would have
+            ' destroyed a quarter's drafting, the Field Spec, the Sources sheet
+            ' and every harvested extract, in one click, with no confirmation
+            ' the tool controls.
+            '
+            ' The assumption behind it was that a person choosing a path is
+            ' NAMING A NEW FILE. That is wrong in the case that matters most:
+            ' pairing a deck to a register that already exists, which is the
+            ' entire reason someone would type a path they already know.
+            '
+            ' Caught 2026-08-13 on the real deck, one click away, by reading
+            ' this code rather than by anything the tool said.
+            Dim pfso As Object
+            Set pfso = CreateObject("Scripting.FileSystemObject")
+
             Dim wbNew As Object
-            Set wbNew = CreateWorkbookSafely(candidate, createErr)
+            Dim createErr As String
+            createErr = ""
+
+            If pfso.FileExists(candidate) Then
+                Set wbNew = OpenWorkbookSafely(candidate, createErr)
+            Else
+                Set wbNew = CreateWorkbookSafely(candidate, createErr)
+            End If
+
             If Not wbNew Is Nothing Then
                 DeckRegistry.SetWorkbookPath pres, candidate
                 outPath = candidate
@@ -2687,6 +2775,27 @@ End Function
 ' does -- duplicated rather than reused across modules since that one is
 ' Private and this project's convention is small, focused modules, not a
 ' shared-utility module for a 4-line check.
+' How many slides in this deck already carry a slide_type tag.
+'
+' The discriminator for "has this deck been onboarded before". Reads the DECK
+' rather than the registry deliberately: a registry entry can be repointed or
+' lost, but a tagged slide is the durable evidence that a harvest has run here
+' before. Counting slides, not asking whether a type is registered, is what
+' makes it survive a Repoint Workbook.
+Private Function SlidesCarryingASlideType(pres As Object) As Long
+    Dim n As Long
+    Dim sld As Object
+    For Each sld In pres.Slides
+        Dim t As String
+        t = ""
+        On Error Resume Next
+        t = sld.Tags("slide_type")
+        On Error GoTo 0
+        If Trim$(t) <> "" Then n = n + 1
+    Next sld
+    SlidesCarryingASlideType = n
+End Function
+
 Private Function VerifyBatchLink(sld As Object, harvested As Object) As Boolean
     Dim fieldName As Variant
     For Each fieldName In harvested.Keys
@@ -3025,10 +3134,139 @@ Private Function PromptBatchOnboardType() As String
         reusedClashes = vbCrLf & "  " & ignoredEdits & " already-linked slide(s) had their key edited on the sheet -- those edits were ignored, since re-keying a linked slide strands its existing row."
     End If
 
+    ' NEVER INVENT A SECOND REGISTER ALONGSIDE A POPULATED ONE.
+    '
+    ' The worksheet name is DERIVED from the slide type name, and
+    ' GetOrAddWorksheet creates what it cannot find. So onboarding a deck as
+    ' type `project-status` against a workbook whose register is named
+    ' `Register` used to invent an empty second register and pair the deck to
+    ' it, leaving every drafted row in the original, unread. Nothing destroyed;
+    ' every later read returns zero rows and reports a clean run of nothing.
+    '
+    ' Found 2026-08-13 against a real register holding 129 drafted rows that
+    ' had never been published anywhere.
+    Dim wsName As String
+    wsName = WorkbookBridge.SanitizeSheetName(slideType)
+
     Dim ws As Object
-    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, WorkbookBridge.SanitizeSheetName(slideType))
+    If WorkbookBridge.WorksheetExists(wb, wsName) Then
+        ' The derived name already exists -- use it, exactly as before.
+        Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
+    Else
+        Dim existing As String
+        existing = ExcelOutput.RegisterShapedSheets(wb)
+
+        If existing = "" Then
+            ' No register anywhere. Creating one is correct and always was.
+            Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
+        Else
+            Dim lines() As String
+            lines = Split(existing, vbLf)
+
+            If UBound(lines) > LBound(lines) Then
+                ' MORE THAN ONE. Refuse rather than guess: picking the wrong
+                ' register strands a quarter's drafting somewhere nothing
+                ' reads, and the tool cannot recover it afterwards.
+                Dim listText As String
+                Dim li As Long
+                For li = LBound(lines) To UBound(lines)
+                    Dim bits() As String
+                    bits = Split(lines(li), "|")
+                    listText = listText & "    " & bits(0) & " -- " & bits(1) & " row(s), " & bits(2) & vbCrLf
+                Next li
+                PromptBatchOnboardType = "REFUSED: this workbook has more than one register sheet, and " & _
+                    "onboarding cannot tell which one this deck belongs to." & vbCrLf & vbCrLf & _
+                    listText & vbCrLf & _
+                    "Nothing was written. Name the slide type to match the sheet you mean, " & _
+                    "or remove the register you are not using, then run this again."
+                Exit Function
+            End If
+
+            Dim one() As String
+            one = Split(lines(LBound(lines)), "|")
+
+            Dim answer As VbMsgBoxResult
+            answer = MsgBox( _
+                "This workbook already has a register:" & vbCrLf & vbCrLf & _
+                "    " & one(0) & " -- " & one(1) & " row(s), " & one(2) & vbCrLf & vbCrLf & _
+                "Slide type '" & slideType & "' would otherwise be paired to a NEW, empty sheet " & _
+                "called '" & wsName & "', and everything already in '" & one(0) & "' would be " & _
+                "left where nothing reads it." & vbCrLf & vbCrLf & _
+                "Use '" & one(0) & "' for this deck?" & vbCrLf & vbCrLf & _
+                "Yes    -- pair this deck to '" & one(0) & "'." & vbCrLf & _
+                "No     -- create '" & wsName & "' anyway." & vbCrLf & _
+                "Cancel -- change nothing.", _
+                vbYesNoCancel + vbQuestion, "Bulk Onboard Type -- which register?")
+
+            If answer = vbCancel Then
+                PromptBatchOnboardType = "Cancelled at the register choice -- nothing written."
+                Exit Function
+            ElseIf answer = vbYes Then
+                Set ws = WorkbookBridge.GetOrAddWorksheet(wb, one(0))
+            Else
+                Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
+            End If
+        End If
+    End If
+
     If IsEmpty(ws.Cells(1, 1).Value) Then
         ExcelOutput.CreateSheet ws, DeckRegistry.GetOrCreateDeckId(pres)
+    End If
+
+    ' HARVEST RUNS SLIDES -> REGISTER. PUBLISH RUNS REGISTER -> SLIDES.
+    ' Once anything has been published, only one of those directions is
+    ' legitimate, and this is the one that is not.
+    '
+    ' The dangerous sequence, which nothing used to stop:
+    '
+    '   publish this quarter's drafts into the register
+    '     -> re-onboard
+    '       -> harvest reads the SLIDES, which still show last quarter
+    '         -> this quarter's writing is overwritten, silently, reported
+    '            as a successful onboarding
+    '
+    ' WHY THIS KEYS OFF "HAS THIS DECK BEEN ONBOARDED BEFORE" rather than
+    ' comparing register values against slide text. On a FIRST onboard the two
+    ' legitimately differ -- the register's text came from somewhere else, and
+    ' replacing it is the whole point of harvesting. A value comparison would
+    ' therefore fire loudest on the one occasion the harvest is correct, and a
+    ' warning that fires when you are right is a warning that gets clicked
+    ' through. See Readiness.bas:51 -- it offers, it does not gate.
+    '
+    ' A virgin deck cannot have been published to, because publishing requires
+    ' a pairing that did not exist. So silence there is not a gap; it is the
+    ' absence of anything to protect.
+    Dim onboardedAlready As Long
+    onboardedAlready = SlidesCarryingASlideType(pres)
+
+    If onboardedAlready > 0 Then
+        Dim guardPeriod As String
+        guardPeriod = DeckRegistry.GetDeckPeriod(pres)
+
+        Dim atRisk As Long
+        atRisk = ExcelOutput.RowCountForPeriod(ws, guardPeriod)
+
+        If atRisk > 0 Then
+            ' NAMES THE SUBJECT, NOT JUST A NUMBER. Fix-list 1a: a true count
+            ' with no subject sends people to check the wrong thing.
+            If MsgBox( _
+                "This deck has been onboarded before -- " & onboardedAlready & _
+                " slide(s) already carry a slide type." & vbCrLf & vbCrLf & _
+                "'" & ws.Name & "' holds " & atRisk & " row(s) for " & guardPeriod & "." & vbCrLf & vbCrLf & _
+                "Onboarding HARVESTS the slides into the register, so for every field " & _
+                "you marked, the register's value will be replaced by whatever that slide " & _
+                "says now." & vbCrLf & vbCrLf & _
+                "If you have already published this period's drafting, the slides are " & _
+                "BEHIND the register and this would overwrite your writing with the " & _
+                "previous version." & vbCrLf & vbCrLf & _
+                "Yes -- harvest anyway, the slides are the better source." & vbCrLf & _
+                "No  -- stop, change nothing.", _
+                vbYesNo + vbExclamation, "Bulk Onboard Type -- the register already has rows") <> vbYes Then
+                PromptBatchOnboardType = "Stopped before harvesting -- nothing written. " & _
+                    "The register's " & atRisk & " row(s) for " & guardPeriod & " are untouched."
+                Exit Function
+            End If
+        End If
     End If
 
     DeckRegistry.RegisterType pres, slideType, templateSld, ws.Name

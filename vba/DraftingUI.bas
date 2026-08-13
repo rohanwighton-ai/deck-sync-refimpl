@@ -343,6 +343,47 @@ Public Sub RefreshDraftingSheets()
     ' The period gets PICKED on the Sources sheet, from the periods the register
     ' actually holds. Called here because this runs on every drafting build, so
     ' a period added since last time is offered next time without a separate step.
+    ' EVERY DECLARED FIELD NEEDS SOMEWHERE TO LIVE.
+    '
+    ' A register column is only ever created as a side effect of WRITING a value
+    ' -- UpsertRow appends one when a field is published from a drafting sheet or
+    ' harvested from a tagged shape. A `Given` field is neither: nobody drafts
+    ' it, and it is typed straight into the register. So declaring one in the
+    ' Field Spec used to give it a recipe, a source, and nowhere to be entered.
+    '
+    ' This runs here because this IS the "make the workbook match the Field Spec"
+    ' operation -- it already rebuilds the spec sheet, the sources sheet and the
+    ' drafting sheets from it. The register was the one thing left out.
+    '
+    ' OFFERS, NEVER SILENTLY ADDS. Columns are cheap but not free: a mistyped
+    ' FieldID would appear as a real column and look authoritative. Naming them
+    ' first is what makes a typo visible while it is still one keystroke to fix.
+    Dim missingCols As String
+    missingCols = ExcelOutput.MissingRegisterColumns(specWs, regWs)
+    If missingCols <> "" Then
+        Dim colCount As Long
+        colCount = UBound(Split(missingCols, ",")) - LBound(Split(missingCols, ",")) + 1
+        If MsgBox( _
+            colCount & " field(s) on the Field Spec have no column in the register, " & _
+            "so there is nowhere to enter them:" & vbCrLf & vbCrLf & _
+            "    " & Replace(missingCols, ",", ", ") & vbCrLf & vbCrLf & _
+            "Add a column for each?" & vbCrLf & vbCrLf & _
+            "Yes -- add the headers now (no values, just the columns)." & vbCrLf & _
+            "No  -- leave them; they stay unenterable until they have a column." & vbCrLf & vbCrLf & _
+            "Derived fields are deliberately not listed -- they are computed, " & _
+            "never stored.", _
+            vbYesNo + vbQuestion, CAP) = vbYes Then
+            Dim addedCols As String
+            addedCols = ExcelOutput.AddRegisterColumns(regWs, missingCols)
+            If addedCols = "" Then
+                Say "No register columns were added -- none of the headers could be written.", _
+                    vbExclamation, CAP
+            Else
+                Say "Added register column(s): " & addedCols, vbInformation, CAP
+            End If
+        End If
+    End If
+
     Dim srcValidation As String
     srcValidation = Sources.ApplyPeriodValidation(srcWs, regWs)
 

@@ -966,6 +966,34 @@ Private Sub SyncNowChainCore()
             "No   -- tag them one at a time by clicking each shape." & vbCrLf & _
             "Cancel -- change nothing.", vbYesNoCancel + vbQuestion, TITLE)
 
+        ' THE QUARTER MUST BE SET BEFORE ONBOARDING, NOT AFTER.
+        '
+        ' Onboarding stamps every row it writes with the deck's period, and
+        ' ExcelOutput.UpsertRow REFUSES a blank one on a sheet that has a
+        ' Quarter column -- correctly, since such a row is invisible to every
+        ' filtered read and would report as a clean sync of nothing.
+        '
+        ' But StartQuarter lived further down the chain, past the `hasTypes`
+        ' exit above, so a deck being set up for the FIRST TIME could never
+        ' reach it. The result was walking the entire marking grid and then
+        ' hitting a raw error at the commit -- with slides already tagged, so
+        ' the deck is left half-onboarded and the failure looks like the
+        ' marking's fault rather than a missing period.
+        '
+        ' WORKFLOW.md flagged this ordering problem on 2026-08-04 and it was
+        ' never fixed because the toolbar still had a step 0 button then. When
+        ' the toolbar went to two buttons, the only way to set a period on a
+        ' virgin deck went with it.
+        If setupAnswer = vbYes Or setupAnswer = vbNo Then
+            DraftingUI.StartQuarter
+            If DeckRegistry.GetDeckPeriod(pres) = "" Then
+                MsgBox "No quarter was set, so setup stopped before anything was tagged." & vbCrLf & vbCrLf & _
+                       "Onboarding writes a register row per slide and every row has to say " & _
+                       "which quarter it belongs to.", vbExclamation, TITLE
+                Exit Sub
+            End If
+        End If
+
         If setupAnswer = vbYes Then
             DiscoverUI.DiscoverFields
             BatchOnboardFlow.BatchOnboardType

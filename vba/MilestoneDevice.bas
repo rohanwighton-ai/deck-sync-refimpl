@@ -44,22 +44,42 @@ Option Explicit
 '
 ' Never creates, deletes, moves or reorders a shape. Rohan: "you can see the
 ' extremely accurate positioning? we need to maintain that and z order etc."
-' So: visibility toggles, text writes, and ONE height change on the fill. The
+' So: visibility toggles, text writes, and TWO height changes -- the bar's and
+' the track's. Both are heights, never positions: a height cannot move a shape
+' sideways or change its z-order, which is why a computed one is acceptable
+' here when a computed position would not be. (This said ONE until 2026-08-13,
+' when a shorter milestone chain was found to leave track hanging below the
+' last circle, pointing at nothing.) The
 ' template pre-places every slot; unused ones are hidden, not removed. Circle
 ' positions are READ to work out how far the bar should reach -- measured off
 ' the slide the template already laid out, never computed.
 
 ' Slot part names, as they appear in the Selection Pane. `n` is 1-based.
-'   MS1_ON     the circle shown when the milestone IS achieved
-'   MS1_OFF    the circle shown when it is NOT           (optional -- see below)
+'   MS1_NOW    the circle shown when this is the CURRENT milestone (optional)
+'   MS1_ON     the circle shown when it is achieved but not current
+'   MS1_OFF    the circle shown when it is NOT achieved          (optional)
 '   MS1_LABEL  its text
 '   MS1_DATE   its date
 ' and for the bar itself:
-'   MS_BAR     the part that grows
-'   MS_TRACK   the full extent, read and never written
+'   MS_BAR     the part that grows, to the last ACHIEVED circle
+'   MS_TRACK   the extent, shortened to the last USED circle
+'
+' Exactly one circle per used slot is ever visible. Absent optional circles
+' degrade to the next best one the template carries, and the degradation is
+' reported rather than faked by recolouring.
 Public Const SLOT_PREFIX As String = "MS"
 Public Const PART_ON As String = "_ON"
 Public Const PART_OFF As String = "_OFF"
+' The CURRENT position -- the last achieved milestone, drawn larger. Optional,
+' like _OFF: a template without it simply shows _ON there and the difference
+' goes unmarked, which is reported rather than faked.
+'
+' Rohan, 2026-08-13: four states, not two. Achieved-now is big; achieved-earlier
+' and not-achieved are small and differ by colour; an unused slot shows nothing.
+' His real slides already carry the big circle -- slot 3 of 3_P001 is 0.43"
+' against everyone else's 0.35" -- so this formalises what he had drawn rather
+' than introducing it.
+Public Const PART_NOW As String = "_NOW"
 Public Const PART_LABEL As String = "_LABEL"
 Public Const PART_DATE As String = "_DATE"
 Public Const NAME_BAR As String = "MS_BAR"
@@ -154,7 +174,16 @@ Public Function SlotCount(grp As Object) As Long
 
     Dim n As Long
     n = 0
-    Do While parts.Exists(SLOT_PREFIX & (n + 1) & PART_ON)
+    ' A SLOT EXISTS IF IT CARRIES ANY OF ITS THREE CIRCLES.
+    '
+    ' Counting only _ON would stop at the first slot drawn with _NOW alone --
+    ' which is exactly how Rohan's real slides are drawn today, where slot 3
+    ' carries the big current circle and nothing else. The count would have
+    ' come back 2 on a seven-slot timeline and the rest would have been
+    ' reported as "more milestones than slots" and refused.
+    Do While parts.Exists(SLOT_PREFIX & (n + 1) & PART_ON) _
+          Or parts.Exists(SLOT_PREFIX & (n + 1) & PART_NOW) _
+          Or parts.Exists(SLOT_PREFIX & (n + 1) & PART_OFF)
         n = n + 1
     Loop
     SlotCount = n
@@ -204,6 +233,30 @@ Public Function DeviceIntegrity(grp As Object) As String
         ' Reporting it as MISSING here would cry wolf on a valid template.
         missing = missing & MissingPart(parts, i, PART_LABEL)
         missing = missing & MissingPart(parts, i, PART_DATE)
+
+        ' THE CIRCLES WERE NEVER CHECKED HERE AT ALL, and that was a real hole.
+        ' It stayed hidden while SlotCount keyed on _ON alone: a slot that lost
+        ' its _ON simply stopped being counted, and the stray-probe below caught
+        ' the tail. Once SlotCount accepted any circle -- which it must, because
+        ' Rohan's real slides carry slots drawn with only the big _NOW one -- a
+        ' slot could count while being unable to render its main state, and
+        ' nothing said so.
+        '
+        ' Two different faults, reported differently:
+        ' NO "has no circle at all" BRANCH, deliberately. SlotCount only counts
+        ' a slot that carries one, so inside this loop a circle-less slot cannot
+        ' occur -- the loop would have stopped before reaching it, and the
+        ' stray-part probe below catches its orphaned LABEL/DATE with a better
+        ' message than a check here could give. It was written, found to be
+        ' unreachable by construction, and removed: a branch that cannot execute
+        ' reads as care taken and stops anyone looking again.
+        If Not parts.Exists(UCase(SLOT_PREFIX & i & PART_ON)) Then
+            ' Can render something, but not "achieved, earlier" -- which is the
+            ' state most slots spend most of their life in. Named rather than
+            ' counted, because the fix is to rename one shape.
+            If missing <> "" Then missing = missing & ", "
+            missing = missing & SLOT_PREFIX & i & PART_ON
+        End If
     Next i
 
     ' THE SLOT AFTER THE LAST ONE, checked deliberately. A device with MS1..MS3
@@ -377,15 +430,31 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
         Exit Function
     End If
 
-    ' --- the slots -------------------------------------------------------
+    ' --- which slot is CURRENT, decided before anything is drawn ---------
+    '
+    ' lastAchieved used to be accumulated INSIDE the visibility loop, which was
+    ' fine while there were two states: each slot's appearance depended only on
+    ' its own done-flag. It is not fine with three. "Is this the current one?"
+    ' is a question about the whole list, and a slot cannot answer it while the
+    ' loop is still walking towards the answer -- slot 2 would have had to know
+    ' whether slot 5 is achieved.
+    '
+    ' So it is computed first, from the data, before a single shape is touched.
     Dim lastAchieved As Long
     lastAchieved = 0
 
+    Dim scan As Long
+    For scan = 1 To nL
+        If IsDoneWord(done(LBound(done) + scan - 1)) Then lastAchieved = scan
+    Next scan
+
     Dim i As Long
     For i = 1 To result.SlotsFound
-        Dim onShp As Object, offShp As Object, labShp As Object, datShp As Object
+        Dim onShp As Object, offShp As Object, nowShp As Object
+        Dim labShp As Object, datShp As Object
         Set onShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_ON)
         Set offShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_OFF)
+        Set nowShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_NOW)
         Set labShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_LABEL)
         Set datShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_DATE)
 
@@ -398,28 +467,64 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
             ' template has no way to show the difference, and that is REPORTED
             ' rather than faked by recolouring -- the tool does not invent
             ' formatting a person did not author.
-            If offShp Is Nothing Then
-                If result.Detail <> "" Then result.Detail = result.Detail & "; "
-                result.Detail = result.Detail & SLOT_PREFIX & i & " has no " & PART_OFF & _
-                    " circle, so achieved and not-achieved look the same"
-                SetVisible onShp, True
+            ' EXACTLY ONE CIRCLE IS SHOWN PER USED SLOT, and which one is the
+            ' whole four-state model:
+            '
+            '   current (the last achieved)  -> _NOW   big
+            '   achieved, earlier            -> _ON    small
+            '   not achieved                 -> _OFF   small, other colour
+            '   slot unused                  -> none   (handled below)
+            '
+            ' Every absent part DEGRADES to the next best circle the template
+            ' actually carries and SAYS SO. It never recolours or resizes to
+            ' fake a state the author did not draw -- that rule predates this
+            ' and is the reason the device is trustworthy on a slide nobody
+            ' has checked.
+            Dim isCurrent As Boolean
+            isCurrent = (i = lastAchieved)
+
+            Dim shown As Object
+            Set shown = Nothing
+
+            If isCurrent Then
+                Set shown = nowShp
+                If shown Is Nothing Then
+                    Set shown = onShp
+                    NoteOnce result, SLOT_PREFIX & i & " is the current milestone but has no " & _
+                        PART_NOW & " circle, so it looks the same as the earlier ones"
+                End If
+            ElseIf isDone Then
+                Set shown = onShp
             Else
-                SetVisible onShp, isDone
-                SetVisible offShp, Not isDone
+                Set shown = offShp
+                If shown Is Nothing Then
+                    Set shown = onShp
+                    NoteOnce result, SLOT_PREFIX & i & " has no " & PART_OFF & _
+                        " circle, so achieved and not-achieved look the same"
+                End If
             End If
+
+            ' Hide all three first, then show the one chosen. Setting them
+            ' individually in each branch is how a stale circle survives a
+            ' state change -- last quarter's _NOW would still be visible
+            ' underneath this quarter's _ON.
+            SetVisible onShp, False
+            SetVisible offShp, False
+            SetVisible nowShp, False
+            If Not shown Is Nothing Then SetVisible shown, True
 
             SetVisible labShp, True
             SetVisible datShp, True
             WriteText labShp, labels(LBound(labels) + i - 1)
             WriteText datShp, dates(LBound(dates) + i - 1)
 
-            If isDone Then lastAchieved = i
             result.Drawn = result.Drawn + 1
         Else
             ' A SLOT WITH NO MILESTONE IS HIDDEN, NOT EMPTIED. Blanking its text
             ' would leave a circle floating with nothing beside it.
             SetVisible onShp, False
             SetVisible offShp, False
+            SetVisible nowShp, False
             SetVisible labShp, False
             SetVisible datShp, False
             result.Hidden = result.Hidden + 1
@@ -442,9 +547,37 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
         Exit Function
     End If
 
+    ' --- the track shortens to the last USED slot ------------------------
+    '
+    ' A seven-slot template running a five-milestone project used to leave two
+    ' slots' worth of track hanging below the last circle, pointing at nothing.
+    ' Rohan found it by asking what happens to a shorter chain.
+    '
+    ' The same measurement the bar already uses, aimed at a different target:
+    ' the bar reaches the last ACHIEVED circle, the track reaches the last USED
+    ' one. A height is one-dimensional, so neither can drift sideways or change
+    ' z-order -- which is what made a computed height acceptable here when a
+    ' computed position would not be.
+    '
+    ' ALWAYS SET, NEVER CONDITIONALLY. Set only when shortening is needed and a
+    ' template that once ran a five-milestone project would keep the short track
+    ' forever, silently truncating a seven-milestone one later. Recomputing from
+    ' the data every run is what makes it self-correcting.
+    Dim lastUsedCircle As Object
+    If nL > 0 Then Set lastUsedCircle = SlotCircle(parts, nL)
+
+    If lastUsedCircle Is Nothing Then
+        NoteOnce result, "no circle found for slot " & nL & ", so the track was left at full length"
+    Else
+        Dim trackTarget As Single
+        trackTarget = (lastUsedCircle.Top + lastUsedCircle.Height / 2) - track.Top
+        If trackTarget < 0 Then trackTarget = 0
+        track.Height = trackTarget
+    End If
+
     Dim reachTo As Object
     If lastAchieved > 0 Then
-        Set reachTo = PartOrNothing(parts, SLOT_PREFIX & lastAchieved & PART_ON)
+        Set reachTo = SlotCircle(parts, lastAchieved)
     End If
 
     If reachTo Is Nothing Then
@@ -465,6 +598,26 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
     End If
 
     DrawMilestones = result
+End Function
+
+' Append a note to the report, skipping it if that exact sentence is already
+' there. Named for what it does: seven slots missing the same part would
+' otherwise say the same thing seven times and bury everything else.
+Private Sub NoteOnce(ByRef result As MilestoneDrawResult, msg As String)
+    If InStr(result.Detail, msg) > 0 Then Exit Sub
+    If result.Detail <> "" Then result.Detail = result.Detail & "; "
+    result.Detail = result.Detail & msg
+End Sub
+
+' The circle a slot actually carries, preferring the biggest statement of it.
+' Used for MEASURING, where any of the three will do because they share a
+' centre -- so this must never be used to decide what to SHOW.
+Private Function SlotCircle(parts As Object, i As Long) As Object
+    Dim s As Object
+    Set s = PartOrNothing(parts, SLOT_PREFIX & i & PART_NOW)
+    If s Is Nothing Then Set s = PartOrNothing(parts, SLOT_PREFIX & i & PART_ON)
+    If s Is Nothing Then Set s = PartOrNothing(parts, SLOT_PREFIX & i & PART_OFF)
+    Set SlotCircle = s
 End Function
 
 Private Function PartOrNothing(parts As Object, nm As String) As Object

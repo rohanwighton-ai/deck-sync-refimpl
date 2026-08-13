@@ -81,6 +81,15 @@ End Type
 ' project-deck-sync-object-model memory for the reasoning.
 Public Const QUARTER_HEADER As String = "Quarter"
 
+' Kind values that must NEVER get a register column.
+'
+' A Derived field is computed from other fields -- elapsed time from the start
+' and end dates, a status badge from two other values. Giving it a column gives
+' it somewhere to be STORED, and a stored copy of a computed value is exactly
+' the drift the Derived kind exists to prevent: it goes stale while the fields
+' beside it stay right, and nothing can tell.
+Public Const KIND_DERIVED As String = "Derived"
+
 ' ---------------------------------------------------------------------
 ' Create
 ' ---------------------------------------------------------------------
@@ -107,6 +116,221 @@ Public Sub CreateSheet(ws As Object, deckReference As String)
     ws.Cells(1, 2).Value = QUARTER_HEADER
     WriteDeckReference ws.Parent, deckReference
 End Sub
+
+' Every sheet in this workbook that is ALREADY A REGISTER, named with its size.
+'
+' WHY THIS EXISTS. Onboarding derives its worksheet name from the SLIDE TYPE
+' name (BatchOnboardFlow: `GetOrAddWorksheet(wb, SanitizeSheetName(slideType))`)
+' and GetOrAddWorksheet CREATES a missing sheet. So onboarding a real deck as
+' type `project-status` against a workbook whose register is named `Register`
+' invents a second, empty register and pairs the deck to THAT -- while every
+' drafted row sits in the original, untouched and unread.
+'
+' Nothing is destroyed. Every subsequent read returns zero rows, which this
+' codebase reports as a clean run of nothing. That is the worst shape a defect
+' can take here and it is the one this project keeps paying for: a success
+' message over a file nobody wrote to.
+'
+' Found 2026-08-13 before it fired, against a register holding 129 drafted rows
+' that exist in exactly one file and have never been published anywhere.
+'
+' A sheet is a register if its HEADER ROW carries INSTANCE_ID_HEADER in ANY
+' column -- not if A1 does.
+'
+' The first version checked A1 only, because that is where CreateSheet writes
+' it. Test_ExcelOutput_PeriodRowsAndRollForward caught it: that fixture puts
+' `Instance ID` in column B deliberately, to prove the reader finds structural
+' columns by NAME and never by position. A locator that disagrees with the
+' reader is the exact failure class this file already carries a comment about
+' (the sheet read by tab position, the register read by index), so this scans
+' the row the way ReadSheetForPeriod does.
+'
+' RETURNS A DESCRIPTION, NOT A COUNT. Fix-list 1a: a true count with no subject
+' sends people to check the wrong thing. Each line is
+' `SheetName|dataRows|periods` so the caller can name what it found.
+Public Function RegisterShapedSheets(wb As Object) As String
+    Dim out As String
+
+    Dim sh As Object
+    For Each sh In wb.Worksheets
+        Dim isRegister As Boolean
+        isRegister = False
+        Dim hc As Long
+        On Error Resume Next
+        For hc = 1 To LastUsedColumn(sh)
+            If StrComp(Trim$(CStr(sh.Cells(1, hc).Value)), INSTANCE_ID_HEADER, vbTextCompare) = 0 Then
+                isRegister = True
+                Exit For
+            End If
+        Next hc
+        On Error GoTo 0
+
+        If isRegister Then
+            Dim lastRow As Long
+            lastRow = LastUsedRow(sh)
+
+            Dim dataRows As Long
+            dataRows = 0
+            If lastRow > 1 Then dataRows = lastRow - 1
+
+            ' Periods present, so the caller can say WHICH register it found
+            ' rather than merely that there was one. A person choosing between
+            ' two sheets needs the quarters to tell them apart.
+            Dim seen As Object
+            Set seen = CreateObject("Scripting.Dictionary")
+            Dim cQuarter As Long
+            cQuarter = 0
+            Dim c As Long
+            For c = 1 To LastUsedColumn(sh)
+                If StrComp(Trim$(CStr(sh.Cells(1, c).Value)), QUARTER_HEADER, vbTextCompare) = 0 Then cQuarter = c
+            Next c
+
+            Dim periods As String
+            periods = ""
+            If cQuarter > 0 Then
+                Dim r As Long
+                For r = 2 To lastRow
+                    Dim q As String
+                    q = Trim$(CStr(sh.Cells(r, cQuarter).Value))
+                    If q <> "" Then
+                        If Not seen.Exists(UCase(q)) Then
+                            seen(UCase(q)) = True
+                            If periods <> "" Then periods = periods & ", "
+                            periods = periods & q
+                        End If
+                    End If
+                Next r
+            End If
+            If periods = "" Then periods = "no periods"
+
+            If out <> "" Then out = out & vbLf
+            out = out & sh.Name & "|" & dataRows & "|" & periods
+        End If
+    Next sh
+
+    RegisterShapedSheets = out
+End Function
+
+' How many data rows this sheet holds for `period`. 0 for a blank period, a
+' sheet with no period column, or a sheet that simply has none.
+'
+' Exists so a caller can say WHAT is at risk before overwriting it, rather than
+' warning in the abstract. A person deciding whether to let a harvest run needs
+' to know there are 43 rows behind the question, not that "some data exists".
+Public Function RowCountForPeriod(ws As Object, period As String) As Long
+    If Trim$(period) = "" Then Exit Function
+
+    Dim lastRow As Long
+    lastRow = LastUsedRow(ws)
+    If lastRow < 2 Then Exit Function
+
+    Dim cQuarter As Long
+    cQuarter = 0
+    Dim c As Long
+    For c = 1 To LastUsedColumn(ws)
+        If StrComp(Trim$(CStr(ws.Cells(1, c).Value)), QUARTER_HEADER, vbTextCompare) = 0 Then cQuarter = c
+    Next c
+    If cQuarter = 0 Then Exit Function
+
+    Dim n As Long
+    Dim r As Long
+    For r = 2 To lastRow
+        If StrComp(Trim$(CStr(ws.Cells(r, cQuarter).Value)), Trim$(period), vbTextCompare) = 0 Then n = n + 1
+    Next r
+
+    RowCountForPeriod = n
+End Function
+
+' Field Spec fields that have no column in the register yet, comma-separated.
+'
+' WHY THIS IS NEEDED AT ALL. The only thing that creates a register column is
+' UpsertRow appending one on first write -- which happens when a field is
+' PUBLISHED from a drafting sheet, or HARVESTED from a tagged shape during
+' onboarding. A `Given` field is neither: nobody drafts it, and it is typed
+' straight into the register. So a Given field declared in the Field Spec has
+' nowhere to be typed, forever, and the Field Spec cheerfully describes a
+' column that does not exist.
+'
+' It bites hardest on the milestone timeline. `MSn_DATE` and `MSn_DONE` are
+' Given, and they are addressed by NAME inside a tagged group rather than being
+' tagged themselves -- so onboarding never sees them either. 14 of the columns
+' that drive the timeline had no route into the register at all.
+'
+' DERIVED FIELDS ARE EXCLUDED, and that exclusion is the reason this returns a
+' list rather than just creating them: a completeness check that demanded a
+' column for every Field Spec row would demand one for every Derived field too,
+' and then report them as missing forever. A warning that always fires stops
+' being read.
+Public Function MissingRegisterColumns(specWs As Object, regWs As Object) As String
+    If specWs Is Nothing Or regWs Is Nothing Then Exit Function
+
+    ' What the register already has, by header name.
+    Dim have As Object
+    Set have = CreateObject("Scripting.Dictionary")
+    Dim lastCol As Long
+    lastCol = LastUsedColumn(regWs)
+    Dim c As Long
+    For c = 1 To lastCol
+        Dim h As String
+        h = UCase(Trim$(CStr(regWs.Cells(1, c).Value)))
+        If h <> "" Then have(h) = True
+    Next c
+
+    Dim out As String
+    Dim r As Long
+    r = FieldSpec.SPEC_FIRST_ROW
+    Do While Trim$(CStr(specWs.Cells(r, FieldSpec.COL_S_FIELDID).Value)) <> ""
+        Dim fid As String, kind As String
+        fid = Trim$(CStr(specWs.Cells(r, FieldSpec.COL_S_FIELDID).Value))
+        kind = Trim$(CStr(specWs.Cells(r, FieldSpec.COL_S_KIND).Value))
+
+        If StrComp(kind, KIND_DERIVED, vbTextCompare) <> 0 Then
+            If Not have.Exists(UCase(fid)) Then
+                If out <> "" Then out = out & ","
+                out = out & fid
+            End If
+        End If
+        r = r + 1
+    Loop
+
+    MissingRegisterColumns = out
+End Function
+
+' Append a header for each named field. Returns what it actually wrote.
+'
+' Headers only -- no rows, no values. A column with a header and empty cells is
+' a field waiting to be filled, which is the honest state; inventing values
+' would be the tool deciding what a Given field says.
+Public Function AddRegisterColumns(regWs As Object, fieldNames As String) As String
+    If Trim$(fieldNames) = "" Then Exit Function
+
+    Dim parts() As String
+    parts = Split(fieldNames, ",")
+
+    Dim added As String
+    Dim i As Long
+    For i = LBound(parts) To UBound(parts)
+        Dim nm As String
+        nm = Trim$(parts(i))
+        If nm <> "" Then
+            ' Re-locating the end each time, because the previous iteration moved
+            ' it. Caching lastCol outside the loop writes every column on top of
+            ' the one before and reports success for all of them.
+            Dim nextCol As Long
+            nextCol = LastUsedColumn(regWs) + 1
+            regWs.Cells(1, nextCol).Value = nm
+
+            ' READ IT BACK. A header that did not land leaves the field exactly
+            ' as unwritable as before, behind a message saying it was fixed.
+            If StrComp(Trim$(CStr(regWs.Cells(1, nextCol).Value)), nm, vbTextCompare) = 0 Then
+                If added <> "" Then added = added & ", "
+                added = added & nm
+            End If
+        End If
+    Next i
+
+    AddRegisterColumns = added
+End Function
 
 ' Locate the sheet's two structural columns by header name.
 '

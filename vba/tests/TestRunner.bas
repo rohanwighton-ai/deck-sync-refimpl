@@ -249,6 +249,26 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "ExcelOutput_PeriodRowsAndRollForward", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ExcelOutput_FindsExistingRegisters()
+    AppendResult report, "ExcelOutput_FindsExistingRegisters", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_ExcelOutput_MissingRegisterColumns()
+    AppendResult report, "ExcelOutput_MissingRegisterColumns", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_WorkbookBridge_RefusesToCreateOverAnExistingFile()
+    AppendResult report, "WorkbookBridge_RefusesToCreateOverAnExistingFile", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_BatchOnboard_NormalisesWorkbookPath()
+    AppendResult report, "BatchOnboard_NormalisesWorkbookPath", r
+    On Error GoTo 0
+
     ' REGISTERED BY HAND, like every other test here. Writing the Function is
     ' not enough -- RunAllTests dispatches explicitly, so an unregistered test
     ' simply never runs and the suite still says PASS. Added both of these and
@@ -7408,6 +7428,269 @@ End Function
 ' project has already been bitten by in other forms: a sheet with no Quarter
 ' column must NOT be filtered to nothing, and two rows for one project in one
 ' period must not silently resolve to whichever sits lower.
+' Onboarding used to invent a second, empty register beside a populated one and
+' pair the deck to it -- nothing destroyed, every later read returning zero rows,
+' reported as a clean run of nothing. This is the finder that stops it.
+' A Given field declared in the Field Spec had nowhere to be entered: register
+' columns are only created as a side effect of publishing or harvesting, and a
+' Given field is neither. 14 of the milestone timeline's columns were in that
+' state.
+' CreateWorkbook does Workbooks.Add then SaveAs -- a BLANK workbook written over
+' whatever is at that path. Its caller reached it by asking a person where the
+' Data workbook lives, and a person who types a path they already know is
+' usually naming a file that EXISTS. So the dangerous case was the likely one,
+' and pointing it at a real register would have destroyed a quarter of drafting
+' in a single click. Found 2026-08-13 by reading the code, one click before it.
+Private Function Test_WorkbookBridge_RefusesToCreateOverAnExistingFile() As String
+    Dim result As String
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Dim dir As String
+    dir = Environ$("TEMP") & "\decksync_createguard"
+    If Not fso.FolderExists(dir) Then fso.CreateFolder dir
+
+    ' A file with KNOWN CONTENT, so the test can prove it still has it. Checking
+    ' only that an error was raised would pass against a version that raised
+    ' AFTER writing.
+    Dim victim As String
+    victim = dir & "\already_here.xlsx"
+    Dim ts As Object
+    Set ts = fso.CreateTextFile(victim, True)
+    ts.Write "ORIGINAL-CONTENT-DO-NOT-DESTROY"
+    ts.Close
+
+    Dim raised As Boolean, msg As String
+    On Error Resume Next
+    Err.Clear
+    Dim wb As Object
+    Set wb = WorkbookBridge.CreateWorkbook(victim)
+    raised = (Err.Number <> 0)
+    msg = Err.Description
+    Err.Clear
+    On Error GoTo 0
+    If Not wb Is Nothing Then wb.Close False
+
+    result = result & Assert(raised, "creating over an existing file RAISES")
+    result = result & Assert(InStr(msg, "Refusing to create over it") > 0, _
+        "and says why, got '" & msg & "'")
+
+    ' THE ONE THAT MATTERS. A refusal that happens after the write is no refusal.
+    Dim after As String
+    Set ts = fso.OpenTextFile(victim, 1)
+    after = ts.ReadAll
+    ts.Close
+    result = result & Assert(after = "ORIGINAL-CONTENT-DO-NOT-DESTROY", _
+        "and the existing file is UNTOUCHED, got '" & Left(after, 40) & "'")
+
+    ' Creating where nothing exists must still work, or the guard has just
+    ' broken onboarding for every genuinely new workbook.
+    Dim fresh As String
+    fresh = dir & "\brand_new.xlsx"
+    If fso.FileExists(fresh) Then fso.DeleteFile fresh
+    Dim wb2 As Object
+    On Error Resume Next
+    Err.Clear
+    Set wb2 = WorkbookBridge.CreateWorkbook(fresh)
+    Dim freshErr As String
+    freshErr = Err.Description
+    Err.Clear
+    On Error GoTo 0
+    result = result & Assert(Not wb2 Is Nothing, _
+        "a NEW path still creates, got '" & freshErr & "'")
+    If Not wb2 Is Nothing Then wb2.Close False
+    If fso.FileExists(fresh) Then fso.DeleteFile fresh
+    If fso.FileExists(victim) Then fso.DeleteFile victim
+
+    Test_WorkbookBridge_RefusesToCreateOverAnExistingFile = result
+End Function
+
+' PowerPoint's Save As dialog takes no file-type filter, so it appends .pptx to
+' whatever you type. The old repair then appended .xlsx to THAT, producing
+' `register-wide.xlsx.pptx.xlsx` -- a name that passed validation, did not
+' exist, and was created as a blank workbook while the real register sat
+' untouched beside it.
+Private Function Test_BatchOnboard_NormalisesWorkbookPath() As String
+    Dim result As String
+
+    ' THE CASE THAT BIT. The real register's name, mangled by the dialog.
+    result = result & Assert( _
+        BatchOnboardFlow.NormaliseWorkbookPath("C:\a\register-wide.xlsx.pptx") = "C:\a\register-wide.xlsx", _
+        "strips an appended .pptx back to the .xlsx the person typed, got '" & _
+        BatchOnboardFlow.NormaliseWorkbookPath("C:\a\register-wide.xlsx.pptx") & "'")
+
+    ' Two passes through the dialog append twice.
+    result = result & Assert( _
+        BatchOnboardFlow.NormaliseWorkbookPath("C:\a\reg.xlsx.pptx.pptx") = "C:\a\reg.xlsx", _
+        "strips more than one, got '" & BatchOnboardFlow.NormaliseWorkbookPath("C:\a\reg.xlsx.pptx.pptx") & "'")
+
+    ' The case the ORIGINAL line was written for must still work -- a host that
+    ' returns a bare name. Removing that behaviour to fix the other one would
+    ' trade a new-workbook bug for an old one.
+    result = result & Assert( _
+        BatchOnboardFlow.NormaliseWorkbookPath("C:\a\Project-Data") = "C:\a\Project-Data.xlsx", _
+        "still adds .xlsx to a bare name, got '" & BatchOnboardFlow.NormaliseWorkbookPath("C:\a\Project-Data") & "'")
+
+    ' A clean path is left exactly alone.
+    result = result & Assert( _
+        BatchOnboardFlow.NormaliseWorkbookPath("C:\a\Project-Data.xlsx") = "C:\a\Project-Data.xlsx", _
+        "leaves a correct path untouched")
+
+    ' Macro-enabled workbooks are a legal pairing and must not gain .xlsx.
+    result = result & Assert( _
+        BatchOnboardFlow.NormaliseWorkbookPath("C:\a\Data.xlsm") = "C:\a\Data.xlsm", _
+        "leaves .xlsm alone, got '" & BatchOnboardFlow.NormaliseWorkbookPath("C:\a\Data.xlsm") & "'")
+
+    ' A folder whose NAME contains .ppt must not be eaten -- the strip only ever
+    ' applies to the end of the string.
+    result = result & Assert( _
+        BatchOnboardFlow.NormaliseWorkbookPath("C:\my.pptx stuff\Data.xlsx") = "C:\my.pptx stuff\Data.xlsx", _
+        "does not touch .pptx inside a folder name, got '" & _
+        BatchOnboardFlow.NormaliseWorkbookPath("C:\my.pptx stuff\Data.xlsx") & "'")
+
+    Test_BatchOnboard_NormalisesWorkbookPath = result
+End Function
+
+Private Function Test_ExcelOutput_MissingRegisterColumns() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+
+    Dim reg As Object
+    Set reg = wb.Worksheets(1)
+    reg.Name = "Register"
+    reg.Cells(1, 1).Value = ExcelOutput.INSTANCE_ID_HEADER
+    reg.Cells(1, 2).Value = ExcelOutput.QUARTER_HEADER
+    reg.Cells(1, 3).Value = "ABOUT_BODY"
+    reg.Cells(2, 1).Value = "P001": reg.Cells(2, 2).Value = "Q4F26"
+
+    Dim spec As Object
+    Set spec = wb.Worksheets.Add
+    spec.Name = FieldSpec.SPEC_SHEET_NAME
+    spec.Cells(1, FieldSpec.COL_S_FIELDID).Value = "FieldID"
+    spec.Cells(2, FieldSpec.COL_S_FIELDID).Value = "ABOUT_BODY":   spec.Cells(2, FieldSpec.COL_S_KIND).Value = "Prose"
+    spec.Cells(3, FieldSpec.COL_S_FIELDID).Value = "MS1_DATE":     spec.Cells(3, FieldSpec.COL_S_KIND).Value = "Given"
+    spec.Cells(4, FieldSpec.COL_S_FIELDID).Value = "MS1_DONE":     spec.Cells(4, FieldSpec.COL_S_KIND).Value = "Given"
+    spec.Cells(5, FieldSpec.COL_S_FIELDID).Value = "TIME_ELAPSED": spec.Cells(5, FieldSpec.COL_S_KIND).Value = ExcelOutput.KIND_DERIVED
+
+    Dim missing As String
+    missing = ExcelOutput.MissingRegisterColumns(spec, reg)
+
+    result = result & Assert(InStr(missing, "MS1_DATE") > 0 And InStr(missing, "MS1_DONE") > 0, _
+        "the Given fields with no column are named, got '" & missing & "'")
+    result = result & Assert(InStr(missing, "ABOUT_BODY") = 0, _
+        "a field that already HAS a column is not listed, got '" & missing & "'")
+    ' THE DERIVED CARVE-OUT. Without it this list would name every computed
+    ' field forever, and a prompt that always fires is one that gets clicked
+    ' through -- which would take the real ones with it.
+    result = result & Assert(InStr(missing, "TIME_ELAPSED") = 0, _
+        "a DERIVED field is never listed -- it is computed, never stored, got '" & missing & "'")
+
+    Dim added As String
+    added = ExcelOutput.AddRegisterColumns(reg, missing)
+    result = result & Assert(InStr(added, "MS1_DATE") > 0 And InStr(added, "MS1_DONE") > 0, _
+        "both columns report as added, got '" & added & "'")
+
+    ' EACH ON ITS OWN COLUMN. Caching the last-used column outside the loop
+    ' writes every header over the previous one and reports success for all.
+    result = result & Assert(reg.Cells(1, 4).Value <> reg.Cells(1, 5).Value, _
+        "the two headers landed in DIFFERENT columns, got '" & reg.Cells(1, 4).Value & _
+        "' and '" & reg.Cells(1, 5).Value & "'")
+
+    ' And it is genuinely done -- asking again finds nothing.
+    result = result & Assert(ExcelOutput.MissingRegisterColumns(spec, reg) = "", _
+        "nothing is missing once added, got '" & ExcelOutput.MissingRegisterColumns(spec, reg) & "'")
+
+    wb.Saved = True
+    wb.Close
+    xl.Quit
+
+    Test_ExcelOutput_MissingRegisterColumns = result
+End Function
+
+Private Function Test_ExcelOutput_FindsExistingRegisters() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+
+    ' A REGISTER, with Instance ID in column B rather than A -- position must be
+    ' irrelevant, exactly as it is for the reader. An earlier version of the
+    ' finder looked only at A1 and would have missed this sheet, which is how
+    ' the defect it guards against would have returned wearing a new hat.
+    Dim reg As Object
+    Set reg = wb.Worksheets(1)
+    reg.Name = "Register"
+    reg.Cells(1, 1).Value = "PROJECT_NAME"
+    reg.Cells(1, 2).Value = ExcelOutput.INSTANCE_ID_HEADER
+    reg.Cells(1, 3).Value = ExcelOutput.QUARTER_HEADER
+    reg.Cells(2, 1).Value = "Alpha": reg.Cells(2, 2).Value = "P001": reg.Cells(2, 3).Value = "Q4F26"
+    reg.Cells(3, 1).Value = "Beta":  reg.Cells(3, 2).Value = "P002": reg.Cells(3, 3).Value = "Q4F26"
+    reg.Cells(4, 1).Value = "Alpha": reg.Cells(4, 2).Value = "P001": reg.Cells(4, 3).Value = "Q1F27"
+
+    ' NOT a register. A drafting sheet is the realistic confuser -- it has
+    ' headers and rows and sits in the same workbook.
+    Dim tpl As Object
+    Set tpl = wb.Worksheets.Add
+    tpl.Name = "TPL_ABOUT_BODY"
+    tpl.Cells(1, 1).Value = "Project code"
+    tpl.Cells(1, 2).Value = "Project name"
+    tpl.Cells(2, 1).Value = "P001"
+
+    Dim found As String
+    found = ExcelOutput.RegisterShapedSheets(wb)
+
+    result = result & Assert(InStr(found, "Register|") > 0, _
+        "names the register sheet, got '" & found & "'")
+    result = result & Assert(InStr(found, "TPL_ABOUT_BODY") = 0, _
+        "does NOT mistake a drafting sheet for a register, got '" & found & "'")
+    result = result & Assert(InStr(found, "|3|") > 0, _
+        "counts 3 data rows, not the header, got '" & found & "'")
+    result = result & Assert(InStr(found, "Q4F26") > 0 And InStr(found, "Q1F27") > 0, _
+        "names BOTH periods so a person can tell two registers apart, got '" & found & "'")
+    result = result & Assert(InStr(found, vbLf) = 0, _
+        "finds exactly one register -- one line, no separator, got '" & found & "'")
+
+    ' A SECOND register must be found too, because that is the case onboarding
+    ' REFUSES on, and a finder that silently returns one of two would make the
+    ' refusal unreachable.
+    Dim reg2 As Object
+    Set reg2 = wb.Worksheets.Add
+    reg2.Name = "project-status"
+    reg2.Cells(1, 1).Value = ExcelOutput.INSTANCE_ID_HEADER
+    reg2.Cells(1, 2).Value = ExcelOutput.QUARTER_HEADER
+
+    found = ExcelOutput.RegisterShapedSheets(wb)
+    result = result & Assert(InStr(found, vbLf) > 0, _
+        "finds BOTH registers once a second exists, got '" & found & "'")
+    result = result & Assert(InStr(found, "project-status|0|") > 0, _
+        "reports the empty one as 0 rows rather than omitting it, got '" & found & "'")
+
+    ' RowCountForPeriod says WHAT is at risk before a harvest overwrites it.
+    ' The two negative cases are what stop it being an always-true guard: a
+    ' period that is not in the sheet, and a blank period, must both be 0 --
+    ' otherwise the onboarding warning would fire on every deck forever.
+    result = result & Assert(ExcelOutput.RowCountForPeriod(reg, "Q4F26") = 2, _
+        "counts 2 rows for Q4F26, got " & ExcelOutput.RowCountForPeriod(reg, "Q4F26"))
+    result = result & Assert(ExcelOutput.RowCountForPeriod(reg, "Q1F27") = 1, _
+        "counts 1 row for Q1F27, got " & ExcelOutput.RowCountForPeriod(reg, "Q1F27"))
+    result = result & Assert(ExcelOutput.RowCountForPeriod(reg, "Q9F99") = 0, _
+        "counts 0 for a period the sheet does not have, got " & ExcelOutput.RowCountForPeriod(reg, "Q9F99"))
+    result = result & Assert(ExcelOutput.RowCountForPeriod(reg, "") = 0, _
+        "counts 0 for a blank period, got " & ExcelOutput.RowCountForPeriod(reg, ""))
+
+    wb.Saved = True
+    wb.Close
+    xl.Quit
+
+    Test_ExcelOutput_FindsExistingRegisters = result
+End Function
+
 Private Function Test_ExcelOutput_PeriodRowsAndRollForward() As String
     Dim result As String
 
@@ -9103,8 +9386,24 @@ Private Function Test_MilestoneDevice_DrawsFromDataAndCreatesNothing() As String
     result = result & Assert(r.BarSet, "the bar was set")
     result = result & Assert(Abs(bar.Height - ((ms2.Top + ms2.Height / 2) - track.Top)) < 1, _
         "the bar reaches slot 2's centre, got " & bar.Height)
-    result = result & Assert(Abs(track.Height - 300) < 0.5, _
-        "and the TRACK is never written, got " & track.Height)
+    ' THE TRACK SHORTENS TO THE LAST USED SLOT.
+    '
+    ' This used to assert the track was never written at all. That was the
+    ' contract until 2026-08-13, when Rohan asked what a shorter milestone chain
+    ' does -- and the answer was two slots' worth of track hanging below the
+    ' last circle, pointing at nothing. It is the same measurement the bar
+    ' already used, aimed at the last USED circle instead of the last ACHIEVED
+    ' one.
+    '
+    ' The fixture draws 3 slots and supplies 3 milestones, so the track reaches
+    ' slot 3's centre -- SHORTER than the 300pt it was drawn at, which is what
+    ' makes this assertion able to fail if the shortening silently stops.
+    Dim ms3 As Object
+    Set ms3 = NamedIn(grp, "MS3_ON")
+    result = result & Assert(Abs(track.Height - ((ms3.Top + ms3.Height / 2) - track.Top)) < 1, _
+        "the TRACK reaches the last USED slot, got " & track.Height)
+    result = result & Assert(track.Height < 299, _
+        "and is genuinely shorter than the 300pt it was drawn at, got " & track.Height)
 
     sld.Delete
     Test_MilestoneDevice_DrawsFromDataAndCreatesNothing = result
@@ -9255,15 +9554,44 @@ Private Function Test_MilestoneDevice_IntegrityNamesWhatIsMissing() As String
         "and the intact slots are not, got '" & broken & "'")
     NamedIn(grp, "Rectangle 99").Name = "MS2_DATE"
 
-    ' A RENAMED _ON HIDES EVERY SLOT AFTER IT, and that must be caught.
+    ' A RENAMED _ON IS NAMED, and the count no longer collapses.
+    '
+    ' This used to assert "SlotCount stops at the gap -- one slot". That encoded
+    ' the two-state model, where a slot WAS its _ON circle: lose it and the slot
+    ' ceased to exist, taking the whole tail with it. Under four states a slot
+    ' carrying _OFF or _NOW is a real slot -- Rohan's own deck has one drawn with
+    ' the big circle alone -- so truncating there would refuse a valid template.
+    '
+    ' The protection did not go away, it moved: the count survives the gap, and
+    ' the missing circle is reported BY NAME. That is strictly better, because
+    ' the old behaviour hid slots 3+ as a side effect of a fault in slot 2.
     NamedIn(grp, "MS2_ON").Name = "Oval 77"
     Dim tail As String
     tail = MilestoneDevice.DeviceIntegrity(grp)
-    result = result & Assert(InStr(tail, "1 slot(s)") > 0, _
-        "SlotCount stops at the gap -- one slot, got '" & tail & "'")
-    result = result & Assert(InStr(tail, "MS2") > 0 And InStr(tail, "invisible") > 0, _
-        "and it says the rest are INVISIBLE rather than reporting a healthy 1-slot device, got '" & tail & "'")
+    result = result & Assert(InStr(tail, "3 slot(s)") > 0, _
+        "the count SURVIVES the gap now -- three slots, got '" & tail & "'")
+    result = result & Assert(InStr(tail, "MS2_ON") > 0, _
+        "and the missing circle is named, got '" & tail & "'")
+    result = result & Assert(InStr(tail, "MS1_ON") = 0 And InStr(tail, "MS3_ON") = 0, _
+        "while the intact slots are not, got '" & tail & "'")
     NamedIn(grp, "Oval 77").Name = "MS2_ON"
+
+    ' A slot that loses EVERY circle stops being counted, and the STRAY PROBE
+    ' catches its orphaned label and date. Asserted here because the obvious
+    ' place to handle it -- a "no circle at all" branch inside the per-slot
+    ' loop -- turns out to be unreachable: the loop runs to SlotCount, and
+    ' SlotCount will not count a slot with no circle. That branch was written,
+    ' proven unreachable by this very case, and deleted.
+    NamedIn(grp, "MS3_ON").Name = "Oval 78"
+    NamedIn(grp, "MS3_OFF").Name = "Oval 79"
+    Dim noCircle As String
+    noCircle = MilestoneDevice.DeviceIntegrity(grp)
+    result = result & Assert(InStr(noCircle, "2 slot(s)") > 0, _
+        "the count stops before the circle-less slot, got '" & noCircle & "'")
+    result = result & Assert(InStr(noCircle, "MS3") > 0 And InStr(noCircle, "invisible") > 0, _
+        "and the stray probe says MS3's parts are invisible, got '" & noCircle & "'")
+    NamedIn(grp, "Oval 78").Name = "MS3_ON"
+    NamedIn(grp, "Oval 79").Name = "MS3_OFF"
 
     sld.Delete
     Test_MilestoneDevice_IntegrityNamesWhatIsMissing = result
