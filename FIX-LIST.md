@@ -240,7 +240,15 @@ left four stale readers and they have been found in three separate sessions.
 
 ---
 
-## 7. Things typed that could be picked
+## 7. Things typed that could be picked — 2 of 3 FIXED 2026-08-13 (addin81/82)
+
+**Status, so this does not read as fully open:** the slide-type picker is **fixed**
+(`RibbonUI.PickType` auto-selects a sole type, all three call sites). Roll Forward is
+**partly fixed** — it no longer asks at all when the destination already holds rows
+(`ExcelOutput.PeriodRowCount`), but when the destination IS empty it still asks for the
+source period as free text, so the validated-list fix below still stands. The third item is
+**untouched**.
+
 
 - **`Roll Forward`'s source period** is typed free-hand, into exactly the trap its own
   header warns about for the destination. `Sources.ApplyPeriodValidation` already builds

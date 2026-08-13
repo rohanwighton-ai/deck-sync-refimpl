@@ -142,8 +142,10 @@ the picture injection and the progress bars, found the same way: by pressing the
   wrong**, they describe the same slides.
 - **Backups** `OneDrive\Claude\backups\2026-08-13-1520-post-onboard-Q3F26 - *` — deck and
   register, both verified byte-identical by md5 at the time of copy.
-- **Build `addin80`**, stamp `2026-08-13 14:37`, in `OneDrive\Claude\` and in the trusted
-  location `AppData\Roaming\Microsoft\AddIns\`.
+- **Build `addin82`**, stamp `2026-08-13 19:22` — CURRENT, confirmed loaded and the only
+  add-in registered. In `OneDrive\Claude\` and the trusted location
+  `AppData\Roaming\Microsoft\AddIns\`. (Superseded: `addin80` stamp 14:37, `addin81`
+  stamp 16:24.)
 
 ### Drafting sheets — real counts (header row EXCLUDED)
 
@@ -218,7 +220,7 @@ pre-empts the whole path.
 `OneDrive\Claude`: `reply-from-claude-code-2026-08-13-evening.md` — answers chat side's
 three questions; not a repo, so not versioned.
 
-Builds: `addin81` (stamp 14:37 → superseded), **`addin82` (stamp 19:22, currently loaded and
+Builds: `addin80` (14:37) and `addin81` (16:24), both superseded. **`addin82` (19:22) is loaded and
 the only add-in)**. Suite green at 192 passed / 0 failed with the compile gate clean across
 33 modules.
 
@@ -428,8 +430,9 @@ Static checks also clean across 34 modules. The new cross-module references
 `WorkbookBridge`) compile.
 
 **NOT YET IN AN ADD-IN.** The ordering and the `SYNC_LOG_SHEET_NAME` constant are in source
-only — `addin81` predates them. Nothing changes in the workbook until `addin82` is built
-and installed, so do not expect to see the new tab order before then.
+only at the time of writing — `addin81` predated them. **`addin82` has since been built,
+installed and confirmed loaded**, so the ordering is live in code; it takes visible effect
+on the next completed drafting rebuild, since `ArrangeTabs` runs during one.
 
 ### Deferred deliberately: numbering the NAMES
 
