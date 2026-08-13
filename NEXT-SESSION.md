@@ -1,5 +1,65 @@
 # NEXT SESSION — start here
 
+> ## DO THIS FIRST — publish `PROGRESS_BODY`
+>
+> **State at handoff (19:40, 13 Aug), read from files not dialogs:**
+> register `register-wide.xlsx` unchanged since **16:57** · deck **19:27** ·
+> `addin82` built, stamped `2026-08-13 19:22`, **confirmed loaded and the only add-in**.
+>
+> **A `PROGRESS_BODY` run was attempted and did nothing.** Excel never opened, the register
+> never changed. Most likely cause: **`Cancel` was pressed on the `MS*` dialog**, which is
+> the only button there that ends the whole chain and sits beside the `No` you want. Not
+> confirmed — the screenshot channel failed (see below) — so treat it as the first thing to
+> rule out, not as fact.
+>
+> **The sequence.** One button, `1. Sync Now`, pressed twice. First press publishes drafting
+> to the register and builds the review; you tick the review; second press applies it.
+>
+> | prompt | answer |
+> |---|---|
+> | `MS*` fields warning | **No** — NOT Cancel |
+> | 5-step plan | Yes |
+> | Quarter | OK (already `Q4F26`) |
+> | Roll Forward | should not appear — reports instead |
+> | 17 Field Spec columns | **No** (`HIGHLIGHTS_BODY` needs slot columns, not one) |
+> | Which field? | **`PROGRESS_BODY`** |
+>
+> **Two traps.** The `MS*` `Cancel` above. And the field dialog's **text box sits below the
+> bottom of a 1080p screen** — drag the dialog up by its title bar before typing, or it gets
+> dismissed empty and the publish is silently skipped. That is FIX-LIST P2.
+>
+> **Watch the published count against 34.** 43 rows are ticked, only 34 have text, so 9
+> should be skipped. Whether the report *says* so is a live test of FIX-LIST P6.
+>
+> **Then expect a small diff.** As with Key Events (21 of 43), many slides may already match.
+>
+> ---
+>
+> ### Two things that are true but not yet visible
+>
+> **`addin82`'s tab ordering has not taken effect.** `ArrangeTabs` runs during a drafting
+> rebuild, and no full run has completed since the add-in was swapped. Sheet order is still
+> `START HERE, Field Spec, Sources, TPL_*, …` with `Register` unplaced. It will reorder on
+> the next successful `Sync Now`.
+>
+> **Slide 1 is inconsistently de-identified, live, right now.** `KEY_EVENTS_BODY` was
+> published and reads *"The industry partner's withdrawal halted further development"* — but
+> `PROGRESS_BODY` directly below it still reads *"...ceased following Calix withdrawal"*, and
+> the partner is also named in the header subtitle and the Project Team box. Publishing
+> `PROGRESS_BODY` fixes one of the three. **The other two are untagged shapes** — part of the
+> 50 unmanaged items the Template Audit found, so they need tagging, not publishing. This is
+> a funder-facing deck; worth treating as content risk rather than tidiness.
+>
+> ### Practical note: screenshots stopped reaching Claude Code
+>
+> From ~19:30 no image reached the clipboard and **no PNG was written anywhere under the
+> profile**, including the OneDrive `Claude` folder where earlier ones landed. Verbal
+> description plus COM state reads worked fine as a substitute. Useful calibrated check,
+> worth keeping: **while a modal is open PowerPoint stops answering COM** —
+> `ActivePresentation.Name` returns empty — and answers normally when idle. That single call
+> distinguishes "waiting for you behind a window" from "the run has ended".
+
+
 **Written 13 August 2026, ~16:15.** Previous version archived as `NEXT-SESSION-2026-08-12.md`.
 
 > ## THE DECK IS ONBOARDED. THE DELIVERY COUNT IS STILL ZERO.
