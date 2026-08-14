@@ -1,7 +1,116 @@
 # NEXT SESSION — start here
 
-> ## 14 AUG, EVENING — READ THIS FIRST. **STATUS: CURRENT.** Every block below it is
-> historical and is kept for reasoning only.
+> ## 14 AUG, LATE — READ THIS FIRST. **STATUS: CURRENT.** Everything below is
+> historical and kept for reasoning only.
+>
+> ### THE COMPILE IS DONE AND IT WAS GREEN
+>
+> `aff84d6`'s restructure **compiles clean, whole project, 33 modules**. That was the
+> previous block's blocking first action and it is closed. Suite came back **191 passed,
+> 2 failed** — both failures real, both diagnosed below.
+>
+> ### YOUR REGISTER WAS REPAIRED. VERIFIED FROM THE SAVED FILE.
+>
+> `TPL_KEY_EVENTS_BODY` and `TPL_PROGRESS_BODY` had **no layout stamp and no period
+> stamp** — the 11:40 abort died before writing them. A blank K1 reads as layout 0,
+> `ColumnInLayout(0,"SUBMIT")` returns 0, `layoutMatches` is False, and **`ws.Cells.Clear`
+> would have fired on both sheets** at the next rebuild. Stamped back to `4` / `Q4F26`
+> through Excel. Confirmed from the saved XML: both sheets `K1=4`, `M1=Q4F26`, nothing
+> beyond column M, `maxrow=52` matching every healthy sheet, counts intact at 23 rows /
+> 22 SUBMIT and 37 / 37. Backup: `backups/register-wide.PRE-STAMPREPAIR-20260814-132207.xlsx`.
+>
+> **A COM diagnostic written as read-only WROTE to the live register** — `Close($false)`
+> cannot discard while AutoSave is on. The AutoSave hazard was already documented in this
+> file for PowerPoint and was not carried across to Excel. It left a `Z999` probe cell on
+> both sheets; removed and verified gone. Logged to FRICTION.md.
+>
+> ### DEFECT: THE LAYOUT MIGRATION WAS DELETED WITH THE CARRY DICTIONARIES. FIXED.
+>
+> The five `kept*` dictionaries were the layout migration, as a side effect of clearing
+> and rebuilding. Deleting them deleted it. `layoutMatches` is
+> `(ColumnInLayout(sheetLayout,"SUBMIT") > 0)` — **True for a layout-3 sheet** — so the
+> clear never fires, the row loop reads the sheet with layout-4 numbers, and SUBMIT text
+> becomes a source ID while the AI draft lands in the column that publishes. The sheet is
+> then stamped forward, so it can never self-correct.
+>
+> **Fixed** by a new `MigrateSheetLayout` — in place, per row, read-all-then-write
+> (3 -> 4 is a permutation of the same six columns), old positions emptied between, parked
+> first. **No clear, no carry dictionaries: the structural proof that the clear is gone
+> still holds.**
+>
+> **This was NOT urgent until it was.** Nothing on the live register is layout 3. But the
+> "reported last quarter" column below is a layout bump to 5, which runs this exact path
+> against sheets stamped 4. Fix had to land first.
+>
+> ### DEFECT: A ROLLOVER CANNOT HAPPEN AT ALL. NOT YET FIXED.
+>
+> Traced end to end, not inferred:
+> - `Start a Quarter` sets the deck period; does not touch drafting sheets.
+> - `Roll Forward` copies register rows; does not touch drafting sheets.
+> - `Refresh Drafting Sheets` with `periodChanged` → at-risk scan finds typed work →
+>   **REFUSED, nothing changed.**
+> - The refusal says *"publish this sheet's work before rebuilding"*. `PublishDrafts` only
+>   READS `COL_D_SUBMIT` and `COL_D_APPROVED` (`Drafting.bas:1123,1125`). It never clears
+>   them. The next attempt refuses identically.
+> - The only `ClearContents` for those columns is **inside the branch the refusal already
+>   exited past**. No other route clears or deletes a drafting sheet.
+>
+> **Once a sheet holds typed work — the wanted state — it can never be rolled forward.**
+> Predates tonight: the refusal landed 13 Aug in `ddf867b`. Tonight's FIX-LIST 1c only
+> widened the trigger to SOURCES and NOTES. Never hit because no rollover has been
+> attempted since. **It bites at Q1F27.**
+>
+> ### ROHAN'S ANSWER DISSOLVES IT — AND DELETES CODE
+>
+> *"an owner should be able to edit their quarter's slides by editing their quarter's
+> spreadsheet and hitting sync. When the deck is set to a new quarter, items that were
+> current last quarter but now need replacing will move to a 'reported last quarter'
+> column in the drafting sheet, adding fodder for the AI prompt re style and narrative
+> consistency."*
+>
+> If last quarter's text moves aside instead of being destroyed, **the refusal has nothing
+> left to protect** — republishing is prevented structurally. That kills the refusal, the
+> cadence machinery and the deadlock together, and adds prompt material. Same move as the
+> in-place fix and the per-quarter split. `Drafting.bas:228` already states the principle:
+> *"nothing is destroyed, only superseded."*
+>
+> **SETTLED: the column is DERIVED from the register, not moved from the sheet.** The
+> register already holds it — 43 rows at `Q3F26`, 43 at `Q4F26`. Derived shows what
+> actually reached a slide, which is the honest prompt fodder; moved would mix in drafts
+> that were never published and make the heading false.
+>
+> **The one cost, named:** periods are free text with **no ordering** (`Q3F26` is just a
+> string). `RollForwardPeriod` is told both periods by the UI and does not record the
+> link. So deriving needs the predecessor stored at roll-forward time. That is the
+> prerequisite, and it is small.
+>
+> ### THE SECOND SUITE FAILURE IS A DESIGN COLLISION, NOT A BUG
+>
+> `Drafting_RolloverCadenceGovernsUntypedRows` asserts the old rebuild-and-clear
+> behaviour; FIX-LIST 1c's widened scan now refuses first, so its assertions never run.
+> Rohan called it: the scan wins, delete the cadence machinery. **NOT DONE, deliberately**
+> — that machinery holds the only `ClearContents` in the rollover path, so deleting it
+> before the "reported last quarter" column exists would weld the deadlock shut. Delete it
+> as part of that build, not before.
+>
+> Also stale prose: the refusal says *"N row(s) have drafted or submitted text"* when it
+> now also fires on sources or notes alone. Machine fact written into prose.
+>
+> ### NEXT, IN ORDER
+>
+> 1. **Recover the 27 texts** from `backups/register-wide.PRE-ABOUTFIX-20260814-071658.xlsx`
+>    into the two sheets, through Excel. **A wholesale restore is WRONG** — that backup
+>    predates the 08:21 publish. Baseline is 43/43; currently 22 and 37.
+> 2. **Build the "reported last quarter" column**: store the predecessor period at roll
+>    forward, derive the column, bump `DRAFT_LAYOUT_VERSION` to 5, delete the refusal and
+>    the cadence machinery, feed the prior text into the L2 prompt.
+> 3. **Scenario 5**, once the sheets are whole.
+>
+> **Delivery count is still 2.** Nothing reached a slide on 14 Aug evening.
+>
+> ---
+>
+> ## 14 AUG, EVENING — SUPERSEDED by the block above. Kept for reasoning.
 >
 > ### FIRST ACTION: COMPILE AND RUN THE SUITE IN POWERPOINT. NOTHING ELSE.
 >

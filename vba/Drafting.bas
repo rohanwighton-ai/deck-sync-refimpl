@@ -225,6 +225,54 @@ Private Function ColumnInLayout(layoutVersion As Long, which As String) As Long
 End Function
 
 
+' MIGRATE A KNOWN OLDER LAYOUT INTO THE CURRENT COLUMNS, IN PLACE.
+'
+' This is the job the five kept* carry dictionaries used to do as a SIDE EFFECT
+' of clearing the sheet and rebuilding it. Deleting them (2026-08-14) deleted
+' the migration with them, and nothing noticed until the suite ran: a layout-3
+' sheet was left physically untouched and then READ with layout-4 numbers, so a
+' person's SUBMIT text was read as a source ID and the AI draft landed in the
+' column that publishes. The sheet was then stamped forward, so it could never
+' self-correct. Worse than losing the work, because it looks like content.
+'
+' In place and per row, with every value read BEFORE any value is written: the
+' old and new positions overlap -- 3 -> 4 is a permutation of the same six
+' columns -- so writing as it goes would overwrite a cell still needed.
+'
+' Every old position is emptied between the read and the write, so a future bump
+' that REMOVES a column cannot leave a stale value stranded under a new heading.
+Private Sub MigrateSheetLayout(ws As Object, fromLayout As Long)
+    Dim names As Variant
+    names = Array("CURRENT", "SOURCES", "DRAFT", "SUBMIT", "APPROVED", "NOTES")
+
+    Dim vals() As Variant
+    ReDim vals(0 To UBound(names))
+
+    Dim r As Long, i As Long, oldCol As Long, newCol As Long
+    r = DRAFT_FIRST_ROW
+
+    Do While Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value)) <> ""
+        For i = 0 To UBound(names)
+            vals(i) = Empty
+            oldCol = ColumnInLayout(fromLayout, CStr(names(i)))
+            If oldCol > 0 Then vals(i) = ws.Cells(r, oldCol).Value
+        Next i
+
+        For i = 0 To UBound(names)
+            oldCol = ColumnInLayout(fromLayout, CStr(names(i)))
+            If oldCol > 0 Then ws.Cells(r, oldCol).ClearContents
+        Next i
+
+        For i = 0 To UBound(names)
+            newCol = ColumnInLayout(DRAFT_LAYOUT_VERSION, CStr(names(i)))
+            If newCol > 0 Then ws.Cells(r, newCol).Value = vals(i)
+        Next i
+
+        r = r + 1
+    Loop
+End Sub
+
+
 ' NOTHING IS DESTROYED, ONLY SUPERSEDED.
 '
 ' Rohan, 2026-08-10: "we can't have drafting risk losing information."
@@ -627,6 +675,19 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
             If Not ParkSheetCopy(ws, fieldId, parkedName) Then parkFailed = True
         End If
         ws.Cells.Clear
+    End If
+
+    ' A KNOWN OLDER LAYOUT IS MIGRATED, NOT ABANDONED AND NOT MISREAD.
+    '
+    ' Must run BEFORE the row loop touches anything through the CURRENT column
+    ' numbers, and before the stamp below declares the sheet already current.
+    ' Parked first for the same reason every other rewrite is: this moves a
+    ' person's typed work between columns, and a copy costs nothing.
+    If layoutMatches And sheetLayout <> DRAFT_LAYOUT_VERSION And Not isNewSheet Then
+        If parkedName = "" Then
+            If Not ParkSheetCopy(ws, fieldId, parkedName) Then parkFailed = True
+        End If
+        MigrateSheetLayout ws, sheetLayout
     End If
 
     ' STAMPS FIRST, BEFORE ANY ROW. They used to be written at the END of this
