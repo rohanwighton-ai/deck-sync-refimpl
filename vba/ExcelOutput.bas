@@ -583,7 +583,25 @@ End Function
 ' old behaviour: one row per slide, matched on instance, `period` ignored. Such
 ' a sheet has no opinion about periods and retrofitting one is a migration, not
 ' something an upsert should do behind the caller's back.
-Public Sub UpsertRow(ws As Object, instanceId As String, values As Object, period As String)
+' `asText` forces the destination cell to Text format BEFORE the value is
+' assigned, so Excel stores the characters it was given instead of parsing them.
+'
+' Added 2026-08-14, from the first real harvest. A slide reading "30 Oct 2023"
+' arrived in the register as 45229 and "$275,598" as 275598 -- the right values,
+' with the formatting silently gone, so publishing them back would put a serial
+' number on a funder-facing slide. `.Value = CStr(...)` looks like a string write
+' and is not: Excel parses anything that looks like a date or a number.
+'
+' OPT-IN rather than the default, because this is only obviously correct for a
+' caller whose contract is "store what was on the slide". The harvest's is
+' exactly that. Existing callers keep the old behaviour and are unaffected.
+'
+' The damage this prevents is PERMANENT once done: the harvest writes only into
+' empty cells, so a coerced value cannot be corrected by re-harvesting -- the
+' cell is no longer empty. Getting this right before a bulk run matters more
+' than it would for an ordinary bug.
+Public Sub UpsertRow(ws As Object, instanceId As String, values As Object, period As String, _
+                     Optional asText As Boolean = False)
     Dim cInstance As Long, cQuarter As Long
     LocateStructuralColumns ws, cInstance, cQuarter
 
@@ -601,6 +619,10 @@ Public Sub UpsertRow(ws As Object, instanceId As String, values As Object, perio
     For Each fieldName In values.Keys
         Dim colNum As Long
         colNum = FindOrAppendFieldColumn(ws, CStr(fieldName), cInstance, cQuarter)
+        ' BEFORE the assignment, not after -- setting Text format on a cell that
+        ' already holds a parsed date shows the serial, it does not recover the
+        ' original characters.
+        If asText Then ws.Cells(rowNum, colNum).NumberFormat = "@"
         ws.Cells(rowNum, colNum).Value = CStr(values(fieldName))
     Next fieldName
 End Sub

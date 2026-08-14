@@ -241,6 +241,57 @@ Public Function Match(candidates() As Candidate, reference As Candidate, Optiona
         Next i
 
         If tiedIdx.count > 1 Then
+            ' NAME BREAKS THE TIE FIRST -- but ONLY a tie, and that distinction is
+            ' the whole safety argument.
+            '
+            ' Discovery.bas:22 says the shape name is "for humans -- never used as
+            ' an identity key", and it is right: PowerPoint auto-names are not
+            ' identities. Rohan's own template carries TWO different fields both
+            ' called `Text 33` (ABOUT_BODY and PROBLEM_BODY). A first attempt at
+            ' this made the name a tier ABOVE scoring, which turned a deliberately
+            ' drifted shape into a "high" auto-accept and broke
+            ' Onboarding_HighAndMediumConfidence and
+            ' DeckAdoption_MediumConfidenceSlideNeedsConfirmation -- two tests
+            ' standing exactly where that rule needed guarding. Geometry still
+            ' decides WHETHER there is a match and how confident it is; the name
+            ' only chooses BETWEEN candidates geometry has already declared
+            ' equally good.
+            '
+            ' Why it is needed. Measured on the real deck 2026-08-14: START_DATE
+            ' and END_DATE sit 0.14" apart, same x, identical size. Their geometry
+            ' scores differ by 0.075 -- always inside SIBLING_GAP_THRESHOLD (0.1),
+            ' for either reference -- so both tie, z-order then picks the SAME
+            ' winner for both roles, and both fields claim one shape. Propagation
+            ' refused the pair, correctly, which also meant neither could ever
+            ' reach the other 42 slides.
+            '
+            ' Ambiguous names fall through to z-order exactly as before: four
+            ' shapes on slide 1 are called `Shape 16`.
+            Dim namedTied As Collection
+            Set namedTied = New Collection
+            If Trim$(reference.Name) <> "" Then
+                Dim k As Variant
+                For Each k In tiedIdx
+                    If StrComp(Trim$(candidates(k).Name), Trim$(reference.Name), vbTextCompare) = 0 Then
+                        namedTied.Add k
+                    End If
+                Next k
+            End If
+
+            If namedTied.count = 1 Then
+                bestIdx = namedTied(1)
+                bestScore = scores(bestIdx)
+                conf = ConfidenceFor(bestScore)
+                result.HasCandidate = True
+                result.CandidateIndex = bestIdx
+                result.Confidence = conf
+                result.HasScore = True
+                result.Score = bestScore
+                result.Reason = "sibling ambiguity resolved by matching shape name"
+                Match = result
+                Exit Function
+            End If
+
             Dim j As Variant, dist As Long, minDist As Long
             minDist = -1
             For Each j In tiedIdx

@@ -767,12 +767,39 @@ Public Function SaveDeckVerified(pres As Object) As String
     Dim before As Date
     before = fso.GetFile(checkPath).DateLastModified
 
+    ' THE DIRTY FLAG ANSWERS A DIFFERENT QUESTION FROM THE FILE, AND THAT IS WHY
+    ' IT IS ALLOWED HERE.
+    '
+    ' This project's rule is that an in-process read-back cannot prove a save --
+    ' the writer's cache is not the bytes, and believing it is how "Sync Now"
+    ' reported 16 slide fields written and never saved. `pres.Saved` is NOT being
+    ' used as proof that a save happened. It is being used to ask whether there
+    ' was anything to save. The FILE still has the only word on success: every
+    ' Exit Function below this point is still gated on the bytes moving.
+    '
+    ' Without it, "the mtime did not move" is ambiguous -- it means BOTH "the
+    ' save failed" and "nothing needed saving" -- and this function reported the
+    ' first for the second. Measured 2026-08-14: a harvest run that labelled 0
+    ' shapes printed "THE DECK WAS NOT SAVED" about a deck with no unsaved
+    ' changes, having first forced a full SaveAs rewrite of a 49MB file to find
+    ' out. A save warning that cries wolf is the one message this tool cannot
+    ' afford to have anyone learn to click past.
+    Dim wasClean As Boolean
+    wasClean = False
+    On Error Resume Next
+    wasClean = pres.Saved
+    On Error GoTo 0
+
     On Error Resume Next
     pres.Save
     Err.Clear
     On Error GoTo 0
 
     If fso.GetFile(checkPath).DateLastModified > before Then Exit Function     ' "" = saved
+
+    ' NOTHING PENDING IS NOT A FAILURE -- and checked BEFORE the retry, so a deck
+    ' with no changes never pays for a 49MB rewrite to prove it.
+    If wasClean Then Exit Function                                            ' "" = nothing to save
 
     ' Save reported nothing and moved nothing. Force the full rewrite.
     Dim retryErr As String

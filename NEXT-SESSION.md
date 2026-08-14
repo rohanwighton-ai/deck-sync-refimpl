@@ -1,6 +1,123 @@
 # NEXT SESSION — start here
 
-> ## 14 AUG, ~23:10. **STATUS: CURRENT.** Everything below is historical.
+> ## 15 AUG, ~00:35. **STATUS: CURRENT.** Everything below is historical.
+>
+> ### THE HARVEST WORKS BY BUTTON. IT IS NOT SAFE TO RUN AT SCALE YET.
+>
+> ### FIRST ACTION: TEACH THE HARVEST ABOUT FIELD **KIND**. NOTHING BULK BEFORE IT.
+>
+> `PROJECT_PROGRESS` reads `33%` off the slide. `InjectPrimitive.bas:340` refuses
+> any non-numeric progress value and names **`'90%'` as wrong in those exact
+> words** — so harvesting what is displayed writes a value the tool itself cannot
+> publish. **And the empty-cell rule means a corrected harvest can never overwrite
+> it**: the cell is no longer empty, so it must be cleared by hand, exactly like
+> the four coerced cells cleared at 23:40.
+>
+> Caught at the dialog on the last press of the night. **Nothing was written.**
+>
+> The harvest currently assumes "what is displayed" is what the register wants.
+> True for prose, names and dates; FALSE wherever the slide shows a formatted
+> VIEW of a stored value. It already refuses devices by name; it needs the same
+> treatment for numeric-contract fields — convert (`33%` -> `0.33`) or refuse,
+> never write the string.
+>
+> ### PROVEN ON REAL FILES, BY BUTTON, READ BACK FROM SAVED BYTES
+>
+> | | |
+> |---|---|
+> | harvest direction exists at all | `Harvest.bas` — new tonight |
+> | verbatim storage | `30 Oct 2023`, `$275,598` in the register as text, not `45229`/`275598` |
+> | template tagged | 7 roles on slide 44; tag parts 440 -> 447 |
+> | propagation | 7 roles carried to slide 1; 447 -> 454 |
+> | values harvested | 8 into `3_P001` Q4F26; 4 repaired after the coercion fix |
+> | dates disambiguated | 55 shapes renamed; **32 of 44** slides now carry both `Text 212a`/`Text 216a` |
+> | batch dry run, slides 2-5 | **24 labelled, 0 collisions**, dates resolving separately |
+>
+> ### BUILD STATE
+>
+> - Suite **199 passed / 0 failed**, compile clean, 34 modules. Static + module
+>   lists + docs all clean.
+> - **`addin91` is the only registered add-in**, `AutoLoad=1`, build stamp
+>   `2026-08-15 00:14`. Verified loaded by calling `CountShapesWithRoleTag`,
+>   which exists only in tonight's builds.
+> - Deck `00:29`, 454 tag parts. Register `23:46`.
+> - Backups, each md5-verified: `PRE-TAG-20260814-222900`,
+>   `PRE-HARVEST-20260814-232900`, `PRE-BLANK-20260814-234000`,
+>   `PRE-RENAME-20260815-002300`. `backups/` is now gitignored (48MB, was one
+>   `git add -A` from being welded into history).
+>
+> ### FOUR DEFECTS FIXED, AND WHAT FOUND EACH
+>
+> 1. **`AdoptFlow.AdoptExistingSlides` was orphaned** — no button, no caller, for
+>    the whole life of the three-button toolbar, its header still reading
+>    "Toolbar entry point". `check_vba_static.py` could not see it because
+>    `AdoptFlow.bas` was missing from `UI_MODULES`. **The checker asks whether a
+>    NAME appears in another module, not whether anything reachable calls it** —
+>    a chain of private orphans is still invisible to it.
+> 2. **Excel silently coerced harvested values.** `.Value = CStr(...)` is not a
+>    string write. `UpsertRow` gained opt-in `asText` setting `NumberFormat = "@"`
+>    BEFORE assignment. Found by reading the register file after the first real
+>    harvest.
+> 3. **`SaveDeckVerified` reported failure when there was nothing to save** — its
+>    only proof was "did the mtime advance", which cannot separate "save failed"
+>    from "nothing pending", and it forced a full `SaveAs` of a 49MB deck to find
+>    out. Now consults `pres.Saved` first (to ask whether anything was PENDING —
+>    the file still has the only word on success).
+> 4. **The matcher was name-blind.** Name now breaks a sibling tie, after
+>    geometry, never before it.
+>
+> ### THREE OPEN, EACH CAUGHT BY A GUARD RATHER THAN A TEST
+>
+> 1. **The progress-format mismatch above.** The blocker.
+> 2. **`OfferHarvestForSelectedSlides`'s dialog mislabels and truncates.** All
+>    propagation detail is accumulated into the `collisions` string, so successful
+>    stamps print under a "Refused -- two fields matched one shape" header; and it
+>    hits `CapReport`'s 900-char cap mid-word, so collisions can be invisible.
+> 3. **Slide 27 has a shape already named `Text 216a` that is not the date.** The
+>    rename refused it. That slide's `END_DATE` will keep colliding.
+>
+> ### WHAT I GOT WRONG TWICE — READ THIS BEFORE THEORISING ABOUT THE MATCHER
+>
+> - **Theory 1: `POSITION_TOLERANCE_EMU` (1 inch) could not separate shapes 0.14"
+>   apart.** Wrong — arithmetic done properly gives a geometry gap of 0.075, and
+>   the two DO tie, but that was not why the fix failed.
+> - **Theory 2: a name tier above scoring.** Wrong, and the codebase said so:
+>   `Discovery.bas:22` reads *"shape name ... never used as an identity key"*. It
+>   turned a deliberately-drifted shape into a `high` auto-accept and broke
+>   `Onboarding_HighAndMediumConfidence` and
+>   `DeckAdoption_MediumConfidenceSlideNeedsConfirmation`. **Two tests were
+>   standing exactly where that rule needed guarding.** Name as a TIE-BREAK
+>   passes both.
+> - **The real cause was the deck, not the code:** only **4 of 44** slides carried
+>   the date shape names. The tie-break worked on those and nowhere else. 20 =
+>   6+6+4+4 was the tell, and it was in the counts the whole time.
+> - **COORDINATE SPACES.** A shape inside a group is stored group-relative in the
+>   slide XML; COM's `.Left`/`.Top` are absolute. The first rename dry run matched
+>   **0 of 88** because of this. The dates are at `y=3.16"` in the XML and
+>   `top=120.8pt` (1.68") via COM.
+>
+> ### DELIVERY COUNT IS 2 — AND THE COUNT HAS STOPPED MEASURING THE BLOCKED HALF
+>
+> Rohan, tonight: *"I've pressed that button several times in testing what more
+> can I do"*. He is right, and it is the second time he has said it (14 Aug: *"we
+> have proved we can push to slides over and over"*). **Publishing is proven.
+> Holding the count at 2 scores the half that works while the blocked half goes
+> unscored.** The blocked half is INPUT — the register has little worth
+> publishing:
+>
+> | | |
+> |---|---|
+> | 6 scalar fields | harvested on **1 of 43** slides |
+> | 21 milestone fields | cannot be read back at all — slot state lives in shape visibility (GAP 3) |
+> | `SECTOR`, `TRL` | no shape; Rohan chose to split them out, not built |
+> | `STRATEGIC_LINKAGES` | register column, no template tag, no values |
+> | `PROJECT_STATUS` | 17 values out of vocabulary, nothing enforcing it |
+>
+> Score that checklist, not the delivery count.
+>
+> ---
+
+> ## 14 AUG, ~23:10. **SUPERSEDED** by the block above.
 >
 > ### THE HARVEST DID NOT EXIST. IT DOES NOW, AND IT HAS NEVER RUN ON THE DECK.
 >

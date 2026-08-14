@@ -409,6 +409,16 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_Harvest_StoresSlideTextVerbatimRatherThanLettingExcelParseIt()
+    AppendResult report, "Harvest_StoresSlideTextVerbatimRatherThanLettingExcelParseIt", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous()
+    AppendResult report, "Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow()
     AppendResult report, "DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow", r
     On Error GoTo 0
@@ -4253,6 +4263,117 @@ Private Function Test_Harvest_PropagationStampsOnlyTheMissingRole() As String
     Test_Harvest_PropagationStampsOnlyTheMissingRole = result
 End Function
 
+' A HARVESTED VALUE IS STORED AS THE CHARACTERS THAT WERE ON THE SLIDE.
+'
+' `.Value = CStr(...)` looks like a string write and is not -- Excel parses
+' anything date-shaped or number-shaped. On the real deck this turned
+' "30 Oct 2023" into 45229 and "$275,598" into 275598: right values, formatting
+' gone, and publishing them back would put a serial number on a funder slide.
+'
+' Both fixtures are chosen because Excel WILL coerce them. A test using ordinary
+' prose would pass with or without the fix and prove nothing.
+Private Function Test_Harvest_StoresSlideTextVerbatimRatherThanLettingExcelParseIt() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "harvest-type"
+    sld.Tags.Add "instance_key", "h-4"
+
+    Dim dShp As Object
+    Set dShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 300, 50)
+    dShp.TextFrame.TextRange.Text = "30 Oct 2023"
+    dShp.Tags.Add "role", "START_DATE"
+
+    Dim mShp As Object
+    Set mShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 200, 300, 50)
+    mShp.TextFrame.TextRange.Text = "$275,598"
+    mShp.Tags.Add "role", "INDUSTRY_CASH"
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+    ws.Cells(1, 2).Value = "Quarter"
+    ws.Cells(1, 3).Value = "START_DATE"
+    ws.Cells(1, 4).Value = "INDUSTRY_CASH"
+    ws.Cells(2, 1).Value = "h-4"
+    ws.Cells(2, 2).Value = "Q4F26"
+
+    Dim o As HarvestOutcome
+    o = Harvest.HarvestSlide(sld, ws, "Q4F26", False)
+
+    result = result & Assert(o.Ran, "the harvest ran, problem was '" & o.Problem & "'")
+    result = result & Assert(o.Written = 2, "two values written, got " & o.Written)
+    result = result & Assert(CStr(ws.Cells(2, 3).Value) = "30 Oct 2023", _
+        "the date is stored as it appeared on the slide, got '" & CStr(ws.Cells(2, 3).Value) & "'")
+    result = result & Assert(CStr(ws.Cells(2, 4).Value) = "$275,598", _
+        "the money is stored as it appeared on the slide, got '" & CStr(ws.Cells(2, 4).Value) & "'")
+
+    wb.Close False
+    xl.Quit
+
+    Test_Harvest_StoresSlideTextVerbatimRatherThanLettingExcelParseIt = result
+End Function
+
+' Builds the real deck's date pair: same x, identical size, 0.14" apart -- which
+' is 128016 EMU, well inside POSITION_TOLERANCE_EMU's one inch, so geometry alone
+' cannot tell them apart. Measured from slide 2 of 3. Project Progress.pptx.
+Private Function DateCandidate(nm As String, yEmu As Long) As Candidate
+    Dim c As Candidate
+    c.Name = nm
+    c.ShapeType = "autoshape_or_textbox"
+    c.HasText = True
+    c.PositionX = 10876280           ' 11.89"
+    c.PositionY = yEmu
+    c.SizeCx = 1152144               ' 1.26"
+    c.SizeCy = 128016                ' 0.14"
+    DateCandidate = c
+End Function
+
+' A NAME DECIDES WHAT GEOMETRY CANNOT -- and only when it is unambiguous.
+'
+' Both halves are asserted because they fail in opposite directions. Without the
+' name tier, END_DATE's reference scores ~0.87 and ~0.98 against the two
+' candidates and picks the WRONG one (or ties with START_DATE and collides).
+' With a name tier that fired on ambiguous names, the duplicate-name case would
+' return an arbitrary one of four `Shape 16`s as "high" confidence -- which is a
+' guess wearing a certainty's label, and worse than falling through to scoring.
+Private Function Test_Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous() As String
+    Dim result As String
+
+    Dim candidates(1 To 2) As Candidate
+    candidates(1) = DateCandidate("Text 212a", 2889504)      ' 3.16"
+    candidates(2) = DateCandidate("Text 216a", 3026664)      ' 3.31"
+
+    ' The template's END_DATE: nearer candidate 2, but well within one inch of both.
+    Dim reference As Candidate
+    reference = DateCandidate("Text 216a", 3035808)          ' 3.32"
+
+    Dim r As MatchResult
+    r = Matching.Match(candidates, reference)
+
+    result = result & Assert(r.HasCandidate, "a candidate was chosen")
+    result = result & Assert(r.CandidateIndex = 2, _
+        "the shape with the MATCHING NAME was chosen, got index " & r.CandidateIndex)
+    result = result & Assert(r.Reason = "sibling ambiguity resolved by matching shape name", _
+        "and it says so, got '" & r.Reason & "'")
+
+    ' AMBIGUOUS NAMES MUST FALL THROUGH, not resolve arbitrarily. Rohan's slide 1
+    ' carries four shapes called 'Shape 16'.
+    Dim dupes(1 To 2) As Candidate
+    dupes(1) = DateCandidate("Shape 16", 2889504)
+    dupes(2) = DateCandidate("Shape 16", 3026664)
+
+    Dim dupRef As Candidate
+    dupRef = DateCandidate("Shape 16", 3035808)
+
+    Dim d As MatchResult
+    d = Matching.Match(dupes, dupRef)
+    result = result & Assert(d.Reason <> "sibling ambiguity resolved by matching shape name", _
+        "a duplicated name does NOT resolve by name, got reason '" & d.Reason & "'")
+
+    Test_Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous = result
+End Function
+
 Private Function Test_DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow() As String
     Dim result As String
 
@@ -5229,6 +5350,28 @@ Private Function Test_DeckRegistry_SaveDeckVerifiedProvesTheFileMoved() As Strin
         "a deck that can be saved reports no problem, got '" & problem & "'")
     result = result & Assert(fso.GetFile(testPath).DateLastModified > before, _
         "and the file on disk is genuinely newer than before the save")
+
+    ' NOTHING PENDING IS NOT A FAILURE -- and it must not cost a rewrite to say so.
+    '
+    ' Called again with no change made, the timestamp cannot advance. Before
+    ' 2026-08-14 that ambiguity was resolved the wrong way: "the mtime did not
+    ' move" was read as "THE DECK WAS NOT SAVED" about a deck that was saved,
+    ' after forcing a full SaveAs of a 49MB file to find out. Seen for real on a
+    ' harvest run that labelled 0 shapes.
+    '
+    ' BOTH assertions are needed. The first alone would pass if the function
+    ' rewrote the file -- the timestamp would advance and it would report
+    ' success for the wrong reason. The second is what proves it took the
+    ' nothing-to-do path instead of paying for the answer.
+    Dim afterFirst As Date
+    afterFirst = fso.GetFile(testPath).DateLastModified
+
+    Dim secondProblem As String
+    secondProblem = DeckRegistry.SaveDeckVerified(testPres)
+    result = result & Assert(secondProblem = "", _
+        "a deck with nothing pending reports no problem, got '" & secondProblem & "'")
+    result = result & Assert(fso.GetFile(testPath).DateLastModified = afterFirst, _
+        "and it did not rewrite the file to establish that")
 
     ' A presentation that has never been written to a file must be REFUSED with
     ' an explanation, not silently reported as saved.

@@ -299,8 +299,11 @@ Public Function HarvestSlide(sld As Object, ws As Object, period As String, _
         End If
     Next fieldName
 
+    ' asText:=True -- the harvest's contract is "what is on the slide", and
+    ' `.Value = CStr(...)` is not a string write: Excel parses "30 Oct 2023" into
+    ' a serial and "$275,598" into 275598. Proven on the real deck 2026-08-14.
     If outcome.Written > 0 And Not dryRun Then
-        ExcelOutput.UpsertRow ws, inst.InstanceKey, toWrite, period
+        ExcelOutput.UpsertRow ws, inst.InstanceKey, toWrite, period, True
     End If
 
     outcome.Ran = True
