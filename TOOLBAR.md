@@ -1,19 +1,25 @@
 # The toolbar: three buttons, three chains
 
-> **DESIGN DOC. ITS UI DESCRIPTION IS SUPERSEDED — corrected 2026-08-14.** The toolbar has **two**
-> buttons, not three: `CommandBarUI.AddButton` is called exactly twice, for
-> `CAP_SYNC_NOW` ("1. Sync Now" → `RibbonUI.SyncNowChain`) and `CAP_REBUILD_SHEETS`
-> ("2. Rebuild my sheets" → `DraftingUI.RefreshDraftingSheets`).
+> **DESIGN DOC. ITS UI DESCRIPTION IS SUPERSEDED — rewritten 2026-08-14 (night).** The toolbar is **three
+> buttons again** -- but not the three below. It now splits by ARTIFACT, not by step:
 >
-> The three-chain split below (`1. Start the quarter` / `2. Draft and publish` /
-> `3. Put it on the slides`) was collapsed into the single `Sync Now` chain. Its caption
-> constants still exist in `CommandBarUI` and are **dead** — 17 of the 19 `CAP_*`
-> constants are never used to build anything.
+> | caption constant | caption | action |
+> |---|---|---|
+> | `CAP_SET_UP_QUARTER` | `1. Set up my quarter` | `RibbonUI.SyncNowChain` -- workbook side |
+> | `CAP_PUT_ON_SLIDES` | `2. Put it on the slides` | `RibbonUI.PutItOnTheSlides` -- deck side |
+> | `CAP_REVIEW_ONLY` | `Review changes (writes nothing)` | `RibbonUI.ReviewChanges` |
 >
-> **The reasoning below is still the governing rule** and is why the current chain is
-> wrong in the way Rohan named on 14 Aug: three of its prompts have an invariant answer,
-> which is precisely the "boundary with no decision in the gap" this file argues against.
-> Read it as the standard the two-button chain fails, not as a description of the UI.
+> **NEITHER SIDE CAN TRIGGER THE OTHER.** The boundary is where the person stops typing.
+> That coupling is what wiped 43 approve ticks on 2026-08-14: a press meant to PUBLISH
+> rebuilt the sheets first.
+>
+> `CAP_REBUILD_SHEETS` and its button are **deleted**. Its tooltip said "use this when a
+> drafting sheet looks wrong", which is a defect with instructions attached rather than a
+> capability; `RefreshDraftingSheets` still runs inside button 1.
+>
+> **The reasoning below is still the governing rule**, and the chain it criticised has now
+> been cut to ONE approval (the review tick) plus two selections. The field picker it
+> would also have condemned is deleted outright: publish now walks every field.
 
 
 Was 16 buttons across three bars. This is the design that replaces them, and

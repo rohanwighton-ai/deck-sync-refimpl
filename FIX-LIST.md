@@ -780,9 +780,17 @@ line.
 
 ## What is built and verified
 
-- **Two buttons** (`1. Sync Now`, `2. Rebuild my sheets`) with every capability
-  reached from inside the chain; `check_vba_static.py` fails the build on an
-  orphan and caught nine during the refactor.
+> **SUPERSEDED IN PART, 2026-08-14 night.** The two buttons named below are gone.
+> The toolbar is now `1. Set up my quarter` / `2. Put it on the slides` /
+> `Review changes (writes nothing)`, split by ARTIFACT so neither side can trigger
+> the other, and `Rebuild my sheets` is deleted outright. `Layout 4` below is now
+> **layout 5**. The verification records are still true of the day they were made.
+
+> - **Two buttons** (`1. Sync Now`, `2. Rebuild my sheets`) with every capability
+>   reached from inside the chain; `check_vba_static.py` fails the build on an
+>   orphan and caught nine during the refactor. *(Superseded — see the banner above.
+>   Kept inside the quote because it is a record of that day, not a description of
+>   the tool.)*
 - **The whole quarter loop ran through them**, verified from file bytes: period
   set and confirmed on disk, 43 rows rolled forward, a second roll refused,
   `PendingApprovals` fired on its first real press, three fields written to

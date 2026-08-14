@@ -1,6 +1,123 @@
 # NEXT SESSION — start here
 
-> ## 14 AUG, NIGHT (~19:00). **STATUS: CURRENT.** Everything below is historical.
+> ## 14 AUG, LATE NIGHT (~22:15). **STATUS: CURRENT.** Everything below is historical.
+>
+> ### THE THING THAT CHANGED TONIGHT: DRAFTING → REGISTER WORKS.
+>
+> `3_P001`, `KEY_EVENTS_BODY`, 272 chars, published **by button**, 20:45.
+> That link had never once run in this project's life. S5 is closed.
+>
+> ### FIRST ACTION TOMORROW: **THE HARVEST.** Nothing else comes first.
+>
+> There are roughly **1,247 values** — 29 `Given` fields × 43 projects — sitting on the
+> slides and **nowhere else**. Read from the register tonight: `START_DATE`, `END_DATE`,
+> `INDUSTRY_CASH`, `TOTAL_VALUE`, `PROJECT_LEAD`, `SECTOR`, `TRL`, `SUBTITLE_A`, every
+> `MS*_LABEL/_DATE/_DONE` — **0 of 43 rows populated**. `PROJECT_STATUS` (43) and
+> `PROJECT_PROGRESS` (1) are the only non-prose fields with anything in them.
+>
+> Tagging is not a chore, it is what makes harvesting possible: an untagged shape is
+> anonymous, so the tool can neither read from it nor write to it. **Tag once on the
+> template, harvest, and the register fills itself from the deck.** Nobody types 1,247
+> values.
+>
+> **Do not do the quarter turn before the harvest** — it would roll forward emptiness.
+>
+> ### STATE, READ FROM FILES
+>
+> - **`addin88` is the only registered add-in**, `AutoLoad=1`, confirmed loaded.
+> - Suite **194 passed / 0 failed**. Compile clean, 33 modules. Static clean.
+> - Commits tonight: `a9f52b7`, `6c74912`, `3e7db62`, `db364b3`, `d1278b4`, `368d873`.
+>   All pushed.
+> - Register **394,082 bytes**, zip integrity OK, 39 sheets. Drafting sheets at
+>   **layout 5**, 43 rows / 43 SUBMIT each; `PROGRESS_BODY` holds its 43 approve ticks.
+> - Review queue **open, nothing applied**: 32 rows ticked = the 19 INVISIBLE changes only
+>   (punctuation and casing). The 36 visible ones are deliberately unticked.
+> - Backups tonight: `PRE-ADDIN86-20260814-185040`, `GOOD-STATE-20260814-202633`,
+>   `register-wide.PRE-RESTORE-MIGRATION-*`, `register-wide.PRE-TICKSET-*`.
+>
+> ### THE TOOLBAR IS THREE BUTTONS, SPLIT BY ARTIFACT
+>
+> `1. Set up my quarter` (workbook) · `2. Put it on the slides` (deck) ·
+> `Review changes (writes nothing)`. **Neither side can trigger the other** — that coupling
+> is what wiped 43 approve ticks in the morning. Seven dialogs became **one approval (the
+> review tick) plus two selections**. The field picker is **deleted**, not improved:
+> publish walks every Prose field. `Rebuild my sheets` is deleted — "press this when a
+> sheet looks wrong" is a defect with instructions attached.
+>
+> ### WHAT COST THE EVENING, AND WHAT IT TAUGHT
+>
+> **`MigrateSheetLayout` wiped every drafting sheet on the real workbook at 19:11** — 129
+> drafted paragraphs, 43 approve ticks, 75 notes. **All recovered**, 412 values verified
+> through Excel against the backup, 0 overwritten.
+>
+> The defect was a **bootstrap error**: `sheetLayout` was read at `COL_D_LAYOUT` and
+> `sheetPeriod` at `COL_D_PERIOD` — the CURRENT layout's stamp columns. *You need the
+> layout to know where the layout stamp is.* On a layout-4 sheet those cells hold the
+> prompt and nothing, so the version came back 0, `layoutMatches` went False, the
+> whole-sheet clear fired, and the migration — guarded on the same flag — never ran.
+> **Fixed:** `DetectLayoutFromRow` searches the intro row right-to-left; the period is then
+> read at *that* layout's position.
+>
+> **The test that should have caught it encoded the bug.** Its fixture wrote layout-3 DATA
+> under layout-5 STAMPS — a sheet that has never existed — and passed only because the
+> reading code made the same mistake. That is why 192 green tests certified a defect that
+> destroys real work.
+>
+> ### ALSO SHIPPED, EACH PROVEN BY A DELIBERATE BREAK
+>
+> - **The pairing cross-wiring hole.** `specs/deck-registry.md` claimed the deck↔workbook
+>   pairing "closes the cross-wiring risk". It did not: the workbook's `DeckReference` GUID
+>   was written once at onboarding and **never read for its purpose**. Now stamped on both
+>   ends at repoint and checked before every register write. A blank stamp is NOT a
+>   mismatch — every pre-existing register has one.
+> - **Discovery is device-aware.** A group with slots is ONE candidate. The timeline used to
+>   present as 21 fields to hand-tag.
+> - **The test runner stopped closing your Office windows** and now clears more than one
+>   husk (`Count -ne 1` meant one husk self-heals and two are permanent).
+>
+> ### WHAT ROHAN'S QUESTIONS DELETED — the pattern, again
+>
+> - *"It shouldn't have to ask"* → deleted the field picker, its wording, and the
+>   Excel-focus bug just built for it.
+> - *"What happens when I tag them?"* → reordered the plan. Tagging enables the HARVEST.
+> - *"I don't have 26 duplicate slides"* → stopped a deck-integrity hunt. Read the deck:
+>   43 `INSTANCE_KEY`, 44 `SLIDE_TYPE`, clean. The duplicates are 30 **queue rows** with
+>   identical ChangeIDs.
+> - *"I thought the only generative text was coming from drafting sheets"* → exposed that
+>   the review queue shows every register↔slide difference regardless of origin. Of 55
+>   queued changes, **one** came from tonight's drafting.
+>
+> ### OPEN, NAMED
+>
+> 1. **The harvest** — the 1,247 values. Everything queues behind it.
+> 2. **`GAP 3` is hours, not a build.** `MilestoneDevice.bas:630` already writes
+>    `shp.Visible`; the template already carries `MS1_ON/_NOW/_OFF` … `MS7`. Expose it as a
+>    field behaviour. `EXPECTED-TRACE`'s "no `.Visible` write anywhere" is **wrong** and now
+>    annotated as such.
+> 3. **The review queue emits duplicate rows** — 85 rows for 55 changes, identical
+>    ChangeIDs. Cosmetic; Rohan ranked it below connectivity.
+> 4. **`PROJECT_STATUS` has no vocabulary enforcement.** 17 values out of list tonight,
+>    reported and not written.
+> 5. **`STRATEGIC_LINKAGES` now HAS a register column** (added tonight with 16 others) but
+>    no values and no template tag.
+> 6. The unsaved-workbook prompt before review always answers Yes — a save-and-report, not
+>    a question. And something after publish dirties the workbook without saving.
+>
+> ### DOCUMENT CONTROL, DONE THIS SESSION
+>
+> `TOOLBAR.md`, `WORKFLOW.md`, `FIX-LIST.md` and `EXPECTED-TRACE-2026-08-14.md` were
+> scanned and corrected where tonight made them false — button names, layout 4 → 5 column
+> letters, and the wrong `.Visible` claim. **Historical records were annotated, not
+> rewritten.** `NEXT-SESSION.md`'s older blocks quote past suite counts; those are dated
+> observations and stay as they are.
+>
+> **Delivery count is 2.** Tonight's 8 `PROJECT_STATUS` writes applied ticks made at 16:51,
+> for a field already delivered on 8 August. The machinery moved a long way; the count did
+> not.
+>
+> ---
+
+> ## 14 AUG, NIGHT (~19:00). **SUPERSEDED** by the block above.
 >
 > ### FIRST ACTION: SAVE `addin86`, THEN PRESS `1. Sync Now` AND WALK THE LOOP.
 >

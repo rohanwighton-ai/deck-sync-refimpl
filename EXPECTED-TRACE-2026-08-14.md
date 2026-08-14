@@ -58,7 +58,7 @@ Today there are two, in series, and they are shaped differently:
 
 | gate | scope | what it asks |
 |---|---|---|
-| **Publish** (`PublishDraftsForField`) | **ONE FIELD** — `FieldForRun` asks which | tick column G on the drafting sheet |
+| **Publish** (`PublishDraftsForField`) | ~~**ONE FIELD** — `FieldForRun` asks which~~ **EVERY field, asks nothing (2026-08-14 night)** | tick column **H** on the drafting sheet (was G under layout 4; layout 5 inserted `REPORTED LAST TIME` at D) |
 | **Review** (`ReviewChangesCore` → `WriteQueueSheet`) | compiled, per entity+field (`ChangeHash`) | approve each proposed slide change |
 
 The compiled view he wants **exists** — it is the review queue. What does not exist is
@@ -70,6 +70,13 @@ This is very likely the root of the tick confusion: two approval moments, and he
 for one.
 
 ### GAP 3 — shape visibility is not supported at all. (step 4)
+
+**THIS PARAGRAPH IS WRONG -- corrected 2026-08-14 night.** There IS a `.Visible` write:
+`MilestoneDevice.bas:630` sets `shp.Visible` and it works. It is `Private` to that module
+and drives the milestone slot circles, whose ON/NOW/OFF triples are already named on the
+real template. So GAP 3 is EXPOSING an existing mechanism as a field behaviour, not
+building one -- hours, not the "entirely unbuilt" this section claims. The original text
+follows.
 
 Searched `InjectPrimitive` and `FieldSpec`: there is **no `.Visible` write anywhere**, and
 `Behaviour` is not what he thinks it is. Its only values are:

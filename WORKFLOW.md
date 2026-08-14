@@ -2,14 +2,19 @@
 
 > **STALE IN PART — read `NEXT-SESSION.md` first.** Written when the toolbar had
 > numbered steps (`0. Start a Quarter`, `Setup A/A2/B`, `0b. Roll Forward`). **Those
-> buttons no longer exist** — since 2026-08-09 the toolbar is TWO buttons, `1. Sync Now`
-> and `2. Rebuild my sheets`, and every step below is reached from inside those chains.
+> buttons no longer exist** — and neither do their replacements. Since 2026-08-14 the
+> toolbar is THREE buttons split by artifact: `1. Set up my quarter` (workbook side),
+> `2. Put it on the slides` (deck side), and `Review changes (writes nothing)`. Neither
+> side can trigger the other. Every step below is reached from inside those.
 > Periods are also written `Q3F26` now, not `FY26Q4`. The DESCRIPTIONS of what each stage
 > does are still accurate; only the way you reach them is wrong.
 >
-> **COLUMN LETTERS BELOW ARE WRONG (corrected 2026-08-14).** This file says drafts go in
-> **G** and the tick in **I**; that was layout 3. `Drafting.bas` has been layout 4 for
-> some time and the constants are authoritative:
+> **COLUMN LETTERS BELOW ARE WRONG (corrected 2026-08-14, again).** This file says drafts
+> go in **G** and the tick in **I**; that was layout 3. `DRAFT_LAYOUT_VERSION` is now **5**
+> -- a `REPORTED LAST TIME` column was inserted at D and everything from SOURCES rightwards
+> moved one right. The constants in `Drafting.bas` are authoritative; the current set is
+> C CURRENT, D REPORTED LAST TIME, E SOURCES, F AI DRAFT, **G SUBMIT**, **H APPROVE**,
+> K NOTES:
 >
 > | col | constant | meaning |
 > |---|---|---|
