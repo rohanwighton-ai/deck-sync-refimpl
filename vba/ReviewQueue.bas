@@ -594,7 +594,26 @@ End Function
 ' Replacing rather than merging is what enforces R13.5: a new build cannot
 ' inherit an old build's approvals, because the old rows are gone. There is no
 ' code path that preserves a tick across a rebuild.
+'
+' THAT CLAIM WAS FALSE UNDER A FILTER, AND IT IS THE ONLY SAFETY PROPERTY THIS
+' SUB HAS. 2026-08-15, on the real register: with an AutoFilter live on this
+' sheet (ref A2:H108, 60 rows hidden), a rebuild left 108 rows where 57 were
+' written -- 21 of them holding a change id and nothing else, 26 change ids
+' duplicated, and 13 rows carrying Y. Those Y marks were approvals no human
+' made, sitting on the sheet the apply path reads. Because approval is applied
+' by CHANGE ID and a duplicated id appears on both copies, one stale tick
+' approves its invisible twin. Removing the filter and rebuilding produced the
+' correct 57-row grid, twice.
+'
+' So the filter is dropped before the clear, and the rows are unhidden with it:
+' ReadQueueSheet walks hidden rows exactly like visible ones, and a review grid
+' whose rows a person cannot see is a grid they cannot honestly approve.
 Public Sub WriteQueueSheet(ws As Object, q As ReviewQueueSet)
+    On Error Resume Next
+    ws.AutoFilterMode = False
+    ws.Rows.Hidden = False
+    On Error GoTo 0
+
     ws.Cells.Clear
 
     ws.Cells(ROW_BANNER, 1).Value = "SYNC REVIEW -- " & q.SlideType
@@ -635,6 +654,27 @@ Public Sub WriteQueueSheet(ws As Object, q As ReviewQueueSet)
         ws.Cells(r, COL_APPROVE).Value = IIf(q.Items(i).Approved, "Y", "")
         ws.Cells(r, COL_HASH).Value = q.Items(i).ChangeHash
     Next i
+
+    ' PROVE THE CLEAR CLEARED, RATHER THAN ASSERTING IT IN A COMMENT.
+    '
+    ' Reads the first cell BELOW the grid just written, in COL_HASH -- the exact
+    ' column ReadQueueSheet terminates its walk on. So this tests the property the
+    ' reader actually depends on, not something adjacent to it: if anything is
+    ' there, the reader will consume it as a change and honour any Y beside it.
+    '
+    ' Raises rather than warns. A residue row is indistinguishable from a real one
+    ' to everything downstream, and the failure mode is applying changes nobody
+    ' approved -- there is no safe way to continue and let the person decide.
+    If Trim(CStr(ws.Cells(ROW_FIRST_ITEM + q.Count, COL_HASH).Value)) <> "" Then
+        Err.Raise vbObjectError + 613, "ReviewQueue.WriteQueueSheet", _
+            "'" & ws.Name & "' still holds rows below the " & q.Count & _
+            " just written, so clearing it did not clear it." & vbCrLf & vbCrLf & _
+            "Those leftover rows carry change IDs, and approval is applied by " & _
+            "change ID -- so a tick on one could apply a change nobody reviewed." & _
+            vbCrLf & vbCrLf & _
+            "NOTHING HAS BEEN APPLIED. Remove any filter or sort from that sheet, " & _
+            "then run this again."
+    End If
 
     ' 8pt, matching every other sheet the tools write. Two 55-wide text
     ' columns side by side do not fit on a screen at 11pt, and comparing

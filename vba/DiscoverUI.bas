@@ -173,7 +173,34 @@ Public Function BuildDiscoverySheet(sld As Object, wb As Object) As String
     ' --- the sheet ------------------------------------------------------
     Dim ws As Object
     Set ws = WorkbookBridge.GetOrAddWorksheet(wb, DISCOVERY_SHEET)
-    ws.Cells.Clear
+
+    ' THE CLEAR IS GONE, AND A CARRY DID NOT REPLACE IT.
+    '
+    ' This used to be `ws.Cells.Clear`. The only thing that bought was avoiding
+    ' stale rows BELOW the new grid when a slide lost a shape -- a tail problem,
+    ' solved by wiping the whole sheet including columns F and G, which are the
+    ' two the sheet's own row 3 instructs a person to type into, and which
+    ' ApplyDiscoverySheet reads back. Marking a slide, declining to apply, and
+    ' pressing Discover Fields again silently destroyed the marks -- directly
+    ' contradicting the message the tool shows on decline: "The grid is still
+    ' there if you want to come back to it."
+    '
+    ' Rohan, 2026-08-15: "why is clear needed there?" It is not. The first
+    ' answer drafted was to read F and G into a dictionary and write them back
+    ' afterwards, which is a carry, which is a backup around a destructive call
+    ' -- the tell DOCUMENT-MAP decision 1 names outright. The call goes instead.
+    '
+    ' So an existing row is UPDATED WHERE IT SITS, matched on the shape id the
+    ' grid already carries in column A. The row never moves, so a person's mark
+    ' cannot end up beside a different shape, and nothing has to be held in
+    ' memory during the write.
+    Dim rowById As Object
+    Set rowById = ExistingRowsById(ws)
+
+    ' A sheet with no rows to preserve is still built from scratch -- and this
+    ' clear also drops stale FORMATTING from an earlier layout, which a
+    ' ClearContents would leave behind.
+    If rowById.count = 0 Then ws.Cells.Clear
 
     ws.Cells(1, 1).Value = "FIELD DISCOVERY  --  every text shape on your template slide"
     ws.Cells(1, 1).Font.Bold = True
@@ -193,8 +220,26 @@ Public Function BuildDiscoverySheet(sld As Object, wb As Object) As String
     ws.Rows(HEADER_ROW).Font.Bold = True
     ws.Rows(HEADER_ROW).WrapText = True
 
+    ' The append cursor sits below every row already on the sheet, so a shape
+    ' that is genuinely new lands at the bottom rather than on top of somebody
+    ' else's row. New shapes therefore break reading order, which is the honest
+    ' trade: reading order is a convenience, a mark landing beside the wrong
+    ' shape is a data defect.
     Dim r As Long, written As Long
     r = FIRST_ROW
+    Dim rk As Variant
+    For Each rk In rowById.Keys
+        If rowById(rk) >= r Then r = rowById(rk) + 1
+    Next rk
+
+    ' Every shape id this run has seen, so rows for shapes that have left the
+    ' slide can be identified after the loop rather than guessed at.
+    Dim seen As Object
+    Set seen = CreateObject("Scripting.Dictionary")
+
+    Dim maxRow As Long
+    maxRow = FIRST_ROW - 1
+
     Dim k As Long
     For k = LBound(order) To UBound(order)
         Dim i As Long
@@ -210,17 +255,50 @@ Public Function BuildDiscoverySheet(sld As Object, wb As Object) As String
             On Error GoTo 0
             txt = Replace(Replace(Replace(txt, vbCrLf, " / "), vbCr, " / "), vbLf, " / ")
 
-            ws.Cells(r, COL_ID).Value = shp.Id
-            ws.Cells(r, COL_SHAPE).Value = "'" & cands(i).Name
-            ws.Cells(r, COL_WHERE).Value = "'" & cands(i).GroupPath
-            ws.Cells(r, COL_TEXT).Value = "'" & txt
-            ws.Cells(r, COL_CHARS).Value = Len(txt)
-            ws.Cells(r, COL_TYPE).Value = "text"
-            ws.Cells(r, COL_VOL).Value = "variable"
+            ' Where this shape's row is: the one it already had, or a new one at
+            ' the bottom. COLUMNS F AND G ARE NOT TOUCHED IN EITHER CASE -- on an
+            ' existing row they are the person's marks and must survive; on a
+            ' fresh row they are already empty.
+            Dim idKey As String
+            idKey = CStr(shp.Id)
+
+            Dim tr As Long
+            If rowById.Exists(idKey) Then
+                tr = rowById(idKey)
+            Else
+                tr = r
+                r = r + 1
+            End If
+            seen(idKey) = True
+            If tr > maxRow Then maxRow = tr
+
+            ws.Cells(tr, COL_ID).Value = shp.Id
+            ws.Cells(tr, COL_SHAPE).Value = "'" & cands(i).Name
+            ws.Cells(tr, COL_WHERE).Value = "'" & cands(i).GroupPath
+            ws.Cells(tr, COL_TEXT).Value = "'" & txt
+            ws.Cells(tr, COL_CHARS).Value = Len(txt)
+            ws.Cells(tr, COL_TYPE).Value = "text"
+            ws.Cells(tr, COL_VOL).Value = "variable"
             written = written + 1
-            r = r + 1
         End If
     Next k
+
+    ' ONLY the rows whose shape has left the slide. This is the tail problem the
+    ' old whole-sheet clear was really solving, solved where it actually lives --
+    ' and a row is cleared entirely, marks included, because the shape those
+    ' marks referred to no longer exists.
+    Dim gone As Long
+    For Each rk In rowById.Keys
+        If Not seen.Exists(CStr(rk)) Then
+            ws.Range(ws.Cells(rowById(rk), COL_ID), ws.Cells(rowById(rk), COL_VOL)).Clear
+            gone = gone + 1
+        End If
+    Next rk
+
+    ' The formatting below addresses rows FIRST_ROW..r-1, so `r` must end one
+    ' past the last row in use -- which is the append cursor only when nothing
+    ' was updated in place further down the sheet.
+    If maxRow + 1 > r Then r = maxRow + 1
 
     ws.Cells.Font.Size = 8
     ws.Cells(1, 1).Font.Size = 9
@@ -242,7 +320,59 @@ Public Function BuildDiscoverySheet(sld As Object, wb As Object) As String
     ws.Range(ws.Cells(FIRST_ROW, COL_INCLUDE), ws.Cells(r - 1, COL_FIELD)).Interior.Color = RGB(255, 249, 219)
     ws.Columns(COL_TEXT).Interior.Color = RGB(242, 242, 242)
 
+    ' Says what SURVIVED, not just what was written. A person who marked rows
+    ' and came back needs to know their marks are still there without having to
+    ' go and look -- and if the number is ever 0 when they expected otherwise,
+    ' that is the bug report.
+    Dim kept As Long
+    kept = CountMarks(ws, r - 1)
+
     BuildDiscoverySheet = written & " text shape(s) listed in '" & DISCOVERY_SHEET & "'."
+    If kept > 0 Then
+        BuildDiscoverySheet = BuildDiscoverySheet & "  " & kept & _
+            " existing mark(s) kept."
+    End If
+    If gone > 0 Then
+        BuildDiscoverySheet = BuildDiscoverySheet & "  " & gone & _
+            " row(s) removed for shapes no longer on the slide."
+    End If
+End Function
+
+' The shape id -> row map the in-place update needs, read from the grid itself
+' rather than held across a rebuild.
+'
+' Walks from FIRST_ROW while column A holds an id, which is how every other
+' reader of a tool-written grid in this project finds the end (ReadQueueSheet
+' does the same on its hash column). Returns an empty dictionary for a sheet
+' that has never been built, which is what makes the fresh-build branch a
+' count test rather than a separate existence check.
+Private Function ExistingRowsById(ws As Object) As Object
+    Dim d As Object
+    Set d = CreateObject("Scripting.Dictionary")
+
+    Dim r As Long
+    r = FIRST_ROW
+    Do While Trim(CStr(ws.Cells(r, COL_ID).Value)) <> ""
+        d(Trim(CStr(ws.Cells(r, COL_ID).Value))) = r
+        r = r + 1
+    Loop
+
+    Set ExistingRowsById = d
+End Function
+
+' How many rows a person has actually marked -- a Y in F, or a name typed in G.
+' Counts either, because a name with no Y is still work somebody did and still
+' something a rebuild must not lose.
+Private Function CountMarks(ws As Object, lastRow As Long) As Long
+    Dim n As Long, r As Long
+    For r = FIRST_ROW To lastRow
+        If ReviewQueue.IsApprovalMark(CStr(ws.Cells(r, COL_INCLUDE).Value)) Then
+            n = n + 1
+        ElseIf Trim(CStr(ws.Cells(r, COL_FIELD).Value)) <> "" Then
+            n = n + 1
+        End If
+    Next r
+    CountMarks = n
 End Function
 
 ' Reads the grid back and marks what was ticked. Re-discovers the slide rather

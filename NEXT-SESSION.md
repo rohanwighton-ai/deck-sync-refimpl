@@ -1,6 +1,134 @@
 # NEXT SESSION — start here
 
-> ## 15 AUG, ~06:45. **STATUS: CURRENT.** Everything below is historical.
+> ## 15 AUG, ~08:30. **STATUS: CURRENT.** Everything below is historical.
+>
+> ### SCENARIO 6 IS CLOSED ON REAL SLIDES. DELIVERY COUNT IS 3.
+>
+> **Read `SCENARIOS.md` first** — status is re-derived from the code there, and scenario 6
+> now carries its evidence.
+>
+> ### WHAT WAS DELIVERED
+>
+> **`PROJECT_STATUS` corrected on 8 real slides, by button, unaided.** Review -> one `Y`
+> in `F38` -> `2. Put it on the slides` -> Yes. One tick covered eight changes via
+> `PropagateBatchApprovals`. **Verified from the saved `.pptx` against the pre-write
+> backup**, never from a dialog: before 8 slides `'Not started'` + 1 already `'Not
+> Started'`; after 0 + 9. The untouched ninth is why "8 written" was honest. The check was
+> demonstrated to discriminate (different answers on the two files). Backup confirmed on
+> disk at `AppData\Local\deck-sync-backups\...r13-20260815-074533.bak.pptx`, written
+> outside the synced folder.
+>
+> This also settled, by button rather than by decision, the `PROJECT_STATUS` casing
+> question `COLUMNS.md` lists as open — the register's vocabulary won. Reversible from
+> that backup if the deck should have won instead.
+>
+> ### BUILD STATE
+>
+> - **`addin96`, stamp `2026-08-15 08:14`, is the loaded add-in.** `addin95` (07:04) was
+>   ticked off. Copies in `OneDrive\Claude\` and the trusted `AppData\Roaming\Microsoft\
+>   AddIns\`, md5 `15e044d096cd05b7957b1ff5667dda46`, hash-verified across both.
+> - **Suite 202/0. `COMPILE OK: whole project compiled clean (34 modules).`** Static
+>   checks clean across 35 modules; all three module lists satisfied.
+> - **24 stale `.ppam` files** now clutter the AddIns folder. Still worth a purge.
+>
+> ### THE DEFECT THAT ATE THE EVENING, AND ITS FIX (PROVEN)
+>
+> **A review grid rebuilt under a live Excel AutoFilter did not clear.** On the real
+> register: 108 rows where 57 were written, 21 rows carrying a change id and nothing else,
+> 26 change ids duplicated, and **13 rows pre-ticked `Y` that no human typed** — including
+> a second copy of the batch (`B1` unapproved, `B2` approved). Because approval applies by
+> CHANGE ID and both copies share one, a single stale tick approves its invisible twin.
+> `BuildQueue` and `WriteQueueSheet` were both innocent; reading them found nothing.
+>
+> **Fixed in `ReviewQueue.WriteQueueSheet`:** drop `AutoFilterMode` and unhide rows before
+> the clear, then assert `COL_HASH` is empty on the row below the grid and raise if not.
+> **Proven by before/after on the same input condition** — filter on, rebuild: was 108
+> rows / 21 orphans / 26 dupes / 13 phantom ticks / filter kept / 60 hidden; now **49 rows
+> / 0 / 0 / 0 / filter gone / 0 hidden**, banner `08:20:29`, reconciling independently with
+> the dialog's "47 changes".
+>
+> **The `Err.Raise` backstop has never fired and is NOT tested.** It guards a condition the
+> filter drop now prevents, so it cannot be exercised from the UI without breaking
+> `Cells.Clear` itself. The filter drop is what does the work.
+>
+> ### SHIPPED BUT COMPLETELY UNTESTED — DO THIS BEFORE TRUSTING IT
+>
+> **`DiscoverUI.BuildDiscoverySheet` no longer clears the sheet.** It wiped a grid whose
+> own row 3 tells a person to type in columns F and G, contradicting the tool's own "the
+> grid is still there if you want to come back to it". Rows are now matched by shape id and
+> updated in place, new shapes append, and only rows for departed shapes are cleared. Two
+> new private helpers, `ExistingRowsById` and `CountMarks`; the result message reports marks
+> kept and rows removed.
+>
+> **It has never run.** And it is NOT reachable by a button: `DiscoverFields` is called only
+> from inside `1. Set up my quarter` after answering **Yes**, immediately followed by
+> `BatchOnboardFlow.BatchOnboardType`, on a path that also runs `StartQuarter`. So testing
+> it means running setup — do it on the snapshot, not the live pair.
+>
+> **The fixture is already perfect and is sitting in the live register:** the `Field
+> Discovery` sheet holds **59 rows, all 59 shape ids matching slide 44, and 9 already
+> marked**. Old code destroys those 9; new code must report *"9 existing mark(s) kept."*
+> Register backed up first at `OneDrive\Claude\backups\PREDISCOVER-20260815-0826.xlsx`.
+>
+> ### ROHAN'S RULING, CAPTURED — READ BEFORE TOUCHING ANY `Clear`
+>
+> **The archive is last quarter's FILE. `REPORTED LAST TIME` is not storage.** His words:
+> *"I can go back to previous quarters non destroyed drafting sheets to see field progeny,
+> it is only in the new quarter for some of the ai tools and human to use its structure and
+> narrative consistency."* Recorded as `DOCUMENT-MAP.md` decision **6** and
+> `claude-brain/DECISIONS.md` 2026-08-15, plus a memory file. **Kills as a category:**
+> ferrying more columns "so nothing is lost", widening `REPORTED LAST TIME` into a history,
+> or adding a park/refusal around the rollover clear.
+>
+> **The live gap it exposes:** file-per-quarter is DECIDED, NOT BUILT — the register still
+> stacks `Q3F26`/`Q4F26`/`Q1F27` in one workbook, so the rollover clear fires in the only
+> copy. **Until it is built, `ParkSheetCopy` is load-bearing and must not be deleted.** A
+> proposal to delete it as vestigial was made this session and was wrong.
+>
+> ### EVERY `Clear` IN THE CODEBASE, AUDITED — "why is clear needed there?"
+>
+> | site | verdict |
+> |---|---|
+> | `ReviewQueue.bas` (grid) | **needed** — the tail must not survive. Was failing under a filter; fixed. |
+> | `DiscoverUI.bas` (discovery grid) | **NOT needed** — tail problem wiping human columns. Removed. |
+> | `TemplateAudit.bas:355` | needed, but **it is not what discards your decisions** — line 377 blanks `COL_DECISION` unconditionally. The comment misattributes its own loss. Its "no stable per-row key" claim is true of the grid as built; Discovery solves the same problem with a shape-id column from `shp.Id`. **Open, and a design call, not a fix.** |
+> | `Readiness.bas:426`, `WorkbookBridge.bas:416`/`466` | needed — `Cells.Clear` also drops stale FORMATTING, and these sheets change shape between builds. Nothing human on them. |
+> | `Drafting.bas:751` | needed — fires only on an UNKNOWN layout, the one case where old cells cannot be located. |
+> | `Drafting.bas:349`, `:791` | needed — a move, and the tool's own instruction rows. |
+> | `Drafting.bas:970–975` (ferry) | needed — justified by the ruling above. |
+>
+> 24 `Err.Clear` calls not audited — they reset VBA's error object, not data. They can mask
+> errors inside `On Error Resume Next`; a separate question.
+>
+> ### STILL OPEN
+>
+> - **`Review project-status-2D3D` is `OPEN` with 38 rows ticked `Y` from `2026-08-10
+>   10:22:28`.** Five-day-old approvals sitting live. The change-hash design should stop
+>   them applying to values that have since moved — **untested claim.**
+> - **`TemplateAudit` line 377**, above.
+> - **The apply dialog is titled "1. Set up my quarter -- slide changes"** and is reached
+>   from "2. Put it on the slides" — a caption hardcoded where it should derive from `CAP_*`.
+> - Scenario 1 (generate a new quarter) — last of "the quarter" neither closed nor built.
+> - Scenario 3 blocked by `TemplateSlide.FindTemplateFor` returning the first type match.
+> - Scenarios 2 and 7 built and unrun.
+>
+> ### FIRST ACTION NEXT SESSION
+>
+> **One sitting on the known-good snapshot (`OneDrive\deck-sync-known-good\
+> 2026-08-15-0625\`), doing three things that all need it open anyway:**
+> 1. **Scenario 2** — add one register row with a new instance key at `Q4F26`, press `Add
+>    or retire slides`, read the result from the SAVED file.
+> 2. **Scenario 7** — same button, the retire half.
+> 3. **The `DiscoverUI` test** — `1. Set up my quarter`, answer Yes, confirm *"N existing
+>    mark(s) kept."*
+>
+> Read every result from the saved file, never a dialog. Excel's AutoSave writes DURING a
+> macro run, so a read taken too early returns a half-written sheet — that cost two wrong
+> conclusions this session. Wait for the mtime to settle, then read twice and compare.
+>
+> ---
+
+> ## 15 AUG, ~06:45. **SUPERSEDED** by the block above.
 >
 > ### THE HARVEST IS FINISHED. DECK MEMBERSHIP IS BUILT AND HAS NEVER RUN.
 >

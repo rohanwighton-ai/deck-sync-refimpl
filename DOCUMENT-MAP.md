@@ -53,6 +53,33 @@ Excel-hosted half needing the deck's path and period copied into the workbook �
 copy of a machine-knowable fact, which is the same defect class this whole document
 exists to prevent.
 
+**6. THE ARCHIVE IS LAST QUARTER'S FILE. `REPORTED LAST TIME` IS NOT STORAGE.** *(15 Aug,
+Rohan, verbatim)*
+
+> *"I can go back to previous quarters non destroyed drafting sheets to see field progeny,
+> it is only in the new quarter for some of the ai tools and human to use its structure
+> and narrative consistency."*
+
+The quarter turn ferries `SUBMIT` into `D — REPORTED LAST TIME` and clears `DRAFT`,
+`SUBMIT`, `SUBCHARS`, `APPROVED`, `SOURCES` and `NOTES` on the row. Read alone, that looks
+like the ferry carries the claim and drops its evidence — the citations being the control
+on the generative step. **It does not.** Under decision 2 (one file pair per quarter) the
+previous quarter's drafting sheets still exist, undestroyed, in the previous quarter's
+workbook: sources, notes, drafts and approvals all intact, which is where **field progeny**
+is read. The ferried column is not an archive and must never be designed as one — it is a
+working aid carried into the new quarter so a human and the AI tools have last quarter's
+voice in front of them, for **structure and narrative consistency**, while drafting.
+
+**Eliminates:** every proposal to ferry more columns "so nothing is lost", to widen
+`REPORTED LAST TIME` into a history, or to treat the rollover clear as data loss needing a
+carry, a park or a refusal. Nothing is lost — it is in another file.
+
+**The live gap this exposes, and the only real one:** decision 2 is **NOT YET BUILT**. The
+register still holds `Q3F26`, `Q4F26` and `Q1F27` in a single workbook, so the rollover
+clear currently fires in the *only* copy rather than in a fresh one. Until file-per-quarter
+lands, `ParkSheetCopy` is load-bearing and must not be removed — it is holding that gap
+shut. Once it lands, the park has nothing left to guard.
+
 ---
 
 ## 1. The one rule that decides where a fact lives
