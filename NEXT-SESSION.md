@@ -1,5 +1,62 @@
 # NEXT SESSION — start here
 
+> ## 14 AUG, LATEST. **FIRST ACTION: COMPILE `Drafting.bas` IN THE VBE AND READ THE DIALOG.**
+>
+> The reported-last-time build is committed and pushed and **THE COMPILE GATE IS RED.
+> NO TESTS RAN. NOTHING IN IT IS VERIFIED.** `vba/Drafting.bas` carries a warning banner
+> on line 1; delete it once green. Committed only because losing it was the bigger risk.
+>
+> The gate prints no line number — the VBE dialog does, and PowerPoint is left on screen
+> holding it. Open it and read it. Suspects, in order: the deleted `droppedQuarterly` /
+> `keptStatic` counters (report block ~line 1050), the removed `cadence` parameter from
+> `WriteDraftingSheet` (a caller may still pass it), and the new ferry block in the row loop.
+> `check_vba_static.py` says clean and CANNOT see this — it does not check block balance.
+>
+> ### WHAT THE BUILD DOES, once it compiles
+>
+> Rohan, 14 Aug: *"whenever a 1/4 changes at the top, the ferries belonging to that system
+> deal with information for the new quarter. The last previous set that runs move info into
+> 'reported last time' column."*
+>
+> **This REVERSED the earlier "derived from the register" decision, deliberately.** The
+> ferry runs at the moment the update notices the period changed, so it needs no predecessor
+> tracking, no second register read, and no period ordering — and it preserves text that was
+> never published, which the derived version could not show.
+>
+> - `DRAFT_LAYOUT_VERSION` **4 → 5**, new `COL_D_PREV` at column 4; everything from SOURCES
+>   rightwards shifts one right. `ColumnInLayout` gains an explicit `Case 4`.
+> - **The rollover refusal is DELETED** — it was the deadlock. So is the per-row cadence
+>   machinery and the `cadence` parameter.
+> - On a quarter turn: SUBMIT moves to `COL_D_PREV`, the working columns are cleared, and
+>   the sheet is parked first because sources and notes are genuinely destroyed.
+> - Every column letter in the headers and instructions is now DERIVED. They were literals
+>   and the shift made all six name the wrong column.
+> - Intro rows 1–2 are wiped before rewrite so a layout bump cannot strand an old stamp.
+> - Tests: `Drafting_RolloverCadenceGovernsUntypedRows` and
+>   `Drafting_RefusesRatherThanDiscardOnPeriodChange` **deleted** (they asserted the
+>   deadlock). `RolloverRebuildsOnlyWhenNothingIsAtRisk` **replaced** by
+>   `Drafting_QuarterTurnFerriesSubmitIntoReportedLastTime`, which also asserts idempotence
+>   on a second rebuild — none of it has ever run.
+>
+> **The invariant was restated, and this matters.** It said "if the carry dictionaries come
+> back, so has the clear". Rohan: *"can't they just sate the need then run on update?"* They
+> can. Holding values in a variable was never the defect; opening a gap was. The real
+> invariant is **no `ws.Cells.Clear` on the normal path**.
+>
+> ### ALSO DONE 14 AUG, AND VERIFIED
+>
+> - Layout migration restored (`MigrateSheetLayout`), suite 192/1 at commit `a5156f8`.
+> - **The 27 lost paragraphs are RECOVERED** — both sheets at 43 rows / 43 SUBMIT, read
+>   back from the saved file. `PROGRESS_BODY` also carries 43 restored approve ticks.
+> - The live register's two damaged tabs were re-stamped to layout 4 / `Q4F26`.
+> - **Chat-side template handover written:**
+>   `OneDrive\Claude\handover-to-chat-templates-2026-08-14.md`.
+>
+> **Delivery count is still 2.**
+>
+> ---
+
+
 > ## 14 AUG, LATE — READ THIS FIRST. **STATUS: CURRENT.** Everything below is
 > historical and kept for reasoning only.
 >
