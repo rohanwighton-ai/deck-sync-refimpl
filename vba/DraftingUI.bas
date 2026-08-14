@@ -352,6 +352,7 @@ End Function
 ' exact-target problem one step smaller.
 Private Function PickFieldByClicking(caption As String, wb As Object, ws As Object) As String
     ShowSheet wb, FieldSpec.SPEC_SHEET_NAME
+    BringExcelToFront wb
 
     ' A LOOP, NOT RECURSION. The first version called itself on a miss, passing
     ' the same three arguments -- which check_vba_static.py correctly refused as
@@ -401,6 +402,39 @@ Private Sub ShowSheet(wb As Object, sheetName As String)
     wb.Activate
     wb.Worksheets(sheetName).Activate
     wb.Worksheets(sheetName).Range("A1").Select
+    On Error GoTo 0
+End Sub
+
+
+' PUT EXCEL'S WINDOW IN FRONT, not merely visible.
+'
+' Seen live 2026-08-14, first press of addin86: the click-a-cell field picker
+' opened CORRECTLY and over POWERPOINT, because ShowSheet above sets
+' Application.Visible and activates the sheet but never raises Excel's window.
+' The range picker was live and pointing at a grid the person could not see -- a
+' picker you cannot look at is worse than the typed box it replaced, since at
+' least that one admitted it wanted typing.
+'
+' AppActivate matches on the START of a window title, and Excel's title begins
+' with the workbook name ("register-wide.xlsx - Excel"), so activating on
+' Application.Caption alone does not reliably match. Setting the caption first
+' makes the title start with a string we chose, so the match is deterministic;
+' it is restored immediately afterwards.
+'
+' Entirely best-effort. If it fails the picker still works, it is just behind --
+' and Cancel still falls back to typing, so nobody is stuck either way.
+Private Sub BringExcelToFront(wb As Object)
+    Const MARKER As String = "Deck Sync"
+
+    On Error Resume Next
+    wb.Application.Visible = True
+    If wb.Application.WindowState = 2 Then wb.Application.WindowState = -4143  ' xlMinimized -> xlNormal
+
+    Dim previous As String
+    previous = wb.Application.Caption
+    wb.Application.Caption = MARKER
+    AppActivate MARKER
+    wb.Application.Caption = previous
     On Error GoTo 0
 End Sub
 
@@ -1111,6 +1145,7 @@ Public Sub RollForwardUI()
     End If
 
     ShowSheet wb, regWs.Name
+    BringExcelToFront wb
 
     Dim srcPick As Object
     Dim fromPeriod As String

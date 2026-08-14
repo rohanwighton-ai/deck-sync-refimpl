@@ -459,6 +459,9 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
 
     r = Test_DeckRegistry_PairingVerdictOnlyRefusesAKnownDifferentDeck()
     AppendResult report, "DeckRegistry_PairingVerdictOnlyRefusesAKnownDifferentDeck", r
+
+    r = Test_Drafting_LayoutStampIsFoundNotAssumed()
+    AppendResult report, "Drafting_LayoutStampIsFoundNotAssumed", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -4608,6 +4611,56 @@ Private Function Test_DeckRegistry_PairingVerdictOnlyRefusesAKnownDifferentDeck(
     Test_DeckRegistry_PairingVerdictOnlyRefusesAKnownDifferentDeck = result
 End Function
 
+' THE STAMP HAS TO BE FOUND, NOT ASSUMED, AND THIS IS WHY.
+'
+' 2026-08-14: the layout stamp was read at the CURRENT layout's column. On a
+' layout-4 sheet that cell holds the prompt, so the version came back 0, 0 is an
+' unknown layout, and the whole-sheet clear fired on every drafting sheet of a
+' real workbook while the migration -- guarded on the same flag -- never ran.
+Private Function Test_Drafting_LayoutStampIsFoundNotAssumed() As String
+    Dim result As String
+
+    ' Columns 10..16 of the intro row. Layout 4: version in 11, period in 13.
+    Dim l4 As Variant
+    l4 = Array("", 4, "Draft the following...", "Q4F26", "", "", "")
+    result = result & Assert(Drafting.DetectLayoutFromRow(l4) = 4, _
+        "a layout-4 sheet reports 4, got " & Drafting.DetectLayoutFromRow(l4))
+
+    ' Layout 5: version in 12, period in 14.
+    Dim l5 As Variant
+    l5 = Array("", "", 5, "Draft the following...", "Q4F26", "", "")
+    result = result & Assert(Drafting.DetectLayoutFromRow(l5) = 5, _
+        "a layout-5 sheet reports 5, got " & Drafting.DetectLayoutFromRow(l5))
+
+    ' BOTH STAMPS PRESENT -- a sheet caught part-way through a bump. The NEWER
+    ' position must win; picking the stale one would migrate an already-current
+    ' sheet and relabel every column, which looks like content, not like loss.
+    Dim both As Variant
+    both = Array("", 4, 5, "Draft the following...", "Q4F26", "", "")
+    result = result & Assert(Drafting.DetectLayoutFromRow(both) = 5, _
+        "a stale stamp does not beat the newer one, got " & Drafting.DetectLayoutFromRow(both))
+
+    ' A brand new sheet has no stamp anywhere.
+    Dim none As Variant
+    none = Array("", "", "", "", "", "", "")
+    result = result & Assert(Drafting.DetectLayoutFromRow(none) = 0, _
+        "an unstamped sheet reports 0, got " & Drafting.DetectLayoutFromRow(none))
+
+    ' A period must never be mistaken for a version.
+    Dim onlyPeriod As Variant
+    onlyPeriod = Array("", "", "", "Q4F26", "", "", "")
+    result = result & Assert(Drafting.DetectLayoutFromRow(onlyPeriod) = 0, _
+        "a period is not a version, got " & Drafting.DetectLayoutFromRow(onlyPeriod))
+
+    ' And the stamps' own columns, per layout.
+    result = result & Assert(Drafting.PeriodStampColumn(4) = 13, "layout 4 keeps its period in 13")
+    result = result & Assert(Drafting.PeriodStampColumn(5) = 14, "layout 5 keeps its period in 14")
+    result = result & Assert(Drafting.LayoutStampColumn(4) = 11, "layout 4 keeps its version in 11")
+    result = result & Assert(Drafting.LayoutStampColumn(5) = 12, "layout 5 keeps its version in 12")
+
+    Test_Drafting_LayoutStampIsFoundNotAssumed = result
+End Function
+
 Private Function Test_DeckRegistry_RegisterAndLookupTypeRoundTrip() As String
     Dim result As String
     Dim pres As Object
@@ -8354,8 +8407,14 @@ Private Function Test_Drafting_Layout3SheetMigratesIntoLayout4Columns() As Strin
 
     ' A sheet as LAYOUT 3 left it: C original, D submit, E tick, F AI, G sources,
     ' J notes -- written by hand at those numbers, which is the whole point.
-    dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_LAYOUT).Value = 3
-    dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value = "Q4F26"
+    ' STAMPED WHERE LAYOUT 3 ACTUALLY STAMPS -- columns 11 and 13, not the
+    ' current layout's 12 and 14. This fixture used to use COL_D_LAYOUT and
+    ' COL_D_PERIOD, so it described a sheet that has never existed: layout-3 DATA
+    ' under layout-5 STAMPS. It passed only because the reading code made the
+    ' same mistake, which is why 192 green tests sat on top of a defect that
+    ' wiped every drafting sheet of a real workbook on 2026-08-14.
+    dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.LayoutStampColumn(3)).Value = 3
+    dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.PeriodStampColumn(3)).Value = "Q4F26"
     dws.Cells(Drafting.DRAFT_FIRST_ROW, 1).Value = "2_P004"
     dws.Cells(Drafting.DRAFT_FIRST_ROW, 4).Value = "MY SUBMITTED WORDS"
     dws.Cells(Drafting.DRAFT_FIRST_ROW, 5).Value = "Y"

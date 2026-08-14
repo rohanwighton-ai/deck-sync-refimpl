@@ -251,6 +251,66 @@ Private Function ColumnInLayout(layoutVersion As Long, which As String) As Long
 End Function
 
 
+' WHERE EACH LAYOUT KEEPS ITS OWN STAMPS.
+'
+' Needed because the stamps moved when the columns did, and the code that reads
+' them cannot use the current layout's positions -- that is how every drafting
+' sheet was wiped on 2026-08-14. Historical positions are literals because they
+' are historical FACTS: layout 3 and 4 are frozen and can never change again.
+' The current one is derived, so a future bump moves it in one place.
+Public Function LayoutStampColumn(ByVal layoutVersion As Long) As Long
+    Select Case layoutVersion
+        Case DRAFT_LAYOUT_VERSION: LayoutStampColumn = COL_D_LAYOUT
+        Case Else:                 LayoutStampColumn = 11      ' layouts 3 and 4
+    End Select
+End Function
+
+Public Function PeriodStampColumn(ByVal layoutVersion As Long) As Long
+    Select Case layoutVersion
+        Case DRAFT_LAYOUT_VERSION: PeriodStampColumn = COL_D_PERIOD
+        Case Else:                 PeriodStampColumn = 13      ' layouts 3 and 4
+    End Select
+End Function
+
+
+' THE LAYOUT VERSION, FOUND BY LOOKING FOR IT.
+'
+' The pure half, so the rule can be tested without a workbook. `vals` is the
+' intro row's values across the stamp-bearing columns, in ascending column order.
+'
+' SEARCHED RIGHT TO LEFT, and that is not arbitrary: a sheet part-way through a
+' bump can carry BOTH a stale old stamp and the new one, and the newer position
+' is always further right. Left to right would find the stale 4 and migrate a
+' layout-5 sheet as though it were layout 4 -- relabelling every column, which
+' is the failure that looks like content rather than like loss.
+'
+' A period ("Q4F26") and a prompt are not numeric, so only a stamp can match.
+' Empty is numeric in VBA but Val("") is 0, and 0 is below the floor.
+Public Function DetectLayoutFromRow(vals As Variant) As Long
+    Dim i As Long, n As Double
+    For i = UBound(vals) To LBound(vals) Step -1
+        If IsNumeric(vals(i)) Then
+            n = Val(CStr(vals(i)))
+            If n >= 1 And n <= DRAFT_LAYOUT_VERSION And n = Int(n) Then
+                DetectLayoutFromRow = CLng(n)
+                Exit Function
+            End If
+        End If
+    Next i
+End Function
+
+Public Function DetectSheetLayout(ws As Object) As Long
+    Dim vals(1 To 7) As Variant
+    Dim c As Long
+    On Error Resume Next
+    For c = 10 To 16
+        vals(c - 9) = ws.Cells(DRAFT_INTRO_ROW, c).Value
+    Next c
+    On Error GoTo 0
+    DetectSheetLayout = DetectLayoutFromRow(vals)
+End Function
+
+
 ' MIGRATE A KNOWN OLDER LAYOUT INTO THE CURRENT COLUMNS, IN PLACE.
 '
 ' This is the job the five kept* carry dictionaries used to do as a SIDE EFFECT
@@ -472,9 +532,23 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' it -- the worse of the two failures, because it looks like content.
     Dim sheetLayout As Long
     Dim layoutMatches As Boolean
-    On Error Resume Next
-    sheetLayout = CLng(Val(CStr(ws.Cells(DRAFT_INTRO_ROW, COL_D_LAYOUT).Value)))
-    On Error GoTo 0
+    ' FOUND, NOT ASSUMED. This used to read COL_D_LAYOUT -- the CURRENT layout's
+    ' stamp column -- which is a bootstrap error: you need the layout to know
+    ' where the layout stamp is. On a layout-4 sheet it read column 12, which
+    ' holds the PROMPT there, got 0, and 0 is an unknown layout: layoutMatches
+    ' went False, ws.Cells.Clear fired on the whole sheet, and the migration
+    ' block below -- guarded by `If layoutMatches` -- never ran at all.
+    '
+    ' Cost, 2026-08-14 19:11: every drafting sheet wiped on a real workbook.
+    ' 129 drafted paragraphs, 43 approve ticks and 75 notes destroyed across
+    ' KEY_EVENTS_BODY, PROGRESS_BODY and HIGHLIGHTS_BODY. Recovered from a
+    ' backup and from the parked copies, which is the only reason this reads as
+    ' a defect rather than as a fortnight of lost evenings.
+    '
+    ' The comment 60 lines below ALREADY KNEW the columns moved -- "layout 4 kept
+    ' the version in column 11 and the period in 13; layout 5 uses 12 and 14" --
+    ' and used that knowledge only to WIPE the intro rows, never to READ them.
+    sheetLayout = DetectSheetLayout(ws)
     ' Readable, not merely identical -- a known older layout is migrated below.
     layoutMatches = (ColumnInLayout(sheetLayout, "SUBMIT") > 0)
 
@@ -518,8 +592,13 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' remembering: the machinery existed to decide something on a person's
     ' behalf, and showing them instead deleted the decision.
     Dim sheetPeriod As String
+    ' READ AT THE SHEET'S OWN LAYOUT'S POSITION, not the current one. Same
+    ' bootstrap error as the layout stamp above and a worse consequence: a
+    ' layout-4 sheet's period sits in column 13, reading column 14 returned "",
+    ' and a blank period reads as A QUARTER TURN -- which clears every work
+    ' column, per row, by design. Two independent routes to the same wipe.
     On Error Resume Next
-    sheetPeriod = Trim(CStr(ws.Cells(DRAFT_INTRO_ROW, COL_D_PERIOD).Value))
+    sheetPeriod = Trim(CStr(ws.Cells(DRAFT_INTRO_ROW, PeriodStampColumn(sheetLayout)).Value))
     On Error GoTo 0
 
     Dim periodMatches As Boolean
