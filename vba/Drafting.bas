@@ -1,3 +1,4 @@
+'*** WARNING 2026-08-14: THIS FILE DOES NOT COMPILE. See NEXT-SESSION.md. ***
 Attribute VB_Name = "Drafting"
 Option Explicit
 
@@ -82,16 +83,17 @@ Option Explicit
 Public Const COL_D_ENTITY As Long = 1
 Public Const COL_D_NAME As Long = 2
 Public Const COL_D_CURRENT As Long = 3      ' C  ORIGINAL -- read this first
-Public Const COL_D_SOURCES As Long = 4      ' D  what you drafted FROM
-Public Const COL_D_DRAFT As Long = 5        ' E  AI draft, never published
-Public Const COL_D_SUBMIT As Long = 6       ' F  your text -- this publishes
-Public Const COL_D_APPROVED As Long = 7     ' G  the tick
-Public Const COL_D_CHARS As Long = 8
-Public Const COL_D_SUBCHARS As Long = 9
-Public Const COL_D_NOTES As Long = 10      ' J  notes back to the tool
-Public Const COL_D_LAYOUT As Long = 11
-Public Const COL_D_PERIOD As Long = 13
-Public Const COL_D_PROMPT As Long = 12
+Public Const COL_D_PREV As Long = 4         ' D  REPORTED LAST TIME -- see below
+Public Const COL_D_SOURCES As Long = 5      ' E  what you drafted FROM
+Public Const COL_D_DRAFT As Long = 6        ' F  AI draft, never published
+Public Const COL_D_SUBMIT As Long = 7       ' G  your text -- this publishes
+Public Const COL_D_APPROVED As Long = 8     ' H  the tick
+Public Const COL_D_CHARS As Long = 9
+Public Const COL_D_SUBCHARS As Long = 10
+Public Const COL_D_NOTES As Long = 11      ' K  notes back to the tool
+Public Const COL_D_LAYOUT As Long = 12
+Public Const COL_D_PROMPT As Long = 13
+Public Const COL_D_PERIOD As Long = 14
 
 ' THE SHEET DECLARES WHICH LAYOUT IT WAS WRITTEN IN.
 '
@@ -106,7 +108,16 @@ Public Const COL_D_PROMPT As Long = 12
 ' did not match: "3 left alone (you had already written something there)" when
 ' only one row had been written. The number was the only evidence; nothing
 ' raised, and the sheet looked fine.
-Public Const DRAFT_LAYOUT_VERSION As Long = 4
+' 5 adds COL_D_PREV -- "REPORTED LAST TIME". Rohan, 2026-08-14: "whenever a 1/4
+' changes at the top, the ferries belonging to that system deal with information
+' for the new quarter. The last previous set that runs move info into 'reported
+' last time' column."
+'
+' So the outgoing quarter's SUBMIT is carried SIDEWAYS at the moment the update
+' notices the period changed, rather than being destroyed and looked up again
+' from somewhere else. That is what makes the rollover safe: nothing has to be
+' preserved across a gap, because no gap is opened.
+Public Const DRAFT_LAYOUT_VERSION As Long = 5
 
 ' The instruction block occupies rows 1-7, so the grid starts lower.
 '
@@ -198,11 +209,27 @@ Private Function ColumnInLayout(layoutVersion As Long, which As String) As Long
         Case DRAFT_LAYOUT_VERSION
             Select Case which
                 Case "CURRENT":  ColumnInLayout = COL_D_CURRENT
+                Case "PREV":     ColumnInLayout = COL_D_PREV
                 Case "SOURCES":  ColumnInLayout = COL_D_SOURCES
                 Case "DRAFT":    ColumnInLayout = COL_D_DRAFT
                 Case "SUBMIT":   ColumnInLayout = COL_D_SUBMIT
                 Case "APPROVED": ColumnInLayout = COL_D_APPROVED
                 Case "NOTES":    ColumnInLayout = COL_D_NOTES
+            End Select
+
+        ' Layout 4: as layout 5 but with no REPORTED LAST TIME column, so
+        ' everything from SOURCES rightwards sat one column to the left.
+        ' "PREV" is absent here on purpose -- it returns 0 and the migration
+        ' writes the new column empty, which is correct for a sheet that has
+        ' never seen a quarter turn.
+        Case 4
+            Select Case which
+                Case "CURRENT":  ColumnInLayout = 3
+                Case "SOURCES":  ColumnInLayout = 4
+                Case "DRAFT":    ColumnInLayout = 5
+                Case "SUBMIT":   ColumnInLayout = 6
+                Case "APPROVED": ColumnInLayout = 7
+                Case "NOTES":    ColumnInLayout = 10
             End Select
 
         ' Layout 3: columns sat in the order they were added, not used.
@@ -243,7 +270,7 @@ End Function
 ' that REMOVES a column cannot leave a stale value stranded under a new heading.
 Private Sub MigrateSheetLayout(ws As Object, fromLayout As Long)
     Dim names As Variant
-    names = Array("CURRENT", "SOURCES", "DRAFT", "SUBMIT", "APPROVED", "NOTES")
+    names = Array("CURRENT", "PREV", "SOURCES", "DRAFT", "SUBMIT", "APPROVED", "NOTES")
 
     Dim vals() As Variant
     ReDim vals(0 To UBound(names))
@@ -411,7 +438,6 @@ End Function
 Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String, _
                                    Optional guidance As Variant, _
                                    Optional periodStamp As String = "", _
-                                   Optional cadence As Object = Nothing, _
                                    Optional srcWs As Object = Nothing, _
                                    Optional familySeed As Long = -1) As String
     ' A REBUILD MUST NOT COST A PERSON THEIR WORK. Everything a human or an AI
@@ -428,8 +454,18 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' carry a person's work across a gap is a rebuild that opened the gap.
     '
     ' An existing project's row is now updated where it sits and its typed
-    ' columns are not written at all. If these dictionaries ever come back, so
-    ' has the clear.
+    ' columns are not written at all.
+    '
+    ' THE INVARIANT WAS FIRST WRITTEN AS "if these dictionaries ever come back,
+    ' so has the clear", AND THAT WAS WRONG. Rohan, 2026-08-14: "can't they just
+    ' sate the need then run on update?" -- and they can. Holding values in a
+    ' variable was never the defect; opening a gap was. MigrateSheetLayout is a
+    ' carry, and the rollover ferry below is another, and both are correct
+    ' precisely because they run ON the update instead of around a destroy.
+    '
+    ' The real invariant, and the only one worth guarding: NO ws.Cells.Clear ON
+    ' THE NORMAL PATH. Naming a mechanism as the proxy for a hazard forbids
+    ' useful code and still misses the hazard when it arrives by another route.
 
     ' Only carry work across if the sheet was written by THIS layout. A sheet
     ' from an older layout is read with column numbers that have since been
@@ -467,28 +503,21 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' RefreshDraftingSheets refuses outright on an undeclared deck period
     ' (DraftingUI.bas:223), so the UI path can never reach the second case.
     '
-    ' THE DROP IS PER ROW, NOT PER SHEET, and that distinction is the whole of
-    ' this guard's correctness.
+    ' THE PER-ROW CADENCE MACHINERY IS GONE, AND THE QUESTION IT ANSWERED NO
+    ' LONGER EXISTS.
     '
-    ' Variability is a property of the ROW. The register carries `Quarter = ALL`
-    ' rows into every period as entity-static (Register.bas:232), and for such a
-    ' row LAST QUARTER'S TEXT IS THIS QUARTER'S TEXT -- dropping it is pure loss
-    ' with no safety bought, because there is no stale value to republish.
+    ' It asked, per row, whether a value was quarterly (drop it on a rollover) or
+    ' entity-static (keep it), because for a static row LAST QUARTER'S TEXT IS
+    ' THIS QUARTER'S TEXT and dropping it was pure loss. That was a real problem
+    ' while a rollover DESTROYED. It stops being one when the rollover FERRIES:
+    ' the text is one column away, in plain sight, for every row alike, and the
+    ' person can copy it back in a keystroke if it still stands.
     '
-    ' The first version of this guard dropped everything on the sheet, defended
-    ' by "a drafting sheet only holds Prose fields, so it is all quarterly". That
-    ' conflates two different axes and is wrong:
-    '     FieldSpec.Kind (Controlled/Prose/Static)  = HOW a value is produced
-    '     Register Quarter (a period, or ALL)       = WHEN it applies
-    ' A project description is prose AND static -- Round 5 §3 classes ABOUT_BODY,
-    ' the flagship prose field, as entity-static, and Rohan confirmed 2026-08-02
-    ' that he writes it once and edits it rarely. So the destroyed-work case was
-    ' not hypothetical; it was the main field, every rollover.
-    '
-    ' `cadence` is the register's own answer, keyed EntityCode & Chr(1) & FieldID:
-    ' True = this value came from a period row (drop the drafting on rollover),
-    ' False = it came from an ALL row (keep it). Absent or unknown drops, because
-    ' the old blunt behaviour is the safe direction when nobody can say.
+    ' So a distinction that needed a register lookup, an extra argument threaded
+    ' through every caller, and a fallback rule for "nobody can say" is replaced
+    ' by moving the text where the person can see it. That is the trade worth
+    ' remembering: the machinery existed to decide something on a person's
+    ' behalf, and showing them instead deleted the decision.
     Dim sheetPeriod As String
     On Error Resume Next
     sheetPeriod = Trim(CStr(ws.Cells(DRAFT_INTRO_ROW, COL_D_PERIOD).Value))
@@ -519,59 +548,26 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     Dim periodChanged As Boolean
     periodChanged = (Not periodMatches) And (Not isNewSheet)
 
-    ' REFUSE, DO NOT DISCARD. A rollover must never destroy typed work.
+    ' ============================================================
+    ' THE ROLLOVER REFUSAL IS GONE. IT WAS A DEADLOCK.
+    ' ============================================================
     '
-    ' Until 2026-08-13 a period mismatch silently dropped every quarterly row's
-    ' drafting -- deliberately, so last quarter's prose could not be republished
-    ' as this quarter's. The intent is right and the remedy was wrong: losing a
-    ' person's typing to protect them is the wrong trade, and it is not
-    ' recoverable from inside the tool.
+    ' It refused a rollover whenever the sheet held typed work, and told the
+    ' person to "publish this sheet's work before rebuilding". PublishDrafts only
+    ' READS SUBMIT and APPROVED -- it never clears them -- and the only
+    ' ClearContents for those columns sat INSIDE the branch the refusal had
+    ' already exited past. Nothing else in the tool clears or deletes a drafting
+    ' sheet. So once a sheet held typed work, which is the wanted state, it could
+    ' never be rolled forward, and the instruction it gave could not be followed
+    ' by any means. Landed 2026-08-13 in ddf867b; never hit, because no rollover
+    ' was attempted between then and its removal.
     '
-    ' It was one button press from taking 129 drafted values. All seven drafting
-    ' sheets were stamped Q4F26 while the deck declared Q3F26 -- a legitimate
-    ' state, since the deck had been set to Q3F26 to capture a baseline -- and
-    ' Sync Now's main chain calls RefreshDraftingSheets as step 3. Rohan asked
-    ' "but the Q4 text I generated is real? How are you preserving that?", which
-    ' is the only reason it was looked at.
-    '
-    ' Refusing costs a person one message and a decision. Discarding costs them
-    ' an evening they cannot get back. This runs BEFORE any clear or write, so a
-    ' refusal leaves the sheet exactly as it was found.
-    If periodChanged Then
-        Dim atRisk As Long, riskRow As Long
-        riskRow = DRAFT_FIRST_ROW
-        On Error Resume Next
-        Do While Trim(CStr(ws.Cells(riskRow, COL_D_ENTITY).Value)) <> ""
-            ' SOURCES AND NOTES ARE TYPED WORK TOO (FIX-LIST 1c). The scan used to
-            ' count only SUBMIT and DRAFT, so a row holding a person's source IDs
-            ' or notes and no prose was invisible to the refusal and was dropped
-            ' silently. Citations are the slowest column on the sheet to rebuild --
-            ' they are the control on the generative step, not decoration.
-            If Trim(CStr(ws.Cells(riskRow, COL_D_SUBMIT).Value)) <> "" _
-               Or Trim(CStr(ws.Cells(riskRow, COL_D_DRAFT).Value)) <> "" _
-               Or Trim(CStr(ws.Cells(riskRow, COL_D_SOURCES).Value)) <> "" _
-               Or Trim(CStr(ws.Cells(riskRow, COL_D_NOTES).Value)) <> "" Then
-                atRisk = atRisk + 1
-            End If
-            riskRow = riskRow + 1
-        Loop
-        On Error GoTo 0
-
-        If atRisk > 0 Then
-            WriteDraftingSheet = "REFUSED -- this sheet holds writing for a different quarter." & vbCrLf & vbCrLf & _
-                "Sheet says:  " & IIf(sheetPeriod = "", "(no quarter recorded)", sheetPeriod) & vbCrLf & _
-                "Deck says:   " & periodStamp & vbCrLf & vbCrLf & _
-                atRisk & " row(s) on '" & ws.Name & "' have drafted or submitted text. Rebuilding " & _
-                "would discard it, because text written for one quarter must not be republished " & _
-                "as another's." & vbCrLf & vbCrLf & _
-                "Nothing was changed. Either set the deck's quarter to " & _
-                IIf(sheetPeriod = "", "the one this sheet was written for", sheetPeriod) & _
-                ", or publish this sheet's work before rebuilding."
-            Exit Function
-        End If
-    End If
-
-    Dim droppedQuarterly As Long, keptStatic As Long
+    ' The refusal existed to stop last quarter's prose being republished as this
+    ' quarter's. The ferry below achieves that WITHOUT a refusal, because the text
+    ' moves out of SUBMIT rather than being destroyed -- so there is no loss to
+    ' refuse on behalf of. A guard whose only remedy is unreachable is not a
+    ' guard; it is a stop.
+    Dim ferried As Long
     ' WORK ABOUT TO BE DISCARDED BY A LAYOUT MISMATCH, counted so it can be
     ' SAID rather than silently lost. See the block below.
     Dim strandedRows As Long, strandedDetail As String
@@ -634,8 +630,8 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     '
     ' Deleted rather than left unreachable. A harvest that still runs is a second
     ' copy of a person's work held in memory during the write, and the whole
-    ' lesson of 2026-08-14 is that the copy is the risk. It also double-counted:
-    ' it incremented droppedQuarterly/keptStatic, which the row loop now owns.
+    ' lesson of 2026-08-14 is that the copy is the risk. It also double-counted
+    ' the rollover, which the row loop's ferry now owns outright.
 
     ' PARK BEFORE EVERY CLEAR, NOT JUST ON A LAYOUT MISMATCH.
     '
@@ -690,6 +686,14 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
         MigrateSheetLayout ws, sheetLayout
     End If
 
+    ' PARK BEFORE A QUARTER TURN AS WELL. The ferry preserves SUBMIT by moving
+    ' it, but the AI draft, the source citations and the notes ARE cleared -- and
+    ' citations are the slowest column on the sheet to rebuild, being the control
+    ' on the generative step rather than decoration. A copy costs nothing.
+    If periodChanged And parkedName = "" Then
+        If Not ParkSheetCopy(ws, fieldId, parkedName) Then parkFailed = True
+    End If
+
     ' STAMPS FIRST, BEFORE ANY ROW. They used to be written at the END of this
     ' function, so a failure part-way through the row loop left a sheet with rows
     ' and NO layout version and NO period -- which reads on the next rebuild as
@@ -699,6 +703,15 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' Written first, the same crash leaves a sheet that correctly declares what
     ' it is, so the next rebuild reads it, carries the partial work, and repairs
     ' it. Found 2026-08-14 on two sheets that had rows, no stamp and no prompt.
+    ' THE INTRO ROWS ARE WIPED BEFORE THEY ARE REWRITTEN, so a layout bump cannot
+    ' strand an old stamp under a new heading. Layout 4 kept the version in
+    ' column 11 and the period in 13; layout 5 uses 12 and 14, so without this
+    ' the old value would sit there forever, under NOTES, looking like data.
+    ' Everything in rows 1-2 from column 2 rightwards is tool-written and is
+    ' rewritten immediately below -- both stamps are already read into
+    ' sheetPeriod and sheetLayout well before this point.
+    ws.Range(ws.Cells(DRAFT_INTRO_ROW, 2), ws.Cells(DRAFT_INTRO_ROW + 1, 20)).ClearContents
+
     ws.Cells(DRAFT_INTRO_ROW, COL_D_PERIOD).Value = periodStamp
     ws.Cells(DRAFT_INTRO_ROW, COL_D_LAYOUT).Value = DRAFT_LAYOUT_VERSION
 
@@ -707,7 +720,8 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Cells(DRAFT_INTRO_ROW, 1).Font.Bold = True
     ws.Cells(DRAFT_INTRO_ROW, 1).Font.Size = 9
 
-    ws.Cells(2, 1).Value = "STEP 1   Read column " & Chr$(64 + COL_D_CURRENT) & " -- what the slide says today."
+    ws.Cells(2, 1).Value = "STEP 1   Read column " & Chr$(64 + COL_D_CURRENT) & " -- what the slide says today. Column " & _
+                           Chr$(64 + COL_D_PREV) & " is what was reported last quarter: match its voice, do not repeat it."
     ' COLUMN G, NOT E. Step 5 below sends the tick to E, so this line named one
     ' column for two things inside a single instruction block -- and E is the tick,
     ' which is the consent gate. Stale since 3de4be8 moved SUBMIT to D and the tick
@@ -733,14 +747,26 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' nothing about where to type.
     ws.Cells(DRAFT_HEADER_ROW, COL_D_ENTITY).Value = "Project code"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_NAME).Value = "Project name"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_CURRENT).Value = "C   ORIGINAL -- what the slide says now (read-only)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_CURRENT).Value = _
+        Chr$(64 + COL_D_CURRENT) & "   ORIGINAL -- what the slide says now (read-only)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_PREV).Value = _
+        Chr$(64 + COL_D_PREV) & "   REPORTED LAST TIME -- for style and continuity (read-only)"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_CHARS).Value = "Chars"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_SOURCES).Value = "D   SOURCES -- IDs from the Sources sheet, e.g. S01,S03"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_DRAFT).Value = "E   AI DRAFT -- Copilot writes here. NEVER published"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_SUBMIT).Value = "F   SUBMIT -- your words. THIS is what gets sent"
+    ' EVERY COLUMN LETTER IS DERIVED, NEVER TYPED. These were literals -- "D
+    ' SOURCES", "E AI DRAFT", "J NOTES" -- and adding one column at position 4
+    ' made all six of them name the wrong column while still reading as correct.
+    ' A heading that lies about where to type is worse than no heading.
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_SOURCES).Value = _
+        Chr$(64 + COL_D_SOURCES) & "   SOURCES -- IDs from the Sources sheet, e.g. S01,S03"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_DRAFT).Value = _
+        Chr$(64 + COL_D_DRAFT) & "   AI DRAFT -- Copilot writes here. NEVER published"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_SUBMIT).Value = _
+        Chr$(64 + COL_D_SUBMIT) & "   SUBMIT -- your words. THIS is what gets sent"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_SUBCHARS).Value = "Chars"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_APPROVED).Value = "G   APPROVE -- type Y"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES).Value = "J   NOTES -- back to the tool (optional)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_APPROVED).Value = _
+        Chr$(64 + COL_D_APPROVED) & "   APPROVE -- type Y"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES).Value = _
+        Chr$(64 + COL_D_NOTES) & "   NOTES -- back to the tool (optional)"
     ws.Rows(DRAFT_HEADER_ROW).Font.Bold = True
     ws.Rows(DRAFT_HEADER_ROW).WrapText = True
 
@@ -845,26 +871,31 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
             If Not isNewRow Then
                 restored = restored + 1
 
+                ' THE FERRY. The quarter turned, so the last thing the outgoing
+                ' quarter's pass does is carry its SUBMIT one column sideways
+                ' into REPORTED LAST TIME, and hand the working columns to the
+                ' new quarter empty.
+                '
+                ' The text is not looked up from anywhere afterwards, which is
+                ' what makes this cheap: the sheet already holds it, and the
+                ' update already knows the period changed. Nothing has to know
+                ' which quarter precedes which -- and quarter labels are free
+                ' text with no ordering, so nothing could have known.
+                '
+                ' It survives unpublished work too. A draft that never reached a
+                ' slide is still what this project said last time, which is
+                ' exactly the style-and-narrative material the next draft wants.
                 If periodChanged Then
-                    Dim carryThis As Boolean
-                    carryThis = False
-                    If Not cadence Is Nothing Then
-                        Dim cKey As String
-                        cKey = key & Chr(1) & fieldId
-                        ' Guarded on Exists: an unguarded read ADDS the key.
-                        If cadence.Exists(cKey) Then carryThis = Not CBool(cadence(cKey))
-                    End If
-                    If carryThis Then
-                        keptStatic = keptStatic + 1
-                    Else
-                        ws.Cells(r, COL_D_DRAFT).ClearContents
-                        ws.Cells(r, COL_D_SUBMIT).ClearContents
-                        ws.Cells(r, COL_D_SUBCHARS).ClearContents
-                        ws.Cells(r, COL_D_APPROVED).ClearContents
-                        ws.Cells(r, COL_D_SOURCES).ClearContents
-                        ws.Cells(r, COL_D_NOTES).ClearContents
-                        droppedQuarterly = droppedQuarterly + 1
-                    End If
+                    ws.Cells(r, COL_D_PREV).Value = "'" & _
+                        Replace(CStr(ws.Cells(r, COL_D_SUBMIT).Value), "||", vbLf)
+
+                    ws.Cells(r, COL_D_DRAFT).ClearContents
+                    ws.Cells(r, COL_D_SUBMIT).ClearContents
+                    ws.Cells(r, COL_D_SUBCHARS).ClearContents
+                    ws.Cells(r, COL_D_APPROVED).ClearContents
+                    ws.Cells(r, COL_D_SOURCES).ClearContents
+                    ws.Cells(r, COL_D_NOTES).ClearContents
+                    ferried = ferried + 1
                 End If
             End If
             written = written + 1
@@ -887,6 +918,7 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Columns(COL_D_ENTITY).ColumnWidth = 11
     ws.Columns(COL_D_NAME).ColumnWidth = 30
     ws.Columns(COL_D_CURRENT).ColumnWidth = 52
+    ws.Columns(COL_D_PREV).ColumnWidth = 52
     ws.Columns(COL_D_CHARS).ColumnWidth = 6
     ws.Columns(COL_D_SOURCES).ColumnWidth = 14
     ws.Columns(COL_D_DRAFT).ColumnWidth = 52
@@ -1044,10 +1076,10 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
         ' clear, unconditionally, which makes this site both unreachable and wrong.
 
     WriteDraftingSheet = WriteDraftingSheet & vbCrLf & _
-            "  Rebuilt " & IIf(sheetPeriod = "", "(no period recorded)", sheetPeriod) & _
-            " -> " & periodStamp & ": " & droppedQuarterly & " row(s) cleared for redrafting" & _
-            IIf(keptStatic > 0, ", " & keptStatic & " carried over", "") & _
-            "." & ParkedNote(parkedName, parkFailed)
+            "  Quarter turned " & IIf(sheetPeriod = "", "(no period recorded)", sheetPeriod) & _
+            " -> " & periodStamp & ": " & ferried & " row(s) moved into '" & _
+            Chr$(64 + COL_D_PREV) & " REPORTED LAST TIME' and cleared for redrafting." & _
+            ParkedNote(parkedName, parkFailed)
     ElseIf Not layoutMatches And Not isNewSheet Then
         ' Same false claim as above, same fix -- see the comment there. Fixed in
         ' both places at once because this is one defect with two call sites, and

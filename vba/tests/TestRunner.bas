@@ -234,13 +234,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk()
-    AppendResult report, "Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk", r
+    r = Test_Drafting_QuarterTurnFerriesSubmitIntoReportedLastTime()
+    AppendResult report, "Drafting_QuarterTurnFerriesSubmitIntoReportedLastTime", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Drafting_RolloverCadenceGovernsUntypedRows()
-    AppendResult report, "Drafting_RolloverCadenceGovernsUntypedRows", r
     On Error GoTo 0
     On Error GoTo 0
 
@@ -275,8 +273,6 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Drafting_RefusesRatherThanDiscardOnPeriodChange()
-    AppendResult report, "Drafting_RefusesRatherThanDiscardOnPeriodChange", r
     On Error GoTo 0
 
     ' REGISTERED BY HAND, like every other test here. Writing the Function is
@@ -7293,7 +7289,20 @@ End Function
 ' holding SUBMIT or DRAFT text refuses the whole sheet. Worth stating plainly,
 ' because it makes the per-row cadence machinery below far narrower than it
 ' looks -- see Test_Drafting_RolloverCadenceGovernsUntypedRows.
-Private Function Test_Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk() As String
+' THE QUARTER TURN FERRIES SUBMIT SIDEWAYS. It does not refuse and it does not
+' destroy.
+'
+' Rohan, 2026-08-14: "whenever a 1/4 changes at the top, the ferries belonging to
+' that system deal with information for the new quarter. The last previous set
+' that runs move info into 'reported last time' column."
+'
+' This replaces Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk, which asserted
+' the refusal contract. That refusal was a DEADLOCK -- nothing in the tool could
+' ever satisfy it -- so a test written to hold it in place was holding a defect
+' in place. Both it and Drafting_RolloverCadenceGovernsUntypedRows are deleted
+' rather than patched, because their names stated the old behaviour as the
+' requirement.
+Private Function Test_Drafting_QuarterTurnFerriesSubmitIntoReportedLastTime() As String
     Dim result As String
 
     Dim xl As Object, wb As Object, dws As Object, rws As Object
@@ -7303,8 +7312,6 @@ Private Function Test_Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk() As Stri
     Set dws = wb.Worksheets(1)
     Set rws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
 
-    ' A two-project register, read back through the real reader rather than
-    ' hand-built, so the test breaks if the Sheet shape moves under it.
     rws.Cells(1, 1).Value = ExcelOutput.INSTANCE_ID_HEADER
     rws.Cells(1, 2).Value = "PROJECT_NAME"
     rws.Cells(1, 3).Value = "ABOUT_BODY"
@@ -7314,75 +7321,71 @@ Private Function Test_Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk() As Stri
     Dim reg As Sheet
     reg = ExcelOutput.ReadSheet(rws)
 
-    ' 1. Build it for FY26Q3, then put a person's evening on it.
+    ' 1. Build it for FY26Q3 and put a person's evening on it.
     Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Empty, "FY26Q3"
     dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value = "P001 last quarter"
     dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value = "S01,S03"
     dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value = "chase the finance number"
     dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).Value = "AI text from last quarter"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value = "Y"
 
-    ' 2. THE ORDINARY PATH. Same period, so a rebuild must still cost nothing.
+    ' 2. SAME quarter: nothing moves. This is the everyday case and it must not
+    '    touch a single typed column.
     Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Empty, "FY26Q3"
     result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value) = "P001 last quarter", _
-        "A SAME-PERIOD REBUILD KEEPS SUBMIT -- the guard must not fire on the common path, got '" & _
+        "SAME QUARTER LEAVES SUBMIT ALONE, got '" & _
         CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value) & "'")
-    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value) = "S01,S03", _
-        "a same-period rebuild keeps the source IDs, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value) & "'")
-    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value) = "chase the finance number", _
-        "a same-period rebuild keeps the notes, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value) & "'")
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_PREV).Value) = "", _
+        "and nothing is ferried while the quarter has not turned, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_PREV).Value) & "'")
 
-    ' 3. THE ROLLOVER, WITH WORK ON THE SHEET. It must refuse and change nothing.
-    '    Asserted here only as far as "the sheet is intact afterwards" -- the
-    '    wording and counts of the refusal belong to the test that owns them.
+    ' 3. THE QUARTER TURNS.
     Dim rep As String
     rep = Drafting.WriteDraftingSheet(dws, reg, "ABOUT_BODY", Empty, "FY26Q4")
 
-    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value) = "P001 last quarter", _
-        "A ROLLOVER OVER TYPED WORK CHANGES NOTHING -- the submitted text survives, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value) & "'")
-    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value)) = "FY26Q3", _
-        "and the sheet still declares the quarter it was built for -- re-stamping a sheet " & _
-        "that was not rebuilt would make the next run think it was current, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value) & "'")
-
-    ' 4. THE ROLLOVER WITH NOTHING AT RISK. Clear the four columns a person types
-    '    into, and the same rollover must now go through: the guard exists to
-    '    protect work, not to freeze a sheet that has none.
-    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).ClearContents
-    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).ClearContents
-    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).ClearContents
-    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).ClearContents
-
-    rep = Drafting.WriteDraftingSheet(dws, reg, "ABOUT_BODY", Empty, "FY26Q4")
-
     result = result & Assert(InStr(rep, "REFUSED") = 0, _
-        "AN EMPTY SHEET ROLLS OVER -- nothing is at risk, so nothing is refused, got '" & _
-        Left(rep, 90) & "'")
+        "A QUARTER TURN IS NOT REFUSED. Report was: " & Left(rep, 120))
 
-    ' TOLD, NOT JUST DONE. A person discovering by absence that a rebuild moved
-    ' their sheet to a new quarter is the failure this project keeps having; the
-    ' note has to name both quarters or it does not explain anything.
-    result = result & Assert(InStr(rep, "FY26Q3") > 0 And InStr(rep, "FY26Q4") > 0, _
-        "the report NAMES BOTH PERIODS so the rebuild is explained, got '" & rep & "'")
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_PREV).Value) = "P001 last quarter", _
+        "LAST QUARTER'S SUBMIT LANDS IN REPORTED LAST TIME, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_PREV).Value) & "'")
 
-    ' The sheet must now declare the quarter it was actually built for, or the
-    ' next rebuild re-runs this same comparison against a stale stamp.
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value)) = "", _
+        "and SUBMIT is handed to the new quarter empty, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value) & "'")
+
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value)) = "", _
+        "and the tick goes with the text it approved, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value) & "'")
+
+    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).Value)) = "", _
+        "and the AI draft does not survive the turn, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).Value) & "'")
+
     result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value)) = "FY26Q4", _
-        "the sheet now declares FY26Q4, got '" & _
+        "and the sheet is re-stamped to the new quarter, got '" & _
         CStr(dws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value) & "'")
 
-    ' The rebuild is otherwise a normal, correct rebuild -- the register still
-    ' lands in ORIGINAL. Rolling the period is not licence to drop the rest.
+    ' 4. A SECOND pass in the new quarter must not ferry the empty SUBMIT over
+    '    the top of what it just saved. Rebuilding twice is normal -- Sync Now
+    '    calls this every run -- so an idempotence failure here would silently
+    '    erase the reference text on the very next press.
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Empty, "FY26Q4"
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_PREV).Value) = "P001 last quarter", _
+        "REPORTED LAST TIME SURVIVES A SECOND REBUILD, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_PREV).Value) & "'")
+
+    ' 5. ORIGINAL still comes from the register, not from the ferry.
     result = result & Assert(InStr(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_CURRENT).Value), "register one") > 0, _
-        "the register value still reaches ORIGINAL after a rollover, got '" & _
+        "ORIGINAL still reads the register, got '" & _
         CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_CURRENT).Value) & "'")
 
     wb.Close False
     xl.Quit
-    Set wb = Nothing: Set xl = Nothing
-    Test_Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk = result
+    Set wb = Nothing
+    Set xl = Nothing
+
+    Test_Drafting_QuarterTurnFerriesSubmitIntoReportedLastTime = result
 End Function
 
 ' THE TICK MUST SURVIVE A REBUILD IN ITS OWN QUARTER, AND MUST NOT SURVIVE A
@@ -7494,96 +7497,6 @@ End Function
 ' any row with content at all and this whole mechanism should be DELETED rather
 ' than kept passing. The test asserts what the code does today; it is not a vote
 ' that today's answer is right.
-Private Function Test_Drafting_RolloverCadenceGovernsUntypedRows() As String
-    Dim result As String
-
-    Dim xl As Object, wb As Object, dws As Object, rws As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    Set wb = xl.Workbooks.Add
-    Set dws = wb.Worksheets(1)
-    Set rws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
-
-    rws.Cells(1, 1).Value = ExcelOutput.INSTANCE_ID_HEADER
-    rws.Cells(1, 2).Value = "PROJECT_NAME"
-    rws.Cells(1, 3).Value = "ABOUT_BODY"
-    rws.Cells(2, 1).Value = "P001": rws.Cells(2, 2).Value = "Alpha": rws.Cells(2, 3).Value = "quarterly one"
-    rws.Cells(3, 1).Value = "P002": rws.Cells(3, 2).Value = "Beta":  rws.Cells(3, 3).Value = "static two"
-
-    Dim reg As Sheet
-    reg = ExcelOutput.ReadSheet(rws)
-
-    ' The register's own cadence answer, in the shape Register.ReadRegisterCore
-    ' produces it: True = the value came from a PERIOD row, False = from ALL.
-    Dim cadence As Object
-    Set cadence = CreateObject("Scripting.Dictionary")
-    cadence("P001" & Chr(1) & "ABOUT_BODY") = True      ' quarterly
-    cadence("P002" & Chr(1) & "ABOUT_BODY") = False     ' Quarter = ALL
-
-    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Empty, "FY26Q3", cadence
-    ' NO SUBMIT AND NO DRAFT ANYWHERE ON THIS SHEET, deliberately: either one
-    ' would trip the refusal guard and the rollover below would change nothing,
-    ' so the per-row logic this test exists for would never run.
-    dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SOURCES).Value = "S01"
-    dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_NOTES).Value = "chase the finance number"
-    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value = "S07"
-    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_NOTES).Value = "settled, do not touch"
-
-    Dim rep As String
-    rep = Drafting.WriteDraftingSheet(dws, reg, "ABOUT_BODY", Empty, "FY26Q4", cadence)
-
-    ' THE GUARD MUST NOT HAVE FIRED. If it did, every assertion below would pass
-    ' for the wrong reason -- an untouched sheet looks identical to a correctly
-    ' carried-over one on the rows that are meant to survive.
-    result = result & Assert(InStr(rep, "REFUSED") = 0, _
-        "the sheet REBUILT rather than refusing -- with no submitted or drafted text " & _
-        "there is nothing for the refusal to protect, got '" & Left(rep, 90) & "'")
-
-    ' The quarterly row goes.
-    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SOURCES).Value)) = "", _
-        "THE QUARTERLY ROW'S SOURCE IDS ARE CLEARED on rollover -- they cite the wrong quarter's evidence, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_SOURCES).Value) & "'")
-    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_NOTES).Value)) = "", _
-        "and its notes with them, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 0, Drafting.COL_D_NOTES).Value) & "'")
-
-    ' THE ENTITY-STATIC ROW SURVIVES INTACT. This is the whole test.
-    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value) = "S07", _
-        "THE Quarter = ALL ROW KEEPS ITS SOURCE IDS -- they cite the project, not the quarter, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value) & "'")
-    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_NOTES).Value) = "settled, do not touch", _
-        "and its notes, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_NOTES).Value) & "'")
-
-    ' COUNTED OUT LOUD, both ways. "Nothing was carried across" was the old
-    ' message and it would now be a lie on exactly the rows that matter.
-    ' Asserts the COUNTS, not the prose. The wording changed on 2026-08-08 (the
-    ' old text explained itself in "Quarter = ALL" terms, retired 2026-08-03, and
-    ' ran to two paragraphs inside a MsgBox that truncates near 1024 characters).
-    ' What must not change is that both numbers are said out loud.
-    result = result & Assert(InStr(rep, "1 row(s) cleared") > 0, _
-        "the report counts what it cleared, got '" & rep & "'")
-    result = result & Assert(InStr(rep, "1 carried over") > 0, _
-        "and counts what it deliberately kept, got '" & rep & "'")
-
-    ' UNKNOWN CADENCE STILL DROPS. A row the register cannot classify is treated
-    ' as quarterly, because assuming it is static is the failure that publishes
-    ' stale prose, and this guard exists to prevent exactly that.
-    Dim empt As Object
-    Set empt = CreateObject("Scripting.Dictionary")
-    ' SOURCES, not SUBMIT -- submitted text would refuse the rebuild outright and
-    ' this assertion would then pass against a sheet nothing had touched.
-    dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value = "S99"
-    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Empty, "FY27Q1", empt
-    result = result & Assert(Trim(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value)) = "", _
-        "A ROW THE REGISTER CANNOT CLASSIFY IS DROPPED, not assumed static, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_SOURCES).Value) & "'")
-
-    wb.Close False
-    xl.Quit
-    Set wb = Nothing: Set xl = Nothing
-    Test_Drafting_RolloverCadenceGovernsUntypedRows = result
-End Function
 
 ' THE WIDE SHEET CARRIES ITS OWN PERIOD -- one row per slide per period, rows
 ' accumulating, each deck picking up the period it declares. Rohan's model,
@@ -7725,60 +7638,6 @@ End Function
 ' entirely legitimate -- sheets stamped Q4F26 while the deck was deliberately
 ' set to Q3F26 to capture a baseline. Found 2026-08-13 because he asked "but the
 ' Q4 text I generated is real? How are you preserving that?"
-Private Function Test_Drafting_RefusesRatherThanDiscardOnPeriodChange() As String
-    Dim result As String
-
-    Dim xl As Object, wb As Object, ws As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    Set wb = xl.Workbooks.Add
-    Set ws = wb.Worksheets(1)
-    ws.Name = "TPL_TEST_BODY"
-
-    ' A sheet built by the CURRENT layout, stamped for one quarter, carrying work.
-    ws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_LAYOUT).Value = Drafting.DRAFT_LAYOUT_VERSION
-    ws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.COL_D_PERIOD).Value = "Q4F26"
-    ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_ENTITY).Value = "3_P001"
-    ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value = "MY REAL Q4 WRITING"
-    ws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_ENTITY).Value = "3_P002"
-    ws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_DRAFT).Value = "an AI draft"
-
-    Dim reg As Sheet
-    Set reg.Rows = CreateObject("Scripting.Dictionary")
-    Set reg.Fields = New Collection
-    Set reg.InstanceOrder = New Collection
-
-    ' Rebuild for a DIFFERENT period.
-    Dim report As String
-    report = Drafting.WriteDraftingSheet(ws, reg, "TEST_BODY", Empty, "Q3F26")
-
-    result = result & Assert(InStr(report, "REFUSED") > 0, _
-        "it REFUSES rather than rebuilding, got '" & Left(report, 70) & "'")
-    result = result & Assert(InStr(report, "Q4F26") > 0 And InStr(report, "Q3F26") > 0, _
-        "and names BOTH quarters so the person can tell which is which, got '" & Left(report, 90) & "'")
-    result = result & Assert(InStr(report, "2 row(s)") > 0, _
-        "and counts the rows at risk, got '" & Left(report, 90) & "'")
-
-    ' THE ONE THAT MATTERS. A refusal that happens after the clear is no refusal.
-    result = result & Assert(ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value = "MY REAL Q4 WRITING", _
-        "and the submitted text is UNTOUCHED, got '" & _
-        ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value & "'")
-    result = result & Assert(ws.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_DRAFT).Value = "an AI draft", _
-        "and so is the AI draft")
-
-    ' A MATCHING PERIOD MUST STILL REBUILD. A guard that refuses everything would
-    ' pass every assertion above and break the tool completely.
-    Dim ok As String
-    ok = Drafting.WriteDraftingSheet(ws, reg, "TEST_BODY", Empty, "Q4F26")
-    result = result & Assert(InStr(ok, "REFUSED") = 0, _
-        "a MATCHING period still rebuilds, got '" & Left(ok, 70) & "'")
-
-    wb.Saved = True
-    wb.Close
-    xl.Quit
-
-    Test_Drafting_RefusesRatherThanDiscardOnPeriodChange = result
-End Function
 
 Private Function Test_ExcelOutput_MissingRegisterColumns() As String
     Dim result As String
@@ -8401,14 +8260,14 @@ Private Function Test_Drafting_CitedSourceReachesThePromptCell() As String
     srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_LOCATOR).Value = "C:\rig\plan.md"
 
     ' Build once, cite, rebuild -- the citation is carried across.
-    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", Nothing, srcWs
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", srcWs
     Dim before As String
     before = CStr(dws.Cells(2, Drafting.COL_D_PROMPT).Value)
     result = result & Assert(InStr(before, "S12") = 0, _
         "with nothing cited, the prompt carries no sources block")
 
     dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value = "S12"
-    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", Nothing, srcWs
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", srcWs
 
     Dim after As String
     after = CStr(dws.Cells(2, Drafting.COL_D_PROMPT).Value)
@@ -8472,7 +8331,7 @@ Private Function Test_Drafting_Layout3SheetMigratesIntoLayout4Columns() As Strin
     dws.Cells(Drafting.DRAFT_FIRST_ROW, 7).Value = "S12"
     dws.Cells(Drafting.DRAFT_FIRST_ROW, 10).Value = "MY NOTE"
 
-    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", Nothing, Nothing
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", Nothing
 
     Dim got As String
     got = CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value)
