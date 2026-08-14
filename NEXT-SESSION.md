@@ -22,6 +22,38 @@
 > path all behind locked doors. Only the press answers it, and the answer is read from the
 > SAVED FILE, never from a dialog.
 >
+> ### ROHAN'S RULE, 14 AUG: **ONE APPROVAL STEP, PLUS SELECTION.** NOT YET BUILT.
+>
+> *"there should just be one approval step (besides any selection)"* — after walking the
+> chain himself and hitting seven dialogs.
+>
+> **The one approval is the REVIEW TICK.** That is where consent belongs: it is the only
+> gate whose answer varies, and the only one standing between the register and his slides.
+> Everything else becomes non-blocking and goes to the Run Log.
+>
+> **Dialogs to delete, in order met when pressing `1. Sync Now`:**
+>
+> | dialog | why it dies |
+> |---|---|
+> | `MS*` "fields with nothing to write into" | **DONE this session** — answer never varied; the 21 names are `MILESTONE_TIMELINE` internals, and "Yes" would have destroyed the device the warning pointed at. Now `WriteRunLog`. |
+> | "This will, in order... Go ahead?" | Invariant. Orientation belongs on START HERE, not in the way. |
+> | Roll Forward offer | Invariant when the destination already holds rows — it says so itself and then asks anyway. |
+> | "Write these into the register for Q4F26?" | The register is not the deck. Nothing reaches a slide from it without the review tick. Backed up, reversible. |
+> | "Ready to build the list of slide changes" | Pure ceremony in front of the real gate. |
+> | "Nothing was changed" confirmations | Report, never a modal. |
+>
+> **KEEP:** the field selection (it is a selection, not an approval) and the review tick.
+>
+> **The field picker is a defect in its own right.** It is a typed `InputBox` requiring an
+> exact match against a 30-item list, and the list is so long it pushes the text field OFF
+> THE BOTTOM OF THE SCREEN. Rohan: *"I don't want to do any secret hidden typing, I need to
+> select the field by clicking on it."* Make it a click.
+>
+> **NOT COMPILED.** The `MS*` deletion in `RibbonUI.bas` is committed unverified. Compile
+> before anything else.
+>
+> ---
+>
 > ### WHAT SHIPPED THIS SESSION
 >
 > - **Layout migration restored** (`MigrateSheetLayout`). The five `kept*` dictionaries WERE

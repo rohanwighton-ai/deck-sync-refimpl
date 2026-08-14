@@ -825,6 +825,9 @@ End Function
 Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) As Boolean
     OfferMarkingForUnwiredFields = True
 
+    ' Collected and reported, never prompted. See the block below for why.
+    Dim unwiredNote As String
+
     Dim wb As Object
     On Error Resume Next
     Set wb = WorkbookBridge.OpenOrGetWorkbook(DeckRegistry.GetWorkbookPath(pres))
@@ -869,74 +872,41 @@ Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) A
                         ' NAMES THE FIELDS, NOT JUST A COUNT. Fix-list 1a: a
                         ' true count with no subject sends people to check the
                         ' wrong thing, four times over now.
-                        Dim answer As VbMsgBoxResult
-                        answer = MsgBox( _
-                            "Slide type '" & types(i) & "' has fields with nothing to write into." & vbCrLf & vbCrLf & _
-                            FieldWiring.BlockingText(wiring) & vbCrLf & vbCrLf & _
-                            "Until these are tagged, those fields have nowhere to go on the slide." & vbCrLf & vbCrLf & _
-                            "Yes    -- tag them now, by clicking each shape." & vbCrLf & _
-                            "No     -- sync anyway and leave them untagged." & vbCrLf & _
-                            "Cancel -- change nothing.", _
-                            vbYesNoCancel + vbExclamation, TITLE)
-
-                        If answer = vbYes Then
-                            ' TAG ON THE TEMPLATE WHEN THAT IS WHAT IS MISSING.
-                            ' A new slide is a Duplicate of the template and
-                            ' inherits its shape tags, so tagging the template
-                            ' fixes every slide not yet made; tagging an
-                            ' instance fixes only that one.
-                            ' A SHAPE HAS TO BE SELECTED BEFORE MARKING CAN DO
-                            ' ANYTHING, and this branch used to call it
-                            ' regardless -- so the FIRST press always produced
-                            ' "Select exactly one shape first" and always would.
-                            ' Navigating to the template guarantees it: arriving
-                            ' at a slide selects nothing. Rohan hit it twice.
-                            '
-                            ' A dialog that cannot succeed on its first showing
-                            ' is the same defect as a check that cannot fail --
-                            ' it looks like a step and is furniture.
-                            Dim selCount As Long
-                            selCount = 0
-                            On Error Resume Next
-                            If Application.ActiveWindow.Selection.Type = 2 Then   ' ppSelectionShapes
-                                selCount = Application.ActiveWindow.Selection.ShapeRange.Count
-                            End If
-                            On Error GoTo 0
-
-                            If selCount = 1 Then
-                                BatchOnboardFlow.MarkFieldForBatch
-                            Else
-                                Dim whereTo As String
-                                If wiring.TemplateUnmarkedCount > 0 And Not templateSld Is Nothing Then
-                                    On Error Resume Next
-                                    Application.ActiveWindow.View.GotoSlide templateSld.SlideIndex
-                                    On Error GoTo 0
-                                    whereTo = "You are now on the TEMPLATE slide. Tag the missing " & _
-                                        "fields HERE: a new slide is a copy of this one and inherits " & _
-                                        "its tags, so tagging it here fixes every slide you make " & _
-                                        "from now on." & vbCrLf & vbCrLf
-                                End If
-
-                                MsgBox whereTo & _
-                                    "Now CLICK THE SHAPE you want to tag, then press '" & _
-                                    CommandBarUI.CAP_SYNC_NOW & "' again." & vbCrLf & vbCrLf & _
-                                    "Nothing was changed." & vbCrLf & vbCrLf & _
-                                    "(If the shape sits inside a group, one click selects the whole " & _
-                                    "group -- that is fine, you will be offered the shapes inside it.)", _
-                                    vbInformation, TITLE
-                            End If
-                            OfferMarkingForUnwiredFields = False
-                            Exit Function
-                        ElseIf answer = vbCancel Then
-                            MsgBox "Nothing was changed.", vbInformation, TITLE
-                            OfferMarkingForUnwiredFields = False
-                            Exit Function
-                        End If
+                        ' THE PROMPT IS GONE (2026-08-14). Its answer never varied.
+                        '
+                        ' It fired on EVERY press with the same 21 names --
+                        ' MS1_LABEL..MS7_DONE -- which are not orphans at all.
+                        ' They are the internals of the MILESTONE_TIMELINE
+                        ' device, which injects as ONE addressable thing. The
+                        ' only correct answer was always "No, sync anyway", and
+                        ' answering "Yes" would have walked a person through
+                        ' tagging 21 device internals as individual fields --
+                        ' destroying the device this warning was pointing at.
+                        '
+                        ' A dialog whose answer is fixed is not a decision, it
+                        ' is a toll. Worse, it trains the click-through that
+                        ' eventually gets paid on the ONE dialog that matters.
+                        ' Reported to the run report and the START HERE sheet
+                        ' instead, which is already this file's stated policy
+                        ' for partial coverage twelve lines above.
+                        '
+                        ' The tagging entry point is NOT lost -- it lives on
+                        ' Discover Fields, which is where a person goes when
+                        ' they mean to tag something, rather than mid-sync when
+                        ' they meant to publish.
+                        unwiredNote = unwiredNote & "Slide type '" & types(i) & "': " & _
+                            FieldWiring.BlockingText(wiring) & vbCrLf
                     End If
                 End If
             End If
         End If
     Next i
+
+    ' Reported, not prompted. The Run Log is where a person looks when they
+    ' want the detail; a modal is where they look when they want to get on.
+    If unwiredNote <> "" And Not wb Is Nothing Then
+        WorkbookBridge.WriteRunLog wb, "Fields with nothing to write into", unwiredNote
+    End If
 End Function
 
 Private Sub SyncNowChainCore()
