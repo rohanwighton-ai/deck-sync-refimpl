@@ -4,8 +4,9 @@
 >
 > ### FIRST ACTION: COMPILE AND RUN THE SUITE IN POWERPOINT. NOTHING ELSE.
 >
-> `vba/Drafting.bas` carries a substantial **uncommitted** restructure that has
-> **never been compiled**. Everything else waits on that.
+> `vba/Drafting.bas` carries a substantial restructure that is **committed and pushed
+> (`aff84d6`) but has NEVER BEEN COMPILED**. Everything else waits on that. It is
+> committed because losing it was the bigger risk, not because it is trusted.
 >
 > **Do not trust `check_vba_static.py` as compile evidence.** It was handed a
 > `Drafting.bas` containing a deliberate `If True Then` with no `End If` and printed
@@ -45,8 +46,16 @@
 > - **Not a cell-length problem.** Longest value 609 chars against Excel's 32,767. This
 >   hypothesis was tested and is dead.
 >
-> **NOT established: why the write stopped where it did.** Do not write a cause into
-> this file until one is demonstrated.
+> **NOT established: why the write stopped where it did — AND DO NOT GO LOOKING.**
+>
+> Rohan, 14 Aug: *"please don't blow my budget on mysteries that are not part of the
+> existing architecture and current decision making."* He is right. The in-place fix
+> bounds this failure mode — a mid-write abort now leaves untouched rows untouched — so
+> the cause is a curiosity, not a blocker. It is a one-off on a specific machine state
+> and may never recur.
+>
+> **Reopen it only if it happens again**, and then with the evidence in hand rather than
+> by hunting. Do not write a speculative cause into this file.
 >
 > **RECOVERY STILL OUTSTANDING.** The 27 texts exist in
 > `backups/register-wide.PRE-ABOUTFIX-20260814-071658.xlsx`. **A wholesale file restore
@@ -126,13 +135,51 @@
 >    tick confusion.
 > 3. **Shape visibility is entirely unbuilt.** No `.Visible` write anywhere; `Behaviour`
 >    is fill/fit/as-is for pictures only. The only one of the five with zero machinery.
-> 4. **He expects a file per quarter**; the tool stacks every period in one register
->    sheet. If quarters were separate files, most of the machinery that has cost this
->    project since 1 Aug would not need to exist. **Hypothesis, not conclusion** — the
->    unpriced cost is cross-quarter reads (column C) becoming cross-file reads.
+> 4. **He expects a file per quarter.** **SETTLED 14 Aug — see `DECISIONS.md`.**
 >
-> **GAP 4 must be settled before the rename/button work**, which is otherwise scoped
-> against an architecture that may be about to change.
+> ### GAP 4 IS SETTLED: ONE FILE PAIR PER QUARTER, PLUS A DERIVED CENTRAL REGISTER
+>
+> Deck **and** register split per quarter. A central register for multi-period analysis
+> is **derived and never authored** — rebuilt by reading the quarter files, read-only,
+> nothing ever flows back out of it into a quarter. Rohan's addition, and it closes the
+> only real objection to splitting.
+>
+> **The cost was checked, not assumed, and it is nearly zero.** All twelve register
+> reads are `ReadSheetForDeckPeriod(ws, <the deck's CURRENT period>)`. Exactly one
+> function crosses periods: `RollForwardPeriod`. Column C reads the current period, not
+> the previous one — the feared cross-quarter reads **do not exist**. An earlier version
+> of this file named that as the unpriced cost; that was wrong.
+>
+> **The actual argument** is that the drafting sheets live *inside* the register
+> workbook. If the register does not split, they do not split, and clearing last
+> quarter's work out of a live sheet stays a normal-path operation — the operation that
+> lost 27 paragraphs on 14 Aug. Per-quarter, the old quarter survives *by construction*.
+> Same move as the in-place fix, one level up.
+>
+> **Not designed yet:** the aggregate's rebuild trigger and location; and the naming
+> convention, which stops being cosmetic — `GetWorkbookPath` is already a bug source
+> ("could not open the paired workbook", three causes in one morning) and more files
+> means more pairing, on a machine with no Claude, Python or WSL.
+>
+> ### GAP 2 IS SMALLER THAN IT LOOKED — plumbing, not architecture
+>
+> Checked 14 Aug: **the review queue is already matrix-shaped.** `ChangeHash` is keyed
+> per entity *and* field, so the compiled projects-x-fields view Rohan describes already
+> exists downstream. The per-field bottleneck is only in **publish** (`FieldForRun`
+> asking "which field?"), sitting in front of a machine that already handles the matrix.
+> So this is closer to "publish across all fields" than to building a new surface.
+>
+> ### ON SHAPES vs TEXT BOXES — asked 14 Aug, answered from the code
+>
+> Injection already handles four kinds: text (`InjectPrimitive`), pictures
+> (`InjectPictureVia`), progress bars (`InjectProgressVia`) and **devices**
+> (`InjectDeviceVia` — a group consuming several register columns as one addressable
+> thing). Visibility on/off is the one with no machinery at all (GAP 3).
+>
+> **Writing is solved; RECOGNISING is not.** Injection treats a device as one thing;
+> discovery, wiring, marking and the audit all see its parts — which is why the timeline
+> appeared as 21 candidate fields. That is Rohan's "load shape modules as prenamed per
+> slide entities", and it is the device registry decided 13 Aug.
 >
 > ---
 >
