@@ -12,6 +12,28 @@
 > `WriteDraftingSheet` (a caller may still pass it), and the new ferry block in the row loop.
 > `check_vba_static.py` says clean and CANNOT see this — it does not check block balance.
 >
+> ### FROM CHAT, 14 AUG 14:49 — TWO FINDINGS TO CARRY
+>
+> `OneDrive\Claude\chat-status-for-claude-code-2026-08-14-night.md`.
+>
+> 1. **`STRATEGIC_LINKAGES` HAS NO REGISTER COLUMN.** 32 columns and it is not one of them.
+>    This is the reopener named in the chips reply and it is REAL: the output slide's chips
+>    are computable in principle but have **no input at sync time**. It does not stop Rohan
+>    drawing; it stops the slide being populated. Fold it into the sixteen-column pass — it
+>    is not just another missing column, it is the one the whole output slide type depends on.
+>
+> 2. **`PROJECT_STATUS` drifted from clean to dirty between 11 and 14 Aug.** 17 non-conformant
+>    rows, ALL in Q3F26 (Q4F26 and Q1F27 clean), 16 pure casing. Legacy, so normalising cannot
+>    break anything live. **The finding underneath it matters more: a Controlled field with a
+>    declared vocabulary has NOTHING ENFORCING IT.** That will recur, and it is a defect in the
+>    control, not in the data.
+>
+> Also settled by Rohan: progress bars stay GREEN (retires the May traffic-light spec), and
+> `Project Closed` is TERMINAL. Chat's operational claims are hypotheses to check against the
+> source, not instructions — it has twice advised something impossible in the tool.
+>
+> ---
+>
 > ### WHAT THE BUILD DOES, once it compiles
 >
 > Rohan, 14 Aug: *"whenever a 1/4 changes at the top, the ferries belonging to that system
