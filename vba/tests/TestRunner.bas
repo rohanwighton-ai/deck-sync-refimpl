@@ -419,6 +419,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_Harvest_DryRunCountsFieldsThatLabellingWillCreate()
+    AppendResult report, "Harvest_DryRunCountsFieldsThatLabellingWillCreate", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous()
     AppendResult report, "Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous", r
     On Error GoTo 0
@@ -4373,6 +4378,58 @@ Private Function Test_Harvest_RefusesAFieldThePublishPathWouldTreatAsABar() As S
     xl.Quit
 
     Test_Harvest_RefusesAFieldThePublishPathWouldTreatAsABar = result
+End Function
+
+' THE PREVIEW MUST COUNT WHAT THE RUN WILL WRITE, NOT WHAT IS TAGGED TODAY.
+'
+' The real failure: a dry run offered 10 values and the run wrote 34, because the
+' dry harvest looks fields up BY their role tag and propagation has not written
+' those tags yet. The fixture is that exact shape -- an UNTAGGED shape whose role
+' propagation would stamp -- and the assertion is that the dry count includes it.
+'
+' Both halves matter. Without the pending map the count is 0 and the caller
+' under-promises; if pending were consulted in a WET run it would double-count,
+' since propagation stamps first and the ordinary lookup finds the shape.
+Private Function Test_Harvest_DryRunCountsFieldsThatLabellingWillCreate() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "harvest-type"
+    sld.Tags.Add "instance_key", "h-6"
+
+    ' Deliberately NOT tagged -- this is the state a dry run is blind to.
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 300, 50)
+    shp.TextFrame.TextRange.Text = "Prof. Someone"
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+    ws.Cells(1, 2).Value = "Quarter"
+    ws.Cells(1, 3).Value = "PROJECT_LEAD"
+    ws.Cells(2, 1).Value = "h-6"
+    ws.Cells(2, 2).Value = "Q4F26"
+
+    Dim blind As HarvestOutcome
+    blind = Harvest.HarvestSlide(sld, ws, "Q4F26", True)
+    result = result & Assert(blind.Written = 0, _
+        "without the pending map the dry run cannot see it, got " & blind.Written)
+
+    Dim pending As Object
+    Set pending = CreateObject("Scripting.Dictionary")
+    pending("PROJECT_LEAD") = "Prof. Someone"
+
+    Dim seeing As HarvestOutcome
+    seeing = Harvest.HarvestSlide(sld, ws, "Q4F26", True, pending)
+    result = result & Assert(seeing.Written = 1, _
+        "with it, the dry run counts the field labelling will create, got " & seeing.Written)
+    result = result & Assert(IsEmpty(ws.Cells(2, 3).Value), _
+        "and a dry run still wrote nothing")
+
+    wb.Close False
+    xl.Quit
+
+    Test_Harvest_DryRunCountsFieldsThatLabellingWillCreate = result
 End Function
 
 ' Builds the real deck's date pair: same x, identical size, 0.14" apart -- which

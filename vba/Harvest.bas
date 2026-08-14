@@ -82,6 +82,13 @@ Public Type PropagateOutcome
     ' correct stamps printed them all underneath a "Refused" header on
     ' 2026-08-14. A caller cannot un-mix two things that arrived in one string.
     Collisions As String
+    ' role -> the shape text it would be stamped onto. Exists so a DRY RUN can
+    ' answer "what will actually be written", which the harvest alone cannot:
+    ' the harvest finds fields BY their role tag, and in a dry run those tags do
+    ' not exist yet. Without this the prompt offered 10 values and the run wrote
+    ' 34 (2026-08-15) -- every value correct, the number wrong by 3.4x, on the
+    ' one approval gate standing between the register and the slides.
+    Pending As Object
 End Type
 
 ' CARRYING THE TEMPLATE'S ROLE TAGS ONTO A SLIDE THAT IS ALREADY LINKED.
@@ -118,6 +125,7 @@ Public Function PropagateTemplateTags(sld As Object, templateSld As Object, _
                                       dryRun As Boolean) As PropagateOutcome
     Dim outcome As PropagateOutcome
     outcome.Ran = False
+    Set outcome.Pending = CreateObject("Scripting.Dictionary")
 
     If sld Is Nothing Or templateSld Is Nothing Then
         outcome.Problem = "No slide or no template slide."
@@ -212,6 +220,13 @@ Public Function PropagateTemplateTags(sld As Object, templateSld As Object, _
                 Dim target As Object
                 Set target = untaggedShapes(matches(j).Result.CandidateIndex)
                 outcome.Stamped = outcome.Stamped + 1
+                ' Recorded for BOTH dry and wet runs. In a wet run nothing reads
+                ' it -- the tag exists by the time the harvest looks -- but
+                ' populating it unconditionally means the dry and wet paths
+                ' cannot diverge in what they believe is pending.
+                If ShapeIsNotHarvestableText(sld, target, matches(j).Role) = "" Then
+                    outcome.Pending(matches(j).Role) = ShapeText(target)
+                End If
                 outcome.Detail = outcome.Detail & "  " & matches(j).Role & " -> shape '" & _
                                  target.Name & "' = '" & _
                                  BatchOnboardFlow.FieldPreview(ShapeText(target)) & "'" & vbCrLf
@@ -230,7 +245,8 @@ End Function
 ' `dryRun` reports exactly what a real run would write and touches nothing.
 ' It is the first argument a person should use on a deck of 43 slides.
 Public Function HarvestSlide(sld As Object, ws As Object, period As String, _
-                             dryRun As Boolean) As HarvestOutcome
+                             dryRun As Boolean, _
+                             Optional pendingTags As Object = Nothing) As HarvestOutcome
     Dim outcome As HarvestOutcome
     outcome.Ran = False
 
@@ -297,10 +313,30 @@ Public Function HarvestSlide(sld As Object, ws As Object, period As String, _
                 Dim shp As Object
                 Set shp = InjectPrimitive.FindShapeByRoleTag(sld, fname)
                 If shp Is Nothing Then
-                    ' Nothing means none OR more than one -- both are "do not
-                    ' guess", and both are ordinary on a slide whose register
-                    ' has more columns than the slide has tagged shapes.
-                    outcome.SkippedNoShape = outcome.SkippedNoShape + 1
+                    ' A FIELD THAT DOES NOT EXIST YET, BUT WILL BY THE TIME THIS
+                    ' RUNS FOR REAL.
+                    '
+                    ' Dry-run only, and only when the caller has handed over what
+                    ' propagation would stamp. The harvest finds fields BY their
+                    ' role tag; in a dry run those tags are not written yet, so
+                    ' without this the preview counts only fields that were
+                    ' ALREADY tagged and silently omits everything this same
+                    ' press is about to label and read. That is how the prompt
+                    ' offered 10 and the run wrote 34.
+                    '
+                    ' It is not needed in a wet run: propagation stamps first, so
+                    ' the shape is found by the ordinary path above.
+                    If dryRun And PendingText(pendingTags, fname) <> "" Then
+                        outcome.Written = outcome.Written + 1
+                        outcome.Detail = outcome.Detail & "  " & fname & " = '" & _
+                            BatchOnboardFlow.FieldPreview(PendingText(pendingTags, fname)) & _
+                            "'  (after labelling)" & vbCrLf
+                    Else
+                        ' Nothing means none OR more than one -- both are "do not
+                        ' guess", and both are ordinary on a slide whose register
+                        ' has more columns than the slide has tagged shapes.
+                        outcome.SkippedNoShape = outcome.SkippedNoShape + 1
+                    End If
                 ElseIf ShapeIsNotHarvestableText(sld, shp, fname) <> "" Then
                     ' HARVEST ONLY WHAT PUBLISH WOULD WRITE AS TEXT.
                     '
@@ -377,6 +413,15 @@ Private Function ShapeIsNotHarvestableText(sld As Object, shp As Object, fname A
     End If
 
     ShapeIsNotHarvestableText = ""
+End Function
+
+' The text a role WOULD be stamped onto, or "" if it is not pending. Tolerates a
+' Nothing dictionary so every caller that does not care can simply omit it.
+Private Function PendingText(pendingTags As Object, fname As String) As String
+    PendingText = ""
+    If pendingTags Is Nothing Then Exit Function
+    If Not pendingTags.Exists(fname) Then Exit Function
+    PendingText = Trim$(CStr(pendingTags(fname)))
 End Function
 
 ' A shape with no text frame raises rather than returning "", and a harvest that

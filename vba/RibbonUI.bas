@@ -881,8 +881,17 @@ Private Function OfferHarvestForSelectedSlides(pres As Object, TITLE As String) 
         End If
 
         If Not ws Is Nothing Then
+            ' pDry.Pending IS THE FIX for the count. The dry harvest finds
+            ' fields by their role tag, and in a dry run propagation has not
+            ' written those tags yet -- so without this it counts only fields
+            ' that were ALREADY tagged and omits every one this same press is
+            ' about to label and read. Measured 2026-08-15: offered 10, wrote 34.
+            Dim pending As Object
+            Set pending = Nothing
+            If Not tpl Is Nothing Then Set pending = pDry.Pending
+
             Dim dry As HarvestOutcome
-            dry = Harvest.HarvestSlide(sld, ws, period, True)
+            dry = Harvest.HarvestSlide(sld, ws, period, True, pending)
             If dry.Ran And dry.Written > 0 Then
                 toRead = toRead + dry.Written
                 slideNote = slideNote & dry.Detail
