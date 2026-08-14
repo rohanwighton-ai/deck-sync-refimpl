@@ -1465,7 +1465,7 @@ Private Sub SyncPreviewCore()
         CountLines(fullReport, "would correct:") & " slide(s) would change." & vbCrLf & vbCrLf & _
         "The full before-and-after is on the '" & WorkbookBridge.RUN_LOG_SHEET_NAME & _
         "' sheet in the workbook, untruncated." & vbCrLf & vbCrLf & _
-        "Read it there, then press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' again."
+        "Read it there, then press '" & CommandBarUI.CAP_PUT_ON_SLIDES & "' again."
 
     ' wbWasDirty, NOT a fresh IsDirty -- WriteRunLog above has dirtied the workbook
     ' by now, so re-asking would always answer yes. See the note at the first test.

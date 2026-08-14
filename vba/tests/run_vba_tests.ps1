@@ -132,13 +132,45 @@ function Clear-EmptyHusk {
     param([string]$ProgId, [string]$ProcessName)
 
     $procs = @(Get-Process $ProcessName -ErrorAction SilentlyContinue)
-    if ($procs.Count -ne 1) { return }   # asymmetry 2: ambiguity is not a kill
+    if ($procs.Count -eq 0) { return }
+
+    # WINDOWLESS ONES FIRST, HOWEVER MANY THERE ARE.
+    #
+    # This used to be `if ($procs.Count -ne 1) { return }` -- "ambiguity is not a
+    # kill". The caution was right and the consequence was that the guard created
+    # the state it guarded against: ONE husk self-heals, TWO husks are permanent,
+    # because the count can never come back down to one. Observed 2026-08-14,
+    # three EXCEL.EXE at once; two test runs refused with SKIPPED and a write to
+    # the live register failed with Excel's "cannot access the file", which names
+    # three possible causes and identifies none of them.
+    #
+    # MainWindowHandle -eq 0 means the process is drawing nothing on screen, so
+    # no person can be looking at it. That is a per-process fact, unlike
+    # Get-OpenDocumentCount, which goes through GetActiveObject and can only ever
+    # answer for ONE instance -- which is why multiples were given up on.
+    #
+    # Deliberately NOT filtered on MainWindowTitle: on 2026-08-09 a zombie
+    # carried the bare title "Excel" and a title-based filter quietly matched
+    # nothing, so the self-heal reported success having done nothing.
+    $windowless = @($procs | Where-Object { $_.MainWindowHandle -eq 0 })
+    foreach ($p in $windowless) {
+        Write-Output "=== Clearing a leftover $ProcessName (pid $($p.Id), no window) -- an automation husk from a previous run. ==="
+        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+    }
+    if ($windowless.Count -gt 0) { Start-Sleep -Seconds 2 }
+
+    # A single SURVIVOR with a window still gets the original treatment: it may
+    # be an empty frame a person is not using, and only the document count can
+    # say. Both original asymmetries are preserved -- ambiguity is not a kill,
+    # and unknown (-1) is not a kill.
+    $remaining = @(Get-Process $ProcessName -ErrorAction SilentlyContinue)
+    if ($remaining.Count -ne 1) { return }
 
     $docs = Get-OpenDocumentCount -ProgId $ProgId
-    if ($docs -ne 0) { return }          # asymmetry 1: unknown (-1) is not a kill
+    if ($docs -ne 0) { return }
 
-    Write-Output "=== Clearing a leftover empty $ProcessName (pid $($procs[0].Id), 0 documents open) -- an automation husk from a previous run. ==="
-    Stop-Process -Id $procs[0].Id -Force -ErrorAction SilentlyContinue
+    Write-Output "=== Clearing a leftover empty $ProcessName (pid $($remaining[0].Id), 0 documents open) -- an automation husk from a previous run. ==="
+    Stop-Process -Id $remaining[0].Id -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 }
 
@@ -181,6 +213,26 @@ foreach ($progId in @("PowerPoint.Application", "Excel.Application")) {
     # No `| Out-Null` here on purpose -- see Clear-EmptyHusk's header. Piping
     # its output away is what would silence the record of a force-kill.
     Clear-EmptyHusk -ProgId $progId -ProcessName $processNameFor[$progId]
+
+    # LOOK BEFORE ASKING. Request-GracefulQuit calls Quit() on whatever instance
+    # COM hands it, and Quit() CLOSES THE PERSON'S DOCUMENTS. The decision to
+    # leave a live session alone was made AFTER that, which is too late -- the
+    # window is already shut.
+    #
+    # Seen twice on 2026-08-14 within ten minutes: a test run closed Rohan's open
+    # `register-wide - Excel`, and a second run closed a visible `Book1 - Excel`.
+    # Both then printed "not forcing it closed", which is true of the PROCESS and
+    # false of the thing he actually cared about.
+    #
+    # A surviving windowed process at this point is a real session -- every
+    # windowless one has just been cleared above. So refuse here, before asking.
+    $windowed = @(Get-Process $processNameFor[$progId] -ErrorAction SilentlyContinue |
+                  Where-Object { $_.MainWindowHandle -ne 0 })
+    if ($windowed.Count -gt 0) {
+        $titles = ($windowed | ForEach-Object { "'" + $_.MainWindowTitle + "' (pid " + $_.Id + ")" }) -join ", "
+        Write-Output "=== SKIPPED: $($processNameFor[$progId]) has an open window -- $titles. Not quitting it and not forcing it closed. Close it and re-run. ==="
+        exit 2
+    }
 
     $outcome = Request-GracefulQuit -ProgId $progId
     if ($outcome -eq "timeout" -or $outcome -like "quit-error*") {

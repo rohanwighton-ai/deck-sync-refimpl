@@ -600,7 +600,7 @@ Public Sub WriteQueueSheet(ws As Object, q As ReviewQueueSet)
     ws.Cells(ROW_BANNER, 1).Value = "SYNC REVIEW -- " & q.SlideType
     ws.Cells(ROW_BANNER, 2).Value = "Run: " & q.RunStamp
     ws.Cells(ROW_BANNER, 3).Value = IIf(q.Consumed, STATE_CONSUMED, STATE_OPEN)
-    ws.Cells(ROW_BANNER, 4).Value = "Put Y in the Approve column. Nothing is written until you press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' again."
+    ws.Cells(ROW_BANNER, 4).Value = "Put Y in the Approve column. Nothing is written until you press '" & CommandBarUI.CAP_PUT_ON_SLIDES & "' again."
     ws.Rows(ROW_BANNER).Font.Bold = True
 
     ws.Cells(ROW_HEADER, COL_ENTITY).Value = "EntityCode"
@@ -1179,7 +1179,7 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
     If q.Consumed Then
         ApplyApproved = report & vbCrLf & _
             "REFUSED: this review has already been applied." & vbCrLf & _
-            "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' again to build a fresh queue." & vbCrLf
+            "Press '" & CommandBarUI.CAP_REVIEW_ONLY & "' again to build a fresh queue." & vbCrLf
         Exit Function
     End If
 
@@ -1432,7 +1432,7 @@ Public Function QueueSummaryText(q As ReviewQueueSet) As String
     ' identical banner -- so the sentence pointed at a real sheet that was the
     ' WRONG one, and ticking it would leave approvals somewhere nothing reads.
     s = s & "Nothing has been written. Review the '" & ReviewSheetNameFor(q.SlideType) & _
-        "' sheet, put Y against what you approve, then press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' again." & vbCrLf
+        "' sheet, put Y against what you approve, then press '" & CommandBarUI.CAP_PUT_ON_SLIDES & "' again." & vbCrLf
 
     QueueSummaryText = s
 End Function

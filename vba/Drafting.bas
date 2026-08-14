@@ -808,7 +808,7 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Cells(3, 1).Value = "STEP 2   Name your sources in column " & Chr$(64 + COL_D_SOURCES) & ". Add new ones on the Sources sheet first."
     ws.Cells(4, 1).Value = "STEP 3   Ask Copilot for a draft -- the prompt is in cell L2. It writes into column " & Chr$(64 + COL_D_DRAFT) & ". That column is NEVER published."
     ws.Cells(5, 1).Value = "STEP 4   Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' to copy " & Chr$(64 + COL_D_DRAFT) & " into " & Chr$(64 + COL_D_SUBMIT) & ", then EDIT column " & Chr$(64 + COL_D_SUBMIT) & " until you are happy. That is what gets sent."
-    ws.Cells(6, 1).Value = "STEP 5   Type  Y  in column " & Chr$(64 + COL_D_APPROVED) & ", save and CLOSE the file, then press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' again."
+    ws.Cells(6, 1).Value = "STEP 5   Type  Y  in column " & Chr$(64 + COL_D_APPROVED) & ", save and CLOSE the file, then press '" & CommandBarUI.CAP_PUT_ON_SLIDES & "' again."
 
     ws.Cells(7, 1).Value = "Only column " & Chr$(64 + COL_D_SUBMIT) & " is published -- nothing the AI writes reaches a slide unless you have moved it there and ticked it. " & _
                            "Column C is read-only: edit the register, not this sheet, to change what a slide says today."
