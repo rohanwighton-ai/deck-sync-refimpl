@@ -1,6 +1,100 @@
 # NEXT SESSION — start here
 
-> ## 14 AUG, 10:15 — THE APPROVE-TICK DEFECT IS FIXED AND PROVEN. NOT COMMITTED.
+> ## 14 AUG, ~12:00 — READ THIS BLOCK FIRST. It supersedes the 10:15 block below.
+>
+> ### STATE
+>
+> - **`addin84` IS LOADED.** Verified from the registry, not from a dialog:
+>   `HKCU\...\Office\16.0\PowerPoint\AddIns\addin84`, `AutoLoad=1`, and **`addin83` is
+>   gone**. Build stamp `2026-08-14 10:09`. File is byte-identical in `OneDrive\Claude\`
+>   and the trusted `AppData\Roaming\Microsoft\AddIns\` (md5 `2b5514d6…`).
+> - **The tick fix is committed and pushed** — `644ed16` on `main`.
+> - **Delivery count is still 2.** No new field reached a slide today.
+>
+> ### WHAT HAPPENED AT 11:40, AND WHAT IT COST
+>
+> Rohan pressed `1. Sync Now` **while `addin83` was still the loaded add-in**. The chain
+> rebuilt the drafting sheets and **wiped every approve tick on the two sheets it
+> rebuilt** — defect 1 demonstrating itself on the real workbook, an hour after being
+> fixed in source. Read from the saved file:
+>
+> | sheet | SUBMIT cells | APPROVE cells (data rows) |
+> |---|---|---|
+> | `TPL_KEY_EVENTS_BODY` | 22 | **0** |
+> | `TPL_PROGRESS_BODY` | 37 | **0** |
+> | the other eleven `TPL_*` | 43 | 43 present |
+>
+> **No text was lost. The deck was never touched** (still 08:21). **Nothing was
+> published** — the Sync Log's newest entry is still `2026-08-14 08:21`, and that check
+> was calibrated: the same search finds `07:48` and `08:21`, so its silence about 11:xx
+> is evidence rather than absence.
+>
+> **NO BACKUP WAS TAKEN before that rebuild.** That is FIX-LIST 1d — the park runs
+> *after* `ws.Cells.Clear`, not before. Still unfixed.
+>
+> **TO RE-TICK: `TPL_KEY_EVENTS_BODY` and `TPL_PROGRESS_BODY`.** Those two are certain.
+> The other eleven have approve cells PRESENT, which is **not** the same as holding `Y` —
+> a cell containing `0` counts identically, and this project has already recorded one
+> wrong conclusion from exactly that (FIX-LIST P6). Unverified; check column G by eye.
+> Under `addin84` those ticks now survive a same-quarter rebuild.
+>
+> ### ARCHITECTURE DECIDED THIS SESSION — Rohan's calls, all four
+>
+> 1. **The tick default INVERTS.** Everything auto-ticked at drafting; you untick what
+>    you do not want shipped. Writing the text is the declaration; the exception should
+>    carry the marking cost, not the majority case. **Two conditions attached:** the
+>    review grid keeps FIX-LIST 3's conditional pre-tick (pre-tick only where the slide's
+>    current text still exactly matches what the register last wrote, so a hand-edited
+>    slide still demands a read); and the period reset becomes load-bearing rather than
+>    incidental, because auto-tick plus a rollover would otherwise re-approve last
+>    quarter's prose. Today's fix already drops the tick with the text on a period
+>    change — that property now needs a test that says so out loud.
+>
+> 2. **THE CHAIN SPLITS BY ARTIFACT, NOT BY STEP.** One set of actions touches the
+>    workbook, one touches the deck, and **neither can trigger the other**. This reverses
+>    the 2026-08-09 two-button chain decision. The chain was right about the problem
+>    (orientation — "which step am I up to?") and wrong about the remedy (removing the
+>    choice), and the coupling it created is what wiped the ticks above: a person pressed
+>    a button to PUBLISH and it REBUILT first.
+>
+> 3. **The deck side runs fully independently** of whether the workbook side has just
+>    run. It reads the register as it stands on disk. This is what makes each half
+>    testable alone — scenario 5 currently cannot be exercised without walking scenarios
+>    1 and 2's machinery first.
+>
+> 4. **Review is its own action, not a step inside something else** — with its purpose
+>    AND its exclusions stated ("for reading current vs proposed and ticking; not for
+>    writing to slides"). Rohan: *"clear what it is and isn't for, part of a sequence, or
+>    not."*
+>
+> ### THE ONLY THING TO BUILD NEXT — PHASE 1, AND NOTHING ELSE
+>
+> **Split the chain into independent buttons, and delete the three invariant prompts.**
+>
+> This is mostly DELETION. `RefreshDraftingSheets`, `PublishDraftsForField`,
+> `ReviewChangesCore` and `ApplyApprovedCore` already exist as independent Subs;
+> `RibbonUI.SyncNowChainCore` is a wrapper that calls them in order, and
+> `CommandBarUI.AddButton` is called exactly twice. Removing the wrapper and adding
+> buttons is small and subtractive.
+>
+> **DEFERRED, DELIBERATELY — do not build these as part of phase 1.** Scope grew in
+> consecutive rounds this session and was cut back at Rohan's prompt (*"are we
+> complicating this or making it simpler"*): self-describing action objects, promoting
+> the `Readiness` surface as an orientation map, Excel-hosting the workbook half as an
+> `.xlam` (FIX-LIST 8 — needs the deck's path and period written into the workbook's
+> custom properties first), template-first, the device registry. All still wanted. None
+> before scenario 5 has been walked once.
+>
+> ### PROCESS NOTE, WORTH KEEPING
+>
+> **Four rounds of chain design happened and the delivery count did not move.** Rohan
+> asked "are we complicating this?" — the question this session should have asked itself
+> at round three. The tell was scope growing in consecutive rounds while nothing new
+> could be demonstrated. Consider running `deck-sync-pm` before the next design round.
+>
+> ---
+>
+> ## 14 AUG, 10:15 — THE APPROVE-TICK DEFECT IS FIXED AND PROVEN.
 >
 > **Working tree carries UNCOMMITTED changes to `vba/Drafting.bas` and
 > `vba/tests/TestRunner.bas`.** Commit them. Nothing else is modified.
@@ -37,7 +131,8 @@
 > machine-knowable fact instead of deriving it.** Now derived on both sides. This is
 > the write-it-twice class landing in a test, where no document checker can see it.
 >
-> **`addin84` IS PREPARED BUT NOT SAVED.** Build stamp `2026-08-14 10:09`, all 32
+> **SUPERSEDED — `addin84` has since been saved, installed and confirmed loaded; see the
+> block above.** As written: build stamp `2026-08-14 10:09`, all 32
 > production modules imported. The `File > Save As > PowerPoint Add-in (*.ppam)` click
 > is a permanent manual step (see `build_ppam.ps1` header — proven impossible to
 > automate, twice, for independent reasons). **Verify the live build by the stamp
