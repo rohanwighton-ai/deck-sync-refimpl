@@ -394,6 +394,21 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_Harvest_WritesOnlyWhereTheRegisterCellIsEmpty()
+    AppendResult report, "Harvest_WritesOnlyWhereTheRegisterCellIsEmpty", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_Harvest_SkipsATaggedGroupInsteadOfReadingItAsEmpty()
+    AppendResult report, "Harvest_SkipsATaggedGroupInsteadOfReadingItAsEmpty", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_Harvest_PropagationStampsOnlyTheMissingRole()
+    AppendResult report, "Harvest_PropagationStampsOnlyTheMissingRole", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow()
     AppendResult report, "DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow", r
     On Error GoTo 0
@@ -4096,6 +4111,146 @@ Private Function Test_DeckAdoption_AlreadyLinkedSlideSkipped() As String
     xl.Quit
 
     Test_DeckAdoption_AlreadyLinkedSlideSkipped = result
+End Function
+
+' THE SAFETY PROPERTY, PINNED. A harvest may only fill a register cell that is
+' empty. FIELD_A is seeded with text a person typed and FIELD_B is left empty,
+' and the slide carries a different value for BOTH -- so a harvest that ignores
+' the emptiness rule fails on FIELD_A's assertion rather than passing quietly
+' with one extra write.
+Private Function Test_Harvest_WritesOnlyWhereTheRegisterCellIsEmpty() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "harvest-type"
+    sld.Tags.Add "instance_key", "h-1"
+
+    Dim aShp As Object
+    Set aShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 300, 50)
+    aShp.TextFrame.TextRange.Text = "FROM THE SLIDE A"
+    aShp.Tags.Add "role", "FIELD_A"
+
+    Dim bShp As Object
+    Set bShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 200, 300, 50)
+    bShp.TextFrame.TextRange.Text = "FROM THE SLIDE B"
+    bShp.Tags.Add "role", "FIELD_B"
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+    ws.Cells(1, 2).Value = "Quarter"
+    ws.Cells(1, 3).Value = "FIELD_A"
+    ws.Cells(1, 4).Value = "FIELD_B"
+    ws.Cells(2, 1).Value = "h-1"
+    ws.Cells(2, 2).Value = "Q4F26"
+    ws.Cells(2, 3).Value = "TYPED BY A PERSON"
+    ' FIELD_B deliberately left empty -- this is the cell the harvest may fill.
+
+    Dim o As HarvestOutcome
+    o = Harvest.HarvestSlide(sld, ws, "Q4F26", False)
+
+    result = result & Assert(o.Ran, "the harvest ran, problem was '" & o.Problem & "'")
+    result = result & Assert(o.Written = 1, "exactly one value written, got " & o.Written)
+    result = result & Assert(o.SkippedHasValue = 1, "one field skipped for already holding a value, got " & o.SkippedHasValue)
+    result = result & Assert(CStr(ws.Cells(2, 3).Value) = "TYPED BY A PERSON", _
+        "FIELD_A was NOT overwritten, got '" & CStr(ws.Cells(2, 3).Value) & "'")
+    result = result & Assert(CStr(ws.Cells(2, 4).Value) = "FROM THE SLIDE B", _
+        "FIELD_B was filled from the slide, got '" & CStr(ws.Cells(2, 4).Value) & "'")
+
+    wb.Close False
+    xl.Quit
+
+    Test_Harvest_WritesOnlyWhereTheRegisterCellIsEmpty = result
+End Function
+
+' A DEVICE IS SKIPPED BY NAME, NOT READ AS BLANK. A group has no text of its
+' own, so a harvest that treated it as an ordinary shape would find "" and
+' report it as "blank on the slide" -- indistinguishable from a genuinely empty
+' field, and the timeline's 21 values would look accounted for while nothing
+' had been read. The assertion is on SkippedDevice specifically for that reason.
+Private Function Test_Harvest_SkipsATaggedGroupInsteadOfReadingItAsEmpty() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "harvest-type"
+    sld.Tags.Add "instance_key", "h-2"
+
+    Dim a As Object, b As Object
+    Set a = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 100, 30)
+    a.TextFrame.TextRange.Text = "part one"
+    Set b = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 140, 100, 30)
+    b.TextFrame.TextRange.Text = "part two"
+
+    Dim grp As Object
+    Set grp = sld.Shapes.Range(Array(a.Name, b.Name)).Group
+    grp.Tags.Add "role", "TIMELINE_X"
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+    ws.Cells(1, 2).Value = "Quarter"
+    ws.Cells(1, 3).Value = "TIMELINE_X"
+    ws.Cells(2, 1).Value = "h-2"
+    ws.Cells(2, 2).Value = "Q4F26"
+
+    Dim o As HarvestOutcome
+    o = Harvest.HarvestSlide(sld, ws, "Q4F26", False)
+
+    result = result & Assert(o.Ran, "the harvest ran, problem was '" & o.Problem & "'")
+    result = result & Assert(o.SkippedDevice = 1, "the tagged group was counted as a skipped device, got " & o.SkippedDevice)
+    result = result & Assert(o.SkippedBlankOnSlide = 0, "it was NOT counted as blank-on-slide, got " & o.SkippedBlankOnSlide)
+    result = result & Assert(o.Written = 0, "nothing was written, got " & o.Written)
+    result = result & Assert(IsEmpty(ws.Cells(2, 3).Value), "the device's register cell is still empty")
+
+    wb.Close False
+    xl.Quit
+
+    Test_Harvest_SkipsATaggedGroupInsteadOfReadingItAsEmpty = result
+End Function
+
+' PROPAGATION CARRIES A MISSING ROLE AND LEAVES A PRESENT ONE ALONE.
+'
+' The target already carries FIELD_A and is missing FIELD_B. Both properties are
+' asserted because they fail in opposite directions: forgetting to filter the
+' roles re-matches FIELD_A against whatever untagged shape is left (stamping the
+' wrong shape), and filtering too hard stamps nothing at all.
+Private Function Test_Harvest_PropagationStampsOnlyTheMissingRole() As String
+    Dim result As String
+
+    Dim tplSld As Object
+    Set tplSld = NewBlankSlide()
+    Dim tA As Object, tB As Object
+    Set tA = tplSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 300, 50)
+    tA.TextFrame.TextRange.Text = "template A"
+    tA.Tags.Add "role", "FIELD_A"
+    Set tB = tplSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 200, 300, 50)
+    tB.TextFrame.TextRange.Text = "template B"
+    tB.Tags.Add "role", "FIELD_B"
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "harvest-type"
+    sld.Tags.Add "instance_key", "h-3"
+
+    Dim gotA As Object, gotB As Object
+    Set gotA = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 101, 100, 300, 50)
+    gotA.TextFrame.TextRange.Text = "target A"
+    gotA.Tags.Add "role", "FIELD_A"                 ' already labelled
+    Set gotB = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 101, 200, 300, 50)
+    gotB.TextFrame.TextRange.Text = "target B"      ' deliberately unlabelled
+
+    Dim o As PropagateOutcome
+    o = Harvest.PropagateTemplateTags(sld, tplSld, False)
+
+    result = result & Assert(o.Ran, "propagation ran, problem was '" & o.Problem & "'")
+    result = result & Assert(o.AlreadyTagged = 1, "one role was already on the slide, got " & o.AlreadyTagged)
+    result = result & Assert(o.Stamped = 1, "exactly one role stamped, got " & o.Stamped)
+    result = result & Assert(gotB.Tags("role") = "FIELD_B", _
+        "the unlabelled shape now carries FIELD_B, got '" & gotB.Tags("role") & "'")
+    result = result & Assert(gotA.Tags("role") = "FIELD_A", _
+        "the already-labelled shape still carries FIELD_A, got '" & gotA.Tags("role") & "'")
+
+    Test_Harvest_PropagationStampsOnlyTheMissingRole = result
 End Function
 
 Private Function Test_DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow() As String

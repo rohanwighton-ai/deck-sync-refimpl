@@ -810,6 +810,240 @@ End Function
 
 ' Returns True to CARRY ON with the chain, False to stop.
 '
+' READING VALUES OFF THE SLIDES INTO THE REGISTER. See Harvest.bas's header for
+' why this is a separate capability from adoption rather than a mode of it:
+' adoption skips every already-linked slide before it matches anything, so on a
+' live deck -- where every slide is linked -- it harvests nothing at all.
+'
+' NOT A FOURTH BUTTON, and not an unconditional prompt either. In Normal view a
+' slide is ALWAYS selected, so "you have slides selected, harvest them?" would
+' fire on nearly every press, which is the invariant prompt this chain deleted
+' six of. The gate is a DRY RUN over the selected slides: if nothing would be
+' written, nothing is said. On a steady-state deck every field already holds a
+' value, so this is silent; it speaks only in the state it exists for, which is
+' the press after new fields have been tagged.
+'
+' The dry run costs one register read plus a shape walk per field per selected
+' slide. In Normal view that is one slide. In the slide sorter it is whatever
+' the person deliberately selected, which is the moment they have asked for it.
+Private Function OfferHarvestForSelectedSlides(pres As Object, TITLE As String) As Boolean
+    OfferHarvestForSelectedSlides = True
+
+    Dim sel As Object
+    On Error Resume Next
+    Set sel = Application.ActiveWindow.Selection
+    On Error GoTo 0
+    If sel Is Nothing Then Exit Function
+
+    Dim isSlides As Boolean
+    isSlides = False
+    On Error Resume Next
+    isSlides = (sel.Type = 1)                                ' ppSelectionSlides
+    On Error GoTo 0
+    If Not isSlides Then Exit Function
+
+    Dim period As String
+    period = DeckRegistry.GetDeckPeriod(pres)
+    If period = "" Then Exit Function
+
+    Dim wb As Object
+    On Error Resume Next
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(DeckRegistry.GetWorkbookPath(pres))
+    On Error GoTo 0
+    If wb Is Nothing Then Exit Function
+
+    ' PASS ONE -- dry run. Writes nothing, to the deck or the register. Its only
+    ' job is to decide whether there is anything worth interrupting for, and to
+    ' say exactly what.
+    Dim toStamp As Long, toRead As Long, slideCount As Long
+    Dim detail As String, devices As String, collisions As String
+
+    Dim sld As Object
+    For Each sld In sel.SlideRange
+        Dim ws As Object, tpl As Object
+        Set ws = SheetForSlide(pres, wb, sld)
+        Set tpl = TemplateForSlide(pres, sld)
+
+        Dim slideNote As String
+        slideNote = ""
+
+        If Not tpl Is Nothing Then
+            Dim pDry As PropagateOutcome
+            pDry = Harvest.PropagateTemplateTags(sld, tpl, True)
+            If pDry.Ran And pDry.Stamped > 0 Then
+                toStamp = toStamp + pDry.Stamped
+                slideNote = slideNote & pDry.Detail
+            End If
+            If pDry.Collided > 0 Then collisions = collisions & pDry.Detail
+        End If
+
+        If Not ws Is Nothing Then
+            Dim dry As HarvestOutcome
+            dry = Harvest.HarvestSlide(sld, ws, period, True)
+            If dry.Ran And dry.Written > 0 Then
+                toRead = toRead + dry.Written
+                slideNote = slideNote & dry.Detail
+            End If
+            If dry.Ran And dry.SkippedDevice > 0 Then devices = dry.Detail
+        End If
+
+        If slideNote <> "" Then
+            slideCount = slideCount + 1
+            detail = detail & "Slide " & sld.SlideIndex & ":" & vbCrLf & slideNote
+        End If
+    Next sld
+
+    If toStamp = 0 And toRead = 0 Then Exit Function
+
+    ' NAMES BOTH WRITES. This is the one approval in front of an operation that
+    ' changes the DECK as well as the register, and a prompt that mentioned only
+    ' the register would be asking for consent to less than it does.
+    Dim ask As String
+    ask = toStamp & " shape(s) would be labelled on the slides, and " & toRead & _
+          " value(s) read into the register, across " & slideCount & " slide(s) for " & period & "." & vbCrLf & vbCrLf & _
+          "This writes to BOTH files:" & vbCrLf & _
+          "  - the deck gets a role tag on each labelled shape (nothing visible changes)" & vbCrLf & _
+          "  - the register gets a value ONLY where it currently holds nothing" & vbCrLf & vbCrLf & _
+          "A value already in the register is never overwritten." & vbCrLf & vbCrLf
+    If collisions <> "" Then ask = ask & "Refused -- two fields matched one shape:" & vbCrLf & collisions & vbCrLf
+    ask = ask & CapReport(detail)
+
+    If MsgBox(ask, vbYesNo + vbQuestion, TITLE) <> vbYes Then
+        OfferHarvestForSelectedSlides = False
+        Exit Function
+    End If
+
+    ' PASS TWO -- the same walks, writing. LABEL FIRST, THEN READ, per slide:
+    ' the harvest finds a field BY its role tag, so a tag stamped after the read
+    ' would be a field labelled this run and not harvested until the next one --
+    ' a half-done state that reports as success.
+    '
+    ' Re-derived rather than replayed from pass one: if anything changed between
+    ' the two, each pass's own guard still governs, so the worst case is doing
+    ' less than was offered, never more.
+    Dim stamped As Long, written As Long
+    For Each sld In sel.SlideRange
+        Set tpl = TemplateForSlide(pres, sld)
+        If Not tpl Is Nothing Then
+            Dim pWet As PropagateOutcome
+            pWet = Harvest.PropagateTemplateTags(sld, tpl, False)
+            stamped = stamped + pWet.Stamped
+        End If
+
+        Set ws = SheetForSlide(pres, wb, sld)
+        If Not ws Is Nothing Then
+            Dim wet As HarvestOutcome
+            wet = Harvest.HarvestSlide(sld, ws, period, False)
+            written = written + wet.Written
+        End If
+    Next sld
+
+    Dim report As String
+    report = stamped & " shape(s) labelled, " & written & " value(s) written into the register for " & period & "."
+    report = report & vbCrLf & PersistBothFiles(pres, wb)
+    If devices <> "" Then
+        report = report & vbCrLf & "Not read (no way to read one back yet):" & vbCrLf & devices
+    End If
+
+    ShowSyncResult TITLE, report
+    OfferHarvestForSelectedSlides = False
+End Function
+
+' The TEMPLATE slide for this slide's own type. Separate from SheetForSlide
+' because propagation needs the template and harvesting needs the sheet, and a
+' slide can have one resolvable without the other.
+Private Function TemplateForSlide(pres As Object, sld As Object) As Object
+    Dim inst As SlideInstance
+    inst = Resolve.ResolveSlideInstance(sld)
+    If Not inst.HasTypeTag Then Exit Function
+    If inst.IsTemplate Then Exit Function          ' never propagate onto itself
+
+    Dim templateSld As Object, wsName As String
+    If Not DeckRegistry.LookupType(pres, inst.TypeTag, templateSld, wsName) Then Exit Function
+
+    Set TemplateForSlide = templateSld
+End Function
+
+' The register sheet for THIS slide's own type. Per-slide rather than resolved
+' once for the selection: a selection can span types, and picking one sheet for
+' all of them would write a slide's values into another type's rows.
+Private Function SheetForSlide(pres As Object, wb As Object, sld As Object) As Object
+    Dim inst As SlideInstance
+    inst = Resolve.ResolveSlideInstance(sld)
+    If Not inst.HasTypeTag Then Exit Function
+
+    Dim templateSld As Object, wsName As String
+    If Not DeckRegistry.LookupType(pres, inst.TypeTag, templateSld, wsName) Then Exit Function
+    If Not WorkbookBridge.WorksheetExists(wb, wsName) Then Exit Function
+
+    Set SheetForSlide = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
+End Function
+
+' Returns True to CARRY ON with the chain, False to stop.
+'
+' The SLIDE-first door, mirroring OfferMarkingForSelectedShape above.
+'
+' AdoptFlow.AdoptExistingSlides was written AS a toolbar entry point -- its own
+' header still said so -- and the 2026-08-14 split to three buttons left it with
+' no button and no caller anywhere: built, tested and unreachable by a person.
+' check_vba_static.py could not see it because AdoptFlow.bas was missing from
+' its UI_MODULES set, so the checker built to catch exactly this reported clean.
+' Both are fixed together; keeping one without the other re-opens the hole.
+'
+' OFFERED, NOT BUTTONED. The bar is deliberately three, and adoption needs a
+' SELECTION to act on, so the selection is the trigger rather than a fourth
+' caption. Slide selection and shape selection are different Selection.Types,
+' so this cannot collide with the door above.
+'
+' IT FIRES ONLY WHEN THERE IS SOMETHING TO ADOPT, and that condition is load
+' bearing rather than tidy. In Normal view a slide is ALWAYS selected, so
+' prompting on "slides are selected" would put a dialog in front of nearly
+' every press -- the invariant prompt this chain deleted six of. An already
+' linked slide is skipped by PlanAdoption before any matching, so a selection
+' containing only linked slides has genuinely nothing to offer.
+Private Function OfferAdoptionForSelectedSlides(TITLE As String) As Boolean
+    OfferAdoptionForSelectedSlides = True
+
+    Dim sel As Object
+    On Error Resume Next
+    Set sel = Application.ActiveWindow.Selection
+    On Error GoTo 0
+    If sel Is Nothing Then Exit Function
+
+    Dim isSlides As Boolean
+    isSlides = False
+    On Error Resume Next
+    isSlides = (sel.Type = 1)                                ' ppSelectionSlides
+    On Error GoTo 0
+    If Not isSlides Then Exit Function
+
+    ' COUNT THE UNLINKED ONES, not the selected ones. Resolve.ResolveSlideInstance
+    ' is the same read PlanAdoption uses to decide, so this offer cannot promise
+    ' work that the adoption itself will then skip.
+    Dim unlinked As Long
+    unlinked = 0
+    Dim sld As Object
+    On Error Resume Next
+    For Each sld In sel.SlideRange
+        Dim inst As SlideInstance
+        inst = Resolve.ResolveSlideInstance(sld)
+        If Not (inst.HasInstanceKey And inst.HasTypeTag) Then unlinked = unlinked + 1
+    Next sld
+    On Error GoTo 0
+    If unlinked = 0 Then Exit Function
+
+    If MsgBox(unlinked & " of the selected slides are not linked to the register yet." & vbCrLf & vbCrLf & _
+              "Adopt them now?" & vbCrLf & vbCrLf & _
+              "Yes -- read their fields against the template and link them to rows." & vbCrLf & _
+              "No  -- leave them and carry on.", _
+              vbYesNo + vbQuestion, TITLE) = vbYes Then
+        AdoptFlow.AdoptExistingSlides
+        OfferAdoptionForSelectedSlides = False
+    End If
+End Function
+
+' Returns True to CARRY ON with the chain, False to stop.
+'
 ' Stops only when the person chose to go and tag something, or cancelled. A
 ' scan that cannot run does NOT stop the chain: refusing to sync because a
 ' check was unable to look would be the check gating rather than offering, and
@@ -1025,6 +1259,14 @@ Private Sub SyncNowChainCore()
     ' tagged field to look at it does not prompt, and neither does having nothing
     ' selected. Answering No carries straight on to the sync.
     If Not OfferMarkingForSelectedShape(TITLE) Then Exit Sub
+
+    If Not OfferAdoptionForSelectedSlides(TITLE) Then Exit Sub
+
+    ' AFTER adoption, deliberately: adoption LINKS a slide and harvest FILLS a
+    ' linked one, so on a selection containing both, linking first is the order
+    ' that leaves nothing stranded. Adoption stops the chain when it runs, so
+    ' the two never fire on the same press -- pressing again picks up the rest.
+    If Not OfferHarvestForSelectedSlides(pres, TITLE) Then Exit Sub
 
     If Not OfferMarkingForUnwiredFields(pres, TITLE) Then Exit Sub
 

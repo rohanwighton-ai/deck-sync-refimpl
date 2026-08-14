@@ -1,6 +1,132 @@
 # NEXT SESSION — start here
 
-> ## 14 AUG, LATE NIGHT (~22:15). **STATUS: CURRENT.** Everything below is historical.
+> ## 14 AUG, ~23:10. **STATUS: CURRENT.** Everything below is historical.
+>
+> ### THE HARVEST DID NOT EXIST. IT DOES NOW, AND IT HAS NEVER RUN ON THE DECK.
+>
+> The block below says the harvest is a press away. **It is not, and it never
+> was.** `DeckAdoption.PlanAdoption` skips any slide carrying `slide_type` +
+> `instance_key` at `DeckAdoption.bas:149`, **before any matching runs**. All 43
+> project slides carry both. So adoption on a live deck reports 43 already-linked
+> and reads nothing — by construction, not by accident. Adoption is for slides
+> the tool has never seen; every slide here was adopted months ago, which is how
+> the nine prose roles reached all 44.
+>
+> Searched for any other route: `PlanAdoption`/`CommitAdoption` are the only two
+> functions that read a value off a slide into the register. The `CurrentValue`
+> reads in `InjectPrimitive` are what-was-there-before records inside the
+> INJECTION path, not a harvest.
+>
+> ### FIRST ACTION: REBUILD THE ADD-IN, THEN DRY-RUN PROPAGATION ON **ONE** SLIDE
+>
+> Nothing below is reachable until the modules are re-imported and
+> `File > Save As > PowerPoint Add-in` is clicked. The loaded add-in is still the
+> pre-harvest build.
+>
+> Then: select ONE project slide, press `1. Set up my quarter`, and answer **No**
+> at the prompt. The dry run writes nothing. **Read what it offers, not what it
+> claims** — and note the suite cannot substitute for this: every test fixture is
+> a two-shape slide, and slide 1 has **136 shapes, four of them named
+> `Shape 46`**. The matcher has never been asked anything that hard.
+>
+> ### THE TAGGING WAS NOT 29 FIELDS. IT WAS 7, AND IT IS DONE.
+>
+> Read from the deck's XML, not from the field list:
+>
+> | | |
+> |---|---|
+> | 21 `MS*_LABEL/_DATE/_DONE` | ONE tag. `Discovery.bas:165` recognises the timeline by counting slots, not by name, so the device is one candidate |
+> | 6 scalars | real shapes, tagged |
+> | `SECTOR`, `TRL` | **no shape at all** — substrings of one composed subtitle line |
+>
+> **Written to slide 44 and verified from the saved bytes**: tag parts 440 → 447,
+> each of the seven ROLE values appearing exactly once, file moved 19:20 → 22:33.
+> `START_DATE`, `END_DATE`, `PROJECT_LEAD`, `SUBTITLE_A`, `INDUSTRY_CASH`,
+> `TOTAL_VALUE`, `MILESTONE_TIMELINE`. Backup: `backups/PRE-TAG-20260814-222900/`,
+> md5-verified.
+>
+> ### WHAT THE DECK ACTUALLY LOOKS LIKE — settled from the file, do not re-derive
+>
+> - **Slide 44 is the template** (the one tag file with `SLIDE_TYPE` and no
+>   `INSTANCE_KEY`), and it is a **clone of slide 1 with only the nine prose
+>   fields placeholder-ised**. Every Given value on it is still project
+>   `3_P001`'s real data, including a shape named `3_P001 Timeline`.
+> - **The milestone device is named on 2 of 44 slides** — 44 and 1. Nowhere else.
+> - **There is a stray `MS2_ON` OUTSIDE the timeline group**, at slot 3's
+>   position, on both slides. `PartsOf` only walks the group, so the device can
+>   never control it. Uncontrolled dark circle over slot 3.
+> - **The slide shows four money figures and the register names two.** SAAFE Cash
+>   and In-Kind are labelled on the slide and have no field.
+>
+> ### WHAT SHIPPED — suite **197 passed / 0 failed**, compile clean, 34 modules
+>
+> - **`vba/Harvest.bas` (new).** `HarvestSlide` reads role-tagged shapes into the
+>   register row for the slide and period. **A cell is written ONLY when the
+>   register holds nothing**, read structurally as `Not rowValues.Exists(field)`
+>   because `ReadSheetForPeriod` only dictionaries non-empty cells. Refuses on
+>   duplicate instance rows, never creates a column, never invents a row, and
+>   **skips a tagged group by name** rather than reading a device's empty text as
+>   a blank field.
+> - **`PropagateTemplateTags`** — the missing middle link. Carries the template's
+>   roles onto an already-linked slide, reusing `MatchSlideAgainstTemplate`
+>   unchanged. **The caller must filter the roles first**: that function loops
+>   EVERY template role while filtering the target to UNTAGGED shapes, so asking
+>   about a role the slide already carries scores it against some unrelated
+>   leftover. Stamps only on `high`; refuses when two roles claim one shape.
+> - **`AdoptFlow.AdoptExistingSlides` was orphaned** — no button, no caller, for
+>   the whole life of the three-button toolbar. Now called from
+>   `RibbonUI.OfferAdoptionForSelectedSlides`. Its header said "Toolbar entry
+>   point" the entire time.
+> - **`check_vba_static.py` could not see it**: `AdoptFlow.bas` was missing from
+>   `UI_MODULES`. Added. **And the checker is weaker than its name** — it asks
+>   whether a NAME appears in another module, not whether anything reachable
+>   calls it, so a chain of private orphans is still invisible to it.
+> - Both new doors are gated on there being something to do. In Normal view a
+>   slide is ALWAYS selected, so an ungated "you have slides selected" prompt
+>   would fire on nearly every press.
+>
+> ### PROVEN BY A DELIBERATE BREAK — AND ONE THAT WAS WEAKER THAN CLAIMED
+>
+> - **Harvest's empty-cell rule: real damage.** Guard removed → all three
+>   assertions failed, `FIELD_A was NOT overwritten, got 'FROM THE SLIDE A'`,
+>   `Written` 2 not 1. The device test stayed green, isolating it.
+> - **Propagation's role filter: bookkeeping only.** Filter removed → **one**
+>   assertion failed (`already on the slide, got 0`). `FIELD_B` still landed
+>   correctly and `FIELD_A` was not corrupted. **So the test proves the guard is
+>   reached, NOT that removing it puts a role on the wrong shape.** The fixture
+>   has two easily-distinguished shapes; the real slide has 136. This is the
+>   weaker of the two guards and it is the one that writes to the deck.
+> - **The first break attempt did not break anything** — commenting the call to
+>   the wrapper left the callee's name still written inside it, and the checker
+>   only greps for the name. That is what exposed the checker's real contract.
+>
+> ### ALSO: A SKIPPED SUITE RUN EXITS 0
+>
+> `run_vba_tests.ps1` refuses to close an open PowerPoint (correctly, since
+> 14 Aug) and **exits 0 having done nothing**. Its own header still describes the
+> old "ask it to Quit()" behaviour, which is what produced a wrong prediction to
+> Rohan. Read the output file, never the exit code.
+>
+> ### OPEN, NAMED
+>
+> 1. **Propagation has never touched a real slide.** Dry run one first.
+> 2. **The device covers 21 of the 29 fields and cannot be read back.** Slot
+>    state lives in shape visibility — GAP 3, unbuilt. Harvest skips it by name.
+> 3. **`SECTOR`/`TRL`: Rohan chose to split them into their own shapes.** Not
+>    built. Note the split does NOT reach the other 42 slides, and `Text 4`'s
+>    other two facts already exist as their own shapes (`Text 110`, `Text 112`) —
+>    so `SUBTITLE_A` may be a composed output, not a field.
+> 4. The stray `MS2_ON` on slides 1 and 44.
+> 5. `STRATEGIC_LINKAGES` has a register column, no values, no template tag.
+> 6. `PROJECT_STATUS` still has nothing enforcing its vocabulary.
+>
+> **Delivery count is 2.** Nothing reached a slide, and none of tonight's code
+> has run against the real deck. Everything is committed to the working tree
+> only — `Harvest.bas` and `backups/` are untracked.
+>
+> ---
+
+> ## 14 AUG, LATE NIGHT (~22:15). **SUPERSEDED** by the block above.
 >
 > ### THE THING THAT CHANGED TONIGHT: DRAFTING → REGISTER WORKS.
 >
@@ -403,8 +529,9 @@
 > ---
 
 
-> ## 14 AUG, LATE — READ THIS FIRST. **STATUS: CURRENT.** Everything below is
-> historical and kept for reasoning only.
+> ## 14 AUG, LATE. **SUPERSEDED** by the blocks above — it was current on 14 Aug
+> and its banner was never demoted, so this file carried TWO blocks claiming to
+> be current until the 14 Aug 23:10 block above. Kept for reasoning only.
 >
 > ### THE COMPILE IS DONE AND IT WAS GREEN
 >

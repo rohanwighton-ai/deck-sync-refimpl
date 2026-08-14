@@ -393,7 +393,13 @@ def check_structural_sanity(path: Path, lines: list[str]) -> list[str]:
 # The suite could not catch either. TestRunner asserts every BUTTON resolves to a
 # real Sub; nothing asserts the reverse. Tests call functions directly, a person
 # presses buttons, and nothing covered the gap.
-UI_MODULES = {"RibbonUI.bas", "DraftingUI.bas", "DiscoverUI.bas", "BatchOnboardFlow.bas"}
+# AdoptFlow.bas ADDED 2026-08-14. Its omission is why this check reported clean
+# while AdoptFlow.AdoptExistingSlides sat with no button and no caller for the
+# whole life of the three-button toolbar -- the checker built to catch "built and
+# unreachable by a person" could not see the module it was happening in. Proven
+# by adding it and re-running before the fix: two notes appeared immediately.
+UI_MODULES = {"RibbonUI.bas", "DraftingUI.bas", "DiscoverUI.bas", "BatchOnboardFlow.bas",
+              "AdoptFlow.bas"}
 
 # Reached some other way, on purpose. Each needs a reason, so the list cannot
 # quietly become where inconvenient findings go to be silenced.

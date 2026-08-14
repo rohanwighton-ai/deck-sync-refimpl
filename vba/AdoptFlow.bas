@@ -138,7 +138,10 @@ End Function
 ' type's template (via DeckRegistry) plus the slides to adopt -- greenfield
 ' (no template yet) is out of scope here, per DeckAdoption.bas's own
 ' precondition; use Setup B: Onboard Slides first.
-Public Function PromptAdoptExistingSlides() As String
+' PRIVATE since 2026-08-14. It was Public for a caller that never existed --
+' nothing outside this module has ever referenced it -- and a Public with no
+' outside caller reads as a capability someone can reach.
+Private Function PromptAdoptExistingSlides() As String
     Dim pres As Object
     Set pres = Application.ActivePresentation
 
@@ -260,8 +263,18 @@ Public Function PromptAdoptExistingSlides() As String
     PromptAdoptExistingSlides = report
 End Function
 
-' Toolbar entry point. The real work is in AdoptExistingSlidesCore; this exists only to
-' catch anything that escapes it.
+' ENTRY POINT. Called by RibbonUI.OfferAdoptionForSelectedSlides, which is the
+' only route to it -- it has NO toolbar button of its own, deliberately.
+'
+' This header said "Toolbar entry point" from the day it was written until
+' 2026-08-14, and the button it named was deleted in the three-button split on
+' that same day. The sentence stayed true-sounding and became false, which is
+' why it is now written as the caller's NAME rather than as a button's caption:
+' a caption can be deleted out from under a comment, a caller cannot without the
+' compiler saying so.
+'
+' The real work is in AdoptExistingSlidesCore; this exists only to catch
+' anything that escapes it.
 '
 ' A WRAPPER rather than an inline "On Error GoTo" on purpose. In VBA,
 ' "On Error GoTo 0" disables the enabled handler for the whole procedure, and
@@ -277,9 +290,9 @@ Failed:
     RibbonUI.ShowSyncResult "Adopt Existing Slides", RibbonUI.UnexpectedErrorText("Adopt Existing Slides", Err.Number, Err.Description, Err.Source)
 End Sub
 
-' Thin wrapper for CommandBarUI.bas's toolbar button -- a plain, parameterless
-' Sub (same shape as RibbonUI.bas's four actions), reporting via the same
-' shared ShowSyncResult rather than a bespoke dialog.
+' Thin wrapper -- a plain, parameterless Sub (same shape as RibbonUI.bas's
+' actions), reporting via the same shared ShowSyncResult rather than a bespoke
+' dialog.
 Private Sub AdoptExistingSlidesCore()
     Dim report As String
     report = PromptAdoptExistingSlides()

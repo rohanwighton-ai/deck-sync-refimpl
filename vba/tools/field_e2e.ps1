@@ -57,7 +57,7 @@ $modules = @(
     "SyncOperations.bas","Onboarding.bas","ExcelOutput.bas","Verification.bas",
     "SlideDuplication.bas","TemplateSlide.bas","TemplateAudit.bas","IdentityCheck.bas",
     "TagMigration.bas","FieldWiring.bas","MilestoneDevice.bas","Readiness.bas","Register.bas","RegisterSeed.bas","PlaceholderCheck.bas","RunSync.bas","ReviewQueue.bas","Drafting.bas","FieldSpec.bas","Sources.bas","Timeline.bas",
-    "DeckAdoption.bas","ResolveFields.bas","DeckRegistry.bas","WorkbookBridge.bas",
+    "DeckAdoption.bas","ResolveFields.bas","DeckRegistry.bas","WorkbookBridge.bas","Harvest.bas",
     "OnboardFlow.bas","RibbonUI.bas","AdoptFlow.bas","BatchOnboardFlow.bas","CommandBarUI.bas","DraftingUI.bas","DiscoverUI.bas"
 )
 foreach ($m in $modules) { Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging }

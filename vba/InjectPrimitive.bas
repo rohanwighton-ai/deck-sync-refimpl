@@ -91,7 +91,13 @@ Public Const PICTURE_SOURCE_TAG As String = "picsrc"
 ' instead of a silent divergence.
 Public Const VALUE_SEPARATOR As String = LINE_BREAK_DELIMITER
 
-Private Function FindShapeByRoleTag(sld As Object, identityTag As String) As Object
+' PUBLIC since 2026-08-14, for Harvest.bas. Deliberately shared rather than
+' copied: this walk carries two properties a second copy would lose within a
+' week -- it TESTS a group as well as recursing into it (see WalkForRoleTag's
+' header for the day that was an ElseIf and made every device unfindable), and
+' it returns Nothing on TWO matches as well as none, so an ambiguous tag can
+' never be silently resolved to whichever shape came first.
+Public Function FindShapeByRoleTag(sld As Object, identityTag As String) As Object
     Dim match As Object
     Dim matchCount As Long
     matchCount = 0
@@ -134,6 +140,19 @@ Private Sub WalkForRoleTag(shapesColl As Object, identityTag As String, ByRef ma
         End If
     Next shp
 End Sub
+
+' HOW MANY shapes carry this role, which FindShapeByRoleTag cannot tell you --
+' it collapses none and two into the same Nothing, correctly for its own purpose
+' and uselessly for a caller deciding whether to ADD a tag. Harvest.bas needs the
+' difference: stamping a role onto a slide that already has two of them makes a
+' broken slide worse, and stamping onto one that has none is the whole job.
+Public Function CountShapesWithRoleTag(sld As Object, identityTag As String) As Long
+    Dim match As Object
+    Dim matchCount As Long
+    matchCount = 0
+    WalkForRoleTag sld.Shapes, identityTag, match, matchCount
+    CountShapesWithRoleTag = matchCount
+End Function
 
 ' Shape.Tags(name) returns "" both when the tag is absent and when it is
 ' present with an empty string value -- a real VBA API quirk with no

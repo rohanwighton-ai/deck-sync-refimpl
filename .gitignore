@@ -6,3 +6,19 @@ ralph.log
 .ralph_stuck_tracker
 REPORT.md
 dist/
+
+# COPIES OF ROHAN'S REAL DECK AND REGISTER. Every session before a write drops a
+# full pair in here -- the deck alone is 49MB -- and the folder reached 48MB
+# untracked and unignored, one `git add -A` away from being welded into history
+# permanently. Ignored rather than tidied: the backups must keep being written,
+# they just must never be committed.
+#
+# NOT a blanket ignore on Office files. test-fixtures/*.pptx are TRACKED on
+# purpose -- run_vba_tests.ps1 stages shp-groupshape.pptx into every suite run,
+# so ignoring them by extension would break the suite on a fresh clone.
+backups/
+
+# Working copies and carved-out originals. NEXT-SESSION.md references
+# scratchpad/ as where a known-good copy of a module is parked mid-edit.
+scratchpad/
+*.bak
