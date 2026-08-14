@@ -245,6 +245,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_Drafting_TickSurvivesSamePeriodRebuildAndClearsOnRollover()
+    AppendResult report, "Drafting_TickSurvivesSamePeriodRebuildAndClearsOnRollover", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_ExcelOutput_PeriodRowsAndRollForward()
     AppendResult report, "ExcelOutput_PeriodRowsAndRollForward", r
     On Error GoTo 0
@@ -2866,28 +2871,50 @@ Private Function Test_WorkbookBridge_IndexExplainsEachSheet() As String
     Dim d As String
     d = WorkbookBridge.DescribeSheet("TPL_ABOUT_BODY")
     result = result & Assert(InStr(d, "ABOUT_BODY") > 0, "it names the field")
-    ' THIS TEST WAS HOLDING THE DEFECT IN PLACE. It asserted "Y in G", which is
-    ' the layout 3de4be8 replaced when SUBMIT moved to D and the tick to E. So the
-    ' index went on telling people to type into F -- the AI DRAFT column, which is
-    ' never published -- and the suite defended it. Publish then reports five zeros
-    ' and no diagnostic, because a row with an empty D and an unticked E lands in
-    ' no bucket at all.
+    ' THIS TEST HAS NOW HELD TWO DIFFERENT DEFECTS IN PLACE, FOR ONE REASON.
     '
-    ' The old middle term was InStr(d, "F") > 0: a bare letter that also matches
-    ' "Instructions". It could not fail. Each term now matches its own phrase, and
-    ' the negative assertions below give it a way to fail on a regression -- a
-    ' check that only ever passes is the shape this project keeps paying for.
-    result = result & Assert(InStr(d, "column C") > 0 And InStr(d, "wording in D") > 0 _
-        And InStr(d, "Y in E") > 0, _
-        "the drafting index says read C, type D, tick E -- got '" & d & "'")
-    result = result & Assert(InStr(d, "Y in G") = 0 And InStr(d, "wording in F") = 0, _
-        "and does NOT name the pre-3de4be8 columns -- got '" & d & "'")
+    ' Written to catch the 3de4be8 drift, it asserted the letters of the layout
+    ' current at the time -- read C, type D, tick E -- as string literals. Layout
+    ' 4 then moved SUBMIT to F and the tick to G, DescribeSheet was correctly
+    ' updated to derive both from the COL_D_* constants, and this test went red
+    ' while demanding the retired layout back. It sat red from a6e57af until
+    ' 2026-08-14, and NEXT-SESSION.md's "192 passed, 0 failed" was stale that
+    ' whole time, because nobody re-ran after the code was fixed.
+    '
+    ' So the original comment's diagnosis was right and its remedy was not: the
+    ' fault was never WHICH letters were named, it was that letters were named at
+    ' all. A test that types a machine-knowable fact is a second copy, and second
+    ' copies drift silently -- the same rule DOCUMENT-MAP.md applies to prose,
+    ' one layer down, where no document checker can see it.
+    '
+    ' Derived now, so the next layout move cannot make this test wrong. The
+    ' negatives are derived too and still give it a way to fail: naming the AI
+    ' DRAFT column as the place to type is the specific regression that costs an
+    ' evening, because that column is never published and a row with an empty
+    ' SUBMIT and no tick lands in no bucket at all -- publish reports zeros with
+    ' no diagnostic.
+    Dim curCol As String, subCol As String, apprCol As String
+    Dim draftCol As String, srcCol As String
+    curCol = Chr$(64 + Drafting.COL_D_CURRENT)
+    subCol = Chr$(64 + Drafting.COL_D_SUBMIT)
+    apprCol = Chr$(64 + Drafting.COL_D_APPROVED)
+    draftCol = Chr$(64 + Drafting.COL_D_DRAFT)
+    srcCol = Chr$(64 + Drafting.COL_D_SOURCES)
 
-    ' Sources is cited from column G, and the index used to say E -- the tick.
+    result = result & Assert(InStr(d, "column " & curCol) > 0 _
+        And InStr(d, "wording in " & subCol) > 0 _
+        And InStr(d, "Y in " & apprCol) > 0, _
+        "the drafting index names ORIGINAL, SUBMIT and the tick by their real columns -- got '" & d & "'")
+    result = result & Assert(InStr(d, "wording in " & draftCol) = 0, _
+        "and does NOT send a person to the AI draft column, which never publishes -- got '" & d & "'")
+
+    ' Sources is cited from the SOURCES column, and the index has twice named a
+    ' neighbouring column instead. Both sides derived, so this cannot go stale.
     Dim srcDesc As String
     srcDesc = WorkbookBridge.DescribeSheet("Sources")
-    result = result & Assert(InStr(srcDesc, "column G") > 0 And InStr(srcDesc, "column E") = 0, _
-        "the sources index cites column G, not the tick column -- got '" & srcDesc & "'")
+    result = result & Assert(InStr(srcDesc, "column " & srcCol) > 0 _
+        And InStr(srcDesc, "column " & apprCol) = 0, _
+        "the sources index cites the SOURCES column, not the tick column -- got '" & srcDesc & "'")
 
     Test_WorkbookBridge_IndexExplainsEachSheet = result
 End Function
@@ -7356,6 +7383,90 @@ Private Function Test_Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk() As Stri
     xl.Quit
     Set wb = Nothing: Set xl = Nothing
     Test_Drafting_RolloverRebuildsOnlyWhenNothingIsAtRisk = result
+End Function
+
+' THE TICK MUST SURVIVE A REBUILD IN ITS OWN QUARTER, AND MUST NOT SURVIVE A
+' ROLLOVER. Both halves, because either alone passes against a defect.
+'
+' This is the test that did not exist, and its absence is the whole story of
+' fix-list defect 1. WriteDraftingSheet cleared COL_D_APPROVED unconditionally;
+' PublishDraftsForField reads it; and RibbonUI.SyncNowChainCore runs the rebuild
+' (step 3) immediately before the publish (step 4). So the tick was destroyed one
+' step before it was read, on every run, and no drafted text ever reached the
+' register through the tool. 192 tests were green throughout -- they asked
+' whether publish works when called, never whether a person can cause it to be
+' called with a tick still on the sheet.
+'
+' WHY BOTH ASSERTIONS. Carrying the tick always would republish last quarter's
+' approval over this quarter's text. Clearing it always is the defect being
+' removed. Only the pair pins the actual rule: the tick travels with the SUBMIT
+' text it approves, under the same per-row carry test.
+'
+' Made to fail on purpose before being trusted, in both directions -- see the
+' note in the fix-list entry. Restoring the unconditional clear fails assertion
+' 2; harvesting the tick outside the `carryThisRow` test fails assertion 4.
+Private Function Test_Drafting_TickSurvivesSamePeriodRebuildAndClearsOnRollover() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, dws As Object, rws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set dws = wb.Worksheets(1)
+    Set rws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+
+    rws.Cells(1, 1).Value = ExcelOutput.INSTANCE_ID_HEADER
+    rws.Cells(1, 2).Value = "PROJECT_NAME"
+    rws.Cells(1, 3).Value = "ABOUT_BODY"
+    rws.Cells(2, 1).Value = "P001": rws.Cells(2, 2).Value = "Alpha": rws.Cells(2, 3).Value = "register one"
+
+    Dim reg As Sheet
+    reg = ExcelOutput.ReadSheet(rws)
+
+    ' 1. A person writes their words and ticks the row, in FY26Q3.
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Empty, "FY26Q3"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value = "P001 this quarter"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value = "Y"
+
+    ' 2. THE ASSERTION THAT UNBLOCKS PUBLISH. Same quarter, so a rebuild must
+    '    leave the tick exactly where they put it. Tested through the same
+    '    affirmative reader publish uses -- a non-empty check would pass on a
+    '    cell holding "0", which is the miscount this project has already made
+    '    once (fix-list P6).
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Empty, "FY26Q3"
+
+    result = result & Assert(ReviewQueue.IsApprovalMark(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value)), _
+        "A SAME-PERIOD REBUILD KEEPS THE TICK -- publish runs immediately after a rebuild, " & _
+        "so a tick cleared here can never be read, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value) & "'")
+
+    ' 3. And it still sits beside the text it approves. A tick carried without
+    '    its SUBMIT would approve whatever landed in the box next.
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value) = "P001 this quarter", _
+        "the tick is carried WITH the submitted text it approves, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value) & "'")
+
+    ' 4. THE OTHER HALF. Roll the quarter with nothing at risk -- the refusal
+    '    guard fires on SUBMIT or DRAFT text, so those go first; a tick alone
+    '    does not refuse. The rollover must now drop the tick, because an
+    '    approval given for FY26Q3's wording is not an approval of FY26Q4's.
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).ClearContents
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).ClearContents
+
+    Dim rep As String
+    rep = Drafting.WriteDraftingSheet(dws, reg, "ABOUT_BODY", Empty, "FY26Q4")
+
+    result = result & Assert(InStr(rep, "REFUSED") = 0, _
+        "a tick with no text does not trip the at-risk refusal, got '" & Left(rep, 90) & "'")
+    result = result & Assert(Not ReviewQueue.IsApprovalMark(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value)), _
+        "A ROLLOVER DROPS THE TICK -- last quarter's approval must not authorise this " & _
+        "quarter's text, got '" & _
+        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value) & "'")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing: Set xl = Nothing
+    Test_Drafting_TickSurvivesSamePeriodRebuildAndClearsOnRollover = result
 End Function
 
 ' THE ROLLOVER DROP IS PER ROW, AND THIS IS THE ASSERTION THAT SAYS SO.

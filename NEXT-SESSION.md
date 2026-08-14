@@ -1,5 +1,71 @@
 # NEXT SESSION — start here
 
+> ## 14 AUG, 10:15 — THE APPROVE-TICK DEFECT IS FIXED AND PROVEN. NOT COMMITTED.
+>
+> **Working tree carries UNCOMMITTED changes to `vba/Drafting.bas` and
+> `vba/tests/TestRunner.bas`.** Commit them. Nothing else is modified.
+>
+> **The fix.** `WriteDraftingSheet` no longer clears `COL_D_APPROVED`. The tick is
+> harvested into a fifth `keptApproved` dictionary under the SAME `carryThisRow` test
+> as SUBMIT, so it travels with the text it approves: same quarter keeps both, rollover
+> drops both. Defect 1 below is closed — **publish is reachable**.
+>
+> **Rohan's framing is what produced it**, and it beat both proposals on the table.
+> Chat side argued approval cannot live on the register row (the register is downstream
+> of approval); Claude Code proposed reversing the chain order. Rohan asked *"why are
+> drafting sheets getting rebuilt??? I thought they were staying as part of the record?"*
+> — and the answer is that the FREQUENCY was the defect. The code already computed
+> `periodChanged` and then ignored its own answer for one column.
+>
+> **Evidence — five suite runs, every check watched failing:**
+>
+> | run | state | verdict |
+> |---|---|---|
+> | 1 | tick fix in | 192/1 · tick test PASS |
+> | break 1 | unconditional clear restored | 191/2 · *"SAME-PERIOD REBUILD KEEPS THE TICK ... got `''`"* |
+> | break 2 | harvest outside `carryThisRow` | 191/2 · *"ROLLOVER DROPS THE TICK ... got `'Y'`"* |
+> | 5 | + index test derived | **193 passed, 0 failed** |
+> | break 3 | `DescribeSheet` points at draft column | 192/1 · both index assertions red, naming column E |
+>
+> Each break named a DIFFERENT assertion, so both halves are independently pinned.
+>
+> **THE SUITE HAD BEEN RED SINCE `a6e57af`, AND THIS FILE SAID 192/0 THE WHOLE TIME.**
+> `WorkbookBridge_IndexExplainsEachSheet` hardcoded layout-3 letters (read C, type D,
+> tick E) while `DescribeSheet` was correctly fixed to derive them from the `COL_D_*`
+> constants. The test had already been written once to catch exactly this drift, and
+> held the next generation of it in place for the same reason: **it typed a
+> machine-knowable fact instead of deriving it.** Now derived on both sides. This is
+> the write-it-twice class landing in a test, where no document checker can see it.
+>
+> **`addin84` IS PREPARED BUT NOT SAVED.** Build stamp `2026-08-14 10:09`, all 32
+> production modules imported. The `File > Save As > PowerPoint Add-in (*.ppam)` click
+> is a permanent manual step (see `build_ppam.ps1` header — proven impossible to
+> automate, twice, for independent reasons). **Verify the live build by the stamp
+> reading `10:09`** — 15 `.ppam` files are on that machine.
+>
+> **Still open, unchanged:** defect 2 (chain dies with `Error 50290` when the register
+> is open in Excel, then names the wrong file) and defect 3 (three invariant prompts).
+> Both sit in scenario 5's path, so it is walkable-with-traps, not walkable.
+>
+> **Roll-forward spec received** — `OneDrive\Claude\rollforward-spec-2026-08-14.md`,
+> scenario 1, all 48 fields with five treatments. Not yet filed into this repo. Findings
+> returned to Rohan, highest first:
+> 1. **"Placeholder" is doing two jobs** — treatment D means "drafting cell arrives
+>    empty awaiting a human", the MECE rule means "standard wording printed on a
+>    funder-facing slide". Collapsing them would placeholder active projects that should
+>    be reported as GAPS. Pin before building anything on the table.
+> 2. Chat's §0 approval argument is overtaken by the fix above.
+> 3. §2.3 is a real catch — one milestone device holds three roll-forward cadences;
+>    write that test before the device registry lands.
+> 4. Totals line does not close (states 51 across treatments, table holds 47 rows,
+>    `STRATEGIC_LINKAGES` is argued in §2.1 but has no row).
+> 5. Open for Rohan: does the per-project-state rule LAYER with the per-field table or
+>    override it? Chat assumed layering and asked to be told.
+>
+> **Rohan, 14 Aug: he owns the workbook and Claude Code may work that side directly**
+> when it is the right tool — holding `feedback_write_office_files_through_office`
+> (never hand-write the `.xlsx`) and backing up before any write to the live register.
+
 > ## TWO FIELDS ARE ON REAL SLIDES. The delivery count is 2, not 0.
 >
 > **14 Aug 2026, 08:21 — `PROGRESS_BODY` written to 43 slides.** Verified from the saved

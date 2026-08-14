@@ -145,12 +145,42 @@ End Function
 ' being open -- drafting is workbook work and should be possible on a laptop
 ' with no deck in front of you.
 '
-' REBUILDING PRESERVES DRAFT AND NOTES, and clears nothing a human typed. A
-' rebuild happens when entities are added or the exemplar moves on, and losing
-' half-written drafts to a refresh would make the sheet untrustworthy in exactly
-' the way the modal prompts it replaces were. Approvals ARE cleared, because an
-' approval is against a specific pairing of exemplar and draft, and a rebuild may
-' have changed the exemplar.
+' REBUILDING PRESERVES EVERYTHING A HUMAN TYPED -- draft, submitted text, source
+' IDs, notes AND the tick. A rebuild happens when entities are added or the
+' exemplar moves on, and losing half-written drafts to a refresh would make the
+' sheet untrustworthy in exactly the way the modal prompts it replaces were.
+'
+' THE TICK USED TO BE THE ONE EXCEPTION, and it was wrong. The reason given was
+' that "an approval is against a specific pairing of exemplar and draft, and a
+' rebuild MAY have changed the exemplar" -- true, and it does not license an
+' unconditional clear. Three things settle it (Rohan, 2026-08-14, asking why
+' these sheets are rebuilt at all):
+'
+'   1. THE FREQUENCY WAS THE DEFECT, NOT THE CLEAR. There is exactly one moment
+'      the work columns must reset -- a period change, so last quarter's text
+'      cannot be republished as this quarter's. This function ALREADY computes
+'      that moment (`periodChanged`, and per row `carryThisRow`) for the other
+'      four columns. The tick was cleared outside that decision, so the code
+'      worked out the answer and then ignored it for one column.
+'
+'   2. THE TICK APPROVES SUBMIT, NOT THE EXEMPLAR. It is carried under the same
+'      `carryThisRow` test as SUBMIT and therefore cannot outlive the words it
+'      was given for. If ORIGINAL has moved underneath it, the person's own
+'      wording is still their own wording -- and that difference is shown to
+'      them again, per row, at the review grid.
+'
+'   3. THE SLIDE'S GATE IS SOMEWHERE ELSE ENTIRELY. This tick governs sheet ->
+'      REGISTER. Nothing reaches a slide on the strength of it: ReviewQueue
+'      gates register -> slide with a per-row ChangeHash, revalidated at apply,
+'      which is the proper instrument for "the before-and-after I approved no
+'      longer exists". Wiping every tick here bought no safety the review grid
+'      was not already providing, and it cost the publish path entirely.
+'
+' What it cost: publish reads the tick (PublishDraftsForField, step 4 of the
+' Sync Now chain) and RefreshDraftingSheets rebuilds the sheet (step 3). A tick
+' could never survive to be read, so no drafted text has ever reached the
+' register through the tool. The 43 PROGRESS_BODY values of 2026-08-14 were put
+' in by hand over COM for this reason.
 ' WHERE A COLUMN USED TO LIVE.
 '
 ' Bumping DRAFT_LAYOUT_VERSION protects a person from a renumbered sheet being
@@ -342,10 +372,12 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' the character counts are re-derived, because only those come from the
     ' register. Losing a column here would be silent and would cost an evening.
     Dim keptDraft As Object, keptNotes As Object, keptSubmit As Object, keptSources As Object
+    Dim keptApproved As Object
     Set keptDraft = CreateObject("Scripting.Dictionary")
     Set keptNotes = CreateObject("Scripting.Dictionary")
     Set keptSubmit = CreateObject("Scripting.Dictionary")
     Set keptSources = CreateObject("Scripting.Dictionary")
+    Set keptApproved = CreateObject("Scripting.Dictionary")
 
     ' Only carry work across if the sheet was written by THIS layout. A sheet
     ' from an older layout is read with column numbers that have since been
@@ -578,6 +610,15 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
                 If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "NOTES")).Value)) <> "" Then keptNotes(oldKey) = CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "NOTES")).Value)
                 If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SUBMIT")).Value)) <> "" Then keptSubmit(oldKey) = CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SUBMIT")).Value)
                 If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SOURCES")).Value)) <> "" Then keptSources(oldKey) = CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SOURCES")).Value)
+                ' THE TICK TRAVELS WITH THE TEXT IT APPROVES. It is carried under
+                ' the SAME `carryThisRow` test as SUBMIT, so it can never outlive
+                ' the words it was given for: a rollover drops both together, and
+                ' a same-quarter rebuild keeps both together. Carrying SUBMIT and
+                ' dropping its tick is the combination that cannot be right --
+                ' that was the state until 2026-08-14, and it made publish
+                ' unreachable, because the chain rebuilds (step 3) immediately
+                ' before publish reads the tick (step 4).
+                If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "APPROVED")).Value)) <> "" Then keptApproved(oldKey) = CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "APPROVED")).Value)
             End If
             r = r + 1
         Loop
@@ -691,7 +732,7 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
                 ws.Cells(r, COL_D_SUBMIT).Value = "'" & keptSubmit(key)
                 ws.Cells(r, COL_D_SUBCHARS).Value = Len(CStr(keptSubmit(key)))
             End If
-            ws.Cells(r, COL_D_APPROVED).Value = ""
+            If keptApproved.Exists(key) Then ws.Cells(r, COL_D_APPROVED).Value = "'" & keptApproved(key)
             written = written + 1
             r = r + 1
         End If
