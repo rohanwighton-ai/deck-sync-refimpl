@@ -424,6 +424,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_Membership_RetirementSkipsTemplateAndUnclassifiedSlides()
+    AppendResult report, "Membership_RetirementSkipsTemplateAndUnclassifiedSlides", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous()
     AppendResult report, "Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous", r
     On Error GoTo 0
@@ -4390,6 +4395,78 @@ End Function
 ' Both halves matter. Without the pending map the count is 0 and the caller
 ' under-promises; if pending were consulted in a WET run it would double-count,
 ' since propagation stamps first and the ordinary lookup finds the shape.
+' WHAT RETIREMENT MUST NEVER TOUCH.
+'
+' SlidesWithNoRow decides what gets DELETED, so its guards are the only thing
+' between "the register no longer lists this project" and destroying the slide
+' every other slide is cloned from. The fixture holds all four states at once,
+' because each guard fails in a different direction and a test that built them
+' one at a time would pass while the combination was wrong.
+'
+' The template is the one that would hurt most: it carries a slide type and no
+' instance key BY DESIGN, so any rule keying off "has a type" deletes it.
+Private Function Test_Membership_RetirementSkipsTemplateAndUnclassifiedSlides() As String
+    Dim result As String
+
+    Dim pres As Object
+    Set pres = Application.Presentations.Add(msoFalse)
+
+    ' 1. a live project -- has a row, must survive
+    Dim liveSld As Object
+    Set liveSld = pres.Slides.Add(1, ppLayoutBlank)
+    liveSld.Tags.Add "slide_type", "membership-type"
+    liveSld.Tags.Add "instance_key", "live-1"
+
+    ' 2. a retired project -- no row, must be returned
+    Dim goneSld As Object
+    Set goneSld = pres.Slides.Add(2, ppLayoutBlank)
+    goneSld.Tags.Add "slide_type", "membership-type"
+    goneSld.Tags.Add "instance_key", "gone-1"
+
+    ' 3. the TEMPLATE -- type, no instance key, marked template
+    Dim tplSld As Object
+    Set tplSld = pres.Slides.Add(3, ppLayoutBlank)
+    tplSld.Tags.Add "slide_type", "membership-type"
+    tplSld.Tags.Add TEMPLATE_TAG_NAME, "1"
+
+    ' 4. unclassified -- a title page, a divider, anything a person added
+    Dim plainSld As Object
+    Set plainSld = pres.Slides.Add(4, ppLayoutBlank)
+
+    ' A sheet holding a row for live-1 only.
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+    ws.Cells(1, 2).Value = "Quarter"
+    ws.Cells(1, 3).Value = "ABOUT_BODY"
+    ws.Cells(2, 1).Value = "live-1"
+    ws.Cells(2, 2).Value = "Q4F26"
+    ws.Cells(2, 3).Value = "still running"
+
+    Dim sheet As Sheet
+    Dim problem As String
+    sheet = ExcelOutput.ReadSheetForDeckPeriod(ws, "Q4F26", problem)
+    result = result & Assert(problem = "", "the fixture sheet reads, got '" & problem & "'")
+
+    Dim doomed As Collection
+    Set doomed = RibbonUI.SlidesWithNoRow(pres, sheet, "membership-type")
+
+    result = result & Assert(doomed.count = 1, _
+        "exactly one slide is retirable, got " & doomed.count)
+
+    If doomed.count = 1 Then
+        Dim gotInst As SlideInstance
+        gotInst = Resolve.ResolveSlideInstance(doomed(1))
+        result = result & Assert(gotInst.InstanceKey = "gone-1", _
+            "and it is the one with no row, got '" & gotInst.InstanceKey & "'")
+    End If
+
+    wb.Close False
+    xl.Quit
+    pres.Close
+
+    Test_Membership_RetirementSkipsTemplateAndUnclassifiedSlides = result
+End Function
+
 Private Function Test_Harvest_DryRunCountsFieldsThatLabellingWillCreate() As String
     Dim result As String
 
@@ -5649,7 +5726,8 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     Dim expectedCaptions As String
     expectedCaptions = "|" & CommandBarUI.CAP_SET_UP_QUARTER & _
                        "|" & CommandBarUI.CAP_PUT_ON_SLIDES & _
-                       "|" & CommandBarUI.CAP_REVIEW_ONLY & "|"
+                       "|" & CommandBarUI.CAP_REVIEW_ONLY & _
+                       "|" & CommandBarUI.CAP_SLIDE_MEMBERSHIP & "|"
 
     Dim expectedCount As Long
     expectedCount = UBound(Split(expectedCaptions, "|")) - 1
@@ -5716,7 +5794,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     ' pass. Tightened 2026-07-30 while adding SyncNow, whose name contains
     ' another entry's prefix.
     Dim expectedActions As String
-    expectedActions = "|SyncNowChain|PutItOnTheSlides|ReviewChanges|"
+    expectedActions = "|SyncNowChain|PutItOnTheSlides|ReviewChanges|SlideMembership|"
 
     Dim i As Long
     Dim eachBar As Variant
@@ -5793,7 +5871,8 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
     Dim wantAfter As Long
     wantAfter = UBound(Split("|" & CommandBarUI.CAP_SET_UP_QUARTER & _
                              "|" & CommandBarUI.CAP_PUT_ON_SLIDES & _
-                             "|" & CommandBarUI.CAP_REVIEW_ONLY & "|", "|")) - 1
+                             "|" & CommandBarUI.CAP_REVIEW_ONLY & _
+                             "|" & CommandBarUI.CAP_SLIDE_MEMBERSHIP & "|", "|")) - 1
     result = result & Assert(total2 = wantAfter, _
         "a second ShowToolbar leaves one button per declared caption -- expected " & wantAfter & ", got " & total2)
 

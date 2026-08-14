@@ -47,6 +47,19 @@ Public Const CAP_PUT_ON_SLIDES As String = "2. Put it on the slides"
 ' will press it and be surprised -- both worse than four extra words.
 Public Const CAP_REVIEW_ONLY As String = "Review changes (writes nothing)"
 
+' DECK MEMBERSHIP -- which slides exist, against which rows the register holds.
+'
+' It does BOTH directions, so it is named for both. Rohan chose one membership
+' button over two, and chose delete over hide for retirement (2026-08-15) --
+' the register is the source of truth and last quarter's saved deck is the
+' archive, so hiding would grow the deck forever to avoid a loss that is
+' already covered.
+'
+' Adding and removing are asked SEPARATELY inside it. One "make the deck match"
+' confirmation would buy consent for the destructive half using the safe half's
+' reasoning.
+Public Const CAP_SLIDE_MEMBERSHIP As String = "Add or retire slides"
+
 Public Const STAGE_REVIEW_CHANGES As String = "Review Changes"
 Public Const STAGE_APPLY_APPROVED As String = "Apply Approved"
 
@@ -223,6 +236,8 @@ Public Sub ShowToolbar()
         "Use to put what you wrote onto the slides, AFTER you have finished writing: publishes every field you ticked, then shows each change and asks once.", True
     AddButton bar, CAP_REVIEW_ONLY, "RibbonUI.ReviewChanges", 1000, _
         "Use to read the register against your slides and tick what should change. It does NOT write to a slide -- button 2 does that."
+    AddButton bar, CAP_SLIDE_MEMBERSHIP, "RibbonUI.SlideMembership", 1959, _
+        "Use to bring the deck into line with the register: creates a slide for any row that has none, and DELETES any slide the register no longer lists. Asks separately for each -- adding and deleting are never one answer."
 
     ' "REBUILD MY SHEETS" IS GONE, 2026-08-14, and it is not coming back as a
     ' button. Its tooltip said "use this when a drafting sheet looks wrong" --

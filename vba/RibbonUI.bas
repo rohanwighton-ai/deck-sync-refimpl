@@ -612,6 +612,322 @@ End Sub
 ' code provides no capability, so it is not a capability being removed. If bulk
 ' approval is wanted again it comes back deliberately, with a door; git holds it
 ' at 6c74912.
+' THE SLIDES OF ONE TYPE THAT THE REGISTER HAS NO ROW FOR -- as SLIDE OBJECTS,
+' not keys, because the caller has to delete them and an index is not a handle:
+' deleting one slide renumbers every slide after it.
+'
+' ReviewQueue counts this same condition (SlideNoRowCount) and keeps only the
+' count and the keys, which is right for a report and useless for an action. The
+' RULE is duplicated here deliberately and is one line -- Not sheet.Rows.Exists
+' -- while what differs is what comes back.
+'
+' TWO GUARDS THE COUNT DOES NOT IMPLY:
+'   - a TEMPLATE slide is never retired. It carries a slide type and no instance
+'     key by design, so anything keying off "has a type" would delete the one
+'     slide every other slide is cloned from.
+'   - a slide with no instance key is never retired. That is an UNCLASSIFIED
+'     slide -- title pages, dividers, anything a person added -- and the register
+'     having no row for it is not evidence of anything.
+' PUBLIC for the test that pins its guards. Those guards are the only thing
+' between "the register no longer lists this project" and deleting the slide
+' every other slide is cloned from, so they are worth asserting directly rather
+' than through the dialog that calls them.
+Public Function SlidesWithNoRow(pres As Object, sheet As Sheet, slideType As String) As Collection
+    Dim found As Collection
+    Set found = New Collection
+
+    Dim sld As Object
+    For Each sld In pres.Slides
+        Dim inst As SlideInstance
+        inst = Resolve.ResolveSlideInstance(sld)
+        If inst.HasTypeTag And inst.TypeTag = slideType Then
+            If inst.HasInstanceKey And Not inst.IsTemplate Then
+                If Not sheet.Rows.Exists(inst.InstanceKey) Then
+                    found.Add sld
+                End If
+            End If
+        End If
+    Next sld
+
+    Set SlidesWithNoRow = found
+End Function
+
+' DECK MEMBERSHIP -- one question with two directions.
+'
+' Rohan, 2026-08-15: "have slide creation its own function, same for slide
+' retirement, its own thing." He is right, and the code already agreed without
+' anyone noticing: ReviewQueueSet carries BOTH directions side by side --
+' OrphanCount (a register row with no slide) and SlideNoRowCount (a slide the
+' register has no row for) -- and ParityText already reports them together.
+' Both detections were built. NEITHER action was reachable.
+'
+' Creation existed and was orphaned: RunSync.CreateMissingSlides was called only
+' from SyncNowCore, which was called only from a Private SyncNow that nothing
+' called. Its comment said "NO LONGER A BUTTON TARGET. The chain is the entry
+' point" -- the chain calls StartQuarter, RollForwardUI, RefreshDraftingSheets,
+' marking and discovery, and never this. It had been made Private *specifically
+' so the reachability check would not report it*, which is how a genuine orphan
+' became invisible to the checker built to find orphans.
+'
+' WHY NOT INSIDE BUTTON 2. Creating a slide is a write, and the detection lives
+' in ReviewChangesCore, whose contract is printed on a button: "Review changes
+' (writes nothing)". Folding a write into it would make that caption false.
+'
+' RETIREMENT DELETES. Rohan chose delete over hide, 2026-08-15: the register is
+' the source of truth and last quarter's saved deck is the archive, so hiding
+' would grow the deck forever to avoid a loss already covered. The warning names
+' every slide by index and key -- this is the one act in the tool that destroys
+' content the register cannot restore, because the register is exactly what no
+' longer mentions it.
+'
+' Not retiring was never the safe option. ReviewQueue.bas:1456: "a slide with no
+' row keeps last period's text through every sync while every report says the
+' run was clean."
+Public Sub SlideMembership()
+    On Error GoTo Failed
+    SlideMembershipCore
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult CommandBarUI.CAP_SLIDE_MEMBERSHIP, _
+        RibbonUI.UnexpectedErrorText(CommandBarUI.CAP_SLIDE_MEMBERSHIP, Err.Number, Err.Description, Err.Source)
+End Sub
+
+Private Sub SlideMembershipCore()
+    Dim TITLE As String
+    TITLE = CommandBarUI.CAP_SLIDE_MEMBERSHIP
+
+    Dim pres As Object, wb As Object
+    Dim types() As String
+    Dim lo As Long, hi As Long
+    If Not ResolveDeckContext(TITLE, pres, wb, types, lo, hi) Then Exit Sub
+
+    Dim period As String
+    period = DeckRegistry.GetDeckPeriod(pres)
+
+    Dim createTypes() As String
+    Dim createTemplates() As Object
+    Dim createSheets() As Sheet
+    Dim createCount As Long
+    createCount = 0
+
+    Dim orphanTotal As Long, noRowTotal As Long
+    Dim orphanKeys As String, noRowKeys As String
+    Dim refusals As String
+
+    Dim retireSlides As Collection
+    Set retireSlides = New Collection
+
+    Dim i As Long
+    For i = lo To hi
+        Dim templateSld As Object
+        Dim wsName As String
+        If DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
+            Dim ws As Object
+            Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
+
+            Dim sheet As Sheet
+            Dim problem As String
+            sheet = ExcelOutput.ReadSheetForDeckPeriod(ws, period, problem)
+
+            If problem <> "" Then
+                ' NAMED AND COUNTED, never skipped in silence: a type whose sheet
+                ' cannot be read has an unknown membership, not a matching one.
+                refusals = refusals & "  " & types(i) & ": " & problem & vbCrLf
+            Else
+                Dim q As ReviewQueueSet
+                q = ReviewQueue.BuildQueue(sheet, types(i))
+
+                If q.OrphanCount > 0 Then
+                    orphanTotal = orphanTotal + q.OrphanCount
+                    If orphanKeys <> "" Then orphanKeys = orphanKeys & ", "
+                    orphanKeys = orphanKeys & q.OrphanKeys
+
+                    createCount = createCount + 1
+                    ReDim Preserve createTypes(1 To createCount)
+                    ReDim Preserve createTemplates(1 To createCount)
+                    ReDim Preserve createSheets(1 To createCount)
+                    createTypes(createCount) = types(i)
+                    Set createTemplates(createCount) = templateSld
+                    createSheets(createCount) = sheet
+                End If
+
+                ' COLLECTED AS OBJECTS, BEFORE ANYTHING CHANGES THE DECK.
+                ' Creation below inserts slides; a slide INDEX captured now would
+                ' point somewhere else by the time deletion runs. An object
+                ' reference does not move.
+                Dim retireHere As Collection
+                Set retireHere = SlidesWithNoRow(pres, sheet, types(i))
+                Dim rr As Long
+                For rr = 1 To retireHere.count
+                    retireSlides.Add retireHere(rr)
+                Next rr
+
+                If q.SlideNoRowCount > 0 Then
+                    noRowTotal = noRowTotal + q.SlideNoRowCount
+                    If noRowKeys <> "" Then noRowKeys = noRowKeys & ", "
+                    noRowKeys = noRowKeys & q.SlideNoRowKeys
+                End If
+            End If
+        End If
+    Next i
+
+    ' THE OTHER DIRECTION, NAMED BEFORE ANYTHING IS ASKED.
+    Dim retireNote As String
+    If retireSlides.count > 0 Then
+        retireNote = vbCrLf & vbCrLf & retireSlides.count & " slide(s) carry a key the register has no row for."
+    End If
+
+    If refusals <> "" Then
+        refusals = vbCrLf & vbCrLf & "Could not read (membership unknown for these):" & vbCrLf & refusals
+    End If
+
+    If orphanTotal = 0 And retireSlides.count = 0 Then
+        ShowSyncResult TITLE, "The deck and the register agree for " & period & _
+            " -- every row has a slide and every slide has a row." & refusals
+        Exit Sub
+    End If
+
+    Dim outcome As String
+
+    If orphanTotal = 0 Then
+        outcome = "Every register row for " & period & " has a slide." & vbCrLf
+    End If
+
+    ' ADDING IS ASKED SEPARATELY FROM REMOVING. They are opposite acts with
+    ' opposite consequences -- one copies a template, the other destroys work --
+    ' and a single "make the deck match" confirmation would buy consent for the
+    ' destructive half using the safe half's reasoning.
+    If orphanTotal > 0 Then
+        If MsgBox(orphanTotal & " register row(s) for " & period & " have no slide:" & vbCrLf & vbCrLf & _
+                  "  " & orphanKeys & vbCrLf & vbCrLf & _
+                  "Create a slide for each, copied from the template and tagged?" & vbCrLf & vbCrLf & _
+                  "Nothing else is touched -- existing slides are not changed by this." & _
+                  retireNote & refusals, _
+                  vbYesNo + vbQuestion, TITLE) = vbYes Then
+            Dim ci As Long
+            For ci = 1 To createCount
+                outcome = outcome & RunSync.CreateMissingSlides( _
+                    createSheets(ci), createTypes(ci), createTemplates(ci), False) & vbCrLf
+            Next ci
+        Else
+            outcome = outcome & "Nothing was created." & vbCrLf
+        End If
+    End If
+
+    ' RETIRING DELETES SLIDES. Rohan, 2026-08-15: "delete with warning prior."
+    '
+    ' The warning NAMES EVERY SLIDE, index and key, because this is the one act
+    ' in the tool that destroys content a person cannot get back from the
+    ' register -- the register is precisely what no longer mentions them. What
+    ' they can be got back from is last quarter's saved deck, which is why
+    ' delete was the right call over hiding: the archive already exists.
+    If retireSlides.count > 0 Then
+        Dim names As String
+        Dim k As Long
+        For k = 1 To retireSlides.count
+            Dim rInst As SlideInstance
+            rInst = Resolve.ResolveSlideInstance(retireSlides(k))
+            names = names & "  slide " & retireSlides(k).SlideIndex & " -- " & rInst.InstanceKey & vbCrLf
+        Next k
+
+        If MsgBox("DELETE " & retireSlides.count & " slide(s)?" & vbCrLf & vbCrLf & names & vbCrLf & _
+                  "The register has no row for these in " & period & ", so the tool treats them as " & _
+                  "retired projects." & vbCrLf & vbCrLf & _
+                  "THIS DELETES THE SLIDES. They cannot be recovered from the register -- the " & _
+                  "register is what no longer mentions them. Last quarter's saved deck is where " & _
+                  "they still exist." & vbCrLf & vbCrLf & _
+                  "No -- leave them in place and change nothing.", _
+                  vbYesNo + vbExclamation, TITLE) = vbYes Then
+            Dim deleted As Long
+            For k = 1 To retireSlides.count
+                retireSlides(k).Delete
+                deleted = deleted + 1
+            Next k
+            outcome = outcome & deleted & " slide(s) retired (deleted)." & vbCrLf
+        Else
+            outcome = outcome & retireSlides.count & " slide(s) left in place." & vbCrLf
+        End If
+    End If
+
+    ' SAVED AND VERIFIED FROM THE FILE. Slides created or deleted only in
+    ' PowerPoint's memory are the same failure as a value written and not saved.
+    outcome = outcome & PersistBothFiles(pres, wb)
+
+    ShowSyncResult TITLE, outcome & refusals
+End Sub
+
+' EVERYTHING THAT MUST BE TRUE BEFORE ANY CODE READS THE REGISTER.
+'
+' Extracted from ReviewChangesCore 2026-08-15, unchanged, because deck
+' MEMBERSHIP -- creating a slide for a register row that has none, and later
+' retiring a slide the register no longer mentions -- needs exactly the same
+' four guards, and PutItOnTheSlidesCore's own header already says why they must
+' not be written twice: "Duplicating them here would mean two sets of wording to
+' keep true."
+'
+' The two that matter most are not obvious:
+'   - the UNSAVED-BUFFER refusal. Planning from Excel's buffer shows a person an
+'     "after" that exists in no file, and they approve values that can still
+'     change before the write runs.
+'   - R9 duplicate identity tags, checked BEFORE planning, because to the planner
+'     two slides sharing a key is indistinguishable from one matched slide and
+'     one unmatched one. It is only visible across instances.
+'
+' Returns False when the caller should stop; every refusal has already been
+' explained to the person by the time it returns.
+Private Function ResolveDeckContext(title As String, ByRef pres As Object, ByRef wb As Object, _
+                                    ByRef types() As String, ByRef lo As Long, ByRef hi As Long) As Boolean
+    ResolveDeckContext = False
+
+    Set pres = Application.ActivePresentation
+
+    Dim workbookPath As String
+    workbookPath = DeckRegistry.GetWorkbookPath(pres)
+    If workbookPath = "" Then
+        MsgBox "This deck has no paired workbook yet. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", vbExclamation, title
+        Exit Function
+    End If
+
+    types = DeckRegistry.ListRegisteredTypes(pres)
+
+    Dim hasTypes As Boolean
+    On Error Resume Next
+    lo = LBound(types): hi = UBound(types)
+    hasTypes = (Err.Number = 0)
+    On Error GoTo 0
+
+    If Not hasTypes Then
+        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", vbExclamation, title
+        Exit Function
+    End If
+
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
+    If wb Is Nothing Then
+        MsgBox "Could not open the paired workbook at: " & workbookPath, vbCritical, title
+        Exit Function
+    End If
+
+    If WorkbookBridge.IsDirty(wb) Then
+        If MsgBox(WorkbookBridge.UnsavedWorkbookText(workbookPath), _
+                  vbYesNo + vbExclamation, title) <> vbYes Then
+            Exit Function
+        End If
+
+        Dim promptSaveProblem As String
+        promptSaveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
+        If promptSaveProblem <> "" Then
+            MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
+                   "Stopping here rather than reading values that are not in the file.", _
+                   vbCritical, title
+            Exit Function
+        End If
+    End If
+
+    If Not WarnOnDuplicateKeys(title, types, lo, hi) Then Exit Function
+
+    ResolveDeckContext = True
+End Function
+
 Private Sub ReviewChangesCore()
     Dim title As String
     title = CommandBarUI.STAGE_REVIEW_CHANGES

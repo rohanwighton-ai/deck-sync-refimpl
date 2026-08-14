@@ -1,6 +1,69 @@
 # NEXT SESSION — start here
 
-> ## 15 AUG, ~00:35. **STATUS: CURRENT.** Everything below is historical.
+> ## 15 AUG, ~06:45. **STATUS: CURRENT.** Everything below is historical.
+>
+> ### THE HARVEST IS FINISHED. DECK MEMBERSHIP IS BUILT AND HAS NEVER RUN.
+>
+> **Read `SCENARIOS.md` first** — it is the frame, with status re-derived from the
+> code, and it now says which scenarios are closed, unblocked, built-and-unrun, and
+> genuinely blocked.
+>
+> ### FIRST ACTION: BUILD THE ADD-IN, THEN RUN SCENARIO 2 ON ONE PROJECT
+>
+> The loaded build is `addin93` (05:54), which predates the `Add or retire slides`
+> button entirely. Build -> `addin94` -> tick -> restart.
+>
+> Then, against the known-good snapshot: **add ONE row to the register** with a new
+> instance key at `Q4F26`, press `Add or retire slides`, and read the result from the
+> saved file. That is scenario 2, and it has never run.
+>
+> ### WHAT SHIPPED — suite state recorded below, NOT yet re-run at handover
+>
+> - **`Add or retire slides`** (4th button). Creates a slide for every register row
+>   that has none; DELETES every slide whose key the register has no row for. **Asked
+>   separately**, because one "make the deck match" confirmation would buy consent for
+>   the destructive half using the safe half's reasoning. The delete warning names
+>   every slide by index and key.
+> - **Retirement deletes.** Rohan's call: the register is the source of truth and last
+>   quarter's saved deck is the archive, so hiding would grow the deck forever to avoid
+>   a loss already covered.
+> - **`ResolveDeckContext`** — the four guards that must pass before anything reads the
+>   register, extracted from `ReviewChangesCore` unchanged: workbook path, open, the
+>   UNSAVED-BUFFER refusal, and R9 duplicate keys. Creation and retirement now cannot
+>   skip them.
+> - **`SlidesWithNoRow`** returns slide OBJECTS, not keys, and guards two states the
+>   count does not imply: never the template (it carries a type and no instance key by
+>   design, so any rule keying off "has a type" deletes it), never an unclassified
+>   slide.
+>
+> ### THE FINDING, AND IT IS THE FOURTH OF ITS KIND
+>
+> `RunSync.CreateMissingSlides` has existed and been tested all along. It was reachable
+> only through `SyncNowCore`, called only from a `Private SyncNow` that **nothing
+> called**. Its comment read *"NO LONGER A BUTTON TARGET. The chain is the entry
+> point"* — the chain calls `StartQuarter`, `RollForwardUI`, `RefreshDraftingSheets`,
+> marking and discovery, and never this. And it had been made `Private` **specifically
+> so the reachability check would not report it**.
+>
+> So the checker built to find orphans was silenced on a genuine orphan, by a comment
+> asserting a reachability fact that had stopped being true. `FIX-LIST` item D predicted
+> exactly this class the night before. **Scenario 2 was blocked for weeks by a stale
+> comment, not by missing code.**
+>
+> ### WHAT IS LEFT
+>
+> - **Scenario 1 (generate a new quarter)** is the last of "the quarter" neither closed
+>   nor built. The ferry has still never touched the real workbook.
+> - **Scenario 3 is blocked by a real defect**: `TemplateSlide.FindTemplateFor` returns
+>   the first slide matching a type, and three colour templates share `project-progress`.
+> - The milestone device (21 of the 29 `Given` fields) cannot be read back — slot state
+>   lives in shape visibility.
+> - `SECTOR`/`TRL` have no shapes; `STRATEGIC_LINKAGES` has no template tag; 12 slides
+>   need dates by hand.
+>
+> ---
+
+> ## 15 AUG, ~00:35. **SUPERSEDED** by the block above.
 >
 > ### THE HARVEST WORKS BY BUTTON. IT IS NOT SAFE TO RUN AT SCALE YET.
 >
