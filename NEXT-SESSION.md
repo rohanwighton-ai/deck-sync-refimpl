@@ -76,6 +76,21 @@
 > 3. **Slide 27 has a shape already named `Text 216a` that is not the date.** The
 >    rename refused it. That slide's `END_DATE` will keep colliding.
 >
+> ### TWO THINGS INTRODUCED TONIGHT THAT ARE NOT DEFECTS BUT WILL BITE LATER
+>
+> - **`START_DATE`/`END_DATE` are now stored as TEXT** (`30 Oct 2023`), deliberately,
+>   so they round-trip to slides verbatim. **Nothing in the VBA reads those columns
+>   today** — checked, the only references are comments. But `COLUMNS.md:46` says
+>   *"Time elapsed (the horizontal bar and its percentage) is computed from
+>   `START_DATE` and `END_DATE`"*, so that derivation is planned and not built. When
+>   it is built it must PARSE the text rather than assume a serial. This is the same
+>   tension as open item 1: the register stores what the slide shows, and a computed
+>   field wants the underlying value.
+> - **`SOURCE-HARVEST.md` and `Harvest.bas` are unrelated and both say "harvest".**
+>   The doc is a paper provenance form from 2026-08-08; the module reads values off
+>   slides into the register. Both declare themselves current. A word doing two jobs
+>   has cost this project before — rename one before it costs again.
+>
 > ### WHAT I GOT WRONG TWICE — READ THIS BEFORE THEORISING ABOUT THE MATCHER
 >
 > - **Theory 1: `POSITION_TOLERANCE_EMU` (1 inch) could not separate shapes 0.14"

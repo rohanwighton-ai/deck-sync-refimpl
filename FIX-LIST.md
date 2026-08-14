@@ -1,8 +1,9 @@
 # Fix list
 
 > **CURRENT — the live list of what is known-broken and not yet fixed.** Re-audited
-> against the code 2026-08-14. Entries say whether they are still live; anything marked
-> fixed names the build it was fixed in.
+> against the code 2026-08-14; four entries added 2026-08-15 (see the last section).
+> Entries say whether they are still live; anything marked fixed names the build it was
+> fixed in.
 
 One place for what is known-broken and not yet fixed, so each new review stops
 re-deriving the same findings. Three reviews have now paid to rediscover items that
@@ -961,3 +962,56 @@ defect.
   auto-selects a sole type and still asks when there is a real choice. Three call sites.
 - **`RefreshDraftingSheets` reported "drafting sheets are ready. Workbook saved." over
   seven refusals.** Refusal now leads, names the fields, and carries a warning icon.
+
+---
+
+## FOUND BY PRESSING THE BUTTON — 2026-08-15, ALL THREE STILL LIVE
+
+Every one of these was caught at a dialog on the real deck. **None was found by the
+suite**, which went 194/0 to 199/0 across the same session without seeing any of them.
+
+### A. The harvest writes a formatted VIEW into a field whose contract is numeric
+
+**Blocker. Nothing bulk should run before this is fixed.**
+
+`PROJECT_PROGRESS` reads `33%` off the slide. `InjectPrimitive.bas:340` refuses any
+non-numeric progress value and names **`'90%'` as wrong in those exact words**. So the
+harvest would write a value the tool itself cannot publish.
+
+**Why it is worse than an ordinary bug:** `Harvest.HarvestSlide` writes only where the
+register is empty. Once `'33%'` is in the cell it is no longer empty, so a corrected
+harvest **cannot overwrite it** — it has to be cleared by hand, exactly like the four
+Excel-coerced cells cleared at 23:40 on 14 Aug.
+
+The harvest assumes "what is displayed" is what the register wants. True for prose, names
+and dates; false wherever the slide shows a formatted view of a stored value. It already
+refuses devices by name — numeric-contract fields need the same treatment: convert
+(`33%` -> `0.33`) or refuse, never write the string.
+
+### B. `OfferHarvestForSelectedSlides`'s prompt mislabels and truncates
+
+Two defects in one dialog, both in `RibbonUI.bas`:
+
+1. **All propagation detail is accumulated into the `collisions` string**, so successful
+   stamps print underneath a `Refused -- two fields matched one shape:` header. On
+   14 Aug 23:57 that made a run reporting 16 correct stamps read as though it had refused
+   everything.
+2. **It hits `CapReport`'s 900-character cap mid-word**, so collisions can be present and
+   invisible. A person cannot consent to what the dialog does not show them.
+
+Neither is dangerous — the guards bound the write, not the text — but this project has
+already paid twice for approving a prompt that could not be fully read.
+
+### C. Slide 27 carries a shape already named `Text 216a` that is not the date
+
+The 2026-08-15 rename pass (55 shapes, so 32 of 44 slides carry both `Text 212a` and
+`Text 216a`) **refused** slide 27 rather than create a duplicate name. That slide's
+`END_DATE` will keep colliding until a human looks at it. Correct behaviour, still an
+open item.
+
+### D. `check_vba_static.py`'s reachability check is weaker than its name
+
+It asks whether a procedure's NAME appears in another module, **not** whether anything
+reachable calls it. A chain of private orphans is invisible to it. Proven 2026-08-14:
+commenting out the call to a wrapper left the callee's name still written inside the
+now-orphaned wrapper, and the checker stayed clean.
