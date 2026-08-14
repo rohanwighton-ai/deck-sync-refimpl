@@ -14,6 +14,47 @@ Document control is not a habit here, it is a check. The rule underneath all of 
 
 ---
 
+## 0. ROHAN'S DECISIONS THAT ELIMINATE WHOLE CATEGORIES
+
+**Read these before proposing anything.** Each one removed a class of problem rather
+than fixing an instance, and each was reached by him asking a plain question about a
+word or a shape — not by the test suite, which has been green through every one of them.
+When a proposal conflicts with one of these, the proposal is wrong.
+
+**1. "It's a build, not a rebuild." "Why is clear still happening?"** *(14 Aug)*
+The drafting sheet is UPDATED IN PLACE. `ws.Cells.Clear` survives only for a column
+renumbering. **Eliminates:** the carry dictionaries, the restore step, the park's reason
+to exist, layout stranding, and every future variant of "the rebuild lost my work" —
+which had produced five separate patches between 1 and 14 August and still lost 27
+drafted paragraphs. A destructive operation made survivable is not a fix; the tell is
+adding a backup instead of deleting a call.
+
+**2. One file pair per quarter, and the central register is DERIVED, never authored.**
+*(14 Aug — `claude-brain/DECISIONS.md`)* **Eliminates:** cross-period contamination as a
+category. The old quarter is safe because it is a different file, not because the code
+was careful. The derived aggregate eliminates the second-source-of-truth drift that an
+editable one would guarantee.
+
+**3. Fields are declared at template time; template NAMES are the identity.**
+*(13–14 Aug, decided and NOT YET BUILT)* **Eliminates:** the entire "recognising"
+surface — discovery, the marking grid, orphan-column warnings, and device internals
+appearing as candidate fields. If the template says what exists, nothing has to perceive
+it. A name is repairable by a person in the Selection Pane; an invisible tag is not, and
+there is no Claude on the work machine. May also delete the planned device registry: if
+names carry device membership, the naming convention IS the registry.
+
+**4. "We are simplifying, why split?"** *(14 Aug)* Buttons are not a safety mechanism —
+the confirmation is. The toolbar went 16 → 2 on 9 August and stays at 2. **Eliminates:**
+recurring proposals to add a button for a problem already fixed at the root.
+
+**5. One add-in. The deck is the anchor.** *(14 Aug)* `ActivePresentation` yields the
+deck; the deck's properties yield the period and the workbook path. **Eliminates:** an
+Excel-hosted half needing the deck's path and period copied into the workbook — a second
+copy of a machine-knowable fact, which is the same defect class this whole document
+exists to prevent.
+
+---
+
 ## 1. The one rule that decides where a fact lives
 
 | the fact | lives in | never in |

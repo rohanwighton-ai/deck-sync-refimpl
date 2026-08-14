@@ -106,7 +106,11 @@ Every new field, and every new project, hits this.
 
 ---
 
-## 1c. The at-risk scan misses SOURCES and NOTES, so the refusal does not cover all typed work
+## 1c. FIXED 2026-08-14 (`aff84d6`) — the at-risk scan missed SOURCES and NOTES
+
+> **Fixed, not compiled.** The scan now counts SOURCES and NOTES alongside SUBMIT and
+> DRAFT, so the rollover refusal covers all typed work. Original entry follows.
+
 
 **Found 2026-08-13 while rewriting the two tests the refusal guard turned red.**
 
@@ -138,7 +142,13 @@ and is Rohan's call, not a silent cleanup.
 
 ---
 
-## 1d. The park that proves a rollover lost nothing runs *after* the sheet is cleared
+## 1d. FIXED 2026-08-14 (`aff84d6`) — by deletion, not repair
+
+> **The late `ParkSheetCopy` call site is gone.** The park now runs before
+> `ws.Cells.Clear`, unconditionally, which made this site both unreachable and wrong.
+> Note the clear itself is now confined to a layout migration, so on the normal path
+> there is nothing to park *from*. Original entry follows.
+
 
 **Found 2026-08-13, in the code directly beneath the comment warning about this.**
 

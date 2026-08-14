@@ -1,6 +1,7 @@
 # NEXT SESSION — start here
 
-> ## 14 AUG, EVENING — READ THIS FIRST. Supersedes every block below.
+> ## 14 AUG, EVENING — READ THIS FIRST. **STATUS: CURRENT.** Every block below it is
+> historical and is kept for reasoning only.
 >
 > ### FIRST ACTION: COMPILE AND RUN THE SUITE IN POWERPOINT. NOTHING ELSE.
 >
