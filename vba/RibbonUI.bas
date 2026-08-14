@@ -887,7 +887,7 @@ Private Function OfferHarvestForSelectedSlides(pres As Object, TITLE As String) 
                 toRead = toRead + dry.Written
                 slideNote = slideNote & dry.Detail
             End If
-            If dry.Ran And dry.SkippedDevice > 0 Then devices = dry.Detail
+            If dry.Ran And dry.SkippedNotText > 0 Then devices = dry.Detail
         End If
 
         If slideNote <> "" Then

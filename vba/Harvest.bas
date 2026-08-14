@@ -31,11 +31,26 @@ Option Explicit
 '
 ' WHAT IT DOES NOT DO, NAMED RATHER THAN DISCOVERED LATER:
 '
-' 1. DEVICES ARE SKIPPED. A milestone timeline is one tagged group standing for
-'    21 register fields, and reading it back means recovering each slot's
-'    on/now/off state from shape visibility -- which is GAP 3 and unbuilt. A
-'    device is reported as skipped by name, never silently passed over, and
-'    never harvested as though the group's own (empty) text were its value.
+' 1. IT HARVESTS ONLY WHAT PUBLISH WOULD WRITE AS TEXT, asked via
+'    InjectPrimitive.InjectorFor -- the SAME decision the router makes, so the
+'    two can never disagree about a field.
+'
+'    The slide shows a formatted VIEW of some fields, not the value the register
+'    holds. `PROJECT_PROGRESS` displays `33%`; InjectProgressVia refuses anything
+'    non-numeric and names `'90%'` as wrong in those exact words. Harvesting what
+'    is displayed would write a value the tool itself cannot publish -- and the
+'    empty-cell rule above then makes it PERMANENT, because the cell is no longer
+'    empty for a corrected run to fill. Caught on the real deck 2026-08-15 at the
+'    dialog, before anything was written.
+'
+'    A milestone timeline is one tagged group standing for 21 register fields,
+'    and reading it back means recovering each slot's on/now/off state from shape
+'    visibility -- GAP 3, unbuilt. A picture's register cell holds a source id,
+'    not a caption. All are reported by name, never silently passed over.
+'
+'    REFUSAL, NOT CONVERSION. `33%` -> `0.33` is guessable; `33% (est.)` and
+'    `as at Q3` are not, and a wrong guess here cannot be corrected. Refusing
+'    leaves the cell empty, which is recoverable.
 ' 2. It never creates a register column. UpsertRow would happily append one;
 '    this asks only for fields the sheet already has, so a typo in a role tag
 '    shows up as "no column for this role" instead of quietly inventing one.
@@ -49,7 +64,7 @@ Public Type HarvestOutcome
     SkippedHasValue As Long
     SkippedBlankOnSlide As Long
     SkippedNoShape As Long
-    SkippedDevice As Long
+    SkippedNotText As Long
     Detail As String
 End Type
 
@@ -286,9 +301,25 @@ Public Function HarvestSlide(sld As Object, ws As Object, period As String, _
                     ' guess", and both are ordinary on a slide whose register
                     ' has more columns than the slide has tagged shapes.
                     outcome.SkippedNoShape = outcome.SkippedNoShape + 1
-                ElseIf shp.Type = msoGroup Then
-                    outcome.SkippedDevice = outcome.SkippedDevice + 1
-                    outcome.Detail = outcome.Detail & "  device skipped (not readable yet): " & fname & vbCrLf
+                ElseIf ShapeIsNotHarvestableText(sld, shp, fname) <> "" Then
+                    ' HARVEST ONLY WHAT PUBLISH WOULD WRITE AS TEXT.
+                    '
+                    ' The slide shows a formatted VIEW of some fields, not the
+                    ' value the register holds. `PROJECT_PROGRESS` reads "33%" on
+                    ' the slide and InjectProgressVia refuses anything
+                    ' non-numeric, naming '90%' as wrong in those exact words --
+                    ' so harvesting the displayed string writes a value the tool
+                    ' itself cannot publish. A device has no text of its own, and
+                    ' a picture's register cell holds a source id, not a caption.
+                    '
+                    ' WHY THIS IS A REFUSAL AND NOT A CONVERSION: "33%" -> 0.33 is
+                    ' guessable, but 'as at Q3' or '33% (est.)' is not, and a
+                    ' wrong guess here is PERMANENT -- the empty-cell rule means a
+                    ' corrected harvest can never overwrite it. Refusing names the
+                    ' field and leaves the cell empty, which is recoverable.
+                    outcome.SkippedNotText = outcome.SkippedNotText + 1
+                    outcome.Detail = outcome.Detail & "  not read (" & _
+                        ShapeIsNotHarvestableText(sld, shp, fname) & "): " & fname & vbCrLf
                 Else
                     Dim v As String
                     v = ShapeText(shp)
@@ -316,11 +347,40 @@ Public Function HarvestSlide(sld As Object, ws As Object, period As String, _
     HarvestSlide = outcome
 End Function
 
-' A group has no text of its own even when every member inside it does
-' (confirmed live 2026-07-26, BatchOnboardFlow.MarkShapeForBatch's header), so
-' this is only ever called for non-group shapes. Guarded anyway: a shape with
-' no text frame raises rather than returning "", and a harvest that dies on one
-' odd shape has read nothing from the other forty-two.
+' Returns "" if this shape's text IS the register's value, or a short reason if
+' it is not. TWO INDEPENDENT FACTS, deliberately not collapsed into one:
+'
+' 1. WHAT PUBLISH WOULD DO WITH IT -- asked via InjectPrimitive.InjectorFor, the
+'    same decision the router makes, so harvest and publish can never disagree
+'    about a field. A bar's slide text is `33%` and its register value is a
+'    fraction; a picture's cell holds a source id, not a caption.
+'
+' 2. WHETHER THE SHAPE HAS TEXT OF ITS OWN AT ALL. A group container does not,
+'    even when every member inside it does (confirmed live 2026-07-26,
+'    BatchOnboardFlow.MarkShapeForBatch's header). This is NOT implied by (1):
+'    the router calls a group a DEVICE only when it carries milestone slots, so
+'    a tagged group without them routes to the text writer -- and reading it
+'    would report "blank on the slide", which is false. It has no text to be
+'    blank. Found by Harvest_SkipsATaggedGroupInsteadOfReadingItAsEmpty going red
+'    on 2026-08-15 when the injector check replaced the older group check.
+Private Function ShapeIsNotHarvestableText(sld As Object, shp As Object, fname As String) As String
+    If shp.Type = msoGroup Then
+        ShapeIsNotHarvestableText = "a group has no text of its own"
+        Exit Function
+    End If
+
+    Dim inj As String
+    inj = InjectPrimitive.InjectorFor(sld, fname)
+    If inj <> InjectPrimitive.INJECTOR_TEXT Then
+        ShapeIsNotHarvestableText = inj & ", not text"
+        Exit Function
+    End If
+
+    ShapeIsNotHarvestableText = ""
+End Function
+
+' A shape with no text frame raises rather than returning "", and a harvest that
+' dies on one odd shape has read nothing from the other forty-two.
 Private Function ShapeText(shp As Object) As String
     Dim result As String
     result = ""
@@ -347,5 +407,5 @@ Public Function HarvestSummary(o As HarvestOutcome, dryRun As Boolean) As String
         "  already had a value (left alone): " & o.SkippedHasValue & vbCrLf & _
         "  blank on the slide:               " & o.SkippedBlankOnSlide & vbCrLf & _
         "  no single shape carries the tag:  " & o.SkippedNoShape & vbCrLf & _
-        "  device, not readable yet:         " & o.SkippedDevice
+        "  on the slide but not text (bar/device/picture): " & o.SkippedNotText
 End Function

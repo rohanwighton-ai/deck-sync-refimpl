@@ -414,6 +414,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_Harvest_RefusesAFieldThePublishPathWouldTreatAsABar()
+    AppendResult report, "Harvest_RefusesAFieldThePublishPathWouldTreatAsABar", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous()
     AppendResult report, "Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous", r
     On Error GoTo 0
@@ -4177,7 +4182,7 @@ End Function
 ' own, so a harvest that treated it as an ordinary shape would find "" and
 ' report it as "blank on the slide" -- indistinguishable from a genuinely empty
 ' field, and the timeline's 21 values would look accounted for while nothing
-' had been read. The assertion is on SkippedDevice specifically for that reason.
+' had been read. The assertion is on SkippedNotText specifically for that reason.
 Private Function Test_Harvest_SkipsATaggedGroupInsteadOfReadingItAsEmpty() As String
     Dim result As String
 
@@ -4207,7 +4212,7 @@ Private Function Test_Harvest_SkipsATaggedGroupInsteadOfReadingItAsEmpty() As St
     o = Harvest.HarvestSlide(sld, ws, "Q4F26", False)
 
     result = result & Assert(o.Ran, "the harvest ran, problem was '" & o.Problem & "'")
-    result = result & Assert(o.SkippedDevice = 1, "the tagged group was counted as a skipped device, got " & o.SkippedDevice)
+    result = result & Assert(o.SkippedNotText = 1, "the tagged group was counted as not-text, got " & o.SkippedNotText)
     result = result & Assert(o.SkippedBlankOnSlide = 0, "it was NOT counted as blank-on-slide, got " & o.SkippedBlankOnSlide)
     result = result & Assert(o.Written = 0, "nothing was written, got " & o.Written)
     result = result & Assert(IsEmpty(ws.Cells(2, 3).Value), "the device's register cell is still empty")
@@ -4312,6 +4317,62 @@ Private Function Test_Harvest_StoresSlideTextVerbatimRatherThanLettingExcelParse
     xl.Quit
 
     Test_Harvest_StoresSlideTextVerbatimRatherThanLettingExcelParseIt = result
+End Function
+
+' A BAR'S DISPLAYED TEXT IS NOT ITS REGISTER VALUE.
+'
+' The fixture is the real failure: a field whose shape carries the text `33%`
+' and which the router sends to the progress injector, because a `.track`
+' companion sits beside it. InjectProgressVia refuses anything non-numeric --
+' `'90%'` is named as wrong in its own error string -- so harvesting `33%` writes
+' a value the tool cannot publish, and the empty-cell rule then makes it
+' permanent.
+'
+' Asserting on SkippedNotText rather than just Written=0 matters: a harvest that
+' skipped it for the wrong reason (blank on slide, no shape) would also write
+' nothing, and would break again the moment that reason stopped holding.
+Private Function Test_Harvest_RefusesAFieldThePublishPathWouldTreatAsABar() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "harvest-type"
+    sld.Tags.Add "instance_key", "h-5"
+
+    Dim bar As Object
+    Set bar = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 200, 30)
+    bar.TextFrame.TextRange.Text = "33%"
+    bar.Tags.Add "role", "PROJECT_PROGRESS"
+
+    ' The companion is what makes it a bar, per InjectorFor.
+    Dim track As Object
+    Set track = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 140, 200, 30)
+    track.Tags.Add "role", "PROJECT_PROGRESS.track"
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+    ws.Cells(1, 2).Value = "Quarter"
+    ws.Cells(1, 3).Value = "PROJECT_PROGRESS"
+    ws.Cells(2, 1).Value = "h-5"
+    ws.Cells(2, 2).Value = "Q4F26"
+
+    result = result & Assert(InjectPrimitive.InjectorFor(sld, "PROJECT_PROGRESS") = InjectPrimitive.INJECTOR_BAR, _
+        "the router calls this a bar, got '" & InjectPrimitive.InjectorFor(sld, "PROJECT_PROGRESS") & "'")
+
+    Dim o As HarvestOutcome
+    o = Harvest.HarvestSlide(sld, ws, "Q4F26", False)
+
+    result = result & Assert(o.Ran, "the harvest ran, problem was '" & o.Problem & "'")
+    result = result & Assert(o.SkippedNotText = 1, _
+        "the bar was skipped as not-text, got " & o.SkippedNotText)
+    result = result & Assert(o.Written = 0, "nothing was written, got " & o.Written)
+    result = result & Assert(IsEmpty(ws.Cells(2, 3).Value), _
+        "and its register cell is still empty, so a corrected run can still fill it")
+
+    wb.Close False
+    xl.Quit
+
+    Test_Harvest_RefusesAFieldThePublishPathWouldTreatAsABar = result
 End Function
 
 ' Builds the real deck's date pair: same x, identical size, 0.14" apart -- which

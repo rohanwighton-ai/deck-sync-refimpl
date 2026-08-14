@@ -91,6 +91,12 @@ Public Const PICTURE_SOURCE_TAG As String = "picsrc"
 ' instead of a silent divergence.
 Public Const VALUE_SEPARATOR As String = LINE_BREAK_DELIMITER
 
+Public Const INJECTOR_DEVICE As String = "device"
+Public Const INJECTOR_PICTURE As String = "picture"
+Public Const INJECTOR_REPEATING As String = "repeating-bar"
+Public Const INJECTOR_BAR As String = "bar"
+Public Const INJECTOR_TEXT As String = "text"
+
 ' PUBLIC since 2026-08-14, for Harvest.bas. Deliberately shared rather than
 ' copied: this walk carries two properties a second copy would lose within a
 ' week -- it TESTS a group as well as recursing into it (see WalkForRoleTag's
@@ -260,27 +266,36 @@ End Function
 ' branch needs it -- a bar reads its whole value from the register cell. Where
 ' it is absent a picture field SAYS SO instead of falling through to the text
 ' writer, whose "no text frame" is a true sentence about the wrong question.
-Public Function InjectField(sld As Object, identityTag As String, sourceValue As String, _
-                            Optional dryRun As Boolean = False, _
-                            Optional srcWs As Object = Nothing, _
-                            Optional rowValues As Object = Nothing) As InjectResult
-    Dim shp As Object, trackShp As Object
+' WHICH INJECTOR CLAIMS THIS FIELD ON THIS SLIDE -- a FOURTH axis, and it needed
+' its own word because the other three are taken and mean different things:
+'
+'   Kind      Controlled/Prose/Static/Derived  -- how a value is reviewed (ReviewQueue)
+'   FieldType text/number/currency/date        -- how the register cell is formatted
+'   Behaviour fill/fit/as-is                   -- how a picture is placed
+'   Injector  (here)                           -- what will be WRITTEN INTO, on this slide
+'
+' Overloading any of those would be the "a word doing two jobs" defect this
+' project has already paid for twice.
+'
+' EXTRACTED FROM InjectField 2026-08-15 rather than copied. Harvest.bas needs the
+' same answer -- a field whose injector is a BAR must never be given the string
+' the slide displays ("33%"), because InjectProgressVia refuses anything
+' non-numeric and the harvest's empty-cell rule would make that unfixable. Two
+' copies of this decision would drift within a week; the router below now uses
+' this function, so harvest and publish cannot disagree about the same field.
+Public Function InjectorFor(sld As Object, identityTag As String) As String
+    Dim shp As Object
     Set shp = FindShapeByRoleTag(sld, identityTag)
-    Set trackShp = FindShapeByRoleTag(sld, identityTag & ".track")
 
     ' A DEVICE IS A GROUP ON PURPOSE -- a milestone timeline is ONE field made
     ' of fifteen shapes, tagged once, its parts found by NAME inside it. Checked
     ' before everything else because a group is not a picture, has no text
     ' frame, and would otherwise fall through to the text writer and be refused
     ' for having nowhere to put a string.
-    '
-    ' It needs the whole ROW rather than one value: its columns are
-    ' MS1_LABEL, MS1_DATE, MS1_DONE and so on, one per interval. Both sync call
-    ' sites already hold the row, so nothing new is read.
     If Not shp Is Nothing Then
         If shp.Type = msoGroup Then
             If MilestoneDevice.SlotCount(shp) > 0 Then
-                InjectField = InjectDeviceVia(shp, identityTag, rowValues, dryRun)
+                InjectorFor = INJECTOR_DEVICE
                 Exit Function
             End If
         End If
@@ -288,7 +303,7 @@ Public Function InjectField(sld As Object, identityTag As String, sourceValue As
 
     If Not shp Is Nothing Then
         If IsPictureShape(shp) Then
-            InjectField = InjectPictureVia(sld, identityTag, sourceValue, srcWs, dryRun)
+            InjectorFor = INJECTOR_PICTURE
             Exit Function
         End If
     End If
@@ -299,7 +314,7 @@ Public Function InjectField(sld As Object, identityTag As String, sourceValue As
     ' shared `<field>.track` axis, which would otherwise capture it and inject
     ' one value into a bar that does not exist.
     If Not FindShapeByRoleTag(sld, identityTag & ".1") Is Nothing Then
-        InjectField = InjectRepeatingProgress(sld, identityTag, sourceValue, dryRun)
+        InjectorFor = INJECTOR_REPEATING
         Exit Function
     End If
 
@@ -317,13 +332,32 @@ Public Function InjectField(sld As Object, identityTag As String, sourceValue As
     ' Asking for a companion rather than the done part also means a bar whose
     ' done part has been deleted still routes here and gets InjectProgressField's
     ' specific message, instead of being told it has no text frame.
-    If Not trackShp Is Nothing _
+    If Not FindShapeByRoleTag(sld, identityTag & ".track") Is Nothing _
        Or Not FindShapeByRoleTag(sld, identityTag & FieldWiring.REST_SUFFIX) Is Nothing Then
-        InjectField = InjectProgressVia(sld, identityTag, sourceValue, dryRun)
+        InjectorFor = INJECTOR_BAR
         Exit Function
     End If
 
-    InjectField = InjectPrimitive(sld, identityTag, sourceValue, dryRun)
+    InjectorFor = INJECTOR_TEXT
+End Function
+
+Public Function InjectField(sld As Object, identityTag As String, sourceValue As String, _
+                            Optional dryRun As Boolean = False, _
+                            Optional srcWs As Object = Nothing, _
+                            Optional rowValues As Object = Nothing) As InjectResult
+    ' ONE DECISION, made in one place. See InjectorFor's header.
+    Select Case InjectorFor(sld, identityTag)
+        Case INJECTOR_DEVICE
+            InjectField = InjectDeviceVia(FindShapeByRoleTag(sld, identityTag), identityTag, rowValues, dryRun)
+        Case INJECTOR_PICTURE
+            InjectField = InjectPictureVia(sld, identityTag, sourceValue, srcWs, dryRun)
+        Case INJECTOR_REPEATING
+            InjectField = InjectRepeatingProgress(sld, identityTag, sourceValue, dryRun)
+        Case INJECTOR_BAR
+            InjectField = InjectProgressVia(sld, identityTag, sourceValue, dryRun)
+        Case Else
+            InjectField = InjectPrimitive(sld, identityTag, sourceValue, dryRun)
+    End Select
 End Function
 
 ' A register cell is text; a bar needs a number. Converting is the router's

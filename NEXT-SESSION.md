@@ -4,7 +4,25 @@
 >
 > ### THE HARVEST WORKS BY BUTTON. IT IS NOT SAFE TO RUN AT SCALE YET.
 >
-> ### FIRST ACTION: TEACH THE HARVEST ABOUT FIELD **KIND**. NOTHING BULK BEFORE IT.
+> ### ~~FIRST ACTION: TEACH THE HARVEST ABOUT FIELD KIND~~ — **DONE 2026-08-15, suite 200/0**
+>
+> `Harvest.HarvestSlide` now asks `InjectPrimitive.InjectorFor(sld, field)` — the
+> SAME decision `InjectField` routes on, **extracted from it rather than copied**,
+> so harvest and publish cannot disagree about a field — and refuses anything that
+> is not `INJECTOR_TEXT`. A group is refused separately: the router calls a group a
+> device only when it carries milestone slots, so a tagged group without them would
+> otherwise route to the text writer and be reported as "blank on the slide", which
+> is false. **Refusal, not conversion**, because a wrong guess cannot be corrected.
+>
+> It needed a FOURTH axis word. `Kind` (Controlled/Prose/Static/Derived),
+> `FieldType` (text/number/currency/date) and `Behaviour` (fill/fit/as-is) are all
+> taken and all mean something else; overloading one would be the defect that has
+> already cost this project a wiped feature.
+>
+> **NOT IN A BUILT ADD-IN.** The loaded build is `addin91` (`00:14`), which predates
+> this, the dialog fix and the doc rename. **First action now: build, tick, restart.**
+>
+> ### THE ORIGINAL FIRST ACTION, KEPT FOR THE REASONING:
 >
 > `PROJECT_PROGRESS` reads `33%` off the slide. `InjectPrimitive.bas:340` refuses
 > any non-numeric progress value and names **`'90%'` as wrong in those exact

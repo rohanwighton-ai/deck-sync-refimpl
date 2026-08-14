@@ -970,9 +970,15 @@ defect.
 Every one of these was caught at a dialog on the real deck. **None was found by the
 suite**, which went 194/0 to 199/0 across the same session without seeing any of them.
 
-### A. The harvest writes a formatted VIEW into a field whose contract is numeric
+### A. FIXED 2026-08-15 — the harvest wrote a formatted VIEW into a numeric-contract field
 
-**Blocker. Nothing bulk should run before this is fixed.**
+> **Fixed in source, NOT yet in a built add-in.** `Harvest.HarvestSlide` now asks
+> `InjectPrimitive.InjectorFor` — the same decision `InjectField` routes on, extracted
+> rather than copied so the two cannot drift — and refuses anything that is not
+> `INJECTOR_TEXT`, naming it. A group is refused separately, because a group has no text
+> of its own even when the router would not call it a device. **Refusal, not conversion:**
+> `33%` -> `0.33` is guessable, `33% (est.)` is not, and a wrong guess is permanent.
+> Suite 200/0. Original entry follows.
 
 `PROJECT_PROGRESS` reads `33%` off the slide. `InjectPrimitive.bas:340` refuses any
 non-numeric progress value and names **`'90%'` as wrong in those exact words**. So the
