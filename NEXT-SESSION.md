@@ -39,6 +39,21 @@
 > treatment for numeric-contract fields — convert (`33%` -> `0.33`) or refuse,
 > never write the string.
 >
+> ### HARVEST PROGRESS — 15 AUG 06:02
+>
+> **9 of 43 register rows filled** for the six scalar fields (was 1 at 00:35). Deck at
+> **500 tag parts**, the seven roles on 10 slides. Two batches run by button:
+> slides 2-5 (24 labelled, 34 values) and slides 6-9 (22 labelled, 34 values).
+>
+> The remaining ~34 slides are the SAME PRESS with a bigger selection. The preview now
+> tells the truth, so the offer can be read and trusted before approving.
+>
+> **Known, from the runs rather than from theory:** slide 8's `START_DATE`/`END_DATE`
+> collide and are refused — it has no date-shaped text, so both roles land on some other
+> shape and the guard stops them. It needs its dates by hand. **One collision prints one
+> line per role rather than one line per collision**, so a colliding slide looks twice as
+> bad as it is. Cosmetic, unfixed.
+>
 > ### PROVEN ON REAL FILES, BY BUTTON, READ BACK FROM SAVED BYTES
 >
 > | | |

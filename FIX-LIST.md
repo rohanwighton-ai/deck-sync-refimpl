@@ -1,7 +1,7 @@
 # Fix list
 
 > **CURRENT — the live list of what is known-broken and not yet fixed.** Re-audited
-> against the code 2026-08-14; five entries added 2026-08-15 (see the last section).
+> against the code 2026-08-14; five entries added 2026-08-15; A and E since fixed.
 > Entries say whether they are still live; anything marked fixed names the build it was
 > fixed in.
 
@@ -1022,7 +1022,16 @@ reachable calls it. A chain of private orphans is invisible to it. Proven 2026-0
 commenting out the call to a wrapper left the callee's name still written inside the
 now-orphaned wrapper, and the checker stayed clean.
 
-### E. The harvest prompt UNDERCOUNTS what it will write
+### E. FIXED 2026-08-15 — the harvest prompt undercounted what it would write
+
+> **Fixed and verified on the real deck**, `bd63134`. `PropagateTemplateTags` records the
+> shape text per role it would stamp; the dry harvest consults that map, so the preview
+> counts fields the same press is about to create. Dry-run only by construction — a wet
+> run stamps first, so the ordinary lookup finds the shape and the map is never read.
+> **Proven 06:02: offer `22 shape(s), 34 value(s)`, result `22 shape(s) labelled, 34
+> value(s) written`** — the pair that previously read 10 then 34. Register arithmetic
+> agrees: six fields went 38 -> 34 empty, and START_DATE/END_DATE 38 -> 35, the one-row
+> difference being slide 8's refused collision. Suite 201/0. Original entry follows.
 
 **Demonstrated at scale 2026-08-15 05:44: the dialog offered `10 value(s)` and the run
 wrote `34`.** Every value was correct; the number was wrong by 3.4x.
