@@ -49,8 +49,8 @@
 > THE BOTTOM OF THE SCREEN. Rohan: *"I don't want to do any secret hidden typing, I need to
 > select the field by clicking on it."* Make it a click.
 >
-> **NOT COMPILED.** The `MS*` deletion in `RibbonUI.bas` is committed unverified. Compile
-> before anything else.
+> **COMPILED AND GREEN.** The `MS*` deletion is verified: compile clean across 33 modules,
+> suite 191 passed / 0 failed.
 >
 > ---
 >
