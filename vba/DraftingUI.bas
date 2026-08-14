@@ -506,15 +506,19 @@ Public Sub RefreshDraftingSheets()
 
         Dim ws As Object
         Set ws = WorkbookBridge.GetOrAddWorksheet(wb, sName)
-        ' No cadence argument. Cadence was the long register's Quarter = ALL
-        ' sentinel, and the wide sheet has no such row -- every row states one
-        ' period. Omitting it means a rollover drops the drafting sheet's
-        ' carried-over work, which is the safe direction and no longer the
-        ' damaging one: RollForwardPeriod COPIES last period's rows, so the
-        ' previous text arrives as this sheet's ORIGINAL column instead. The
-        ' protection moved; it did not disappear.
+        ' THE CADENCE PARAMETER IS GONE (2026-08-14). A quarter turn now FERRIES
+        ' last quarter's SUBMIT into the REPORTED LAST TIME column rather than
+        ' deciding per row whether to drop it, so there is nothing left to ask
+        ' the register about.
+        '
+        ' The comment that stood here said "No cadence argument" while the call
+        ' below passed a bare positional `Nothing` into that very slot. Removing
+        ' the parameter then bound `Nothing` to srcWs and srcWs to a Long, and
+        ' the compile died with "ByRef argument type mismatch". The comment was
+        ' read instead of the code, and it was wrong in the one way that mattered:
+        ' it described the argument BY NAME for a call that passes POSITIONALLY.
         Dim fieldReport As String
-        fieldReport = Drafting.WriteDraftingSheet(ws, reg, fid, specWs, period, Nothing, srcWs, seedIndex)
+        fieldReport = Drafting.WriteDraftingSheet(ws, reg, fid, specWs, period, srcWs, seedIndex)
         ' Matched on the prefix WriteDraftingSheet returns, which is its contract
         ' for "nothing was changed" -- not on the prose after it, which is written
         ' for a person and will be reworded.

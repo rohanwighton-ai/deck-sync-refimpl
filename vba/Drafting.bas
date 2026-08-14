@@ -1,4 +1,3 @@
-'*** WARNING 2026-08-14: THIS FILE DOES NOT COMPILE. See NEXT-SESSION.md. ***
 Attribute VB_Name = "Drafting"
 Option Explicit
 
