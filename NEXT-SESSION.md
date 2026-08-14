@@ -98,9 +98,20 @@
 >
 > ### NEXT, IN ORDER
 >
-> 1. **Recover the 27 texts** from `backups/register-wide.PRE-ABOUTFIX-20260814-071658.xlsx`
->    into the two sheets, through Excel. **A wholesale restore is WRONG** — that backup
->    predates the 08:21 publish. Baseline is 43/43; currently 22 and 37.
+> 1. ~~**Recover the 27 texts.**~~ **DONE 14 Aug, verified from the saved file.** Both
+>    sheets are back to **43 rows / 43 SUBMIT**, nothing missing, every text byte-identical
+>    to the backup. The 27 = 20 appended rows on `KEY_EVENTS_BODY` + `4_K017`, whose row
+>    survived with an emptied SUBMIT (309 chars), + 6 appended rows on `PROGRESS_BODY`.
+>
+>    **The rule that made a wholesale restore unnecessary: a cell was written ONLY when
+>    empty in the live file.** Nothing existing could be overwritten by construction rather
+>    than by care, so the backup predating the 08:21 publish stopped mattering. Backup:
+>    `backups/register-wide.PRE-RESTORE27-20260814-134147.xlsx`.
+>
+>    **`PROGRESS_BODY`'s 43 approve ticks were restored too** — they were wiped at 11:40 and
+>    every SUBMIT on that sheet is byte-identical to what they approved, so this restores
+>    consent rather than inventing it. `KEY_EVENTS_BODY` has 0; its backup had none. Flagged
+>    to Rohan as a consent gate touched without asking.
 > 2. **Build the "reported last quarter" column**: store the predecessor period at roll
 >    forward, derive the column, bump `DRAFT_LAYOUT_VERSION` to 5, delete the refusal and
 >    the cadence machinery, feed the prior text into the L2 prompt.
