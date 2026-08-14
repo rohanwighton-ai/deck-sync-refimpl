@@ -22,7 +22,7 @@ Public Type Candidate
     Name As String              ' shape name, for humans -- never used as an identity key (see identity_tags.py)
     GroupPath As String         ' "/"-joined chain of enclosing group names, "" if top-level
     ZOrder As Long              ' 1-based document-order position among discovered leaf shapes
-    ShapeType As String         ' "autoshape_or_textbox" | "picture"
+    ShapeType As String         ' "autoshape_or_textbox" | "picture" | SHAPE_TYPE_DEVICE
     HasPlaceholder As Boolean
     PlaceholderType As String   ' best-effort OOXML-style label ("title","body",...); "" if not a placeholder
     PlaceholderIdx As Long      ' always -1 here -- the object model exposes no such property, see notes
@@ -33,6 +33,14 @@ Public Type Candidate
     SizeCy As Long              ' EMU, converted from Shape.Height
     IdentityTag As String       ' always "" out of DiscoverSlide -- discovery does not read tags, per discovery.md's non-goals
 End Type
+
+' THE SHAPE TYPE FOR A DEVICE -- a group addressed as ONE field.
+'
+' Named rather than typed as a literal in two modules: Onboarding.IsCandidateField
+' has to admit it, and Matching.ShapeTypeScore compares it. A string spelled twice
+' is the write-it-twice class, and this project has paid for that repeatedly.
+Public Const SHAPE_TYPE_DEVICE As String = "device"
+
 
 ' Walk `sld`'s shape tree and return every candidate leaf shape (autoshape,
 ' textbox, placeholder, or picture), recursing into groups. Mirrors
@@ -132,7 +140,57 @@ Private Sub Walk(shapesColl As Object, groupPath As String, ByRef results() As C
             Else
                 childPath = groupPath & "/" & shp.Name
             End If
-            Walk shp.GroupItems, childPath, results, shapes, count, z
+
+            ' A DEVICE IS ONE FIELD, NOT ITS PARTS.
+            '
+            ' The milestone timeline is a group of ~30 named shapes -- seven
+            ' slots x three circles, plus a label and a date each, plus a track
+            ' and a bar. Walking into it made every one of them a candidate, so
+            ' Rohan's timeline appeared as 21 fields to tag by hand. He had
+            ' already solved this in the deck: the shapes carry a naming
+            ' convention (MS1_ON, MS2_DATE, MILESTONE_TIMELINE...), which is
+            ' what "load shape modules as prenamed per slide entities" meant.
+            '
+            ' Injection has always treated the device as one addressable thing
+            ' (InjectPrimitive:263 asks SlotCount before routing), and marking
+            ' has too (BatchOnboardFlow:1503). DISCOVERY was the one that still
+            ' saw the parts -- which is exactly the "writing is solved,
+            ' recognising is not" gap recorded on 2026-08-13.
+            '
+            ' Recognised by COUNTING SLOTS rather than by matching the group's
+            ' name, so a renamed timeline still resolves and a group that merely
+            ' happens to be called MILESTONE_TIMELINE but carries no slots does
+            ' not. The device's own integrity check reports a missing part by
+            ' name, so nothing is silently swallowed by this shortcut.
+            If MilestoneDevice.SlotCount(shp) > 0 Then
+                z = z + 1
+
+                Dim dev As Candidate
+                dev.Name = shp.Name
+                dev.GroupPath = groupPath
+                dev.ZOrder = z
+                dev.ShapeType = SHAPE_TYPE_DEVICE
+                dev.HasPlaceholder = False
+                dev.PlaceholderType = ""
+                dev.PlaceholderIdx = -1
+                ' HasText is False: the group carries no text of its own, its
+                ' parts do. Candidacy comes from being a device, not from text
+                ' -- see Onboarding.IsCandidateField.
+                dev.HasText = False
+                dev.PositionX = PointsToEmu(shp.Left)
+                dev.PositionY = PointsToEmu(shp.Top)
+                dev.SizeCx = PointsToEmu(shp.Width)
+                dev.SizeCy = PointsToEmu(shp.Height)
+                dev.IdentityTag = ""
+
+                count = count + 1
+                ReDim Preserve results(1 To count)
+                ReDim Preserve shapes(1 To count)
+                results(count) = dev
+                Set shapes(count) = shp
+            Else
+                Walk shp.GroupItems, childPath, results, shapes, count, z
+            End If
         ElseIf IsCandidateLeafType(shp) Then
             z = z + 1
 

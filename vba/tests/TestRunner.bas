@@ -462,6 +462,9 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
 
     r = Test_Drafting_LayoutStampIsFoundNotAssumed()
     AppendResult report, "Drafting_LayoutStampIsFoundNotAssumed", r
+
+    r = Test_Discovery_ADeviceGroupIsOneCandidateNotItsParts()
+    AppendResult report, "Discovery_ADeviceGroupIsOneCandidateNotItsParts", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -4659,6 +4662,76 @@ Private Function Test_Drafting_LayoutStampIsFoundNotAssumed() As String
     result = result & Assert(Drafting.LayoutStampColumn(5) = 12, "layout 5 keeps its version in 12")
 
     Test_Drafting_LayoutStampIsFoundNotAssumed = result
+End Function
+
+' A DEVICE IS DISCOVERED AS ONE FIELD, NOT AS ITS PARTS.
+'
+' Rohan's real timeline is a group of ~30 named shapes, and discovery walked
+' into it -- so it presented as 21 separate fields to tag by hand. Injection and
+' marking had both been device-aware since 2026-08-13; discovery was the one
+' that still saw parts, which is the "writing is solved, recognising is not" gap.
+Private Function Test_Discovery_ADeviceGroupIsOneCandidateNotItsParts() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    ' A plain group of two text boxes -- NOT a device, so it must still be
+    ' walked into and yield its parts. This is the half that proves the new
+    ' branch is selective rather than swallowing every group.
+    Dim a As Object, b As Object
+    Set a = sld.Shapes.AddTextbox(1, 10, 10, 100, 20): a.TextFrame.TextRange.text = "plain one"
+    Set b = sld.Shapes.AddTextbox(1, 10, 40, 100, 20): b.TextFrame.TextRange.text = "plain two"
+    Dim plain As Object
+    Set plain = sld.Shapes.Range(Array(a.Name, b.Name)).Group
+    plain.Name = "PLAIN_GROUP"
+
+    ' A device: a group carrying milestone slot circles by name.
+    Dim c1 As Object, c2 As Object, lbl As Object
+    Set c1 = sld.Shapes.AddShape(9, 200, 10, 20, 20): c1.Name = "MS1_ON"
+    Set c2 = sld.Shapes.AddShape(9, 240, 10, 20, 20): c2.Name = "MS2_NOW"
+    Set lbl = sld.Shapes.AddTextbox(1, 200, 40, 100, 20)
+    lbl.TextFrame.TextRange.text = "first milestone"
+    lbl.Name = "MS1_LABEL"
+    Dim dev As Object
+    Set dev = sld.Shapes.Range(Array("MS1_ON", "MS2_NOW", "MS1_LABEL")).Group
+    dev.Name = "MILESTONE_TIMELINE"
+
+    result = result & Assert(MilestoneDevice.SlotCount(dev) = 2, _
+        "the fixture really is a device -- 2 slots, got " & MilestoneDevice.SlotCount(dev))
+
+    Dim shapes() As Object
+    Dim cands() As Candidate
+    cands = Discovery.DiscoverSlideWithShapes(sld, shapes)
+
+    Dim i As Long, devCount As Long, partCount As Long, plainCount As Long
+    For i = LBound(cands) To UBound(cands)
+        Select Case UCase(cands(i).Name)
+            Case "MILESTONE_TIMELINE": devCount = devCount + 1
+            Case "MS1_ON", "MS2_NOW", "MS1_LABEL": partCount = partCount + 1
+        End Select
+        If cands(i).GroupPath = "PLAIN_GROUP" Then plainCount = plainCount + 1
+    Next i
+
+    result = result & Assert(devCount = 1, _
+        "the device appears ONCE as a candidate, got " & devCount)
+    result = result & Assert(partCount = 0, _
+        "none of the device's parts appear as candidates, got " & partCount)
+    result = result & Assert(plainCount = 2, _
+        "an ordinary group is still walked into -- 2 parts expected, got " & plainCount)
+
+    ' Discovered is not enough: Onboarding.IsCandidateField decides what a person
+    ' is ever offered, and a device has no text and is not a picture.
+    Dim devCand As Candidate
+    For i = LBound(cands) To UBound(cands)
+        If UCase(cands(i).Name) = "MILESTONE_TIMELINE" Then devCand = cands(i)
+    Next i
+    result = result & Assert(devCand.ShapeType = Discovery.SHAPE_TYPE_DEVICE, _
+        "the device is typed as a device, got '" & devCand.ShapeType & "'")
+    result = result & Assert(Onboarding.IsCandidateField(devCand), _
+        "a device counts as a field despite having no text of its own")
+
+    Test_Discovery_ADeviceGroupIsOneCandidateNotItsParts = result
 End Function
 
 Private Function Test_DeckRegistry_RegisterAndLookupTypeRoundTrip() As String

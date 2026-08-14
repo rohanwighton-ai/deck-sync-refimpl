@@ -800,7 +800,7 @@ End Function
 ' ---------------------------------------------------------------------------
 ' BUTTON: Copy AI drafts into Submit
 ' ---------------------------------------------------------------------------
-Public Sub CopyAiDraftsToSubmit()
+Private Sub CopyAiDraftsToSubmit()
     Const CAP As String = "Copy AI to Submit"
     On Error GoTo Failed
 
@@ -860,7 +860,7 @@ End Sub
 ' register, and Approved is the register's word for "a person read this and
 ' meant it". A button that wrote that without showing what it was about to
 ' write would be putting those words in your mouth.
-Public Sub PublishDraftsForField()
+Private Sub PublishDraftsForField()
     Const CAP As String = "Publish Drafts"
     On Error GoTo Failed
 

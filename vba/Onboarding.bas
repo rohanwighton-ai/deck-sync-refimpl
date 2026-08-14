@@ -170,7 +170,14 @@ End Function
 ' shape-identity-and-matching.md's same signal (has text, or is a picture)
 ' rather than defining its own. Widened visibility only; behavior unchanged.
 Public Function IsCandidateField(c As Candidate) As Boolean
-    IsCandidateField = (c.ShapeType = "picture") Or c.HasText
+    ' A DEVICE IS A FIELD EVEN THOUGH IT HAS NO TEXT AND IS NOT A PICTURE.
+    ' The milestone timeline's text lives in its PARTS, so the group itself
+    ' answers False to both of the original tests and would be discovered and
+    ' then silently dropped -- built and unreachable, one layer earlier than
+    ' usual.
+    IsCandidateField = (c.ShapeType = "picture") _
+                    Or (c.ShapeType = Discovery.SHAPE_TYPE_DEVICE) _
+                    Or c.HasText
 End Function
 
 ' ---------------------------------------------------------------------
