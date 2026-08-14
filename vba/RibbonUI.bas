@@ -736,7 +736,7 @@ End Sub
 ' Toolbar entry point. The real work is in ApplyApprovedCore; this exists only
 ' to catch anything that escapes it. Same separate-frame reasoning as above.
 ' ---------------------------------------------------------------------
-' THE CHAIN -- "1. Sync Now"
+' THE CHAIN -- the workbook side, captioned CAP_SET_UP_QUARTER
 ' ---------------------------------------------------------------------
 '
 ' One button that does the next right thing, whatever state the deck is in.
@@ -902,7 +902,12 @@ Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) A
 End Function
 
 Private Sub SyncNowChainCore()
-    Const TITLE As String = "1. Sync Now"
+    ' FROM THE CAPTION CONSTANT, NOT TYPED. This was the literal "1. Sync Now"
+    ' and it survived the rename, so the first press of addin87 put a dialog on
+    ' screen titled after a button that no longer exists. Exactly the class this
+    ' project keeps paying for: a machine-knowable fact written a second time.
+    Dim TITLE As String
+    TITLE = CommandBarUI.CAP_SET_UP_QUARTER
 
     Dim pres As Object
     Set pres = Application.ActivePresentation
