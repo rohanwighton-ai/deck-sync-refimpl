@@ -123,16 +123,16 @@ Public Function RemedyText(code As RemedyCode) As String
         ' A remedy telling a person to press a button that is not there is
         ' worse than no remedy: it reads as authoritative and sends them
         ' hunting. Each stage still runs -- it is reached from inside the chain.
-        Case RM_START_QUARTER:           RemedyText = "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it sets the quarter"
-        Case RM_ROLL_FORWARD:            RemedyText = "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it offers to roll the rows forward"
-        Case RM_REPOINT_WORKBOOK:        RemedyText = "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it repairs the pairing"
-        Case RM_ONBOARD_SLIDES:          RemedyText = "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup"
+        Case RM_START_QUARTER:           RemedyText = "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it sets the quarter"
+        Case RM_ROLL_FORWARD:            RemedyText = "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it offers to roll the rows forward"
+        Case RM_REPOINT_WORKBOOK:        RemedyText = "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it repairs the pairing"
+        Case RM_ONBOARD_SLIDES:          RemedyText = "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup"
 
         ' NOT A BUTTON, and saying so is the whole point of this entry. The
         ' template slide is created from inside onboarding; there has never been
         ' a way to press for it directly.
         Case RM_TEMPLATE_FROM_ONBOARDING: RemedyText = _
-            "Create it from within '" & CommandBarUI.CAP_SYNC_NOW & "' -- there is no separate button"
+            "Create it from within '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- there is no separate button"
 
         Case RM_SAVE_DECK_THEN_REBUILD:  RemedyText = "Save the deck, then rebuild this sheet"
         Case RM_SAVE_WORKBOOK_THEN_REBUILD: RemedyText = "Save the workbook, then rebuild this sheet"
@@ -145,7 +145,7 @@ Public Function RemedyText(code As RemedyCode) As String
         ' This line and SyncNowChainCore's marking branch are one change; do not
         ' keep one without the other.
         Case RM_MARK_MISSING_FIELDS:     RemedyText = _
-            "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it offers to tag them before syncing"
+            "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it offers to tag them before syncing"
 
         ' An unrecognised code must never render as a confident blank -- the
         ' sheet would show a line with no way forward and look complete.

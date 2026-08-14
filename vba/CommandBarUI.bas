@@ -14,7 +14,7 @@ Option Explicit
 ' split as Kind and the Sources period list -- the code owns the words, the
 ' caller owns the choice. Renaming a button is now one edit here.
 ' ---------------------------------------------------------------------
-' ONLY TWO CAPTIONS EXIST, BECAUSE ONLY TWO BUTTONS DO.
+' ONE CAPTION PER BUTTON, AND NO CAPTION WITHOUT ONE.
 '
 ' This block held 19 CAP_* constants while AddButton was called twice. The other
 ' 17 named buttons removed on 2026-08-09 -- and they were not inert: Readiness
@@ -22,11 +22,31 @@ Option Explicit
 ' were not on the toolbar. Deleted 2026-08-14 rather than left "in case", since
 ' a caption constant with no button is a stale string waiting for a reader.
 '
+' CAP_REBUILD_SHEETS went the same way later that night, under the same rule and
+' for the same reason: its button was removed, so the constant was a caption for
+' a button nobody could press.
+'
 ' The two dialog TITLES that used to live here ("Review Changes", "Apply
 ' Approved") are now STAGE_* -- they name a stage of the chain, not a button,
 ' and the CAP_ prefix is what made them read as buttons.
-Public Const CAP_SYNC_NOW As String = "1. Sync Now"
-Public Const CAP_REBUILD_SHEETS As String = "2. Rebuild my sheets"
+' THE TOOLBAR SPLITS BY ARTIFACT, NOT BY STEP. Rohan, 2026-08-14.
+'
+' One set of actions touches the WORKBOOK, one touches the DECK, and neither can
+' trigger the other. The boundary is WHERE YOU STOP TYPING: button 1 gets your
+' sheets ready, you write, button 2 takes what you wrote all the way to a slide.
+'
+' "1. Sync Now" was renamed because it did not say which artifact it changed, and
+' it changed both -- which is how pressing a button to PUBLISH rebuilt the sheets
+' first and wiped 43 approve ticks on 2026-08-14.
+Public Const CAP_SET_UP_QUARTER As String = "1. Set up my quarter"
+Public Const CAP_PUT_ON_SLIDES As String = "2. Put it on the slides"
+
+' REVIEW IS ITS OWN ACTION, AND ITS CAPTION SAYS WHAT IT IS **NOT** FOR.
+' Rohan: "clear what it is and isn't for, part of a sequence, or not." A reader
+' who cannot tell whether a button writes to their deck will not press it, or
+' will press it and be surprised -- both worse than four extra words.
+Public Const CAP_REVIEW_ONLY As String = "Review changes (writes nothing)"
+
 Public Const STAGE_REVIEW_CHANGES As String = "Review Changes"
 Public Const STAGE_APPLY_APPROVED As String = "Apply Approved"
 
@@ -197,10 +217,23 @@ Public Sub ShowToolbar()
     ' clearing and restores them after, so typed work survives. Verified before
     ' this button was put one click away.
     ' ---------------------------------------------------------------------
-    AddButton bar, CAP_SYNC_NOW, "RibbonUI.SyncNowChain", 1004, _
-        "Use to carry the quarter forward: sets the period, builds your sheets, publishes what you ticked, then asks before changing any slide.", True
-    AddButton bar, CAP_REBUILD_SHEETS, "DraftingUI.RefreshDraftingSheets", 1697, _
-        "Use to rebuild the drafting sheets when they look wrong. Rebuilt from the register; your typed drafts and notes are kept."
+    AddButton bar, CAP_SET_UP_QUARTER, "RibbonUI.SyncNowChain", 1004, _
+        "Use to start a quarter, BEFORE you write: sets the period and gets your drafting sheets ready. Workbook only -- it cannot change a slide.", True
+    AddButton bar, CAP_PUT_ON_SLIDES, "RibbonUI.PutItOnTheSlides", 1017, _
+        "Use to put what you wrote onto the slides, AFTER you have finished writing: publishes every field you ticked, then shows each change and asks once.", True
+    AddButton bar, CAP_REVIEW_ONLY, "RibbonUI.ReviewChanges", 1000, _
+        "Use to read the register against your slides and tick what should change. It does NOT write to a slide -- button 2 does that."
+
+    ' "REBUILD MY SHEETS" IS GONE, 2026-08-14, and it is not coming back as a
+    ' button. Its tooltip said "use this when a drafting sheet looks wrong" --
+    ' which is not a feature, it is a DEFECT WITH INSTRUCTIONS ATTACHED. Rohan
+    ' made the same call on the row-reorder workaround: "why are you having to
+    ' move register rows manually? Worries me that the code won't work when it
+    ' needs to."
+    '
+    ' A sheet that looks wrong is a bug to fix, and a repair button is how that
+    ' bug stops being reported. Button 1 rebuilds the sheets anyway, so nothing
+    ' is lost -- RefreshDraftingSheets keeps its caller and is not orphaned.
 
     ' CommandBars.Add CREATES THE BAR HIDDEN. Without this line the toolbar is
     ' built correctly, wired correctly, and invisible -- and PowerPoint shows no

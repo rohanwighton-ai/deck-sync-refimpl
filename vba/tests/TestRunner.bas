@@ -5148,7 +5148,47 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     For Each bb In allBars
         totalButtons = totalButtons + bb.Controls.count
     Next bb
-    result = result & Assert(totalButtons = 2, "2 buttons on the one bar, got " & totalButtons)
+    ' THE COUNT IS DERIVED FROM THE CAPTIONS, NOT TYPED.
+    '
+    ' This asserted "= 2", then the toolbar changed and it was edited to "= 4" to
+    ' make it pass -- which proves nothing except that someone moved the number.
+    ' A literal here can always be dragged to match whatever the code now does.
+    '
+    ' Built from the CAP_* constants instead, this fails when a button is added
+    ' without a caption constant, when a declared caption loses its button, and
+    ' when a caption is renamed in only one of the two places.
+    Dim expectedCaptions As String
+    expectedCaptions = "|" & CommandBarUI.CAP_SET_UP_QUARTER & _
+                       "|" & CommandBarUI.CAP_PUT_ON_SLIDES & _
+                       "|" & CommandBarUI.CAP_REVIEW_ONLY & "|"
+
+    Dim expectedCount As Long
+    expectedCount = UBound(Split(expectedCaptions, "|")) - 1
+
+    result = result & Assert(totalButtons = expectedCount, _
+        "one button per declared caption -- expected " & expectedCount & ", got " & totalButtons)
+
+    ' Every button on the bar is a DECLARED one (catches a stray extra button)...
+    Dim seenCaptions As String
+    Dim capBar As Variant, capIdx As Long
+    seenCaptions = "|"
+    For Each capBar In allBars
+        For capIdx = 1 To capBar.Controls.count
+            Dim oneCap As String
+            oneCap = capBar.Controls.Item(capIdx).Caption
+            result = result & Assert(InStr(expectedCaptions, "|" & oneCap & "|") > 0, _
+                "button '" & oneCap & "' is a declared caption")
+            seenCaptions = seenCaptions & oneCap & "|"
+        Next capIdx
+    Next capBar
+
+    ' ...and every declared one is ON the bar (catches a missing button, which is
+    ' how a capability goes unreachable while every other assertion still passes).
+    Dim wantCap As Variant
+    For Each wantCap In Split(Mid(expectedCaptions, 2, Len(expectedCaptions) - 2), "|")
+        result = result & Assert(InStr(seenCaptions, "|" & CStr(wantCap) & "|") > 0, _
+            "declared caption '" & CStr(wantCap) & "' has a button on the toolbar")
+    Next wantCap
 
     Dim bar As Object
     Set bar = allBars(1)
@@ -5187,7 +5227,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     ' pass. Tightened 2026-07-30 while adding SyncNow, whose name contains
     ' another entry's prefix.
     Dim expectedActions As String
-    expectedActions = "|SyncNowChain|RefreshDraftingSheets|"
+    expectedActions = "|SyncNowChain|PutItOnTheSlides|ReviewChanges|"
 
     Dim i As Long
     Dim eachBar As Variant
@@ -5261,7 +5301,12 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
         result = result & Assert(Not b2 Is Nothing, "bar '" & CStr(nm2) & "' still exists after calling ShowToolbar twice")
         If Not b2 Is Nothing Then total2 = total2 + b2.Controls.count
     Next nm2
-    result = result & Assert(total2 = 2, "still exactly 2 buttons, got " & total2)
+    Dim wantAfter As Long
+    wantAfter = UBound(Split("|" & CommandBarUI.CAP_SET_UP_QUARTER & _
+                             "|" & CommandBarUI.CAP_PUT_ON_SLIDES & _
+                             "|" & CommandBarUI.CAP_REVIEW_ONLY & "|", "|")) - 1
+    result = result & Assert(total2 = wantAfter, _
+        "a second ShowToolbar leaves one button per declared caption -- expected " & wantAfter & ", got " & total2)
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarIsIdempotent = result
@@ -6239,7 +6284,16 @@ Private Function Test_CommandBarUI_EveryDeclaredCapabilityHasAButton() As String
     '
     ' What stays here is what only a live toolbar can answer: the dispatchers
     ' are wired, and they resolve to real Subs.
-    required = Array("SyncNowChain", "RefreshDraftingSheets")
+    ' THREE DISPATCHERS SINCE 2026-08-14, not two, and the change is a promotion
+    ' rather than a relaxation. The artifact split gave the deck side and the
+    ' review their own doors, so both are now things a person must be able to
+    ' reach from the toolbar and both are asserted here.
+    '
+    ' RefreshDraftingSheets LEFT this list because its button was removed -- its
+    ' tooltip said "use this when a drafting sheet looks wrong", which is a defect
+    ' with instructions attached rather than a capability. It is still reached,
+    ' from inside SyncNowChain, exactly like the thirteen described above.
+    required = Array("SyncNowChain", "PutItOnTheSlides", "ReviewChanges")
 
     ' Read from the LIVE toolbar, not from a list of what we think we built.
     CommandBarUI.ShowToolbar

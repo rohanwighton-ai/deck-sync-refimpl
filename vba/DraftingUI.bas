@@ -191,7 +191,7 @@ End Function
 '
 ' 2026-08-08: Rohan typed "About_Body" -- Office capitalises the first letter of
 ' an input box by habit -- and the tool answered "There is no drafting sheet for
-' About_Body yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it builds them." Following that advice would
+' About_Body yet. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it builds them." Following that advice would
 ' have created a SECOND sheet, TPL_About_Body, alongside TPL_ABOUT_BODY: two
 ' drafting sheets for one field, diverging quietly.
 '
@@ -273,6 +273,57 @@ End Function
 ' Worries me that the code won't work when it needs to." Right on both counts --
 ' it makes which field reaches a slide depend on spreadsheet row order, and it
 ' does not exist on the work machine, where a quarter must run from buttons.
+' EVERY DRAFTED FIELD, ASKING NOTHING. 2026-08-14.
+'
+' Rohan, on being asked which field: "it shouldn't have to ask" -- and he is
+' right, twice over. His own walkthrough of the tool never once mentions choosing
+' a field; the entire per-field selection UX is absent from how he thinks about
+' this. And it is absent for a good reason: the review queue downstream is ALREADY
+' matrix-shaped, because ChangeHash is keyed per entity AND field. The question
+' existed only because publish was written one field at a time, standing in front
+' of a machine that handles all of them perfectly well.
+'
+' So the picker is not improved, it is DELETED from the chain. That removes the
+' question, its wording, and the Excel-focus problem the click version had --
+' none of which should have been on screen.
+'
+' Each field still publishes through exactly the same path, with the same tick
+' gate. Nothing is approved here that would not have been approved one at a time;
+' the difference is that a person is not asked thirteen times.
+'
+' AskForField survives for the standalone buttons, where choosing really is the
+' point and the answer is not "all of them".
+Public Sub PublishAllDraftedFields(caption As String)
+    Dim pres As Object, wb As Object, regWs As Object
+    If Not Resolve(caption, pres, wb, regWs) Then Exit Sub
+
+    Dim list As String
+    list = ProseFields(wb)
+    If Trim(list) = "" Then
+        Say "There are no Prose fields on the Field Spec sheet, so there is nothing to publish.", _
+            vbInformation, caption
+        Exit Sub
+    End If
+
+    Dim parts() As String, i As Long
+    parts = Split(list, ",")
+
+    For i = LBound(parts) To UBound(parts)
+        mChainField = Trim(parts(i))
+        If mChainField <> "" Then
+            ' Copy first, publish second, and BOTH per field: CopyAiToSubmit
+            ' never overwrites a row that already has your words, so running it
+            ' here is safe and saves a separate press. It used to run in the
+            ' quarter-setup chain, BEFORE Copilot had written anything -- which
+            ' is why it asked a question about drafts that did not exist yet.
+            CopyAiDraftsToSubmit
+            PublishDraftsForField
+        End If
+    Next i
+
+    mChainField = ""
+End Sub
+
 Private Function FieldForRun(caption As String, wb As Object) As String
     If mCollecting Then
         If mChainField = "" Then mChainField = AskForField(caption, wb)
@@ -763,7 +814,7 @@ Public Sub CopyAiDraftsToSubmit()
     Dim sheetName As String
     sheetName = Drafting.DraftSheetNameFor(fieldId)
     If Not WorkbookBridge.WorksheetExists(wb, sheetName) Then
-        ' "Press '" & CommandBarUI.CAP_SYNC_NOW & "' first" is the RIGHT advice for a real field with no
+        ' "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' first" is the RIGHT advice for a real field with no
         ' sheet yet, and the WRONG advice for a typo -- following it would build a
         ' sheet for a FieldID that does not exist. So the two cases are separated.
         If StrComp(CanonicalFieldId(wb, fieldId), fieldId, vbBinaryCompare) <> 0 Or _
@@ -773,7 +824,7 @@ Public Sub CopyAiDraftsToSubmit()
                    vbExclamation, CAP
         Else
             Say "There is no drafting sheet for " & fieldId & " yet." & vbCrLf & vbCrLf & _
-                   "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it builds them.", vbExclamation, CAP
+                   "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it builds them.", vbExclamation, CAP
         End If
         Exit Sub
     End If
@@ -824,7 +875,7 @@ Public Sub PublishDraftsForField()
     sheetName = Drafting.DraftSheetNameFor(fieldId)
     If Not WorkbookBridge.WorksheetExists(wb, sheetName) Then
         Say "There is no drafting sheet for " & fieldId & " yet." & vbCrLf & vbCrLf & _
-               "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it builds them.", vbExclamation, CAP
+               "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it builds them.", vbExclamation, CAP
         Exit Sub
     End If
 
@@ -843,7 +894,7 @@ Public Sub PublishDraftsForField()
     If period = "" Then
         Say "This deck does not declare a period, so there is no way to know " & _
                "which quarter's rows to publish into." & vbCrLf & vbCrLf & _
-               "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it sets the quarter first.", vbExclamation, CAP
+               "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it sets the quarter first.", vbExclamation, CAP
         Exit Sub
     End If
 
@@ -953,7 +1004,7 @@ Public Sub PublishDraftsForField()
 
     ' THE STEP THAT TOLD YOU TO PRESS THE NEXT BUTTON NOW OFFERS TO.
     '
-    ' This used to end with "Now press '" & CommandBarUI.CAP_SYNC_NOW & "'" -- the tool admitting the
+    ' This used to end with "Now press '" & CommandBarUI.CAP_SET_UP_QUARTER & "'" -- the tool admitting the
     ' boundary was artificial. Nothing happens between writing Approved into the
     ' register and looking at what that would do to slides, so there is no
     ' decision for a button to mark. Offered rather than done, because it opens
@@ -1063,7 +1114,7 @@ Public Sub StartQuarter()
         Say "Deck period is now " & readBack & ", confirmed in the saved file." & vbCrLf & vbCrLf & _
                "STILL TO DO: the register needs rows for " & typed & ". Without " & _
                "them the drafting sheets will be empty." & vbCrLf & vbCrLf & _
-               "'" & CommandBarUI.CAP_SYNC_NOW & "' does this next -- no separate step. It copies the previous period's " & _
+               "'" & CommandBarUI.CAP_SET_UP_QUARTER & "' does this next -- no separate step. It copies the previous period's " & _
                "rows and stamps them " & typed & ", one row per slide.", vbInformation, CAP
     Else
         Say problem, vbCritical, CAP
@@ -1099,7 +1150,7 @@ Public Sub RollForwardUI()
     toPeriod = DeckRegistry.GetDeckPeriod(pres)
     If Trim$(toPeriod) = "" Then
         Say "This deck does not say what period it is." & vbCrLf & vbCrLf & _
-               "Set the deck's quarter first -- '" & CommandBarUI.CAP_SYNC_NOW & "' does that. Rolling forward copies rows INTO " & _
+               "Set the deck's quarter first -- '" & CommandBarUI.CAP_SET_UP_QUARTER & "' does that. Rolling forward copies rows INTO " & _
                "the period the deck declares, so it cannot run without one.", _
                vbExclamation, CAP
         Exit Sub
@@ -1211,7 +1262,7 @@ End Sub
 ' -- so this has never bitten. It becomes the first support call the moment the
 ' two are separated, with no self-service fix.
 Public Sub RepointWorkbookUI()
-    Const CAP As String = CommandBarUI.CAP_SYNC_NOW
+    Const CAP As String = CommandBarUI.CAP_SET_UP_QUARTER
     On Error GoTo Failed
 
     Dim pres As Object

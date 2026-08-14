@@ -522,7 +522,7 @@ Public Function DescribeSheet(sheetName As String) As String
     ElseIf Left(sheetName, Len("Review ")) = "Review " _
         Or Left(sheetName, Len("Sync Review")) = "Sync Review" Then
         DescribeSheet = "Every change waiting to be approved before it reaches a slide. " & _
-            "Tick what you agree with, then press '" & CommandBarUI.CAP_SYNC_NOW & "' again."
+            "Tick what you agree with, then press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' again."
     ElseIf sheetName = SYNC_LOG_SHEET_NAME Then
         DescribeSheet = "What was written to slides, and when. Written as it happens, so a run " & _
             "that dies halfway still leaves a record."

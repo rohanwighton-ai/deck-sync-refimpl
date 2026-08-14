@@ -126,7 +126,7 @@ Private Function WhereAmICore(Optional quiet As Boolean = False) As String
         WhereAmICore = "No paired workbook, so there is nothing to report on."
         If quiet Then Exit Function
         MsgBox "This deck has no paired workbook yet, so there is nothing to report " & _
-               "on." & vbCrLf & vbCrLf & "Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", _
+               "on." & vbCrLf & vbCrLf & "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", _
                vbExclamation, "Where am I"
         Exit Function
     End If
@@ -355,7 +355,7 @@ Private Sub SyncNowCore(Optional ByVal afterCreate As Boolean = False)
     Dim fullReport As String
     If Not ReviewQueue.HasBatchableWork(combined) Then
         MsgBox ReviewQueue.FastPathRefusalText(combined), vbExclamation, "Sync Now"
-        ReviewChangesCore False
+        ReviewChangesCore
         Exit Sub
     End If
 
@@ -500,7 +500,7 @@ Private Function ResolveSyncContext(title As String, pres As Object, ByRef wb As
     Dim workbookPath As String
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath = "" Then
-        MsgBox "This deck has no paired workbook yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", vbExclamation, title
+        MsgBox "This deck has no paired workbook yet. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", vbExclamation, title
         Exit Function
     End If
 
@@ -513,7 +513,7 @@ Private Function ResolveSyncContext(title As String, pres As Object, ByRef wb As
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", vbExclamation, title
+        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", vbExclamation, title
         Exit Function
     End If
 
@@ -583,40 +583,38 @@ End Function
 ' inline handler would be switched off by the first of them and read as
 ' protection while providing none. Putting the handler in a separate frame
 ' means nothing inside the body can turn it off, now or after a later edit.
-' NO LONGER A BUTTON TARGET. The chain is the entry point; this stays as the
-' error-handling wrapper its Core still needs. Private so the reachability
-' check reports genuine orphans rather than adapters.
-Private Sub ReviewChanges()
+' A BUTTON TARGET AGAIN, 2026-08-14. Rohan: review is its own action, "clear
+' what it is and isn't for, part of a sequence, or not." It was made private when
+' the single chain swallowed it; the artifact split gives it back its own door.
+Public Sub ReviewChanges()
     On Error GoTo Failed
-    ReviewChangesCore False
+    ReviewChangesCore
     Exit Sub
 Failed:
     RibbonUI.ShowSyncResult CommandBarUI.STAGE_REVIEW_CHANGES, RibbonUI.UnexpectedErrorText(CommandBarUI.STAGE_REVIEW_CHANGES, Err.Number, Err.Description, Err.Source)
 End Sub
 
-' The loosened setting (Round 13 §0.1). Builds the identical queue, then ticks
-' every row.
+' BULK APPROVE IS DELETED, 2026-08-14, and this note is its headstone.
 '
-' A SEPARATE BUTTON rather than a checkbox on the one above, deliberately. The
-' RM's ruling permits wholesale approval only while the work runs on a carved
-' copy, and the risk R13.2 names is that bulk approval "teaches the operator to
-' click through". A distinct button someone presses by name keeps that a
-' decision taken each time and visible in the report -- and makes tightening the
-' deletion of one procedure rather than the unpicking of a flag.
-' NO LONGER A BUTTON TARGET. The chain is the entry point; this stays as the
-' error-handling wrapper its Core still needs. Private so the reachability
-' check reports genuine orphans rather than adapters.
-Private Sub ReviewChangesApproveAll()
-    On Error GoTo Failed
-    ReviewChangesCore True
-    Exit Sub
-Failed:
-    RibbonUI.ShowSyncResult "Review Changes (approve all)", RibbonUI.UnexpectedErrorText("Review Changes (approve all)", Err.Number, Err.Description, Err.Source)
-End Sub
-
-Private Sub ReviewChangesCore(approveAll As Boolean)
+' It was the Round 13 §0.1 loosened setting: build the queue, then tick every row
+' without reading them. Permitted by the RM's ruling only on a carved copy, and
+' R13.2 named the risk itself -- bulk approval "teaches the operator to click
+' through".
+'
+' It went because NO PERSON COULD REACH IT. Its wrapper was private, its only
+' remaining door was the three-way "Ready to build the list" prompt, and that
+' prompt was deleted tonight as ceremony in front of the real gate. What was left
+' was a tested capability with no way in: ReviewQueue.ApproveAllInSheet had a
+' test and no caller, which is this project's signature defect -- the tested
+' picture injector, the tested progress bars, the tested publish path.
+'
+' Rohan, 2026-08-14: "delete useless bits incorporate useful bits". Unreachable
+' code provides no capability, so it is not a capability being removed. If bulk
+' approval is wanted again it comes back deliberately, with a door; git holds it
+' at 6c74912.
+Private Sub ReviewChangesCore()
     Dim title As String
-    title = IIf(approveAll, "Review Changes (approve all)", CommandBarUI.STAGE_REVIEW_CHANGES)
+    title = CommandBarUI.STAGE_REVIEW_CHANGES
 
     Dim pres As Object
     Set pres = Application.ActivePresentation
@@ -624,7 +622,7 @@ Private Sub ReviewChangesCore(approveAll As Boolean)
     Dim workbookPath As String
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath = "" Then
-        MsgBox "This deck has no paired workbook yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", vbExclamation, title
+        MsgBox "This deck has no paired workbook yet. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", vbExclamation, title
         Exit Sub
     End If
 
@@ -638,7 +636,7 @@ Private Sub ReviewChangesCore(approveAll As Boolean)
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", vbExclamation, title
+        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", vbExclamation, title
         Exit Sub
     End If
 
@@ -712,7 +710,6 @@ Private Sub ReviewChangesCore(approveAll As Boolean)
                 Dim reviewWs As Object
                 Set reviewWs = WorkbookBridge.GetOrAddWorksheet(wb, ReviewQueue.ReviewSheetNameFor(types(i)))
                 ReviewQueue.WriteQueueSheet reviewWs, q
-                If approveAll Then ReviewQueue.ApproveAllInSheet reviewWs
                 If firstSheet Is Nothing Then Set firstSheet = reviewWs
 
                 fullReport = fullReport & "=== " & types(i) & " ===" & vbCrLf & _
@@ -722,11 +719,6 @@ Private Sub ReviewChangesCore(approveAll As Boolean)
             fullReport = fullReport & "SKIPPED " & types(i) & ": registered type's template slide no longer resolves (was it deleted?)" & vbCrLf
         End If
     Next i
-
-    If approveAll And totalQueued > 0 Then
-        fullReport = "APPROVE-ALL: every queued change has been ticked without" & vbCrLf & _
-            "individual review. Permitted on a scratch copy only." & vbCrLf & vbCrLf & fullReport
-    End If
 
     ' Bring the review sheet to the front. Leaving the human to go and find it
     ' is how a review becomes optional in practice while remaining mandatory on
@@ -1046,12 +1038,27 @@ Private Sub SyncNowChainCore()
     ' ONE REPORT FOR THE WHOLE PROLOGUE. Each stage's decisions still stop and
     ' ask; only its informational messages are collected. A stage with nothing
     ' to do now says so in the report instead of interrupting to say it.
+    ' THE WORKBOOK SIDE, AND ONLY THE WORKBOOK SIDE.
+    '
+    ' Split by ARTIFACT, not by step, and NEITHER SIDE TRIGGERS THE OTHER --
+    ' Rohan's call, 2026-08-14, reversing the 2026-08-09 single-chain decision.
+    ' The chain was right about the problem (orientation: "which step am I up
+    ' to?") and wrong about the remedy (removing the choice). The coupling it
+    ' created is what wiped 43 approve ticks on 2026-08-14: a person pressed a
+    ' button to PUBLISH and it REBUILT first.
+    '
+    ' The boundary is WHERE YOU STOP TYPING. Everything here happens before a
+    ' word is written; everything on button 2 happens after. So this ends with
+    ' the drafting sheets in front of you, and stops.
+    '
+    ' CopyAiDraftsToSubmit is NO LONGER HERE. It ran at this point, before
+    ' Copilot had written a single draft, and asked which field to copy drafts
+    ' from -- a question about something that does not exist yet. It belongs on
+    ' the other side of the typing, and that is where it now runs.
     DraftingUI.BeginCollecting
     DraftingUI.StartQuarter
     DraftingUI.RollForwardUI
     DraftingUI.RefreshDraftingSheets
-    DraftingUI.CopyAiDraftsToSubmit
-    DraftingUI.PublishDraftsForField
 
     Dim staged As String
     staged = DraftingUI.EndCollecting()
@@ -1065,11 +1072,14 @@ Private Sub SyncNowChainCore()
     End If
 
     If staged <> "" Then
-        MsgBox CapReport(staged, "Next: the slide changes."), vbInformation, TITLE
+        MsgBox CapReport(staged, "Your sheets are ready. Write your wording, then press '" & _
+                                 CommandBarUI.CAP_PUT_ON_SLIDES & "'."), vbInformation, TITLE
     End If
 
-    ' The deck-level sync, with its own detection of unapplied ticks in front.
-    PutItOnTheSlidesCore
+    ' AND IT STOPS HERE. It used to fall straight into PutItOnTheSlidesCore.
+    ' That is the coupling Rohan's artifact split exists to remove: setting up a
+    ' quarter must not be able to change a slide, and pressing a button to
+    ' publish must not be able to rebuild the sheets you typed into.
 End Sub
 
 ' ---------------------------------------------------------------------
@@ -1097,11 +1107,30 @@ End Sub
 ' NO LONGER A BUTTON TARGET. The chain is the entry point; this stays as the
 ' error-handling wrapper its Core still needs. Private so the reachability
 ' check reports genuine orphans rather than adapters.
-Private Sub PutItOnTheSlides()
+Public Sub PutItOnTheSlides()
     On Error GoTo Failed
+
+    ' THE DECK SIDE STARTS BY PUBLISHING WHAT YOU TYPED -- every field, asking
+    ' nothing. This is the other half of the artifact split: you press this when
+    ' you have STOPPED TYPING, so the first thing it must do is take your words
+    ' out of the drafting sheets and into the register.
+    '
+    ' Collected, so thirteen fields report once at the end instead of thirteen
+    ' times on the way through.
+    DraftingUI.BeginCollecting
+    DraftingUI.PublishAllDraftedFields CommandBarUI.CAP_PUT_ON_SLIDES
+
+    Dim published As String
+    published = DraftingUI.EndCollecting()
+    If published <> "" Then
+        MsgBox CapReport(published, "Next: the slide changes."), vbInformation, CommandBarUI.CAP_PUT_ON_SLIDES
+    End If
+
     PutItOnTheSlidesCore
     Exit Sub
 Failed:
+    Dim partialPub As String
+    partialPub = DraftingUI.EndCollecting()
     RibbonUI.ShowSyncResult "Put it on the slides", RibbonUI.UnexpectedErrorText("Put it on the slides", Err.Number, Err.Description, Err.Source)
 End Sub
 
@@ -1109,7 +1138,7 @@ Private Sub PutItOnTheSlidesCore()
     ' Titled from the caption that actually exists. This said "3. Put it on the
     ' slides" -- a caption from the three-button design, which lasted three hours.
     Dim TITLE As String
-    TITLE = CommandBarUI.CAP_SYNC_NOW & " -- slide changes"
+    TITLE = CommandBarUI.CAP_SET_UP_QUARTER & " -- slide changes"
 
     ' The guards for a missing workbook, missing types and an unopenable file
     ' live in ReviewChangesCore and say why in each case. Duplicating them here
@@ -1121,23 +1150,18 @@ Private Sub PutItOnTheSlidesCore()
     pending = ScanPendingApprovals(sheetNames, stamp)
 
     If pending = 0 Then
-        ' REVIEW AND APPROVE ARE PART OF THE CHAIN. Rohan, 2026-08-09. Bulk
-        ' approval keeps the property RibbonUI.bas:573 argued a separate button
-        ' was protecting -- it is never the default, it has to be chosen by name
-        ' each time, and ReviewChangesCore still prepends the APPROVE-ALL banner
-        ' to the report and the Run Log. The banner was always the mechanism
-        ' doing that work; the button was just where it lived.
         ' STRAIGHT INTO THE REVIEW. The three-way prompt that stood here was
-        ' ceremony in front of the real gate: "Yes" was the only answer anyone
-        ' should give inside a chain, and it sat immediately before the review
-        ' queue -- which asks the same question properly, per change, and is the
-        ' ONE approval step this tool is allowed.
+        ' ceremony in front of the real gate: it sat immediately before the review
+        ' queue, which asks the same question properly, per change, and is the ONE
+        ' approval step this tool is allowed.
         '
-        ' Bulk approve is NOT deleted, only removed from the chain: it keeps its
-        ' own toolbar entry (ApproveAllChanges, ~line 611), so it stays something
-        ' chosen deliberately by name rather than reachable by answering "No" to
-        ' a question about something else.
-        ReviewChangesCore False
+        ' Its "No" branch was bulk approve, and that capability is now DELETED
+        ' rather than relocated -- see ReviewChangesCore's header. An earlier
+        ' version of THIS comment claimed it kept its own toolbar entry. It did
+        ' not: the wrapper was private and nothing pointed at it, so deleting the
+        ' prompt left the capability unreachable. A comment asserting a
+        ' reachability fact is exactly the kind that goes stale silently.
+        ReviewChangesCore
         Exit Sub
     End If
 
@@ -1156,7 +1180,7 @@ Private Sub PutItOnTheSlidesCore()
     If answer = vbYes Then
         ApplyApprovedCore
     ElseIf answer = vbNo Then
-        ReviewChangesCore False
+        ReviewChangesCore
     Else
         MsgBox "Nothing was changed. " & sheetNames & " still holds its " & _
                pending & " ticked change(s).", vbInformation, TITLE
@@ -1296,7 +1320,7 @@ Private Sub ApplyApprovedCore()
 
             If Not WorkbookBridge.WorksheetExists(wb, reviewName) Then
                 fullReport = fullReport & "=== " & types(i) & " ===" & vbCrLf & _
-                    "No review has been built for this type. Press '" & CommandBarUI.CAP_SYNC_NOW & "' first." & vbCrLf & vbCrLf
+                    "No review has been built for this type. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' first." & vbCrLf & vbCrLf
             Else
                 Dim ws As Object
                 Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
@@ -1436,7 +1460,7 @@ Private Sub SyncPreviewCore()
         CountLines(fullReport, "would correct:") & " slide(s) would change." & vbCrLf & vbCrLf & _
         "The full before-and-after is on the '" & WorkbookBridge.RUN_LOG_SHEET_NAME & _
         "' sheet in the workbook, untruncated." & vbCrLf & vbCrLf & _
-        "Read it there, then press '" & CommandBarUI.CAP_SYNC_NOW & "' again."
+        "Read it there, then press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' again."
 
     ' wbWasDirty, NOT a fresh IsDirty -- WriteRunLog above has dirtied the workbook
     ' by now, so re-asking would always answer yes. See the note at the first test.
@@ -1501,7 +1525,7 @@ Private Sub AuditFieldsCore()
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", vbExclamation, "Audit Fields"
+        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", vbExclamation, "Audit Fields"
         Exit Sub
     End If
 
@@ -1677,7 +1701,7 @@ Private Sub CreateTemplateSlideCore()
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SYNC_NOW & "' -- it walks setup on a deck that has none.", vbExclamation, "Create Template Slide"
+        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", vbExclamation, "Create Template Slide"
         Exit Sub
     End If
 

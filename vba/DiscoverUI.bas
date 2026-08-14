@@ -343,7 +343,7 @@ Public Function ApplyDiscoverySheet(sld As Object, wb As Object) As String
     If skippedNoName > 0 Then msg = msg & vbCrLf & skippedNoName & " ticked but unnamed -- not marked."
     If skippedNotFound > 0 Then msg = msg & vbCrLf & skippedNotFound & " shape(s) no longer on the slide."
     If problems <> "" Then msg = msg & vbCrLf & vbCrLf & "NOT MARKED:" & vbCrLf & problems
-    If marked > 0 Then msg = msg & vbCrLf & vbCrLf & "Now press '" & CommandBarUI.CAP_SYNC_NOW & "' to link the rest of the slides."
+    If marked > 0 Then msg = msg & vbCrLf & vbCrLf & "Now press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' to link the rest of the slides."
 
     ApplyDiscoverySheet = msg
 End Function

@@ -807,8 +807,8 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' every prose instruction pointing at the old layout.
     ws.Cells(3, 1).Value = "STEP 2   Name your sources in column " & Chr$(64 + COL_D_SOURCES) & ". Add new ones on the Sources sheet first."
     ws.Cells(4, 1).Value = "STEP 3   Ask Copilot for a draft -- the prompt is in cell L2. It writes into column " & Chr$(64 + COL_D_DRAFT) & ". That column is NEVER published."
-    ws.Cells(5, 1).Value = "STEP 4   Press '" & CommandBarUI.CAP_SYNC_NOW & "' to copy " & Chr$(64 + COL_D_DRAFT) & " into " & Chr$(64 + COL_D_SUBMIT) & ", then EDIT column " & Chr$(64 + COL_D_SUBMIT) & " until you are happy. That is what gets sent."
-    ws.Cells(6, 1).Value = "STEP 5   Type  Y  in column " & Chr$(64 + COL_D_APPROVED) & ", save and CLOSE the file, then press '" & CommandBarUI.CAP_SYNC_NOW & "' again."
+    ws.Cells(5, 1).Value = "STEP 4   Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' to copy " & Chr$(64 + COL_D_DRAFT) & " into " & Chr$(64 + COL_D_SUBMIT) & ", then EDIT column " & Chr$(64 + COL_D_SUBMIT) & " until you are happy. That is what gets sent."
+    ws.Cells(6, 1).Value = "STEP 5   Type  Y  in column " & Chr$(64 + COL_D_APPROVED) & ", save and CLOSE the file, then press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' again."
 
     ws.Cells(7, 1).Value = "Only column " & Chr$(64 + COL_D_SUBMIT) & " is published -- nothing the AI writes reaches a slide unless you have moved it there and ticked it. " & _
                            "Column C is read-only: edit the register, not this sheet, to change what a slide says today."
@@ -1328,7 +1328,7 @@ Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, 
                 skippedEmpty = skippedEmpty + 1
                 If Trim(CStr(ws.Cells(r, COL_D_DRAFT).Value)) <> "" Then
                     report = report & "  SKIPPED " & ent & " -- ticked, and there IS an AI draft, " & _
-                        "but SUBMIT is empty. Press '" & CommandBarUI.CAP_SYNC_NOW & "' to copy it across, or type into D yourself." & vbCrLf
+                        "but SUBMIT is empty. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' to copy it across, or type into D yourself." & vbCrLf
                 Else
                     report = report & "  SKIPPED " & ent & " -- ticked but SUBMIT is empty" & vbCrLf
                 End If

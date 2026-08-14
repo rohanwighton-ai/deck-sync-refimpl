@@ -600,7 +600,7 @@ Public Sub WriteQueueSheet(ws As Object, q As ReviewQueueSet)
     ws.Cells(ROW_BANNER, 1).Value = "SYNC REVIEW -- " & q.SlideType
     ws.Cells(ROW_BANNER, 2).Value = "Run: " & q.RunStamp
     ws.Cells(ROW_BANNER, 3).Value = IIf(q.Consumed, STATE_CONSUMED, STATE_OPEN)
-    ws.Cells(ROW_BANNER, 4).Value = "Put Y in the Approve column. Nothing is written until you press '" & CommandBarUI.CAP_SYNC_NOW & "' again."
+    ws.Cells(ROW_BANNER, 4).Value = "Put Y in the Approve column. Nothing is written until you press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' again."
     ws.Rows(ROW_BANNER).Font.Bold = True
 
     ws.Cells(ROW_HEADER, COL_ENTITY).Value = "EntityCode"
@@ -823,11 +823,19 @@ End Function
 ' to protect. Tightening is then the removal of one button, not the building of
 ' a mechanism.
 '
-' The honest counterargument, from R13.2 itself, is that approving in bulk
-' "teaches the operator to click through". That risk is real and it is why this
-' is a button someone has to press by name -- so the loose mode is a decision
-' taken each time, visible in the report, rather than a quiet default that
-' outlives the copy it was justified by.
+' NO PRODUCTION CALLER SINCE 2026-08-14, and this says so rather than letting it
+' look load-bearing. The bulk-approve wrapper and its flag are deleted -- see
+' RibbonUI.ReviewChangesCore's header. The comment that stood here claimed "this
+' is a button someone has to press by name", which had already stopped being true
+' before it was deleted.
+'
+' It survives because its ONLY remaining caller is a test fixture that needs a
+' sheet with every row ticked in order to test PendingApprovals, and the
+' alternative -- making ROW_FIRST_ITEM, COL_APPROVE and COL_HASH public so a test
+' can write those cells itself -- exposes this sheet's layout to the whole
+' project to avoid a six-line Sub. That is the worse trade.
+'
+' If bulk approval never comes back, this and its fixture go together.
 Public Sub ApproveAllInSheet(ws As Object)
     Dim r As Long
     r = ROW_FIRST_ITEM
@@ -1171,7 +1179,7 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
     If q.Consumed Then
         ApplyApproved = report & vbCrLf & _
             "REFUSED: this review has already been applied." & vbCrLf & _
-            "Press '" & CommandBarUI.CAP_SYNC_NOW & "' again to build a fresh queue." & vbCrLf
+            "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' again to build a fresh queue." & vbCrLf
         Exit Function
     End If
 
@@ -1335,7 +1343,7 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
         failedCount & " failed" & vbCrLf
 
     If staleCount > 0 Then
-        report = report & vbCrLf & "Dropped changes were NOT written. Press '" & CommandBarUI.CAP_SYNC_NOW & "'" & vbCrLf & _
+        report = report & vbCrLf & "Dropped changes were NOT written. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "'" & vbCrLf & _
             "again to see them with their current before-and-after." & vbCrLf
     End If
 
@@ -1424,7 +1432,7 @@ Public Function QueueSummaryText(q As ReviewQueueSet) As String
     ' identical banner -- so the sentence pointed at a real sheet that was the
     ' WRONG one, and ticking it would leave approvals somewhere nothing reads.
     s = s & "Nothing has been written. Review the '" & ReviewSheetNameFor(q.SlideType) & _
-        "' sheet, put Y against what you approve, then press '" & CommandBarUI.CAP_SYNC_NOW & "' again." & vbCrLf
+        "' sheet, put Y against what you approve, then press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' again." & vbCrLf
 
     QueueSummaryText = s
 End Function

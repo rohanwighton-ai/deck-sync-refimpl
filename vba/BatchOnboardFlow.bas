@@ -1905,7 +1905,7 @@ Private Sub MarkFieldForBatchCore()
             "THIS IS HALF A PROGRESS FIELD. It still needs its " & _
             CompanionWord(pendingCompanionSuffix) & " -- the shape that says how wide 100% " & _
             "is. Without one it cannot be drawn, and it would be treated as a text field." & vbCrLf & vbCrLf & _
-            "Click that shape and press '" & CommandBarUI.CAP_SYNC_NOW & "' again -- " & _
+            "Click that shape and press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' again -- " & _
             "it will offer to tag it as " & Trim(typedName) & pendingCompanionSuffix & _
             ", so you never have to type that name."
     End If
