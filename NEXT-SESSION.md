@@ -39,6 +39,30 @@
 > treatment for numeric-contract fields — convert (`33%` -> `0.33`) or refuse,
 > never write the string.
 >
+> ### THE HARVEST IS DONE FOR EVERY FIELD THAT CAN BE READ — 15 AUG 06:25
+>
+> | field | filled |
+> |---|---|
+> | `STRATEGIC_ALIGNMENT_BODY`, `PROBLEM_BODY`, `SUBTITLE_A` | **43 of 43** |
+> | `INDUSTRY_CASH`, `TOTAL_VALUE`, `PROJECT_LEAD` | **43 of 43** |
+> | `START_DATE`, `END_DATE` | **31 of 43** — 12 slides display no dates |
+>
+> This morning the first column read **1 of 43**. Deck **440 -> 682 tag parts**.
+> Roughly **320 values** now in the register that existed only as slide text.
+>
+> **Five batches, by button. Every one: offer matched result exactly** (24/34,
+> 22/34, 60/90, 56/85, 66/102) and the register's own arithmetic agreed
+> independently of the dialog. Every refusal traceable to a named slide.
+>
+> **KNOWN-GOOD COPY** of the deck and register at this state:
+> `OneDrive\deck-sync-known-good\2026-08-15-0625\`, md5-verified. Restore point
+> if anything after this breaks.
+>
+> **WHAT IS LEFT NEEDS CODE OR A PERSON, NOT MORE PRESSING:**
+> the milestone device (21 of the 29 `Given` fields, unreadable — slot state
+> lives in shape visibility, GAP 3); `SECTOR`/`TRL` (no shapes);
+> `STRATEGIC_LINKAGES` (no template tag); 12 slides of dates by hand.
+>
 > ### HARVEST PROGRESS — 15 AUG 06:02
 >
 > **9 of 43 register rows filled** for the six scalar fields (was 1 at 00:35). Deck at
