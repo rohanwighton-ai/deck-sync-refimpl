@@ -1,5 +1,159 @@
 # NEXT SESSION — start here
 
+> ## 14 AUG, EVENING — READ THIS FIRST. Supersedes every block below.
+>
+> ### FIRST ACTION: COMPILE AND RUN THE SUITE IN POWERPOINT. NOTHING ELSE.
+>
+> `vba/Drafting.bas` carries a substantial **uncommitted** restructure that has
+> **never been compiled**. Everything else waits on that.
+>
+> **Do not trust `check_vba_static.py` as compile evidence.** It was handed a
+> `Drafting.bas` containing a deliberate `If True Then` with no `End If` and printed
+> `static checks clean across 34 module(s)`. It has a function named
+> `check_structural_sanity` that does not check block balance. Proven by breaking it
+> on purpose, 14 Aug.
+>
+> If the compile is red it is almost certainly one of five edits, each isolated and
+> easy to bisect (listed below). A known-good copy of the file as it stood before the
+> harvest deletion is at
+> `scratchpad/Drafting.bas.pre-harvest-delete` — likely cleaned up; the real fallback
+> is `git checkout vba/Drafting.bas`.
+>
+> ---
+>
+> ### WHAT HAPPENED: THE 11:40 RUN DESTROYED DRAFTED TEXT, NOT JUST TICKS
+>
+> The morning block below says *"No text was lost."* **That was wrong.** It counted the
+> 22 and 37 SUBMIT cells that survived and never compared them to the 43/43 baseline
+> sitting in that morning's own backup.
+>
+> | sheet | 14 Aug 07:16 | after 11:40 | lost |
+> |---|---|---|---|
+> | `TPL_KEY_EVENTS_BODY` | 43 rows / 43 drafted | 23 / 22 | **20 rows, 21 texts** |
+> | `TPL_PROGRESS_BODY` | 43 rows / 43 drafted | 37 / 37 | **6 rows, 6 texts** |
+>
+> **Named, because a count is not evidence.** `KEY_EVENTS_BODY` lost every S-coded
+> project plus `4_K021`, `1_K022`, `3_K023`. `PROGRESS_BODY` lost a strict subset:
+> `1_S018, 3_S019, 3_S020, S021, S022, S023`.
+>
+> **Established from the files:**
+> - Both sheets stopped **mid-function**. Rows present; prompt, layout stamp and period
+>   stamp all absent — and all three are written *after* the row loop.
+> - Truncation is contiguous at the tail. KEY_EVENTS stopped after register row 72,
+>   PROGRESS after row 86 (the Q4F26 block spans physical rows 50–92).
+> - **The register never changed.** 92 rows in all four backups and live.
+> - **Not a cell-length problem.** Longest value 609 chars against Excel's 32,767. This
+>   hypothesis was tested and is dead.
+>
+> **NOT established: why the write stopped where it did.** Do not write a cause into
+> this file until one is demonstrated.
+>
+> **RECOVERY STILL OUTSTANDING.** The 27 texts exist in
+> `backups/register-wide.PRE-ABOUTFIX-20260814-071658.xlsx`. **A wholesale file restore
+> is wrong** — that backup predates the 08:21 PROGRESS_BODY publish. The rows must go
+> back through Excel once the rebuild is proven safe. A fresh full backup of both files
+> is at `backups/PRESCENARIO5-20260814/`, md5-verified against the originals.
+>
+> ---
+>
+> ### THE FIX: THE DRAFTING SHEET IS UPDATED IN PLACE, NOT REBUILT
+>
+> Rohan, after being shown that the park-before-clear change made the destruction
+> survivable rather than removing it: *"why is clear still happening? For a fresh
+> project or new quarter?"* He was right — it was patch six in a family of five.
+>
+> **`ws.Cells.Clear` now runs in exactly one branch: `If Not layoutMatches`** — a column
+> renumbering, which has happened three times in the tool's life
+> (`DRAFT_LAYOUT_VERSION` is 4). Everything else updates in place.
+>
+> **The proof condition, and it is structural rather than a claim:** the five `kept*`
+> carry dictionaries are **deleted**. They existed only to ferry a person's work across
+> the gap `Cells.Clear` opened. *If they ever come back, so has the clear.*
+>
+> The five edits, in the order they were made:
+> 1. Park before every clear, not only on a layout mismatch (the old guard was gated on
+>    `strandedRows > 0`, counted only inside `If Not layoutMatches` — so the ordinary
+>    case took **no copy at all**, which is why 11:40 had no archive).
+> 2. Layout + period stamps written **immediately after** the clear, not at the end. A
+>    mid-write failure used to leave rows with no stamp, which reads as "unknown layout"
+>    next time — and unknown layout carries nothing. A crash armed the *next* run to
+>    discard everything that survived.
+> 3. At-risk scan now counts **SOURCES and NOTES** (FIX-LIST 1c).
+> 4. FIX-LIST 1d's late `ParkSheetCopy` call **removed** — it copied the already-cleared
+>    sheet and reported "nothing was lost".
+> 5. Rows addressed **by project code, not by position** (`rowOf` index, `appendAt`
+>    cursor); human columns never written; harvest block and dictionaries deleted;
+>    `r = appendAt` restored after the loop for the chrome's benefit.
+>
+> **Behaviour now:** an existing project keeps its row and its typed columns are not
+> touched at all. A new project appends one row at the bottom. On a **period change**
+> only, and per row, the work columns are cleared — the one case that must still
+> destroy, because last quarter's text must not be republishable as this quarter's.
+>
+> **Known loose end:** `lostWithContent` (line ~530) is now declared and never
+> incremented — dead, harmless, mine to clean.
+>
+> ---
+>
+> ### THE COLUMN CONTRACT, SETTLED 14 AUG — do not re-derive it
+>
+> - **Nothing in the add-in ever writes column E (AI DRAFT).** The only two references
+>   are the header text and the rollover clear. Copilot writes it, externally, from the
+>   prompt the tool puts in `L2`. There is no AI call inside the tool.
+> - **Column F (SUBMIT) is written in exactly one place** — `CopyAiToSubmit`,
+>   `Drafting.bas:1272` — and it skips any row where F already holds text.
+> - **Publish reads F and G. It never reads E.** That is what makes "NEVER published"
+>   a mechanism rather than a label.
+>
+> So AI text reaches the register only through the person's own column, via an explicit
+> press that cannot overwrite them, plus a tick.
+>
+> ---
+>
+> ### ROHAN'S IMAGINED USE OF THE TOOL — captured before scenario 5 ran
+>
+> **`EXPECTED-TRACE-2026-08-14.md`** (untracked, in the repo root). His five steps in
+> his own words, plus the diff against what the code does. Written down first
+> deliberately: without a recorded prediction, whatever the tool does will look like
+> what it was supposed to do.
+>
+> Scoring: **3 of 5 substantially built, 1 half, 1 absent.** The four gaps:
+> 1. The template does not produce the workbook — direction is reversed (this is the
+>    13 Aug template-first pivot, decided and never built).
+> 2. **There are TWO approval gates and he imagines one.** Publish is per-field
+>    (`FieldForRun` asks which); the compiled view he describes is the review queue
+>    behind it. **He never once mentions choosing a field.** Very likely the root of the
+>    tick confusion.
+> 3. **Shape visibility is entirely unbuilt.** No `.Visible` write anywhere; `Behaviour`
+>    is fill/fit/as-is for pictures only. The only one of the five with zero machinery.
+> 4. **He expects a file per quarter**; the tool stacks every period in one register
+>    sheet. If quarters were separate files, most of the machinery that has cost this
+>    project since 1 Aug would not need to exist. **Hypothesis, not conclusion** — the
+>    unpriced cost is cross-quarter reads (column C) becoming cross-file reads.
+>
+> **GAP 4 must be settled before the rename/button work**, which is otherwise scoped
+> against an architecture that may be about to change.
+>
+> ---
+>
+> ### DEFERRED, DELIBERATELY
+>
+> - **Scenario 5 has not run.** It should not, until the sheets are recovered and the
+>   rebuild is proven — the chain rebuilds drafting sheets as a step, which is the
+>   operation that caused this, and the baseline is currently 27 rows short.
+> - **The rename** (`RefreshDraftingSheets` → `BuildDraftingSheets`) and the two-button
+>   split. Reasoning is sound and recorded below; blocked on GAP 4.
+> - The two-button shape agreed with Rohan: the boundary is **where he stops typing**,
+>   not workbook-vs-deck. `[1. Start the quarter]` / `[2. Put it on the slides]`, one
+>   add-in, count unchanged. Chat side had no quarrel with it.
+>
+> ### PROCESS NOTE
+>
+> Rohan's plain questions did the work again tonight, twice: *"aren't they permanent
+> now?"* exposed the clear-and-restore shape, and *"why is clear still happening?"*
+> caught the sixth local patch being applied to the same defect. Two FRICTION entries
+> logged (the wrong "no text was lost" claim, and the static checker's blind spot).
+
 > ## 14 AUG, ~12:00 — READ THIS BLOCK FIRST. It supersedes the 10:15 block below.
 >
 > ### STATE

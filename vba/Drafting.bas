@@ -371,13 +371,17 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' edited, the source IDs they assigned, and their notes. Only ORIGINAL and
     ' the character counts are re-derived, because only those come from the
     ' register. Losing a column here would be silent and would cost an evening.
-    Dim keptDraft As Object, keptNotes As Object, keptSubmit As Object, keptSources As Object
-    Dim keptApproved As Object
-    Set keptDraft = CreateObject("Scripting.Dictionary")
-    Set keptNotes = CreateObject("Scripting.Dictionary")
-    Set keptSubmit = CreateObject("Scripting.Dictionary")
-    Set keptSources = CreateObject("Scripting.Dictionary")
-    Set keptApproved = CreateObject("Scripting.Dictionary")
+    ' NOTHING IS CARRIED, BECAUSE NOTHING IS DESTROYED.
+    '
+    ' Five Scripting.Dictionaries used to be declared here -- keptDraft,
+    ' keptNotes, keptSubmit, keptSources, keptApproved -- to hold a copy of every
+    ' human column while ws.Cells.Clear wiped the sheet, then write them back.
+    ' Their existence WAS the defect, not their contents: a rebuild that has to
+    ' carry a person's work across a gap is a rebuild that opened the gap.
+    '
+    ' An existing project's row is now updated where it sits and its typed
+    ' columns are not written at all. If these dictionaries ever come back, so
+    ' has the clear.
 
     ' Only carry work across if the sheet was written by THIS layout. A sheet
     ' from an older layout is read with column numbers that have since been
@@ -490,8 +494,15 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
         riskRow = DRAFT_FIRST_ROW
         On Error Resume Next
         Do While Trim(CStr(ws.Cells(riskRow, COL_D_ENTITY).Value)) <> ""
+            ' SOURCES AND NOTES ARE TYPED WORK TOO (FIX-LIST 1c). The scan used to
+            ' count only SUBMIT and DRAFT, so a row holding a person's source IDs
+            ' or notes and no prose was invisible to the refusal and was dropped
+            ' silently. Citations are the slowest column on the sheet to rebuild --
+            ' they are the control on the generative step, not decoration.
             If Trim(CStr(ws.Cells(riskRow, COL_D_SUBMIT).Value)) <> "" _
-               Or Trim(CStr(ws.Cells(riskRow, COL_D_DRAFT).Value)) <> "" Then
+               Or Trim(CStr(ws.Cells(riskRow, COL_D_DRAFT).Value)) <> "" _
+               Or Trim(CStr(ws.Cells(riskRow, COL_D_SOURCES).Value)) <> "" _
+               Or Trim(CStr(ws.Cells(riskRow, COL_D_NOTES).Value)) <> "" Then
                 atRisk = atRisk + 1
             End If
             riskRow = riskRow + 1
@@ -516,7 +527,6 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' WORK ABOUT TO BE DISCARDED BY A LAYOUT MISMATCH, counted so it can be
     ' SAID rather than silently lost. See the block below.
     Dim strandedRows As Long, strandedDetail As String
-    Dim lostWithContent As Long
 
     Dim r As Long
     r = DRAFT_FIRST_ROW
@@ -566,66 +576,70 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
         If Not ParkSheetCopy(ws, fieldId, parkedName) Then parkFailed = True
     End If
 
-    If layoutMatches Then
-        On Error Resume Next
-        Do While Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value)) <> ""
-            Dim oldKey As String
-            oldKey = Trim(CStr(ws.Cells(r, COL_D_ENTITY).Value))
+    ' THE FIVE kept* CARRY DICTIONARIES USED TO BE FILLED HERE, AND THEY ARE GONE.
+    '
+    ' This block read every row's DRAFT, SUBMIT, SOURCES, NOTES and APPROVED into
+    ' memory so they could be written back after ws.Cells.Clear destroyed them.
+    ' It existed for one reason: to survive the clear. With the clear confined to
+    ' a layout migration, there is nothing to survive -- an existing row is now
+    ' updated where it sits and its typed columns are never written at all.
+    '
+    ' Deleted rather than left unreachable. A harvest that still runs is a second
+    ' copy of a person's work held in memory during the write, and the whole
+    ' lesson of 2026-08-14 is that the copy is the risk. It also double-counted:
+    ' it incremented droppedQuarterly/keptStatic, which the row loop now owns.
 
-            ' On a rollover, this row survives only if the register says its
-            ' value came from a Quarter = ALL row.
-            Dim carryThisRow As Boolean
-            carryThisRow = True
-            If periodChanged Then
-                carryThisRow = False
-                If Not cadence Is Nothing Then
-                    Dim cadKey As String
-                    cadKey = oldKey & Chr(1) & fieldId
-                    ' CBool of the stored flag: True means period-specific.
-                    ' Exists() first -- reading a missing key from a Dictionary
-                    ' ADDS it, and silently growing the register's own cadence
-                    ' map from inside the drafting sheet would be a fine way to
-                    ' make a later sync disagree with itself.
-                    If cadence.Exists(cadKey) Then carryThisRow = Not CBool(cadence(cadKey))
-                End If
-                If carryThisRow Then
-                    keptStatic = keptStatic + 1
-                Else
-                    droppedQuarterly = droppedQuarterly + 1
-                    ' CLEARING A ROW IS NOT LOSS IF ITS TEXT WAS PUBLISHED --
-                    ' that lives in the register and returns as column C. Only
-                    ' UNPUBLISHED work is worth parking a whole sheet for, and
-                    ' without this distinction a rollover would park every field
-                    ' every quarter and bury the workbook in tabs.
-                    If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "DRAFT")).Value)) <> "" _
-                       Or Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SUBMIT")).Value)) <> "" _
-                       Or Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "NOTES")).Value)) <> "" Then
-                        lostWithContent = lostWithContent + 1
-                    End If
-                End If
-            End If
-
-            If carryThisRow Then
-                If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "DRAFT")).Value)) <> "" Then keptDraft(oldKey) = CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "DRAFT")).Value)
-                If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "NOTES")).Value)) <> "" Then keptNotes(oldKey) = CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "NOTES")).Value)
-                If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SUBMIT")).Value)) <> "" Then keptSubmit(oldKey) = CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SUBMIT")).Value)
-                If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SOURCES")).Value)) <> "" Then keptSources(oldKey) = CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "SOURCES")).Value)
-                ' THE TICK TRAVELS WITH THE TEXT IT APPROVES. It is carried under
-                ' the SAME `carryThisRow` test as SUBMIT, so it can never outlive
-                ' the words it was given for: a rollover drops both together, and
-                ' a same-quarter rebuild keeps both together. Carrying SUBMIT and
-                ' dropping its tick is the combination that cannot be right --
-                ' that was the state until 2026-08-14, and it made publish
-                ' unreachable, because the chain rebuilds (step 3) immediately
-                ' before publish reads the tick (step 4).
-                If Trim(CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "APPROVED")).Value)) <> "" Then keptApproved(oldKey) = CStr(ws.Cells(r, ColumnInLayout(sheetLayout, "APPROVED")).Value)
-            End If
-            r = r + 1
-        Loop
-        On Error GoTo 0
+    ' PARK BEFORE EVERY CLEAR, NOT JUST ON A LAYOUT MISMATCH.
+    '
+    ' The park above is gated on `strandedRows > 0`, which is only ever counted
+    ' inside `If Not layoutMatches`. So the ORDINARY case -- same layout, same
+    ' period -- took no copy at all, while the comment above it claimed "Both are
+    ' now preserved rather than merely announced". It was true of one case.
+    '
+    ' Cost, 2026-08-14: a rebuild left TPL_KEY_EVENTS_BODY with 23 of 43 rows and
+    ' TPL_PROGRESS_BODY with 37 of 43, losing 27 drafted paragraphs, and there was
+    ' no archive to recover them from -- the layout matched, so nothing parked.
+    ' Recovered only because a whole-file backup happened to exist.
+    '
+    ' Unconditional on "there was a sheet here", because the cases that lose work
+    ' are not knowable before the write: the 2026-08-14 loss was a mid-function
+    ' failure, which no pre-flight test predicts. PruneParked caps the clutter.
+    ' ============================================================
+    ' THE CLEAR IS A MIGRATION TOOL. IT IS NOT THE NORMAL PATH.
+    ' ============================================================
+    '
+    ' Destroying the sheet is defensible in exactly ONE situation: the columns
+    ' have been renumbered, so the old cells cannot be located and there is no
+    ' such thing as reading them safely. That has happened three times in this
+    ' tool's life (DRAFT_LAYOUT_VERSION is 4).
+    '
+    ' It was previously the path taken EVERY time, for every reason -- a new
+    ' project joining mid-quarter destroyed all 43 rows to add 1. Rohan asked
+    ' why on 1, 9, 10, 13 and 14 August; each asking got a patch that made the
+    ' destruction more survivable (carry the tick, park a copy, refuse on a
+    ' rollover) and none removed it. On 2026-08-14 a mid-write failure left two
+    ' sheets holding 23 and 37 of 43 rows, and 27 drafted paragraphs were gone.
+    '
+    ' In place, that same failure leaves the rows it has not reached UNTOUCHED.
+    ' The blast radius stops being the whole sheet.
+    If Not layoutMatches Then
+        If parkedName = "" And Not isNewSheet Then
+            If Not ParkSheetCopy(ws, fieldId, parkedName) Then parkFailed = True
+        End If
+        ws.Cells.Clear
     End If
 
-    ws.Cells.Clear
+    ' STAMPS FIRST, BEFORE ANY ROW. They used to be written at the END of this
+    ' function, so a failure part-way through the row loop left a sheet with rows
+    ' and NO layout version and NO period -- which reads on the next rebuild as
+    ' "unknown layout", and an unknown layout carries nothing across. A crash
+    ' mid-write therefore armed the NEXT run to discard every surviving draft.
+    '
+    ' Written first, the same crash leaves a sheet that correctly declares what
+    ' it is, so the next rebuild reads it, carries the partial work, and repairs
+    ' it. Found 2026-08-14 on two sheets that had rows, no stamp and no prompt.
+    ws.Cells(DRAFT_INTRO_ROW, COL_D_PERIOD).Value = periodStamp
+    ws.Cells(DRAFT_INTRO_ROW, COL_D_LAYOUT).Value = DRAFT_LAYOUT_VERSION
 
     ' --- instructions, ON the sheet, for the person ----------------------
     ws.Cells(DRAFT_INTRO_ROW, 1).Value = "WHAT TO DO ON THIS SHEET  --  " & fieldId
@@ -670,6 +684,25 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Rows(DRAFT_HEADER_ROW).WrapText = True
 
     Dim written As Long, restored As Long
+
+    ' A PROJECT'S ROW IS FOUND BY ITS CODE, NOT BY ITS POSITION.
+    '
+    ' Writing by position is what made a clear necessary in the first place: if
+    ' row 10 is "whatever the register lists first", then every row has to be
+    ' rewritten whenever the register's order or membership changes, and
+    ' rewriting every row means first destroying every row. Indexing by project
+    ' code breaks that chain -- an existing project keeps its row and its typed
+    ' work is never touched; a new one is appended after the last.
+    Dim rowOf As Object
+    Set rowOf = CreateObject("Scripting.Dictionary")
+    Dim appendAt As Long
+    appendAt = DRAFT_FIRST_ROW
+    If layoutMatches Then
+        Do While Trim(CStr(ws.Cells(appendAt, COL_D_ENTITY).Value)) <> ""
+            rowOf(Trim(CStr(ws.Cells(appendAt, COL_D_ENTITY).Value))) = appendAt
+            appendAt = appendAt + 1
+        Loop
+    End If
     r = DRAFT_FIRST_ROW
 
     Dim k As Variant
@@ -711,6 +744,18 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
             If vals.Exists(fieldId) Then current = CStr(vals(fieldId))
             If vals.Exists("PROJECT_NAME") Then projName = CStr(vals("PROJECT_NAME"))
 
+            ' KEEP THE ROW THIS PROJECT ALREADY HAS. A new project takes the next
+            ' free row at the bottom, which is the only write that moves anything.
+            Dim isNewRow As Boolean
+            If layoutMatches And rowOf.Exists(key) Then
+                r = CLng(rowOf(key))
+                isNewRow = False
+            Else
+                r = appendAt
+                appendAt = appendAt + 1
+                isNewRow = True
+            End If
+
             ws.Cells(r, COL_D_ENTITY).Value = key
             ws.Cells(r, COL_D_NAME).Value = "'" & projName
             ' THE DELIMITER IS STORAGE, NOT SOMETHING A PERSON SHOULD READ.
@@ -722,21 +767,55 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
             ' the round trip intact.
             ws.Cells(r, COL_D_CURRENT).Value = "'" & Replace(current, "||", vbLf)
             ws.Cells(r, COL_D_CHARS).Value = Len(current)
-            If keptNotes.Exists(key) Then
-                ws.Cells(r, COL_D_NOTES).Value = "'" & keptNotes(key)
+            ' ================================================================
+            ' THE PERSON'S COLUMNS ARE NOT WRITTEN HERE. THAT IS THE FIX.
+            ' ================================================================
+            '
+            ' Sources, AI draft, SUBMIT, the tick and notes are left exactly as
+            ' the person left them. There is no restore step because there was no
+            ' destruction to recover from -- which is why the five kept* carry
+            ' dictionaries are now dead on this path. They only ever existed to
+            ' ferry work across ws.Cells.Clear.
+            '
+            ' A rollover is the ONE time these must go: text written for last
+            ' quarter must not be republishable as this quarter's. That decision
+            ' is per ROW and the register already answers it -- exactly the same
+            ' rule the old carry used, applied to a clear instead of a copy.
+            If Not isNewRow Then
                 restored = restored + 1
+
+                If periodChanged Then
+                    Dim carryThis As Boolean
+                    carryThis = False
+                    If Not cadence Is Nothing Then
+                        Dim cKey As String
+                        cKey = key & Chr(1) & fieldId
+                        ' Guarded on Exists: an unguarded read ADDS the key.
+                        If cadence.Exists(cKey) Then carryThis = Not CBool(cadence(cKey))
+                    End If
+                    If carryThis Then
+                        keptStatic = keptStatic + 1
+                    Else
+                        ws.Cells(r, COL_D_DRAFT).ClearContents
+                        ws.Cells(r, COL_D_SUBMIT).ClearContents
+                        ws.Cells(r, COL_D_SUBCHARS).ClearContents
+                        ws.Cells(r, COL_D_APPROVED).ClearContents
+                        ws.Cells(r, COL_D_SOURCES).ClearContents
+                        ws.Cells(r, COL_D_NOTES).ClearContents
+                        droppedQuarterly = droppedQuarterly + 1
+                    End If
+                End If
             End If
-            If keptDraft.Exists(key) Then ws.Cells(r, COL_D_DRAFT).Value = "'" & keptDraft(key)
-            If keptSources.Exists(key) Then ws.Cells(r, COL_D_SOURCES).Value = "'" & keptSources(key)
-            If keptSubmit.Exists(key) Then
-                ws.Cells(r, COL_D_SUBMIT).Value = "'" & keptSubmit(key)
-                ws.Cells(r, COL_D_SUBCHARS).Value = Len(CStr(keptSubmit(key)))
-            End If
-            If keptApproved.Exists(key) Then ws.Cells(r, COL_D_APPROVED).Value = "'" & keptApproved(key)
             written = written + 1
-            r = r + 1
         End If
     Next k
+
+    ' `r` IS NOW A CURSOR INTO THE GRID, NOT A COUNTER. It ends holding whichever
+    ' row the LAST register entry happened to occupy, which is no longer the
+    ' bottom of the sheet. Everything below reads it as "one past the last row"
+    ' -- row heights, and ApplyDraftingLook's banding extent. Handing it the
+    ' cursor would stripe and size an arbitrary prefix of the grid.
+    r = appendAt
 
     ' 8pt throughout. At 11pt three text columns of 350+ characters do not fit
     ' on a screen together, and the whole point of ORIGINAL / AI / SUBMIT is
@@ -854,10 +933,11 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' the sheet reads as one thing rather than as the sum of its edits.
     ApplyDraftingLook ws, r - 1, fieldId, familySeed
 
-    ws.Cells(DRAFT_INTRO_ROW, COL_D_PERIOD).Value = periodStamp
+    ' VALUES ARE WRITTEN IMMEDIATELY AFTER THE CLEAR, not here -- see the comment
+    ' there. Only the cosmetics are left at this end, because they are the part
+    ' it is safe to lose to a mid-write failure.
     ws.Cells(DRAFT_INTRO_ROW, COL_D_PERIOD).Font.Color = RGB(190, 190, 190)
     ws.Columns(COL_D_PERIOD).ColumnWidth = 9
-    ws.Cells(DRAFT_INTRO_ROW, COL_D_LAYOUT).Value = DRAFT_LAYOUT_VERSION
     ws.Cells(DRAFT_INTRO_ROW, COL_D_LAYOUT).Font.Color = RGB(190, 190, 190)
     ws.Columns(COL_D_LAYOUT).ColumnWidth = 4
 
@@ -895,9 +975,12 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
         '
         ' Says what survives before what does not, because the register really does
         ' still hold anything published and that is the actionable half.
-        If lostWithContent > 0 And parkedName = "" And Not parkFailed Then
-        If Not ParkSheetCopy(ws, fieldId, parkedName) Then parkFailed = True
-    End If
+        ' FIX-LIST 1d, REMOVED 2026-08-14 rather than repaired. This called
+        ' ParkSheetCopy *here* -- hundreds of lines after ws.Cells.Clear -- so the
+        ' copy it took was of the already-cleared, already-rebuilt sheet, and
+        ' ParkedNote then reported "nothing was lost" over an archive that did not
+        ' contain the thing it was taken to preserve. The park now runs before the
+        ' clear, unconditionally, which makes this site both unreachable and wrong.
 
     WriteDraftingSheet = WriteDraftingSheet & vbCrLf & _
             "  Rebuilt " & IIf(sheetPeriod = "", "(no period recorded)", sheetPeriod) & _
@@ -1212,7 +1295,8 @@ Public Function CopyAiToSubmit(ws As Object) As String
     CopyAiToSubmit = "Copy AI -> Submit: " & copied & " copied, " & _
         keptExisting & " left alone (you had already written something there), " & _
         noAi & " with no AI draft." & vbCrLf & _
-        "Nothing was overwritten. Edit column D, tick column E, then publish." & vbCrLf
+        "Nothing was overwritten. Edit column " & Chr$(64 + COL_D_SUBMIT) & _
+        ", tick column " & Chr$(64 + COL_D_APPROVED) & ", then publish." & vbCrLf
 End Function
 
 ' Refresh the SUBMIT character counts without touching any text. Cheap, and it
