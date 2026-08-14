@@ -1,5 +1,81 @@
 # NEXT SESSION — start here
 
+> ## 14 AUG, EVENING. **STATUS: CURRENT.** Everything below is historical.
+>
+> ### THE BUILD IS GREEN. THE QUARTER-TURN FERRY IS IN.
+>
+> Compile gate **passed** (proven: the gate blocks the suite entirely, and 191 tests ran).
+> Suite **191 passed / 0 failed**. 191 = the previous 193 minus the two tests deleted below.
+>
+> ### FIRST ACTION: PRESS `Sync Now` AND PUBLISH ONE FIELD, END TO END, BY BUTTON
+>
+> Chat proposed this ordering and it is right. **The publish path has still never run
+> through the tool** — the 43 `PROGRESS_BODY` values were written into the register by hand
+> over COM. *Register -> slides* is proven; ***drafting -> register* is not.** Those are
+> different claims and only one is true.
+>
+> Do it BEFORE restructuring the chain (rename, split, delete the three invariant prompts).
+> If publish then fails, a restructuring bug is indistinguishable from the original defect.
+>
+> **Green does not mean reachable.** No test asks "can a person cause this to run". This
+> project has shipped a tested picture injector, tested progress bars and a tested publish
+> path all behind locked doors. Only the press answers it, and the answer is read from the
+> SAVED FILE, never from a dialog.
+>
+> ### WHAT SHIPPED THIS SESSION
+>
+> - **Layout migration restored** (`MigrateSheetLayout`). The five `kept*` dictionaries WERE
+>   the migration, as a side effect of clear-and-rebuild; deleting them deleted it, and a
+>   layout-3 sheet was being read with current column numbers -- SUBMIT text becoming a
+>   source ID, the AI draft landing in the column that publishes.
+> - **The quarter-turn ferry.** `DRAFT_LAYOUT_VERSION` 4 -> 5, new `COL_D_PREV` at column 4
+>   ("REPORTED LAST TIME"). On a period change SUBMIT moves sideways, the working columns are
+>   handed to the new quarter empty, and the sheet is parked first because sources and notes
+>   ARE cleared.
+> - **The rollover refusal is DELETED** -- it was a deadlock. It told people to publish
+>   first; publish never cleared what it objected to; the only `ClearContents` sat past the
+>   exit. The tool could not start a new quarter. The per-row cadence machinery and the
+>   `cadence` parameter went with it.
+> - **Every column letter in headers and instructions is now DERIVED.** They were literals
+>   and the one-column shift made all six name the wrong column while still reading correctly.
+> - Tests: two deleted (`RolloverCadenceGovernsUntypedRows`,
+>   `RefusesRatherThanDiscardOnPeriodChange` -- they asserted the deadlock), one replaced by
+>   `Drafting_QuarterTurnFerriesSubmitIntoReportedLastTime`, which also asserts idempotence
+>   on a second rebuild.
+> - **Your register was repaired**: the two 11:40-damaged tabs had no layout/period stamp,
+>   which would have triggered `Cells.Clear` on both. Re-stamped and verified from the file.
+> - **The 27 lost paragraphs are RECOVERED** -- both sheets at 43 rows / 43 SUBMIT, verified
+>   from the saved bytes. Restored by writing ONLY into cells empty in the live file, which
+>   made the backup predating the 08:21 publish irrelevant.
+>
+> ### THE COMPILE ERROR, AND WHY IT MATTERS BEYOND ITSELF
+>
+> `ByRef argument type mismatch`. `DraftingUI:521` passed a bare positional `Nothing` into
+> the removed `cadence` slot, so `Nothing` bound to `srcWs` and `srcWs` to a Long. The
+> comment three lines above said *"No cadence argument"* and was READ INSTEAD OF THE CODE.
+> **It described the argument BY NAME for a call that passes POSITIONALLY** -- true about
+> intent, false about the call.
+>
+> ### KNOWN GAPS, NAMED
+>
+> 1. **The ferry has never touched a real workbook.** The test builds its own two-project
+>    fixture. Your live sheets are layout 4 and will migrate to 5 on the next refresh -- that
+>    is the first real exercise of BOTH new things at once. Back up first.
+> 2. **No test for corrected text.** Chat's point: if column F is corrected mid-quarter the
+>    ferry must carry the CORRECTED value. The code reads SUBMIT at the moment of the turn so
+>    it should be right; nothing proves it.
+> 3. **`STRATEGIC_LINKAGES` has no register column.** 32 columns and it is not one. The
+>    output slide's chips are computable in principle and have **no input at sync time**.
+>    Fold into the sixteen-column pass; it is the one that whole slide type depends on.
+> 4. **`PROJECT_STATUS` drifted clean -> dirty between 11 and 14 Aug.** 17 rows, all Q3F26,
+>    16 pure casing. The finding underneath: **a Controlled field with a declared vocabulary
+>    has nothing enforcing it.** A defect in the control, not the data.
+>
+> **Delivery count is 2.** It moves when a drafted field reaches a slide through the tool.
+>
+> ---
+
+
 > ## 14 AUG, LATEST. **FIRST ACTION: COMPILE `Drafting.bas` IN THE VBE AND READ THE DIALOG.**
 >
 > The reported-last-time build is committed and pushed and **THE COMPILE GATE IS RED.
