@@ -86,7 +86,7 @@ the record.
 | `TRACKER.md` | the framing and the manual baseline | CURRENT for framing; defers status to `NEXT-SESSION.md` |
 | `COLUMNS.md` | the *reasoning* behind the register's columns | CURRENT — the Field Spec owns the list |
 | `PROVENANCE.md` | the provenance design | CURRENT — designed, not built |
-| `SOURCE-HARVEST.md` | the paper form for capturing sources | CURRENT — tool-independent |
+| `SOURCE-CAPTURE-FORM.md` | the paper form for capturing sources | CURRENT — tool-independent |
 | `AGENTS.md` | platform gotchas earned the hard way | CURRENT — append-only |
 | `WORKPLAN.md` | the 31 July build plan | superseded in part; kept for the record |
 | `WORKFLOW.md` | what each stage *does* | STALE in part — its reach-it-by instructions are wrong |
@@ -154,7 +154,7 @@ On 14 August 2026, in one morning:
   `LifespanOf`
 - `HANDOVER-Q4F26-DRAFTING.md` said three projects' text was "not recoverable from
   any backup". It was on the slides
-- `SOURCE-HARVEST.md` told a person to put source IDs in column G, which is the
+- `SOURCE-CAPTURE-FORM.md` told a person to put source IDs in column G, which is the
   approve column
 - `WorkbookBridge.DescribeSheet` — in the *code* — told a person to type into D and
   tick E, and described a register model retired on 3 August

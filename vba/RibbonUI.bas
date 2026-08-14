@@ -874,7 +874,10 @@ Private Function OfferHarvestForSelectedSlides(pres As Object, TITLE As String) 
                 toStamp = toStamp + pDry.Stamped
                 slideNote = slideNote & pDry.Detail
             End If
-            If pDry.Collided > 0 Then collisions = collisions & pDry.Detail
+            ' FROM Collisions, NOT Detail. Detail is what WOULD be stamped; mixing
+            ' the two is what printed 16 successful stamps under a "Refused" header.
+            If pDry.Collided > 0 Then _
+                collisions = collisions & "Slide " & sld.SlideIndex & ":" & vbCrLf & pDry.Collisions
         End If
 
         If Not ws Is Nothing Then
@@ -906,9 +909,23 @@ Private Function OfferHarvestForSelectedSlides(pres As Object, TITLE As String) 
           "  - the register gets a value ONLY where it currently holds nothing" & vbCrLf & vbCrLf & _
           "A value already in the register is never overwritten." & vbCrLf & vbCrLf
     If collisions <> "" Then ask = ask & "Refused -- two fields matched one shape:" & vbCrLf & collisions & vbCrLf
-    ask = ask & CapReport(detail)
+    ask = ask & detail
 
-    If MsgBox(ask, vbYesNo + vbQuestion, TITLE) <> vbYes Then
+    ' THE FULL PLAN GOES TO THE RUN LOG BEFORE THE DIALOG IS CAPPED, because
+    ' CapReport's notice SAYS the full list is there. Writing the notice without
+    ' writing the log would be a dialog telling a person where to look for
+    ' something that is not there -- worse than truncating silently, since they
+    ' would go and check.
+    If Not wb Is Nothing Then
+        WorkbookBridge.WriteRunLog wb, "Harvest plan for " & period, _
+            IIf(collisions = "", "", "REFUSED -- two fields matched one shape:" & vbCrLf & collisions & vbCrLf) & detail
+    End If
+
+    ' CAPPED AS A WHOLE, not just the detail. Capping one part while another grew
+    ' unbounded is what let MsgBox cut a collision line mid-word with no notice at
+    ' all -- VBA's MsgBox truncates SILENTLY, so the cap has to cover everything
+    ' that reaches it.
+    If MsgBox(CapReport(ask), vbYesNo + vbQuestion, TITLE) <> vbYes Then
         OfferHarvestForSelectedSlides = False
         Exit Function
     End If

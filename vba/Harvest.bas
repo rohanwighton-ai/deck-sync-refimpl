@@ -61,6 +61,12 @@ Public Type PropagateOutcome
     NoConfidentMatch As Long
     Collided As Long
     Detail As String
+    ' SEPARATE FROM Detail, and that separation is the fix. Both used to be
+    ' appended to Detail, so a caller wanting "what was refused" got "what was
+    ' refused AND everything that succeeded" -- which is how a run reporting 16
+    ' correct stamps printed them all underneath a "Refused" header on
+    ' 2026-08-14. A caller cannot un-mix two things that arrived in one string.
+    Collisions As String
 End Type
 
 ' CARRYING THE TEMPLATE'S ROLE TAGS ONTO A SLIDE THAT IS ALREADY LINKED.
@@ -185,8 +191,8 @@ Public Function PropagateTemplateTags(sld As Object, templateSld As Object, _
             key = CStr(matches(j).Result.CandidateIndex)
             If InStr(claims(key), "|") > 0 Then
                 outcome.Collided = outcome.Collided + 1
-                outcome.Detail = outcome.Detail & "  COLLISION, nothing stamped: " & _
-                                 claims(key) & " all matched one shape" & vbCrLf
+                outcome.Collisions = outcome.Collisions & "  " & Replace(claims(key), "|", " and ") & _
+                                     " both matched one shape -- neither stamped" & vbCrLf
             Else
                 Dim target As Object
                 Set target = untaggedShapes(matches(j).Result.CandidateIndex)

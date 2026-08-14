@@ -1,4 +1,4 @@
-# Source harvest form
+# Source capture form
 
 > **CURRENT — a paper form, not a tool surface.** Written 2026-08-08 and unaffected by
 > toolbar or layout changes: it is filled in wherever you are and transcribed into the

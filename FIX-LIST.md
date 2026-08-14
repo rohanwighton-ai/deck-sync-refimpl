@@ -409,7 +409,7 @@ scaffolding removed itself; the six sheet rows did not.
    `TPL_STRATEGIC_ALIGNMENT_BODY` holds it: are `1.4.2, 1.5.2, 2.3.1` DECLARED linkage
    codes, and where does that list live? That answer becomes the first genuine Sources
    row and unblocks the `[TBC]` in `2_P004`'s published text.
-3. **Use the form.** `SOURCE-HARVEST.md` has the rubric and the fields; it needs no
+3. **Use the form.** `SOURCE-CAPTURE-FORM.md` has the rubric and the fields; it needs no
    tools and can be filled in at work.
 4. **Decide where a maintained list lives.** Rohan owns it (settled). It needs an `as at`
    date and a PERMANENT sheet in the register workbook, beside `Sources` — see the
