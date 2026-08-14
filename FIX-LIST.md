@@ -1,7 +1,7 @@
 # Fix list
 
 > **CURRENT — the live list of what is known-broken and not yet fixed.** Re-audited
-> against the code 2026-08-14; four entries added 2026-08-15 (see the last section).
+> against the code 2026-08-14; five entries added 2026-08-15 (see the last section).
 > Entries say whether they are still live; anything marked fixed names the build it was
 > fixed in.
 
@@ -1021,3 +1021,24 @@ It asks whether a procedure's NAME appears in another module, **not** whether an
 reachable calls it. A chain of private orphans is invisible to it. Proven 2026-08-14:
 commenting out the call to a wrapper left the callee's name still written inside the
 now-orphaned wrapper, and the checker stayed clean.
+
+### E. The harvest prompt UNDERCOUNTS what it will write
+
+**Demonstrated at scale 2026-08-15 05:44: the dialog offered `10 value(s)` and the run
+wrote `34`.** Every value was correct; the number was wrong by 3.4x.
+
+Pass one runs the harvest dry-run BEFORE the propagation dry-run has taken effect —
+neither writes anything, so the harvest can only see fields already carrying a role tag.
+Pass two labels and then reads per slide, so the six newly-labelled scalars on each slide
+are harvested in the same run and never appear in the count that was consented to.
+
+**Why it matters even though nothing wrong was written:** this is the one approval gate in
+front of an operation that changes both files, and its headline number is the thing a
+person actually reads. A gate whose number is routinely wrong teaches people to ignore
+the number.
+
+**Fix:** the dry run already knows which roles propagation WOULD stamp, and
+`PropagateTemplateTags`' Detail already carries each one's shape text. Count a value as
+"would be written" when that role's register cell is empty and the shape's text is
+non-empty — the same two tests `HarvestSlide` applies — instead of only counting
+already-tagged fields.
