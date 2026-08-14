@@ -322,7 +322,75 @@ Private Function AskForField(caption As String, wb As Object) As String
     End If
     msg = msg & "Type the FieldID -- capitals do not matter."
 
+    ' CLICKING IS THE WAY IN; TYPING IS THE FALLBACK, not the other way round.
+    Dim clicked As String
+    clicked = PickFieldByClicking(caption, wb, ws)
+    If clicked <> "" Then
+        AskForField = clicked
+        Exit Function
+    End If
+
     AskForField = CanonicalFieldId(wb, Trim(InputBox(msg, caption)))
+End Function
+
+
+' PICK A FIELD BY CLICKING IT. Returns "" if the person cancels.
+'
+' Replaces a typed InputBox that required an EXACT match against a 30-item list
+' printed in its own prompt -- a list long enough that it pushed the text box off
+' the bottom of the screen, so the thing you had to type into was not on screen
+' with the thing you had to type. Rohan, 2026-08-14: "I don't want to do any
+' secret hidden typing, I need to select the field by clicking on it."
+'
+' Excel's InputBox Type:=8 is a RANGE picker: it collapses to a bar, the person
+' clicks any cell, and it hands back a Range. Chosen over a UserForm because
+' build_ppam.ps1 imports .bas modules only -- a .frm would change the build
+' pipeline -- and over a CommandBars popup because this one also PUTS THE LIST IN
+' FRONT OF THEM, which the typed version only pretended to do.
+'
+' Any cell in the row counts. Requiring the FieldID column would be the same
+' exact-target problem one step smaller.
+Private Function PickFieldByClicking(caption As String, wb As Object, ws As Object) As String
+    ShowSheet wb, FieldSpec.SPEC_SHEET_NAME
+
+    ' A LOOP, NOT RECURSION. The first version called itself on a miss, passing
+    ' the same three arguments -- which check_vba_static.py correctly refused as
+    ' unbounded. A person clicking the wrong row should get another go, and that
+    ' is a loop; re-entering the procedure to express "try again" was borrowing a
+    ' mechanism that carries a stack with it for no reason.
+    Dim pick As Object
+    Dim picked As String
+
+    Do
+        Set pick = Nothing
+        On Error Resume Next
+        Set pick = wb.Application.InputBox( _
+            Prompt:="Click any cell in the row of the field you want, then press OK." & vbCrLf & vbCrLf & _
+                    "(Cancel to type the name instead.)", _
+            Title:=caption, Type:=8)
+        On Error GoTo 0
+
+        ' Cancelled. "" here means "did not choose", which the caller reads as a
+        ' reason to offer typing -- distinct from "chose something invalid".
+        If pick Is Nothing Then Exit Function
+
+        picked = ""
+        On Error Resume Next
+        If pick.Row >= FieldSpec.SPEC_FIRST_ROW Then
+            picked = Trim(CStr(ws.Cells(pick.Row, FieldSpec.COL_S_FIELDID).Value))
+        End If
+        On Error GoTo 0
+
+        If picked <> "" Then Exit Do
+
+        ' A row above the list, or below its last entry, is a miss rather than a
+        ' choice. Saying so and asking again beats returning "" and having the
+        ' run silently skip the field.
+        Say "That row is not a field." & vbCrLf & vbCrLf & _
+            "Click a cell in one of the listed field rows.", vbExclamation, caption
+    Loop
+
+    PickFieldByClicking = CanonicalFieldId(wb, picked)
 End Function
 
 ' Put the person in front of the sheet they just asked for. The whole point of
@@ -753,6 +821,22 @@ Public Sub PublishDraftsForField()
     macroWarn = WorkbookBridge.WriteBlockedReason(wb)
     If macroWarn <> "" Then macroWarn = macroWarn & vbCrLf & vbCrLf
 
+    ' IS THIS EVEN OUR REGISTER? Asked here because this is the write path into
+    ' it. Until 2026-08-14 nothing anywhere compared the workbook's DeckReference
+    ' GUID against this deck's identity, so a deck pointed at a stranger's
+    ' register wrote every field into it and reported success at every stage.
+    '
+    ' REFUSES rather than warns, and only this one case does. A wrong register is
+    ' not a thing to be waved through with an OK -- there is no reading of "yes"
+    ' that is correct, which is the same test that condemned the invariant
+    ' prompts. Unstamped registers are NOT caught here; see PairingProblem.
+    Dim pairNote As String
+    pairNote = DeckRegistry.PairingProblem(pres, wb)
+    If pairNote <> "" Then
+        Say pairNote, vbCritical, CAP
+        Exit Sub
+    End If
+
     Dim preview As String
     preview = Drafting.PublishDrafts(ws, regWs, fieldId, period, True, srcWs)
 
@@ -778,15 +862,16 @@ Public Sub PublishDraftsForField()
         Exit Sub
     End If
 
-    If MsgBox(RibbonUI.CapReport(macroWarn & preview) & vbCrLf & vbCrLf & _
-              "Write these into the register for " & period & "?" & vbCrLf & vbCrLf & _
-              "This does NOT touch any slide -- press '" & CommandBarUI.CAP_SYNC_NOW & "' " & _
-              "afterwards to get them onto the deck.", _
-              vbYesNo + vbQuestion, CAP) <> vbYes Then
-        Say "Nothing was published.", vbInformation, CAP
-        Exit Sub
-    End If
-
+    ' THE "WRITE THESE INTO THE REGISTER?" PROMPT IS GONE. 2026-08-14.
+    '
+    ' THE REGISTER IS NOT THE DECK. Nothing reaches a slide from it without the
+    ' review tick, the workbook is backed up, and the write is reversible -- so
+    ' this gate guarded nothing that was not already guarded, while standing in
+    ' the middle of the loop the whole tool exists to make repeatable.
+    '
+    ' The preview it displayed is NOT lost: WriteRunLog above records it every
+    ' run, under "Publish <field> -- preview", where it can be read after the
+    ' fact instead of only in the two seconds before it is dismissed.
     Dim result As String
     result = Drafting.PublishDrafts(ws, regWs, fieldId, period, False, srcWs)
 
@@ -1005,17 +1090,61 @@ Public Sub RollForwardUI()
         Exit Sub
     End If
 
-    Dim fromPeriod As String
-    fromPeriod = Trim(InputBox( _
-        "Copy the register's rows INTO " & toPeriod & "." & vbCrLf & vbCrLf & _
-        "Which period should they be copied FROM?" & vbCrLf & vbCrLf & _
-        "Every project's row is duplicated and stamped " & toPeriod & ". Last " & _
-        "period's rows are left exactly as they are -- nothing is moved or " & _
-        "overwritten, and no slide is touched.", CAP))
-    If fromPeriod = "" Then Exit Sub
+    ' PICK THE SOURCE QUARTER BY CLICKING A ROW OF IT. 2026-08-14.
+    '
+    ' This was a free-text InputBox, and that was a DATA HAZARD rather than mere
+    ' friction: periods are free text matched EXACTLY, so "Q3F26 " or "q3f26" or a
+    ' quarter that simply is not in the register produces a clean run that copies
+    ' nothing, reported as success. Reading the period out of a row the person
+    ' pointed at makes a typo impossible by construction instead of by validation
+    ' -- the value can only be one the register already holds.
+    '
+    ' The confirm MsgBox that followed is gone with it. Choosing the row IS the
+    ' choice, the destination is stated below before anything is written, and the
+    ' duplicate guard above has already refused the one case that could do harm.
+    Dim qCol As Long
+    qCol = ExcelOutput.QuarterColumn(regWs)
+    If qCol = 0 Then
+        Say "This register has no '" & ExcelOutput.QUARTER_HEADER & "' column, so it holds " & _
+            "no periods to roll forward from.", vbExclamation, CAP
+        Exit Sub
+    End If
 
-    If MsgBox("Copy every " & fromPeriod & " row into " & toPeriod & "?", _
-              vbQuestion + vbOKCancel, CAP) <> vbOK Then Exit Sub
+    ShowSheet wb, regWs.Name
+
+    Dim srcPick As Object
+    Dim fromPeriod As String
+
+    Do
+        Set srcPick = Nothing
+        On Error Resume Next
+        Set srcPick = wb.Application.InputBox( _
+            Prompt:="Copy the register's rows INTO " & toPeriod & "." & vbCrLf & vbCrLf & _
+                    "Click any cell in a row of the quarter you want to copy FROM, " & _
+                    "then press OK." & vbCrLf & vbCrLf & _
+                    "Those rows are duplicated and stamped " & toPeriod & ". The originals " & _
+                    "are left exactly as they are, and no slide is touched.", _
+            Title:=CAP, Type:=8)
+        On Error GoTo 0
+
+        If srcPick Is Nothing Then Exit Sub
+
+        fromPeriod = ""
+        On Error Resume Next
+        If srcPick.Row > 1 Then fromPeriod = Trim$(CStr(regWs.Cells(srcPick.Row, qCol).Value))
+        On Error GoTo 0
+
+        If fromPeriod <> "" And StrComp(fromPeriod, toPeriod, vbTextCompare) <> 0 Then Exit Do
+
+        If fromPeriod = "" Then
+            Say "That row has no quarter in it." & vbCrLf & vbCrLf & _
+                "Click a cell in one of the register's data rows.", vbExclamation, CAP
+        Else
+            Say "That row is already " & toPeriod & " -- the quarter you are copying INTO." & _
+                vbCrLf & vbCrLf & "Click a row of the quarter you want to copy FROM.", _
+                vbExclamation, CAP
+        End If
+    Loop
 
     Dim outcome As String
     outcome = ExcelOutput.RollForwardPeriod(regWs, fromPeriod, toPeriod)
@@ -1081,6 +1210,18 @@ Public Sub RepointWorkbookUI()
         Exit Sub
     End If
 
+    ' AND STAMP THE OTHER END. Until 2026-08-14 a repoint updated the deck's path
+    ' and left the workbook's DeckReference untouched, so the old workbook still
+    ' claimed this deck and the new one claimed nothing. The GUID is the half of
+    ' the pairing that survives a file being moved, which is exactly the failure
+    ' this deck's OneDrive paths keep producing -- so it is the half that must not
+    ' be allowed to go stale.
+    Dim stampNote As String
+    stampNote = DeckRegistry.StampPairing(pres, WorkbookBridge.OpenOrGetWorkbook(typed))
+    If stampNote <> "" Then stampNote = vbCrLf & vbCrLf & _
+        "The path was saved, but this deck's identity could not be written into " & _
+        "the workbook:" & vbCrLf & vbCrLf & stampNote
+
     ' A PATH IS NOT THE PAIRING. The deck also stores DeckSyncType:<type> =
     ' slideID|worksheetName, and this never touched it -- so repointing at a
     ' workbook whose register sheet is named differently left LookupType asking
@@ -1096,13 +1237,15 @@ Public Sub RepointWorkbookUI()
     If linkNote = "" Then
         Say "Paired workbook is now:" & vbCrLf & vbCrLf & typed & vbCrLf & vbCrLf & _
                "Confirmed in the saved file, and this deck's slide type still finds " & _
-               "its sheet there. The deck has been saved for you.", vbInformation, CAP
+               "its sheet there. The deck has been saved for you." & stampNote, _
+               IIf(stampNote = "", vbInformation, vbExclamation), CAP
     Else
         Say "The path was changed and confirmed on disk:" & vbCrLf & vbCrLf & typed & vbCrLf & vbCrLf & _
                "BUT THE PAIRING IS NOT REPAIRED." & vbCrLf & vbCrLf & linkNote & vbCrLf & vbCrLf & _
                "Do not sync until this is resolved -- a missing sheet gets created " & _
                "empty, and the run would report success having written nothing. " & _
-               "Onboard this deck's slide type again to rebuild the link.", vbExclamation, CAP
+               "Onboard this deck's slide type again to rebuild the link." & stampNote, _
+               vbExclamation, CAP
     End If
     Exit Sub
 

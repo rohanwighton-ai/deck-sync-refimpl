@@ -496,7 +496,11 @@ Public Function LastUsedRow(ws As Object) As Long
     LastUsedRow = ws.Cells(ws.Rows.count, 1).End(XL_UP).Row
 End Function
 
-Private Sub WriteDeckReference(wb As Object, deckReference As String)
+' PUBLIC since 2026-08-14. These were Private and called from exactly one place
+' (CreateSheet, at onboarding), which is why the GUID was written once per
+' workbook and then never maintained or consulted again. DeckRegistry needs both
+' directions to keep the pairing mutually verifiable across a repoint.
+Public Sub WriteDeckReference(wb As Object, deckReference As String)
     Dim prop As Object
     On Error Resume Next
     Set prop = wb.CustomDocumentProperties(DECK_REFERENCE_PROPERTY_NAME)
@@ -510,7 +514,7 @@ Private Sub WriteDeckReference(wb As Object, deckReference As String)
     End If
 End Sub
 
-Private Function ReadDeckReference(wb As Object) As String
+Public Function ReadDeckReference(wb As Object) As String
     Dim prop As Object
     On Error Resume Next
     Set prop = wb.CustomDocumentProperties(DECK_REFERENCE_PROPERTY_NAME)
@@ -812,6 +816,23 @@ End Function
 '
 ' Returns 0 on a sheet with no Quarter column, which is the honest answer: such a
 ' sheet holds no periods, so this period has no rows on it.
+' Which column holds the period, found by reading the header rather than assuming
+' a position. Returns 0 when this sheet has no Quarter column at all.
+'
+' The search itself is not new -- it is written out inline in five places in this
+' module. This is the same search with a name, added 2026-08-14 for a caller
+' outside this module; the five existing sites are deliberately left alone rather
+' than swept up in an unrelated change.
+Public Function QuarterColumn(ws As Object) As Long
+    Dim c As Long
+    For c = 1 To 64
+        If StrComp(Trim$(CStr(ws.Cells(1, c).Value)), QUARTER_HEADER, vbTextCompare) = 0 Then
+            QuarterColumn = c
+            Exit Function
+        End If
+    Next c
+End Function
+
 Public Function PeriodRowCount(ws As Object, period As String) As Long
     If Trim$(period) = "" Then Exit Function
 

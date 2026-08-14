@@ -1,6 +1,105 @@
 # NEXT SESSION — start here
 
-> ## 14 AUG, EVENING. **STATUS: CURRENT.** Everything below is historical.
+> ## 14 AUG, NIGHT (~19:00). **STATUS: CURRENT.** Everything below is historical.
+>
+> ### FIRST ACTION: SAVE `addin86`, THEN PRESS `1. Sync Now` AND WALK THE LOOP.
+>
+> `addin86` is imported and waiting on the one permanent manual step
+> (`File > Save As > PowerPoint Add-in`). `addin85` is registered and loaded but
+> **predates everything below it.** Nothing in this block is reachable until 86 is saved,
+> ticked, and 85 is unticked.
+>
+> Deck and register are **backed up and md5-verified** at
+> `backups/PRE-ADDIN86-20260814-185040/`.
+>
+> ### THE SIZING IN THE BLOCK BELOW WAS WRONG. ROHAN CAUGHT IT. DO NOT REPEAT IT.
+>
+> Earlier tonight this file's plan cut Rohan's five imagined steps ("A") from the weekend
+> as **weeks** of work. He challenged it and he was right. **The estimate was made without
+> opening the modules** — the failure this project has logged nine times.
+>
+> | the claim he made | what the source says |
+> |---|---|
+> | marking/confirmation runs against the template, manual **or** matrix review | `BatchOnboardFlow.BuildBatchPlan(templateSld, otherSlides())` and `BuildBatchPlanFromMarkedFields(...)` — **both exist and are tested** |
+> | onboarding runs off slides matching the template | that IS `BuildBatchPlan` |
+> | templates are provided at the start | `TemplateSlide.MakeTemplateFrom(...)` exists |
+>
+> **`EXPECTED-TRACE-2026-08-14.md` is WRONG on GAP 3.** It says there is "no `.Visible`
+> write anywhere". `MilestoneDevice.bas:630` writes `shp.Visible` and it works — it is
+> private to that device. The job is EXPOSING it as a field behaviour, not inventing it.
+>
+> **Revised: GAP 1 hours (spec + wiring), GAP 3 hours, GAP 2 already plumbing, GAP 4 days
+> and deferrable.** The scoring doc itself said "3 of 5 substantially built" and this file
+> still said weeks. **A handover document is a summary of the code and goes stale in hours.
+> Read the module.**
+>
+> ### THE "PUBLISH ONE FIELD BY BUTTON" MILESTONE IS DISSOLVED, NOT SKIPPED
+>
+> Rohan: *"no we have proved we can push to slides over and over. finish this against
+> target"*. S6 is proven repeatedly. The target loop IS tweak → sync → tweak → sync, so
+> **the first real sync exercises S5 as a by-product.** Building a separate ceremony for it
+> was making a step out of something that happens anyway.
+>
+> ### WHAT SHIPPED TONIGHT — suite 192/0, static clean, compile gate passed
+>
+> **1. The pairing defect: the GUID was written and never read.**
+> `specs/deck-registry.md` claims the pairing is "mutually verifiable" and closes the
+> cross-wiring risk. It did not. Deck stores the workbook PATH; workbook stores the deck's
+> `DeckSyncId` GUID (path one way, identity the other — deliberate, since OneDrive breaks
+> paths and not GUIDs). But the GUID was written once at onboarding and **nothing ever
+> compared the two.** Only readers were a struct assignment and a `MsgBox` in a demo
+> expecting the literal `"deck-v1"`.
+> - `ExcelOutput.WriteDeckReference`/`ReadDeckReference` made **Public**
+> - `DeckRegistry.StampPairing` — a repoint now writes BOTH ends, save-verified
+> - `DeckRegistry.PairingProblem` + pure `PairingVerdict` — wired into
+>   `PublishDraftsForField`, the write path into the register
+> - **Blank is not a mismatch.** Every pre-existing register has a blank `DeckReference`;
+>   refusing those would strand him at work. A DIFFERENT GUID refuses.
+> - **Proven by two deliberate breaks**, each failing a different assertion by name.
+>
+> **2. Seven dialogs → one approval + two selections.** Deleted: "This will, in order…",
+> "Write these into the register?", "Ready to build the list" (3-way), the Roll Forward
+> confirm. **Bulk-approve is not lost** — it keeps its own toolbar entry, so it stays chosen
+> by name rather than reachable by answering "No" to a question about something else.
+> KEPT: quarter selection, field selection, review tick.
+>
+> **3. Two typed boxes became clicks, and one was a DATA HAZARD.** The field picker needed
+> an exact match against a 30-item list that pushed its own text box off screen. The
+> roll-forward source period was free text — and periods are matched EXACTLY, so `"q3f26"`
+> or a quarter not present produces a clean run that copies nothing and reports success. The
+> period is now read from a row the person clicks, so a typo is impossible **by construction
+> rather than by validation**. Range-picker chosen over a UserForm because `build_ppam.ps1`
+> imports `.bas` only.
+>
+> **4. `check_vba_static.py` caught a real defect in my own code** (a retry that recursed
+> with identical arguments) hours after I called it "nearly worthless". Blind in one
+> direction is not blind.
+>
+> ### THE PREDICTION FOR THE FIRST PRESS — recorded before it happens
+>
+> 1 quarter prompt · 2 ~~"Go ahead?"~~ gone · 3 roll-forward reports non-modally ·
+> **4 drafting rebuild — the layout 4→5 migration AND the ferry, first time ever on a real
+> workbook** · 5 click a row to pick the field · 6 ~~register confirm~~ gone ·
+> 7 ~~"ready to build"~~ gone · 8 **review tick** · 9 apply.
+>
+> Step 4 is the only one that has never touched real files. If what he sees differs, **the
+> diff is the finding** — take what he saw, not what was expected.
+>
+> ### STILL OPEN
+>
+> 1. **`STRATEGIC_LINKAGES` has no register column** — the whole output slide type depends
+>    on it.
+> 2. **`PROJECT_STATUS` drifted clean → dirty in three days.** A Controlled field with a
+>    declared vocabulary has **nothing enforcing it**. Normalising fixes today; only
+>    enforcement fixes next time.
+> 3. **The template specification is now the critical path** — GAP 1 is hours of wiring
+>    *given a spec*, so the spec is the bottleneck. Handed to chat.
+>
+> **Delivery count is still 2.** It moves on the next real sync, not on a ceremony.
+>
+> ---
+
+> ## 14 AUG, EVENING. **SUPERSEDED** by the block above where they disagree.
 >
 > ### THE BUILD IS GREEN. THE QUARTER-TURN FERRY IS IN.
 >

@@ -932,6 +932,123 @@ Public Function SetWorkbookPathVerified(pres As Object, newPath As String, ByVal
     Next n
 End Function
 
+
+' ---------------------------------------------------------------------
+' THE PAIRING, BOTH WAYS
+' ---------------------------------------------------------------------
+'
+' The design was always two-sided and only one side was ever maintained:
+'
+'   deck  --> workbook   DeckSyncWorkbookPath, a PATH. Repointed by the person,
+'                        verified against the deck's own bytes above.
+'   workbook --> deck    DeckReference, this deck's DeckSyncId GUID. Written by
+'                        ExcelOutput.CreateSheet at onboarding and never again.
+'
+' Path one way, IDENTITY the other, and that asymmetry is deliberate: a path
+' breaks the moment OneDrive moves a file, a GUID does not. specs/deck-registry.md
+' says this "directly closes input-contract.md's cross-wiring risk".
+'
+' It did not close it. Found 2026-08-14: the GUID was written and NEVER READ for
+' its purpose -- the only readers were one struct assignment and a MsgBox in a
+' demo whose expected value is the literal string "deck-v1". So the tool opened
+' whatever the stored path pointed at and began writing, with no one ever asking
+' the workbook whether it belonged to this deck. SetWorkbookPathVerified's own
+' error text already names the consequence: "A deck pointed at the wrong workbook
+' reads every field from the wrong register and reports success."
+'
+' Written-but-never-read is this project's signature defect, and it is the same
+' shape as the tested picture injector, the tested progress bars and the tested
+' publish path -- machinery that works perfectly and that nothing can reach.
+
+' Stamp this deck's identity into the workbook, so a repoint updates BOTH ends.
+'
+' Returns "" when the stamp is believed to have reached the file, else why not.
+'
+' The read-back here goes through the same Workbook object that was just written,
+' so it confirms the OBJECT, not the bytes -- the cache-answering-for-the-file
+' trap this project has been caught by twice. SaveWorkbookVerified is what
+' actually crosses the boundary; that is why its result, not the read-back, is
+' what this function reports on.
+Public Function StampPairing(pres As Object, wb As Object) As String
+    If wb Is Nothing Then
+        StampPairing = "The workbook could not be opened, so the pairing could not be stamped into it."
+        Exit Function
+    End If
+
+    Dim deckId As String
+    deckId = GetOrCreateDeckId(pres)
+
+    On Error Resume Next
+    ExcelOutput.WriteDeckReference wb, deckId
+    If Err.Number <> 0 Then
+        StampPairing = "Could not write this deck's identity into the workbook -- Error " & _
+            Err.Number & ": " & Err.Description
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    StampPairing = WorkbookBridge.SaveWorkbookVerified(wb)
+End Function
+
+
+' Why this workbook does not belong to this deck, or "" if it does.
+'
+' Deliberately a QUESTION THE CALLER ASKS rather than a refusal inside
+' OpenOrGetWorkbook -- the same shape, and for the same reason, as
+' WorkbookBridge.WriteBlockedReason: some paths legitimately open a register only
+' to read it, and the caller that is about to WRITE is the one that has to ask.
+'
+' An UNSTAMPED workbook is not a mismatch. Every register created before this
+' pairing existed has a blank DeckReference, and refusing those would strand a
+' person on the one machine where they cannot debug anything. Blank means
+' "unknown, stamp it"; a DIFFERENT GUID means "this is someone else's register".
+Public Function PairingProblem(pres As Object, wb As Object) As String
+    If wb Is Nothing Then Exit Function
+
+    Dim stamped As String
+    On Error Resume Next
+    stamped = ExcelOutput.ReadDeckReference(wb)
+    On Error GoTo 0
+
+    Dim where As String
+    where = ""
+    On Error Resume Next
+    where = wb.FullName
+    On Error GoTo 0
+
+    PairingProblem = PairingVerdict(stamped, GetOrCreateDeckId(pres), where)
+End Function
+
+
+' The DECISION, with no CustomDocumentProperties access, so it can be tested
+' without Excel and without a deck -- same split as BuildTypeRegistration above.
+'
+' Three cases and they are not symmetric:
+'   blank stamp     -> "", every register predating the pairing looks like this
+'   same GUID       -> ""
+'   different GUID  -> the sentence, naming BOTH ids
+'
+' Naming both is not decoration. "Could not open the paired workbook" appeared
+' three times in one morning with three different causes because the message
+' named one thing and discarded the rest; a mismatch that shows only "wrong
+' workbook" would repeat that exactly.
+Public Function PairingVerdict(stampedId As String, deckId As String, workbookPath As String) As String
+    If Trim(stampedId) = "" Then Exit Function
+    If StrComp(Trim(stampedId), Trim(deckId), vbTextCompare) = 0 Then Exit Function
+
+    PairingVerdict = _
+        "THIS WORKBOOK BELONGS TO A DIFFERENT DECK." & vbCrLf & vbCrLf & _
+        "Workbook: " & IIf(workbookPath = "", "(unknown path)", workbookPath) & vbCrLf & _
+        "  it says it belongs to deck:  " & Trim(stampedId) & vbCrLf & _
+        "  this deck is:                " & Trim(deckId) & vbCrLf & vbCrLf & _
+        "Writing into it would put this deck's content into another deck's " & _
+        "register, and every stage after that would report success." & vbCrLf & vbCrLf & _
+        "Use Repoint Workbook to pair this deck with the right file, or open the " & _
+        "deck that owns this one."
+End Function
+
 ' A short pause that does not need a Windows API declaration -- kept separate
 ' so the wait in PeriodOnDisk reads as a wait rather than as arithmetic.
 Private Sub WaitAMoment()

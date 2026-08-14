@@ -456,6 +456,9 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     r = "": On Error Resume Next: Err.Clear
     r = Test_DeckRegistry_GetOrCreateDeckIdIsStableAcrossCalls()
     AppendResult report, "DeckRegistry_GetOrCreateDeckIdIsStableAcrossCalls", r
+
+    r = Test_DeckRegistry_PairingVerdictOnlyRefusesAKnownDifferentDeck()
+    AppendResult report, "DeckRegistry_PairingVerdictOnlyRefusesAKnownDifferentDeck", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -4574,6 +4577,35 @@ Private Function Test_DeckRegistry_GetOrCreateDeckIdIsStableAcrossCalls() As Str
     result = result & Assert(second = first, "second call returns the same id, got '" & second & "' want '" & first & "'")
 
     Test_DeckRegistry_GetOrCreateDeckIdIsStableAcrossCalls = result
+End Function
+
+' THE UNSTAMPED CASE IS THE ONE THAT MATTERS MOST and it is the easiest to get
+' wrong: every register created before the pairing existed has a blank
+' DeckReference, so a verdict that treated blank as a mismatch would refuse the
+' real register on the machine where nothing can be debugged.
+Private Function Test_DeckRegistry_PairingVerdictOnlyRefusesAKnownDifferentDeck() As String
+    Dim result As String
+
+    result = result & Assert(DeckRegistry.PairingVerdict("", "deck-A", "C:\r.xlsx") = "", _
+        "an UNSTAMPED workbook is not a mismatch")
+    result = result & Assert(DeckRegistry.PairingVerdict("   ", "deck-A", "C:\r.xlsx") = "", _
+        "a whitespace-only stamp is not a mismatch")
+    result = result & Assert(DeckRegistry.PairingVerdict("deck-A", "deck-A", "C:\r.xlsx") = "", _
+        "the same id is not a mismatch")
+    result = result & Assert(DeckRegistry.PairingVerdict(" DECK-a ", "deck-A", "C:\r.xlsx") = "", _
+        "case and padding do not make a mismatch")
+
+    Dim v As String
+    v = DeckRegistry.PairingVerdict("deck-B", "deck-A", "C:\other.xlsx")
+    result = result & Assert(v <> "", "a DIFFERENT id IS a mismatch")
+
+    ' Both ids, or this repeats "could not open the paired workbook" -- three
+    ' causes in one morning behind one message that named only one of them.
+    result = result & Assert(InStr(v, "deck-B") > 0, "the mismatch names the workbook's id, got: " & v)
+    result = result & Assert(InStr(v, "deck-A") > 0, "the mismatch names THIS deck's id, got: " & v)
+    result = result & Assert(InStr(v, "C:\other.xlsx") > 0, "the mismatch names the workbook, got: " & v)
+
+    Test_DeckRegistry_PairingVerdictOnlyRefusesAKnownDifferentDeck = result
 End Function
 
 Private Function Test_DeckRegistry_RegisterAndLookupTypeRoundTrip() As String

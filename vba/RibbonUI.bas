@@ -1031,21 +1031,17 @@ Private Sub SyncNowChainCore()
 
     If Not OfferMarkingForUnwiredFields(pres, TITLE) Then Exit Sub
 
-    ' THE PLAN, BEFORE THE FIRST WRITE. This is the hazard a chain creates and a
-    ' row of buttons did not: it can do more than the person expected. Saying
-    ' what it will do, in order, is the answer.
-    If MsgBox("This will, in order:" & vbCrLf & vbCrLf & _
-              "  1. Set the deck's quarter (it asks you which)" & vbCrLf & _
-              "  2. Offer to copy last quarter's rows forward" & vbCrLf & _
-              "  3. Rebuild the sheets you write in" & vbCrLf & _
-              "  4. Publish the rows you ticked, for one field" & vbCrLf & _
-              "  5. Show every slide change and ASK before writing any of it" & vbCrLf & vbCrLf & _
-              "Nothing reaches a slide until step 5, and you can cancel there." & vbCrLf & _
-              "Cancelling at any step leaves everything before it in place." & vbCrLf & vbCrLf & _
-              "Go ahead?", vbYesNo + vbQuestion, TITLE) <> vbYes Then
-        MsgBox "Nothing was changed.", vbInformation, TITLE
-        Exit Sub
-    End If
+    ' THE PLAN USED TO BE A MODAL HERE, AND IT IS GONE. 2026-08-14.
+    '
+    ' It listed the five stages and asked "Go ahead?" -- pressing the button IS
+    ' going ahead, so the answer never varied, and a prompt whose answer never
+    ' varies is how the one that matters gets clicked past. Nothing reaches a
+    ' slide before the review tick regardless, which is the property this was
+    ' claiming to protect and the tick actually protects.
+    '
+    ' The ORIENTATION was real and does not die with the dialog -- "which step am
+    ' I up to" is a genuine need. It belongs on START HERE, where it can be read
+    ' before starting rather than dismissed while starting.
 
     ' ONE REPORT FOR THE WHOLE PROLOGUE. Each stage's decisions still stop and
     ' ask; only its informational messages are collected. A stage with nothing
@@ -1131,20 +1127,17 @@ Private Sub PutItOnTheSlidesCore()
         ' each time, and ReviewChangesCore still prepends the APPROVE-ALL banner
         ' to the report and the Run Log. The banner was always the mechanism
         ' doing that work; the button was just where it lived.
-        Dim readAll As VbMsgBoxResult
-        readAll = MsgBox( _
-            "Ready to build the list of slide changes." & vbCrLf & vbCrLf & _
-            "Yes  -- read each change and tick the ones you want (normal)." & vbCrLf & _
-            "No   -- tick EVERYTHING without reading it. Scratch copies only." & vbCrLf & _
-            "Cancel -- change nothing.", vbYesNoCancel + vbQuestion, TITLE)
-
-        If readAll = vbYes Then
-            ReviewChangesCore False
-        ElseIf readAll = vbNo Then
-            ReviewChangesCore True
-        Else
-            MsgBox "Nothing was changed.", vbInformation, TITLE
-        End If
+        ' STRAIGHT INTO THE REVIEW. The three-way prompt that stood here was
+        ' ceremony in front of the real gate: "Yes" was the only answer anyone
+        ' should give inside a chain, and it sat immediately before the review
+        ' queue -- which asks the same question properly, per change, and is the
+        ' ONE approval step this tool is allowed.
+        '
+        ' Bulk approve is NOT deleted, only removed from the chain: it keeps its
+        ' own toolbar entry (ApproveAllChanges, ~line 611), so it stays something
+        ' chosen deliberately by name rather than reachable by answering "No" to
+        ' a question about something else.
+        ReviewChangesCore False
         Exit Sub
     End If
 
