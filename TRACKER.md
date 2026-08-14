@@ -2,6 +2,9 @@
 
 > **Current status lives in `NEXT-SESSION.md`, not here.** This file holds the framing
 > and the baseline, which are still right. Anything below describing what is DONE may lag.
+> **The nine scenarios live in `SCENARIOS.md`** — the frame development is steered by,
+> with status re-derived from the code. Added 2026-08-15, because the list previously
+> existed only in a OneDrive handover and two of its statuses went stale unnoticed.
 
 
 **Finished =** Rohan produces a real quarter's deck and the tool saved him time.
