@@ -93,6 +93,22 @@ wiped 43 approve ticks disappears**, because nothing rebuilds over work worth ke
 the Excel delete prompt goes with it. It keeps being deferred because it looks like
 plumbing beside the template layer — that ranking is wrong, and the 26 park sheets now
 sitting in a 59-sheet workbook are the evidence.
+
+**A fifth: `Sync Log` is a second, independent append-forever sheet, and the prune
+half must sweep it up too.** Checked from the code 2026-08-15, prompted by Rohan asking
+whether the run-history sheets are needed at all: `Run Log` is NOT part of this problem —
+its own comment says it is `REPLACED each run, not appended`, one bounded sheet, and it
+earned its keep the same evening being read live to check what a chain had actually done.
+**`Sync Log` is genuinely unbounded**: `ReviewQueue.ApplyApproved` (`ReviewQueue.bas:1403`)
+appends one row per approved change — When/Run/EntityCode/FieldID/Outcome/Change ID —
+walking to the first empty row, forever, inside the same file as the park sheets and every
+quarter's register rows. **Do not delete it outright** — it is the only durable record of
+what changed and when, i.e. the machinery scenario 9 (provenance) depends on. The right
+fix is the one already planned: when a quarter is pruned out of the live register and
+archived, its slice of `Sync Log` goes with it in that frozen file, and the live sheet
+starts short again next quarter — same rule as everything else, not a separate mechanism.
+**Add `Sync Log` to the prune half's scope now, before it is built, so it is not
+rediscovered as a second problem later.**
 - **3, 4 and 7 are "next year"** — surviving a growing deck and a change of employer.
   **4 is closed; 7 is built and unrun; 3 is still blocked.**
 - **9 quietly matters most and is the easiest to defer forever.**

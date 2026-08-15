@@ -1,7 +1,42 @@
 # NEXT SESSION — start here
 
-> ## 15 AUG, ~17:15. **HANDOVER. STATUS: CURRENT.** Supersedes the 16:20 block on scenario
-> 1 and on what to do next. Everything else there stands.
+> ## 15 AUG, ~20:15. **HANDOVER. STATUS: CURRENT.** Supersedes the ~17:15 block on the
+> critical path and the drafting-report defect. Everything else there stands.
+>
+> ### THE CRITICAL PATH TO A GENUINELY FINISHED TOOL, IN ORDER
+>
+> Not a task list — the actual dependency order, asked for directly by Rohan the same
+> evening:
+>
+> 1. **Close scenario 1 for real.** Not a code blocker — 43 rolled-forward rows need
+>    approval ticks before publish touches a slide. A content decision, not a coding one.
+> 2. **Re-run scenario 1 unaided.** The pass condition is Rohan alone, no Claude. This is
+>    the only step that actually moves the count, and by definition Claude cannot do it.
+> 3. **Land the file-per-quarter prune half** (drop old rows, retire `ParkSheetCopy`,
+>    **now also sweep up `Sync Log`** — see `SCENARIOS.md`'s file-per-quarter section,
+>    updated 2026-08-15 evening). Archive half is built and tested; prune needs its own
+>    tests and a keyboard run before touching anything real.
+> 4. **Unstick scenario 3** (per-letter templates) — plan written, step 1 done.
+> 5. **Fix the milestone device writers** (FIX-LIST item Q) before the milestone
+>    read-back feature is built on writers that can't report failure — 21 of 29 fields
+>    depend on this being solid first.
+> 6. **Prove scenario 8** — a fresh deck and employer from nothing. The actual product
+>    test; everything so far is validated against one real deck only.
+> 7. **Scenario 9** (provenance) — designed, not built, and the easiest to defer forever.
+>
+> Steps 1–2 need no live-loop diagnosis and no Claude in the room — button presses and
+> content review. Start there.
+>
+> ### THE DRAFTING-CHAIN REPORT WAS UNREADABLE, NOW FIXED — `72bd4c1`
+>
+> `2. Put it on the slides` runs 13 fields through Copy-AI-to-Submit and Publish in one
+> press (deliberate — "a person is not asked thirteen times"). But every field's block
+> landed under the same two fixed headers with the field name buried in prose or absent.
+> Rohan, reading a real run: *"this msg makes zero sense"* — correctly, since two blocks
+> reporting 0 rows and 38 rows with no visible label read as self-contradictory. Fixed:
+> `DraftingUI.ChainBlockHeader` labels each block with the field it belongs to, proven by
+> a deliberate break. **Not re-exercised against a live deck since the fix** — next
+> `2. Put it on the slides` run should confirm the dialog now reads as distinct blocks.
 >
 > ### FIRST ACTION: PRESS PUBLISH ON THE RIG. IT IS ONE BUTTON FROM CLOSING SCENARIO 1.
 >
