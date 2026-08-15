@@ -11,6 +11,43 @@ were already known — that cost is what this file exists to stop.
 
 Ranked by how much real work is destroyed, or wasted, before anyone notices.
 
+## Added 2026-08-15 (late evening) — one, LIVE, and it is bigger than Q
+
+**R. THE MILESTONE DEVICE IS UNREACHABLE THROUGH THE NORMAL SYNC LOOP — Q FIXED THE
+WRITERS, THIS IS WHY NOTHING EVER CALLS THEM.** Confirmed from the shape's own tag, not
+assumed: slide 1's `MILESTONE_TIMELINE` group carries exactly one tag, `ROLE =
+MILESTONE_TIMELINE`. The register has **no column named `MILESTONE_TIMELINE`** — only the
+21 individual `MS1_LABEL`/`MS1_DATE`/`MS1_DONE` … `MS7_*` columns.
+
+`ReviewQueue.BuildQueue` → `SyncOperations.PlanRoutineSync` (`SyncOperations.bas:152`)
+walks `For Each fieldName In rowValues.Keys` — the register's OWN column headers — and
+calls `InjectPrimitive.InjectField(sld, fieldName, ...)` once per column. `InjectorFor`
+(`InjectPrimitive.bas:286`) only routes to `INJECTOR_DEVICE` when `FindShapeByRoleTag(sld,
+identityTag)` finds a group tagged with that exact identity. Since `"MILESTONE_TIMELINE"`
+never appears in `rowValues.Keys` — it isn't a register column — `InjectField` is never
+once called with that identity tag, on any slide, ever. Not routed wrong: **never called.**
+
+**Reproduced live, 2026-08-15:** seeded real test data into `3_P001`'s `MS1-3_LABEL/DATE/
+DONE` columns in the rig register, saved, ran `RibbonUI.PutItOnTheSlides` (the actual
+button macro) against the real deck. It completed cleanly, reported nothing to change, and
+slide 1's circles were unchanged — confirmed both from the deck's unmoved mtime and by
+reading the shapes' `.Visible`/text directly off the slide afterward.
+
+**This is why FIX-LIST Q, real as it is, hasn't been observed to matter in practice**: the
+writers Q fixed have never been exercised by an ordinary sync, because the ordinary sync
+never reaches them. Same shape as the picture injector, the progress bars, and
+`CreateMissingSlides` — a tested function nobody could reach — just found on the WRITE
+side this time instead of the read/harvest side.
+
+**Not a quick patch — a real design call**, deliberately not made tonight: either (a) give
+the register a literal `MILESTONE_TIMELINE` column so the ordinary loop has something to
+iterate that routes to the device (cheapest, but a fake column with no real per-project
+value, existing only to be a routing trigger), or (b) have `PlanRoutineSync`/`BuildQueue`
+separately scan each slide's ROLE tags for anything routing to `INJECTOR_DEVICE` and
+handle those outside the column-driven loop (more correct, touches more code). Whoever
+picks this up: read `SyncOperations.bas:140-186` and `InjectPrimitive.bas:286-342` first —
+both are short and the whole mechanism is visible in them.
+
 ## Added 2026-08-15 (evening) — one, LIVE
 
 **Q. FIXED 2026-08-15 (evening).** THE MILESTONE DEVICE'S TWO WRITERS CANNOT FAIL VISIBLY.
