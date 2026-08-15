@@ -273,6 +273,21 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_WorkbookBridge_ArchivesAPeriodToItsOwnFile()
+    AppendResult report, "WorkbookBridge_ArchivesAPeriodToItsOwnFile", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_WorkbookBridge_RefusesToOverwriteAnExistingArchive()
+    AppendResult report, "WorkbookBridge_RefusesToOverwriteAnExistingArchive", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_WorkbookBridge_ArchiveRefusesABlankPeriod()
+    AppendResult report, "WorkbookBridge_ArchiveRefusesABlankPeriod", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_BatchOnboard_NormalisesWorkbookPath()
     AppendResult report, "BatchOnboard_NormalisesWorkbookPath", r
     On Error GoTo 0
@@ -8276,6 +8291,127 @@ End Function
 ' usually naming a file that EXISTS. So the dangerous case was the likely one,
 ' and pointing it at a real register would have destroyed a quarter of drafting
 ' in a single click. Found 2026-08-13 by reading the code, one click before it.
+' The archive is the first half of file-per-quarter, and the half trusted to be
+' harmless. These prove the three claims that make it harmless -- it writes, it
+' refuses rather than overwriting, and IT DOES NOT MOVE THE LIVE WORKBOOK.
+Private Function Test_WorkbookBridge_ArchivesAPeriodToItsOwnFile() As String
+    Dim result As String
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Dim dir As String
+    dir = Environ$("TEMP") & "\decksync_archive"
+    If Not fso.FolderExists(dir) Then fso.CreateFolder dir
+
+    Dim livePath As String, archPath As String
+    livePath = dir & "\reg.xlsx"
+    archPath = dir & "\reg-Q4F26.xlsx"
+    If fso.FileExists(livePath) Then fso.DeleteFile livePath
+    If fso.FileExists(archPath) Then fso.DeleteFile archPath
+
+    Dim wb As Object
+    Set wb = WorkbookBridge.CreateWorkbook(livePath)
+
+    ' CONTROL: the archive must not exist yet, or "it exists afterwards" proves
+    ' nothing about this call having done anything.
+    result = result & Assert(Not fso.FileExists(archPath), _
+        "no archive before the call")
+
+    Dim problem As String
+    problem = WorkbookBridge.ArchiveWorkbookForPeriod(wb, "Q4F26")
+
+    result = result & Assert(problem = "", "reports success, got '" & problem & "'")
+    result = result & Assert(fso.FileExists(archPath), "the archive file EXISTS on disk")
+    If fso.FileExists(archPath) Then
+        result = result & Assert(fso.GetFile(archPath).Size > 0, "and is not empty")
+    End If
+
+    ' THE ONE THAT MATTERS, AND THE REASON THIS IS SaveCopyAs AND NOT SaveAs.
+    ' SaveAs would re-point the OPEN workbook at the archive, so every later write
+    ' -- including the roll forward that runs immediately after this -- would land
+    ' in the frozen file while the deck's pairing still named the live one. A test
+    ' that only checked the archive appeared would pass against that disaster.
+    result = result & Assert(StrComp(wb.FullName, livePath, vbTextCompare) = 0, _
+        "the LIVE workbook still points at itself, got '" & wb.FullName & "'")
+
+    wb.Close False
+    Test_WorkbookBridge_ArchivesAPeriodToItsOwnFile = result
+End Function
+
+Private Function Test_WorkbookBridge_RefusesToOverwriteAnExistingArchive() As String
+    Dim result As String
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Dim dir As String
+    dir = Environ$("TEMP") & "\decksync_archive2"
+    If Not fso.FolderExists(dir) Then fso.CreateFolder dir
+
+    Dim livePath As String, archPath As String
+    livePath = dir & "\reg.xlsx"
+    archPath = dir & "\reg-Q4F26.xlsx"
+    If fso.FileExists(livePath) Then fso.DeleteFile livePath
+    If fso.FileExists(archPath) Then fso.DeleteFile archPath
+
+    ' A previous quarter's archive, with KNOWN CONTENT. Checking only that a
+    ' message came back would pass against a version that refused AFTER writing --
+    ' which would have destroyed the very thing the archive exists to protect.
+    Dim ts As Object
+    Set ts = fso.CreateTextFile(archPath, True)
+    ts.Write "LAST-QUARTERS-FROZEN-RECORD"
+    ts.Close
+
+    Dim wb As Object
+    Set wb = WorkbookBridge.CreateWorkbook(livePath)
+
+    Dim problem As String
+    problem = WorkbookBridge.ArchiveWorkbookForPeriod(wb, "Q4F26")
+
+    result = result & Assert(problem <> "", "refuses when an archive already exists")
+    result = result & Assert(InStr(problem, "already exists") > 0, _
+        "and says why, got '" & Left(problem, 60) & "'")
+
+    Dim after As String
+    Set ts = fso.OpenTextFile(archPath, 1)
+    after = ts.ReadAll
+    ts.Close
+    result = result & Assert(after = "LAST-QUARTERS-FROZEN-RECORD", _
+        "and the existing archive is UNTOUCHED, got '" & Left(after, 40) & "'")
+
+    wb.Close False
+    Test_WorkbookBridge_RefusesToOverwriteAnExistingArchive = result
+End Function
+
+Private Function Test_WorkbookBridge_ArchiveRefusesABlankPeriod() As String
+    Dim result As String
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Dim dir As String
+    dir = Environ$("TEMP") & "\decksync_archive3"
+    If Not fso.FolderExists(dir) Then fso.CreateFolder dir
+
+    Dim livePath As String
+    livePath = dir & "\reg.xlsx"
+    If fso.FileExists(livePath) Then fso.DeleteFile livePath
+
+    Dim wb As Object
+    Set wb = WorkbookBridge.CreateWorkbook(livePath)
+
+    ' An unnamed period would produce "reg-.xlsx" -- a file that looks like an
+    ' archive, belongs to no quarter, and would then BLOCK the real archive for
+    ' whatever quarter tried next.
+    Dim problem As String
+    problem = WorkbookBridge.ArchiveWorkbookForPeriod(wb, "")
+
+    result = result & Assert(problem <> "", "refuses a blank period")
+    result = result & Assert(Not fso.FileExists(dir & "\reg-.xlsx"), _
+        "and writes no unnamed archive file")
+
+    wb.Close False
+    Test_WorkbookBridge_ArchiveRefusesABlankPeriod = result
+End Function
+
 Private Function Test_WorkbookBridge_RefusesToCreateOverAnExistingFile() As String
     Dim result As String
 
