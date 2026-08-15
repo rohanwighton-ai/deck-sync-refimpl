@@ -1,5 +1,49 @@
 # NEXT SESSION — start here
 
+> ## 15 AUG, ~16:20. **HANDOVER. STATUS: CURRENT.** Supersedes the 12:45 block below on
+> P and on the build. Everything else there stands.
+>
+> ### `addin101` IS LIVE. P's DESTRUCTIVE HALF IS FIXED AND PROVEN.
+>
+> Suite `203/0`, `COMPILE OK (34 modules)`, static clean. `addin101` registered
+> `AutoLoad=1` and verified loaded; md5 `8897F5ED…`, distinct from `addin100`'s
+> `DD1F5B24…`.
+>
+> **The root cause was NOT SaveAs — it was a reader mutating its caller.**
+> `PropertyOnDisk` took `deckPath` ByRef and reassigned it during URL translation, so
+> reading the file rewrote `path` from the URL to the local path. That made `IsUrl(path)`
+> always False on a cloud deck, and handed `pres.SaveAs` a location the document was not
+> open from — which is what left decks read-only. Now `ByVal`. Full evidence: `FIX-LIST`
+> item **P**.
+>
+> **Old build: one failed attempt bricked the deck for the session. New build: healthy
+> after every failure, five runs.** That is the win; take it as the win.
+>
+> ### WHAT IS STILL OPEN, AND DO NOT RE-DERIVE IT
+>
+> Cloud persistence is **intermittent** — identical writes to fresh cloud decks land about
+> half the time. **Eight hypotheses tested and dead:** file size, AutoSave, sync latency,
+> URL translation, fixture poisoning, aggressive polling, wrapper-vs-direct, dirty flag.
+> Settle window raised to 30s in 5s steps. Anyone picking this up: read P before running a
+> single probe, and do not spend an evening re-killing those eight.
+>
+> **This is NOT a non-cloud tool.** The affected surface is four setup-only document
+> properties. Slide content wrote fine to a cloud deck in the same session, and the
+> register is Excel on a different path entirely.
+>
+> ### FIRST ACTION: SCENARIO 1 — and confirm where the live deck actually lives
+>
+> Start a Quarter writes the period, which is the exposed property, so scenario 1 is the
+> one most likely to meet this. **Before starting, confirm whether the live deck is
+> OneDrive-hosted or local** — that decides whether any of P matters for the quarter turn,
+> and it was never established.
+>
+> Scratch folders safe to delete: `OneDrive\Claude\onedrive-write-probe\` (several
+> `fresh-*`, `poll-*`, `dirty-*` decks and `target-*.xlsx`) and
+> `AppData\Local\deck-sync-probe\`.
+>
+> ---
+
 > ## 15 AUG, ~12:45. **HANDOVER. STATUS: CURRENT.** Supersedes the ~12:00 block below on
 > the build state and, completely, on the OneDrive finding. Everything else there stands.
 >

@@ -37,10 +37,37 @@ AutoSave (`AutoSaveOn` is settable and makes no difference either way), sync lat
 minutes plus a close, never arrived), and URL translation (`LocalPathForUrl` maps
 `https://d.docs.live.net/...` to the local file correctly — both reads agree).
 
-**The fix, not yet written:** branch on the existing `IsUrl(path)` at all three sites and
-never escalate on a cloud deck — settle and re-read instead. Needs two private helpers
-and two constants, and the constants must be declared at the TOP of the module: a `Const`
-after a procedure is a VBA compile error.
+**FIXED 2026-08-15 (afternoon), the destructive half — `addin101`.** All three sites now
+branch on `IsUrl(path)` and never escalate on a cloud deck; they settle and re-read
+instead. **Proven against the demonstrated red:** the old build bricked the document into
+read-only on the first failed attempt; the new one is healthy after every failure, in five
+separate runs.
+
+**AND THE REAL ROOT CAUSE, WHICH WAS NOT SaveAs.** `PropertyOnDisk` took `deckPath`
+**ByRef** and reassigned it (`deckPath = mapped`) during URL translation — so *reading the
+file rewrote the caller's variable* from the `https://` URL to the local path. Two
+consequences, both severe: `If IsUrl(path)` a line later was always False on a cloud deck,
+so the new branch could never fire; and the pre-existing `pres.SaveAs path, 24` was handed
+the LOCAL path for a document PowerPoint had open from the URL. **A SaveAs to a different
+location than the document lives at is what detaches it and leaves it read-only.** Now
+`ByVal`. One word, and it is the difference between the tool damaging decks and not.
+
+**STILL OPEN: cloud persistence is INTERMITTENT and uncharacterised.** On fresh
+cloud-hosted decks, identical property writes land roughly half the time. Eight hypotheses
+were tested and eliminated — file size, AutoSave, sync latency, URL translation, fixture
+poisoning, aggressive polling, wrapper-vs-direct, and the dirty flag (the property write
+does mark the deck dirty, `-1 -> 0`). No discriminator left that costs minutes rather than
+hours. **Do not re-derive these eight.** The settle window was raised to 30s in 5s steps,
+which is the right remedy for an intermittent fault now that retrying is no longer
+destructive; the 5s step also matters, because every re-read copies the whole package and
+polling a 49MB deck once a second copies half a gigabyte to answer one question.
+
+**SCOPE, so this is not read as worse than it is.** The affected surface is FOUR custom
+document properties, all setup writes: `DeckSyncPeriod`, `DeckSyncWorkbookPath`,
+`DeckSyncType:<type>`, `DeckSyncId`. Slide CONTENT is unaffected — text and tags wrote
+fine to a cloud deck in the same session. The register is Excel, a different application
+and code path, and has lived in `OneDrive\Claude\` all project. **Scenario 1 is the
+exposed one**, because Start a Quarter writes the period.
 
 **Operational note until it is fixed:** a run that hits this leaves the deck read-only, so
 anything done afterwards in the same PowerPoint session silently fails to save too.
