@@ -1,6 +1,68 @@
 # NEXT SESSION — start here
 
-> ## 15 AUG, ~11:15. **STATUS: CURRENT.** Everything below is historical.
+> ## 15 AUG, ~12:00. **HANDOVER. STATUS: CURRENT.** The 11:15 block below is still
+> accurate on scenarios 2/7 and the environment finding; this supersedes it on build
+> state, and adds everything after it. Everything else below is historical.
+>
+> ### FIRST ACTION: BUILD. THE ADD-IN IS BEHIND THE SOURCE.
+>
+> **Loaded add-in is `addin98`** (md5 `0a1c17fc4ab97fff4bb6586d9b7dd128`, in
+> `OneDrive\Claude\` and the trusted `AppData\Roaming\Microsoft\AddIns\`). It has the
+> Add/Retire split. **It does NOT have** the tooltip fix, the `Tag fields on this slide`
+> button, or `CodeLetterOf`. Build → Save As `addin99` → tick → untick 98 → restart.
+> Note `build_ppam.ps1` **QUITS POWERPOINT** first (fix-list O) and the run is not
+> automatable past the Save As click — that is a real, permanent human step.
+>
+> ### BUILD STATE
+>
+> - **Suite `203 passed, 0 failed`. `COMPILE OK: whole project compiled clean (34 modules).`**
+>   Static checks clean across 35 modules; all three module lists satisfied.
+> - **Everything is committed and pushed** — last commit `e517a93`.
+> - The suite REFUSES to run if PowerPoint or Excel has an open window, and **exits `2`
+>   either way — the same code as a compile-gate failure.** Read the text, not the code.
+>
+> ### DELIVERY COUNT IS 5 OF 9 SCENARIOS. `SCENARIOS.md` IS THE FRAME — READ IT SECOND.
+>
+> Closed: **2, 4, 5, 6, 7.** Open: **1** (generate a new quarter — the last of "the
+> quarter", never run end to end), **3** (plan below, step 1 done), **8** (untested, though
+> the pairing button is a real piece of it), **9** (designed, not built).
+>
+> ### WHAT SHIPPED TODAY, AND THE ONE PATTERN BEHIND IT
+>
+> Three new buttons, all fixing the SAME defect shape — a tested function a person could
+> not reach. That is now **six** instances in this project and it is the dominant failure
+> mode, ahead of anything algorithmic:
+> 1. **`Change which workbook this deck uses`** — `RepointWorkbookUI` was offered only when
+>    the pairing was EMPTY, never when it was WRONG.
+> 2. **`Add missing slides` / `Retire slides with no row`** — split from one button by
+>    declared intent, per Rohan. Each reports the other's count without prompting.
+> 3. **`Tag fields on this slide`** — `DiscoverFields` was reachable only inside the
+>    `Not hasTypes` setup gate, so a configured deck could never tag another field. **This
+>    is the one to use next: 32 fields are untagged on the real deck and this is what tags
+>    them.**
+>
+> ### THE THREE OPEN QUESTIONS, IN THE ORDER THEY MATTER
+>
+> 1. **Does any of this work on OneDrive?** Everything today was proven on a LOCAL copy
+>    because the OneDrive-hosted write failed outright — AutoSave ON, 4 verified attempts,
+>    file mtime never moved. The work machine is OneDrive-hosted. **This is the biggest
+>    unlit risk on the board and it is not a scenario.**
+> 2. **Scenario 1** — the last of "the quarter".
+> 3. **Scenario 3** — plan below; step 3 lands in the path that closed scenario 2, so
+>    re-run S2 after touching it.
+>
+> ### DO NOT REPEAT THESE
+>
+> - **Do not test on `OneDrive\deck-sync-known-good\`** — its deck still points at the LIVE
+>   register (verified, unchanged). Use `AppData\Local\deck-sync-backups\
+>   PRESERVED-known-good-20260815-1050\` (deck + register together, local, re-pointed and
+>   proven) or re-point a fresh copy with the new button.
+> - **Do not try to exercise `DiscoverUI.BuildDiscoverySheet`'s "keep existing marks" fix on
+>   a configured deck** — unreachable there by design. It belongs to scenario 8.
+> - **Do not approve anything in the live review queue** — `PROJECT_PROGRESS` shows `80%`
+>   against a proposed `0.8` (fix-list M) and would write the string `0.8` onto a slide.
+>
+> ---
 >
 > ### SCENARIOS 2 AND 7 ARE CLOSED ON REAL FILES. DELIVERY COUNT IS 5.
 >
