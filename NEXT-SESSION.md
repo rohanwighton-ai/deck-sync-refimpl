@@ -1,7 +1,108 @@
 # NEXT SESSION — start here
 
-> ## 15 AUG, ~20:15. **HANDOVER. STATUS: CURRENT.** Supersedes the ~17:15 block on the
-> critical path and the drafting-report defect. Everything else there stands.
+> ## 15 AUG, ~21:20. **SESSION-END HANDOVER. STATUS: CURRENT.** Rohan is calling it for
+> tonight. Supersedes the ~20:15 block below on build state and the milestone finding.
+> Everything else there stands.
+>
+> ### FIRST ACTION: BUILD `addin104`. FOUR REAL FIXES ARE SOURCE-ONLY RIGHT NOW.
+>
+> `addin102` is currently loaded. `addin103` is built and sitting unticked. **Neither has
+> the milestone fixes (Q, R) or the drafting-report label fix.** Build fresh, call it
+> `addin104`, tick it, restart. Until that happens nothing below about milestones or the
+> drafting report is visible on any real slide — this is not optional, it's the very first
+> thing to do next session.
+>
+> ### TONIGHT'S SIX COMMITS, WHAT EACH ONE ACTUALLY DID
+>
+> 1. **`b0eab50` — Fix P.** Cloud-hosted decks no longer get bricked read-only.
+>    Root cause: `PropertyOnDisk` took its path ByRef and reassigned it during URL
+>    translation, so *reading* the file rewrote the caller's `path` variable from the
+>    `https://` URL to a local one — silently disabling the cloud branch and pointing
+>    `SaveAs` at the wrong location, which is what caused the read-only lock. Now `ByVal`.
+>    Cloud persistence is still intermittent (uncharacterised, eight hypotheses eliminated,
+>    documented in `FIX-LIST` P) — but the tool can no longer damage a deck trying.
+> 2. **`769a280` — Scenario 1, mechanism proven, honestly not counted closed.** A real
+>    quarter turn ran end to end for the first time — `Q4F26`→`Q1F27`, 43/43/43 rows,
+>    verified from the saved files. **Not counted as closed**, because the pass condition
+>    is unaided and Claude drove much of the run. Count stayed 5 of 9.
+> 3. **`c509e3b` + `f110af6` — File-per-quarter, safe half, tested.** `ArchiveWorkbookForPeriod`
+>    freezes the outgoing quarter to its own file before roll-forward — `SaveCopyAs`, never
+>    `SaveAs` (which would silently re-point the live workbook at the archive). Three tests,
+>    proven by a deliberate break. **Not a gate yet** — a missing archive is reported and the
+>    run continues, since roll-forward only appends. The prune half (drop old rows, retire
+>    `ParkSheetCopy`, sweep up `Sync Log` too — see `SCENARIOS.md`) is still not built.
+> 4. **`d31869c` — Readiness now catches a partial quarter before it refuses you.** The
+>    exact five-stub-row problem that cost an hour tonight now shows as `Rows for <period>:
+>    PARTIAL — N row(s) where a full quarter is M` in the pre-flight, with the remedy
+>    spelled out, before you ever press the button.
+> 5. **`72bd4c1` — The 13-field chained report now labels each block.** `2. Put it on the
+>    slides` runs Copy-AI-to-Submit and Publish across all 13 drafting fields in one press
+>    (deliberate, not a bug) but every block used to land under the same two fixed headers
+>    with the field name buried in prose. Rohan: *"this msg makes zero sense."* Now each
+>    block reads `-- Publish Drafts (KEY_EVENTS_BODY) --`.
+> 6. **`d621b1f` + `08f1da1` + `4b099be` + `cc4bd04` — the milestone device, fixed in two
+>    real layers, chased at Rohan's direct insistence rather than demoed around.**
+>    - **Q (`d621b1f`):** the device's two writers (`SetVisible`/`WriteText`) used to
+>      suppress their only write and return nothing — no postcondition, no report. Now they
+>      confirm by reading the property back, same as everywhere else this project has
+>      learned to distrust a write that didn't raise. Proven by a deliberate break on a
+>      real slide with real shapes.
+>    - **R (`cc4bd04`), the bigger one:** Q's fixed writers had never once been exercised,
+>      because **the device was structurally unreachable.** `PlanRoutineSync` walks the
+>      register's own column headers as field identities; the device's identity tag
+>      (`MILESTONE_TIMELINE`) is not a register column — the real data lives across 21
+>      separate `MS1_LABEL`..`MS7_DONE` columns instead. So `InjectField` was never once
+>      called with that tag, on any slide, ever. Reproduced live: seeded real test data,
+>      ran the actual button macro against the real deck, confirmed nothing moved.
+>      **Fixed properly**, not routed around: `InjectPrimitive.DeviceRoleTagsOnSlide` walks
+>      a slide's shapes the same way `InjectorFor` already decides a tag routes to a
+>      device, and `PlanRoutineSync` now asks about those tags too. Proven end-to-end with
+>      a test whose row dictionary contains only column-style keys, never the device's own
+>      tag name — matching the real register exactly — going from `no_change` to
+>      `in_place_correction`, with real shapes confirmed changed afterward.
+>    - **`08f1da1`, a side effect worth knowing:** `Application.Run` cannot marshal a VBA
+>      `Type` (`MilestoneDrawResult`) back to an external caller — confirmed live, not
+>      theorised. `DrawFromRowReport` is a permanent String-returning wrapper that exists
+>      solely so this device can be inspected from outside VBA at all, same shape every
+>      other verified-write function in this project already uses.
+>
+> ### WHAT WAS NOT DONE, AND WHY IT'S FINE
+>
+> None of tonight's milestone/report fixes have been **seen** working on a real slide —
+> `addin104` was never built and ticked before the session ended. That's the very first
+> action above. The **evidence they work is the tests**, each proven by a deliberate break
+> tonight — stronger evidence than a one-off visual demo would have been, just not a
+> picture. Say so plainly if picking this up cold: don't re-diagnose Q or R, build and go
+> straight to trying it on the rig.
+>
+> ### THE RIG, AS LEFT
+>
+> `AppData\Local\deck-sync-quarter-20260815-1623\` — deck at `Q1F27`, register clean (no
+> stub rows, no stale ticks), **209 real sync changes already applied to slides** (verified
+> from the deck's mtime, which moved for the first time all session). `3_P001`'s Q1F27 row
+> also carries seeded test milestone data (slots 1-2) from tonight's chase — harmless, real
+> content, safe to leave or clear. **Do not use `OneDrive\deck-sync-known-good\`** — still
+> points at the live register.
+>
+> ### YOUR LIVE REGISTER (OneDrive\Claude\register-wide.xlsx) IS ALSO CLEAN
+>
+> Both cleaned tonight, separately, each backed up first and verified by diff before/after:
+> the 5 `Q1F27` stub rows and the 38 stale `Y` ticks on `Review project-status-2D3D`. Your
+> real quarter turn will not hit either obstacle now. Backup:
+> `AppData\Local\deck-sync-backups\register-wide.PRE-CLEAN-20260815-1927.xlsx`.
+>
+> ### THE CRITICAL PATH, UNCHANGED FROM THE ~20:15 BLOCK
+>
+> 1. Close scenario 1 for real — review the drafted content, it's a content decision now.
+> 2. Re-run scenario 1 **unaided.** This is the only step that moves the count, and by
+>    definition happens without Claude.
+> 3. Land the file-per-quarter prune half (`Sync Log` included in scope now).
+> 4. Scenario 3 (per-letter templates) — plan written, step 1 done.
+> 5. ~~Fix the milestone device writers~~ — **done tonight, Q and R both.**
+> 6. Prove scenario 8 — a fresh deck and employer from nothing.
+> 7. Scenario 9 (provenance) — designed, not built.
+>
+> ---
 >
 > ### THE CRITICAL PATH TO A GENUINELY FINISHED TOOL, IN ORDER
 >
