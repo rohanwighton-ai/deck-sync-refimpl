@@ -312,6 +312,25 @@ End Function
 ' A slot whose LABEL is blank is treated as absent, and that is the only rule
 ' about how many milestones there are. No count is stored anywhere: the register
 ' says what exists by having something in it.
+' STRING-RETURNING WRAPPER, EXISTS SOLELY FOR THE AUTOMATION BOUNDARY.
+'
+' Application.Run cannot marshal a UDT back to an external caller -- confirmed
+' 2026-08-15 trying to call DrawFromRow directly from outside VBA: two other
+' functions in this module (returning String, Boolean) worked from the same
+' caller in the same session, and DrawFromRow alone failed with "Sub or
+' function not defined", the generic error VBA gives for a signature Run
+' cannot resolve. Nothing inside VBA is affected -- InjectPrimitive still
+' calls DrawFromRow directly and always will. This exists only so a live
+' slide can be exercised and inspected from PowerShell/COM, the same way
+' every other verified-write function in this project already returns a
+' plain string for exactly that reason.
+Public Function DrawFromRowReport(grp As Object, rowValues As Object) As String
+    Dim r As MilestoneDrawResult
+    r = DrawFromRow(grp, rowValues)
+    DrawFromRowReport = "Drawn=" & r.Drawn & " Hidden=" & r.Hidden & " SlotsFound=" & r.SlotsFound & _
+        " BarSet=" & r.BarSet & " Error=[" & r.ErrorMessage & "] Detail=[" & r.Detail & "]"
+End Function
+
 Public Function DrawFromRow(grp As Object, rowValues As Object) As MilestoneDrawResult
     Dim result As MilestoneDrawResult
 

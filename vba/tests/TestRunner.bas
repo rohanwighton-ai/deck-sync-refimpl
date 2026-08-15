@@ -804,6 +804,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "MilestoneDevice_RefusesListsThatCannotBeAligned", r
     r = Test_MilestoneDevice_ReadsAColumnPerIntervalFromTheRow()
     AppendResult report, "MilestoneDevice_ReadsAColumnPerIntervalFromTheRow", r
+    r = Test_MilestoneDevice_ReportWrapperMatchesTheRealResult()
+    AppendResult report, "MilestoneDevice_ReportWrapperMatchesTheRealResult", r
     r = Test_MilestoneDevice_ReportsAWriteThatDidNotTake()
     AppendResult report, "MilestoneDevice_ReportsAWriteThatDidNotTake", r
     r = Test_MilestoneDevice_IntegrityNamesWhatIsMissing()
@@ -10519,6 +10521,59 @@ End Function
 ' fact, unlike AddShape ovals, which DO carry a TextFrame in modern
 ' PowerPoint and would have made this test assert something false. Checked
 ' rather than assumed, per this project's own rule on Office automation.
+' The wrapper exists purely to cross the Application.Run boundary -- prove it
+' says the same thing the real UDT-returning function says, on both the
+' normal path and the failure path, so nobody trusts a wrapper that silently
+' drifted from what it wraps.
+Private Function Test_MilestoneDevice_ReportWrapperMatchesTheRealResult() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 3)
+
+    Dim labels() As String, dates() As String, done() As String
+    labels = SplitList("Kickoff||Design||Build")
+    dates = SplitList("Oct 2023||Mar 2024||Sep 2024")
+    done = SplitList("Y||Y||N")
+
+    Dim direct As MilestoneDrawResult
+    direct = MilestoneDevice.DrawMilestones(grp, labels, dates, done)
+
+    ' Re-run against the SAME group via DrawFromRow/the wrapper -- same data,
+    ' different entry point, so the wrapper's numbers must match what DIRECT
+    ' just did.
+    Dim rowValues As Object
+    Set rowValues = CreateObject("Scripting.Dictionary")
+    rowValues.Add "MS1_LABEL", "Kickoff": rowValues.Add "MS1_DATE", "Oct 2023": rowValues.Add "MS1_DONE", "Y"
+    rowValues.Add "MS2_LABEL", "Design": rowValues.Add "MS2_DATE", "Mar 2024": rowValues.Add "MS2_DONE", "Y"
+    rowValues.Add "MS3_LABEL", "Build": rowValues.Add "MS3_DATE", "Sep 2024": rowValues.Add "MS3_DONE", "N"
+
+    Dim report As String
+    report = MilestoneDevice.DrawFromRowReport(grp, rowValues)
+
+    result = result & Assert(InStr(report, "Drawn=" & direct.Drawn) > 0, _
+        "wrapper's Drawn count matches the real result, got '" & report & "'")
+    result = result & Assert(InStr(report, "Hidden=" & direct.Hidden) > 0, _
+        "wrapper's Hidden count matches, got '" & report & "'")
+    result = result & Assert(InStr(report, "Error=[]") > 0, _
+        "the no-error case shows an empty Error, got '" & report & "'")
+
+    ' THE FAILURE PATH TOO -- an empty group has no slots, and DrawFromRow's
+    ' ErrorMessage must survive the trip through the wrapper unchanged.
+    Dim emptySld As Object
+    Set emptySld = NewBlankSlide()
+    Dim badReport As String
+    badReport = MilestoneDevice.DrawFromRowReport(Nothing, rowValues)
+    result = result & Assert(InStr(badReport, "no timeline group given") > 0, _
+        "the wrapper carries the real ErrorMessage through on failure too, got '" & badReport & "'")
+
+    emptySld.Delete
+    sld.Delete
+    Test_MilestoneDevice_ReportWrapperMatchesTheRealResult = result
+End Function
+
 Private Function Test_MilestoneDevice_ReportsAWriteThatDidNotTake() As String
     Dim result As String
 
