@@ -11,6 +11,51 @@ were already known — that cost is what this file exists to stop.
 
 Ranked by how much real work is destroyed, or wasted, before anyone notices.
 
+## Added 2026-08-15 (evening) — one, LIVE
+
+**Q. THE MILESTONE DEVICE'S TWO WRITERS CANNOT FAIL VISIBLY.**
+`MilestoneDevice.SetVisible:627` and `MilestoneDevice.WriteText:634` each suppress the
+error around their only write, restore handling, and return nothing:
+
+```vba
+Private Sub SetVisible(shp As Object, show As Boolean)
+    If shp Is Nothing Then Exit Sub
+    On Error Resume Next
+    shp.Visible = IIf(show, msoTrue, msoFalse)
+    On Error GoTo 0
+End Sub
+```
+
+No return value, no postcondition, no report. **The caller cannot know whether the write
+happened**, so `DrawFromRow` can report a milestone drawn against a shape that never
+changed. This is the project's signature defect — *reports success without confirming the
+effect* — sitting in the writers for **21 of the 29 `Given` fields**, i.e. the largest
+stopped data flow in the tool. It has not bitten yet only because the device has never
+had data to draw.
+
+**Why it deserves the postcondition treatment specifically:** `shp.Visible` is where
+milestone DONE state lives, and PowerPoint has already been measured silently overriding a
+property write on this project (`LockAspectRatio`, 2026-08-10). A suppressed `.Visible`
+write that PowerPoint declines is invisible by construction — the exact case
+`SlideDuplication.bas:115` and `TemplateSlide.bas:122` already guard with an explicit
+postcondition and a comment saying the guard can genuinely fail. Those two are the model
+to copy; these two are the same shape without the guard.
+
+**Fix:** make both `Function`s returning success, assert the postcondition (read
+`shp.Visible` / the text back off the shape), and let `DrawFromRow` count and report
+failures rather than assuming.
+
+**How it was found, because the method generalises.** Applying an "Invisible Failure"
+audit — an error suppressed and then never tested for by ANY means. Three iterations were
+needed and the first two were wrong: 68 sites when the criterion was only `Err.Number`
+(no criterion at all — plenty of code suppresses the call and tests the RESULT), then 40
+when the window was six lines (sampled two, BOTH were handled by a postcondition further
+down), then **24 when the scope became the rest of the procedure**, which is this
+codebase's actual idiom. Sampled two of those 24 and both were real. **The other 22 are
+unaudited candidates, not findings** — do not act on them without opening each one. Script
+kept at `scratchpad/find_invisible_failure.py`; it is NOT in `check_vba_static.py`
+deliberately, because a check that cries wolf gets switched off.
+
 ## Added 2026-08-15 (midday) — one, LIVE, and it is the top of the list
 
 **P. `SaveAs`-TO-SELF POISONS A CLOUD-HOSTED DECK, AND IT IS THE ESCALATION WE WROTE TO
