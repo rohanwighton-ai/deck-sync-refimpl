@@ -683,6 +683,20 @@ End Function
 ' Not retiring was never the safe option. ReviewQueue.bas:1456: "a slide with no
 ' row keeps last period's text through every sync while every report says the
 ' run was clean."
+' The button target for CAP_REPOINT_WORKBOOK. A wrapper and nothing more --
+' DraftingUI.RepointWorkbookUI does the work, shows the current pairing, and
+' verifies the new one against the file's own bytes before reporting. It goes
+' through RibbonUI because every other button does, and because that is where
+' the reachability check looks for a button target.
+Public Sub ChangePairedWorkbook()
+    On Error GoTo Failed
+    DraftingUI.RepointWorkbookUI
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult CommandBarUI.CAP_REPOINT_WORKBOOK, _
+        RibbonUI.UnexpectedErrorText(CommandBarUI.CAP_REPOINT_WORKBOOK, Err.Number, Err.Description, Err.Source)
+End Sub
+
 Public Sub SlideMembership()
     On Error GoTo Failed
     SlideMembershipCore

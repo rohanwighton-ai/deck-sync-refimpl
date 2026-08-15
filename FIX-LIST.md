@@ -11,6 +11,44 @@ were already known — that cost is what this file exists to stop.
 
 Ranked by how much real work is destroyed, or wasted, before anyone notices.
 
+## Added 2026-08-15 (late morning) — four, all LIVE
+
+**L. A COPIED DECK KEEPS POINTING AT THE ORIGINAL'S REGISTER, AND THE REPAIR WAS
+UNREACHABLE.** `DeckRegistry.GetWorkbookPath:170` returns the stored path unchanged
+whenever that path exists; the sibling lookup is a fallback for a MISSING file only. So
+the known-good snapshot's deck carries
+`DeckSyncWorkbookPath = C:\Users\rohan\OneDrive\Claude\register-wide.xlsx` in its own
+`docProps/custom.xml` — read from the file, not the object model — and a "test on the
+snapshot" would have read and WRITTEN the live register. `DiscoverUI` would have landed
+on the live `Field Discovery` fixture. **Half-fixed:** `RepointWorkbookUI` existed but was
+reachable only from the sync path and only when the pairing was EMPTY, never when it was
+WRONG. A 5th toolbar button (`CAP_REPOINT_WORKBOOK`) now exposes it — written, statically
+proven, **not yet in a built add-in**. The detection half is still open: nothing warns
+that a deck is paired to a register that isn't the one beside it.
+
+**M. `PROJECT_PROGRESS` GENERATES A FALSE DIFF THAT WOULD CORRUPT THE SLIDE.** In the live
+review queue right now: Current (on the slide) `80%`, Proposed (from the register) `0.8`,
+flagged as a change. Approving writes the literal string `0.8` onto the slide. Same
+formatted-VIEW-vs-stored-VALUE collision recorded at 00:35 for the harvest direction, now
+confirmed in the publish direction. Both cells also carry Excel's "number stored as text"
+marker, so `0.8` is not even numeric in the register. **Nothing in the queue is safe to
+tick until the comparison is format-aware or refuses this field.**
+
+**N. INVISIBLE-CHARACTER DIFFS ARE REPORTED AS CHANGES WITH NO WAY TO SEE THEM.**
+`PROJECT_NAME` rows show Current and Proposed identical word for word; `What differs` says
+*"differs from character…"* and is cut off at the column edge. A person cannot triage
+what they cannot see. Widen the column, or render the differing character by name
+(`<space>`, `<nbsp>`, `<CRLF>`).
+
+**O. `build_ppam.ps1` QUITS POWERPOINT WITH THE USER'S DECK OPEN, UNANNOUNCED.** Line 88
+calls `Request-GracefulQuit "PowerPoint.Application"` before building. It closed the live
+deck mid-session on 2026-08-15. Nothing was lost — the deck was saved and AutoSave was on —
+but the guard is accidental: an unsaved deck raises a modal save prompt, which makes the
+30s wait time out and the script abort with "did not close cleanly". So the safe path is a
+side effect of a timeout, not a check. Excel is not in the loop and is never touched. The
+script's header comment describes what it builds and never mentions the quit, which is how
+it got asserted as harmless.
+
 ---
 
 ## 1. Excel's real error is thrown away, and the message sends you to the wrong file

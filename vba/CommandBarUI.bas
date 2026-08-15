@@ -59,6 +59,7 @@ Public Const CAP_REVIEW_ONLY As String = "Review changes (writes nothing)"
 ' confirmation would buy consent for the destructive half using the safe half's
 ' reasoning.
 Public Const CAP_SLIDE_MEMBERSHIP As String = "Add or retire slides"
+Public Const CAP_REPOINT_WORKBOOK As String = "Change which workbook this deck uses"
 
 Public Const STAGE_REVIEW_CHANGES As String = "Review Changes"
 Public Const STAGE_APPLY_APPROVED As String = "Apply Approved"
@@ -238,6 +239,30 @@ Public Sub ShowToolbar()
         "Use to read the register against your slides and tick what should change. It does NOT write to a slide -- button 2 does that."
     AddButton bar, CAP_SLIDE_MEMBERSHIP, "RibbonUI.SlideMembership", 1959, _
         "Use to bring the deck into line with the register: creates a slide for any row that has none, and DELETES any slide the register no longer lists. Asks separately for each -- adding and deleting are never one answer."
+
+    ' ---------------------------------------------------------------------
+    ' WHY THIS IS A BUTTON, AND WHY IT IS NOT THE "REBUILD MY SHEETS" CLASS
+    ' KILLED DIRECTLY BELOW.
+    '
+    ' The pairing is a FACT ABOUT THIS DECK that only a person can supply --
+    ' which workbook feeds it. It is not a repair for a defect, so exposing it
+    ' does not stop a bug being reported; a deck legitimately changes workbook
+    ' when the file moves, when the deck is copied, and on the first day at a
+    ' new employer.
+    '
+    ' DraftingUI.RepointWorkbookUI already existed and was reachable from ONE
+    ' place: the sync path, and only when GetWorkbookPath returned "". That is
+    ' a deck paired with NOTHING. A deck paired with the WRONG workbook could
+    ' not reach it at all -- and that is the case that actually occurs, because
+    ' GetWorkbookPath returns the stored path unchanged whenever that path
+    ' exists, so a COPIED deck keeps pointing at the original's register while
+    ' its own sits unread beside it. Caught 2026-08-15 before a "test on the
+    ' known-good snapshot" wrote to the live register. The function's own
+    ' comment predicted it: "the first support call the moment the two are
+    ' separated, with no self-service fix."
+    ' ---------------------------------------------------------------------
+    AddButton bar, CAP_REPOINT_WORKBOOK, "RibbonUI.ChangePairedWorkbook", 23, _
+        "Use to see which workbook this deck is paired with, and point it at a different one. Needed whenever a deck and its register are separated -- a copy, a moved file, a new machine. Changes the pairing only; it writes nothing to a slide."
 
     ' "REBUILD MY SHEETS" IS GONE, 2026-08-14, and it is not coming back as a
     ' button. Its tooltip said "use this when a drafting sheet looks wrong" --
