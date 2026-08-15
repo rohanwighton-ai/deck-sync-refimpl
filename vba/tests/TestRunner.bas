@@ -273,6 +273,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_ExcelOutput_LargestPeriodRowCountSpotsAPartialQuarter()
+    AppendResult report, "ExcelOutput_LargestPeriodRowCountSpotsAPartialQuarter", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_WorkbookBridge_ArchivesAPeriodToItsOwnFile()
     AppendResult report, "WorkbookBridge_ArchivesAPeriodToItsOwnFile", r
     On Error GoTo 0
@@ -8291,6 +8296,74 @@ End Function
 ' usually naming a file that EXISTS. So the dangerous case was the likely one,
 ' and pointing it at a real register would have destroyed a quarter of drafting
 ' in a single click. Found 2026-08-13 by reading the code, one click before it.
+' The arithmetic behind the readiness line that would have caught the five stub
+' rows before they refused a quarter turn.
+Private Function Test_ExcelOutput_LargestPeriodRowCountSpotsAPartialQuarter() As String
+    Dim result As String
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Dim dir As String
+    dir = Environ$("TEMP") & "\decksync_partial"
+    If Not fso.FolderExists(dir) Then fso.CreateFolder dir
+    Dim path As String
+    path = dir & "\reg.xlsx"
+    If fso.FileExists(path) Then fso.DeleteFile path
+
+    ' CLOSE EVEN ON FAILURE. The first version of this test threw before its
+    ' wb.Close and left a workbook open, which made SaveAs fail in the THREE
+    ' archive tests that follow -- four errors reported, one actual fault, and none
+    ' of them in the code under test. A fixture that leaks is not a test problem,
+    ' it is a false bug report aimed at whoever reads the run next.
+    On Error GoTo CleanUp
+
+    Dim wb As Object
+    Set wb = WorkbookBridge.CreateWorkbook(path)
+
+    ' The first sheet, NOT WorkbookBridge.RegisterSheet: a brand-new workbook has
+    ' no sheet named "Register", and assuming it did is what threw.
+    Dim ws As Object
+    Set ws = wb.Worksheets(1)
+
+    ' Two full quarters of 4, and a partial third of 1 -- the shape that stopped
+    ' the real run, scaled down.
+    ws.Cells(1, 1).Value = "Instance ID"
+    ws.Cells(1, 2).Value = ExcelOutput.QUARTER_HEADER
+    Dim i As Long
+    For i = 1 To 4
+        ws.Cells(1 + i, 1).Value = "P00" & i
+        ws.Cells(1 + i, 2).Value = "Q3F26"
+        ws.Cells(5 + i, 1).Value = "P00" & i
+        ws.Cells(5 + i, 2).Value = "Q4F26"
+    Next i
+    ws.Cells(10, 1).Value = "P001"
+    ws.Cells(10, 2).Value = "Q1F27"
+
+    Dim full As Long
+    full = ExcelOutput.LargestPeriodRowCount(ws)
+    result = result & Assert(full = 4, "a full quarter is 4, got " & full)
+    result = result & Assert(ExcelOutput.PeriodRowCount(ws, "Q1F27") = 1, _
+        "the partial period has 1 row")
+
+    ' THE JUDGEMENT THE READINESS LINE MAKES. Partial is 0 < n < full; a complete
+    ' quarter and an empty one must BOTH read as fine, or the check cries wolf on
+    ' every ordinary register and gets clicked past.
+    result = result & Assert(1 > 0 And 1 < full, "1 of 4 reads as PARTIAL")
+    result = result & Assert(Not (4 > 0 And 4 < full), "a complete quarter does NOT read as partial")
+    result = result & Assert(ExcelOutput.PeriodRowCount(ws, "Q2F27") = 0, _
+        "an untouched future quarter is 0, which reads as 'none yet'")
+
+CleanUp:
+    If Err.Number <> 0 Then
+        result = result & Assert(False, "threw: " & Err.Description)
+        Err.Clear
+    End If
+    On Error Resume Next
+    If Not wb Is Nothing Then wb.Close False
+    On Error GoTo 0
+    Test_ExcelOutput_LargestPeriodRowCountSpotsAPartialQuarter = result
+End Function
+
 ' The archive is the first half of file-per-quarter, and the half trusted to be
 ' harmless. These prove the three claims that make it harmless -- it writes, it
 ' refuses rather than overwriting, and IT DOES NOT MOVE THE LIVE WORKBOOK.

@@ -237,6 +237,52 @@ Public Function Build(pres As Object, wb As Object) As ReadyReport
         End If
     End If
 
+    ' A PARTIAL PERIOD IS THE ONE THAT STOPS A QUARTER TURN, AND IT IS INVISIBLE.
+    '
+    ' 2026-08-15: five leftover Q1F27 stub rows from earlier testing refused the
+    ' roll forward. The refusal was correct -- rolling into a period that already
+    ' holds rows would duplicate every project -- but it arrived at the point of
+    ' collision, phrased as a failure, with no way to see WHAT was in the way. It
+    ' cost an hour, and at work there is no one to ask. Five rows is neither a
+    ' quarter nor nothing; comparing against the largest period is what makes that
+    ' legible. Reported here, BEFORE the button is pressed, which is the whole
+    ' point of this sheet.
+    '
+    ' Read from the OPEN workbook rather than the saved file deliberately: this is
+    ' about what the next run will act on, and the next run acts on the workbook
+    ' in front of it. Rule 1 still holds -- if the sheet cannot be reached, that is
+    ' CANNOT TELL, never "clean".
+    If periodLive <> "" Then
+        Dim regWs As Object, regErr As String
+        On Error Resume Next
+        Set regWs = WorkbookBridge.RegisterSheet(wb)
+        If Err.Number <> 0 Then regErr = Err.Description
+        Err.Clear
+        On Error GoTo 0
+
+        If regWs Is Nothing Then
+            AddLine r, "Rows for " & periodLive, "COULD NOT READ THE REGISTER SHEET", _
+                ST_UNKNOWN, IIf(regErr = "", "open workbook", regErr)
+        Else
+            Dim nRows As Long, fullQuarter As Long
+            nRows = ExcelOutput.PeriodRowCount(regWs, periodLive)
+            fullQuarter = ExcelOutput.LargestPeriodRowCount(regWs)
+
+            If nRows = 0 Then
+                AddLine r, "Rows for " & periodLive, "none yet -- roll forward will create them", _
+                    ST_OK, "open workbook"
+            ElseIf fullQuarter > 0 And nRows < fullQuarter Then
+                AddLine r, "Rows for " & periodLive, "PARTIAL -- " & nRows & " row(s) where a " & _
+                    "full quarter is " & fullQuarter, ST_BLOCKED, "open workbook", _
+                    "Roll forward will REFUSE rather than duplicate every project. These are " & _
+                    "almost certainly leftovers. Delete the " & nRows & " row(s) stamped " & _
+                    periodLive & " on the register sheet, then run the quarter turn again."
+            Else
+                AddLine r, "Rows for " & periodLive, nRows & " row(s)", ST_OK, "open workbook"
+            End If
+        End If
+    End If
+
     Dim wbPathDisk As String, wbTrace As String, wbUnreadable As Boolean
     wbPathDisk = DeckRegistry.WorkbookPathOnDisk(deckPath, wbTrace, wbUnreadable)
     If wbUnreadable Then

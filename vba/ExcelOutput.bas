@@ -876,6 +876,43 @@ Public Function PeriodRowCount(ws As Object, period As String) As Long
     PeriodRowCount = n
 End Function
 
+' The largest number of rows any single period holds -- i.e. what a COMPLETE
+' quarter looks like in this register.
+'
+' Exists so a PARTIAL period can be recognised before it causes a refusal.
+' 2026-08-15: five leftover Q1F27 stub rows from earlier testing silently refused
+' a quarter turn, because RollForwardPeriod correctly declines to duplicate 43
+' projects into a period that already holds rows. Five is not a quarter and not
+' nothing, and there was no way to see that without counting by hand. Comparing
+' against the largest period is what makes "5 of 43" legible as partial.
+Public Function LargestPeriodRowCount(ws As Object) As Long
+    Dim cQuarter As Long
+    cQuarter = QuarterColumn(ws)
+    If cQuarter = 0 Then Exit Function
+
+    Dim seen As Object
+    Set seen = CreateObject("Scripting.Dictionary")
+
+    Dim lastRow As Long, r As Long
+    lastRow = LastUsedRow(ws)
+    For r = 2 To lastRow
+        Dim q As String
+        q = Trim$(CStr(ws.Cells(r, cQuarter).Value))
+        If q <> "" Then
+            If seen.Exists(q) Then
+                seen(q) = seen(q) + 1
+            Else
+                seen.Add q, 1
+            End If
+        End If
+    Next r
+
+    Dim k As Variant
+    For Each k In seen.Keys
+        If seen(k) > LargestPeriodRowCount Then LargestPeriodRowCount = seen(k)
+    Next k
+End Function
+
 Public Function RollForwardPeriod(ws As Object, fromPeriod As String, toPeriod As String) As String
     If Trim$(fromPeriod) = "" Or Trim$(toPeriod) = "" Then
         Err.Raise vbObjectError + 3, "ExcelOutput.RollForwardPeriod", _
