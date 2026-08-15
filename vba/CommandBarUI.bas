@@ -58,7 +58,21 @@ Public Const CAP_REVIEW_ONLY As String = "Review changes (writes nothing)"
 ' Adding and removing are asked SEPARATELY inside it. One "make the deck match"
 ' confirmation would buy consent for the destructive half using the safe half's
 ' reasoning.
-Public Const CAP_SLIDE_MEMBERSHIP As String = "Add or retire slides"
+' SPLIT FROM ONE "Add or retire slides" BUTTON, 2026-08-15, per Rohan: "can't we
+' just declare intent at the start and run the appropriate half?"
+'
+' The old button computed both halves and asked about each in turn. That was
+' built to stop one "make the deck match" confirmation buying consent for the
+' destructive half -- a real risk, solved by asking TWICE rather than by never
+' asking about what you did not come for. Adding a project meant answering "no"
+' to a delete prompt every single time, which is precisely how the prompt that
+' matters gets clicked past.
+'
+' Declaring intent kills that. What it must NOT do is hide the other direction,
+' or the deck grows forever: each half REPORTS the other's count without asking,
+' which costs nothing because the scan already computes both.
+Public Const CAP_ADD_SLIDES As String = "Add missing slides"
+Public Const CAP_RETIRE_SLIDES As String = "Retire slides with no row"
 Public Const CAP_REPOINT_WORKBOOK As String = "Change which workbook this deck uses"
 
 Public Const STAGE_REVIEW_CHANGES As String = "Review Changes"
@@ -237,8 +251,10 @@ Public Sub ShowToolbar()
         "Use to put what you wrote onto the slides, AFTER you have finished writing: publishes every field you ticked, then shows each change and asks once.", True
     AddButton bar, CAP_REVIEW_ONLY, "RibbonUI.ReviewChanges", 1000, _
         "Use to read the register against your slides and tick what should change. It does NOT write to a slide -- button 2 does that."
-    AddButton bar, CAP_SLIDE_MEMBERSHIP, "RibbonUI.SlideMembership", 1959, _
-        "Use to bring the deck into line with the register: creates a slide for any row that has none, and DELETES any slide the register no longer lists. Asks separately for each -- adding and deleting are never one answer."
+    AddButton bar, CAP_ADD_SLIDES, "RibbonUI.AddMissingSlides", 1959, _
+        "Use after adding a project to the register: creates a slide, copied from the template and tagged, for every row that has none. It never deletes. It tells you if any slides have no row."
+    AddButton bar, CAP_RETIRE_SLIDES, "RibbonUI.RetireSlides", 358, _
+        "Use when a project has finished reporting: DELETES every slide whose key the register no longer lists, after naming each one by index and key. It never creates. Last quarter's saved deck is the archive."
 
     ' ---------------------------------------------------------------------
     ' WHY THIS IS A BUTTON, AND WHY IT IS NOT THE "REBUILD MY SHEETS" CLASS

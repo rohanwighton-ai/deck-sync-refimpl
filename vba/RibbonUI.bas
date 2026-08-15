@@ -697,18 +697,39 @@ Failed:
         RibbonUI.UnexpectedErrorText(CommandBarUI.CAP_REPOINT_WORKBOOK, Err.Number, Err.Description, Err.Source)
 End Sub
 
-Public Sub SlideMembership()
+' The two halves of deck membership, each reached by its own button so the
+' destructive one is never arrived at by momentum. retireMode is the declared
+' intent: False = create only, True = delete only. Neither does the other's
+' work, and each reports the other's count so nothing goes unseen.
+'
+' A Boolean rather than named constants deliberately: VBA requires module-level
+' Const declarations above every procedure, and a pair declared up at the top of
+' a 1700-line module is further from these call sites than the comment is.
+Public Sub AddMissingSlides()
     On Error GoTo Failed
-    SlideMembershipCore
+    SlideMembershipCore False
     Exit Sub
 Failed:
-    RibbonUI.ShowSyncResult CommandBarUI.CAP_SLIDE_MEMBERSHIP, _
-        RibbonUI.UnexpectedErrorText(CommandBarUI.CAP_SLIDE_MEMBERSHIP, Err.Number, Err.Description, Err.Source)
+    RibbonUI.ShowSyncResult CommandBarUI.CAP_ADD_SLIDES, _
+        RibbonUI.UnexpectedErrorText(CommandBarUI.CAP_ADD_SLIDES, Err.Number, Err.Description, Err.Source)
 End Sub
 
-Private Sub SlideMembershipCore()
+Public Sub RetireSlides()
+    On Error GoTo Failed
+    SlideMembershipCore True
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult CommandBarUI.CAP_RETIRE_SLIDES, _
+        RibbonUI.UnexpectedErrorText(CommandBarUI.CAP_RETIRE_SLIDES, Err.Number, Err.Description, Err.Source)
+End Sub
+
+Private Sub SlideMembershipCore(ByVal retireMode As Boolean)
     Dim TITLE As String
-    TITLE = CommandBarUI.CAP_SLIDE_MEMBERSHIP
+    If retireMode Then
+        TITLE = CommandBarUI.CAP_RETIRE_SLIDES
+    Else
+        TITLE = CommandBarUI.CAP_ADD_SLIDES
+    End If
 
     Dim pres As Object, wb As Object
     Dim types() As String
@@ -785,10 +806,23 @@ Private Sub SlideMembershipCore()
         End If
     Next i
 
-    ' THE OTHER DIRECTION, NAMED BEFORE ANYTHING IS ASKED.
-    Dim retireNote As String
-    If retireSlides.count > 0 Then
-        retireNote = vbCrLf & vbCrLf & retireSlides.count & " slide(s) carry a key the register has no row for."
+    ' THE OTHER DIRECTION, NAMED BUT NEVER ACTED ON. Declaring intent must not
+    ' hide the drift the other button exists for, or the deck grows forever. So
+    ' the half that was not asked for is REPORTED, together with the button that
+    ' handles it, and never prompted. The scan above already computed both
+    ' counts, so this costs nothing.
+    Dim otherNote As String
+    If retireMode Then
+        If orphanTotal > 0 Then
+            otherNote = vbCrLf & vbCrLf & orphanTotal & " register row(s) have no slide. Press '" & _
+                CommandBarUI.CAP_ADD_SLIDES & "' to create them."
+        End If
+    Else
+        If retireSlides.count > 0 Then
+            otherNote = vbCrLf & vbCrLf & retireSlides.count & _
+                " slide(s) carry a key the register has no row for. Press '" & _
+                CommandBarUI.CAP_RETIRE_SLIDES & "' to deal with them."
+        End If
     End If
 
     If refusals <> "" Then
@@ -801,22 +835,32 @@ Private Sub SlideMembershipCore()
         Exit Sub
     End If
 
+    ' NOTHING TO DO IN THE DIRECTION ASKED FOR, said plainly and then stopped --
+    ' rather than falling through to a prompt about the half nobody pressed.
     Dim outcome As String
 
-    If orphanTotal = 0 Then
-        outcome = "Every register row for " & period & " has a slide." & vbCrLf
+    If retireMode And retireSlides.count = 0 Then
+        ShowSyncResult TITLE, "Every slide for " & period & _
+            " has a register row -- nothing to retire." & otherNote & refusals
+        Exit Sub
+    End If
+
+    If (Not retireMode) And orphanTotal = 0 Then
+        ShowSyncResult TITLE, "Every register row for " & period & _
+            " has a slide -- nothing to add." & otherNote & refusals
+        Exit Sub
     End If
 
     ' ADDING IS ASKED SEPARATELY FROM REMOVING. They are opposite acts with
     ' opposite consequences -- one copies a template, the other destroys work --
     ' and a single "make the deck match" confirmation would buy consent for the
     ' destructive half using the safe half's reasoning.
-    If orphanTotal > 0 Then
+    If (Not retireMode) And orphanTotal > 0 Then
         If MsgBox(orphanTotal & " register row(s) for " & period & " have no slide:" & vbCrLf & vbCrLf & _
                   "  " & orphanKeys & vbCrLf & vbCrLf & _
                   "Create a slide for each, copied from the template and tagged?" & vbCrLf & vbCrLf & _
                   "Nothing else is touched -- existing slides are not changed by this." & _
-                  retireNote & refusals, _
+                  otherNote & refusals, _
                   vbYesNo + vbQuestion, TITLE) = vbYes Then
             Dim ci As Long
             For ci = 1 To createCount
@@ -835,7 +879,7 @@ Private Sub SlideMembershipCore()
     ' register -- the register is precisely what no longer mentions them. What
     ' they can be got back from is last quarter's saved deck, which is why
     ' delete was the right call over hiding: the archive already exists.
-    If retireSlides.count > 0 Then
+    If retireMode And retireSlides.count > 0 Then
         Dim names As String
         Dim k As Long
         For k = 1 To retireSlides.count

@@ -1262,7 +1262,12 @@ End Sub
 ' -- so this has never bitten. It becomes the first support call the moment the
 ' two are separated, with no self-service fix.
 Public Sub RepointWorkbookUI()
-    Const CAP As String = CommandBarUI.CAP_SET_UP_QUARTER
+    ' Named for the button that reaches it. This said CAP_SET_UP_QUARTER while its
+    ' only caller was the sync path, and the moment it got its own button on
+    ' 2026-08-15 the dialog started lying about which button had been pressed --
+    ' the same defect already open against the apply confirmation. A caption
+    ' constant belongs to the entry point, not to whichever one existed first.
+    Const CAP As String = CommandBarUI.CAP_REPOINT_WORKBOOK
     On Error GoTo Failed
 
     Dim pres As Object

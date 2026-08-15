@@ -5727,7 +5727,9 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     expectedCaptions = "|" & CommandBarUI.CAP_SET_UP_QUARTER & _
                        "|" & CommandBarUI.CAP_PUT_ON_SLIDES & _
                        "|" & CommandBarUI.CAP_REVIEW_ONLY & _
-                       "|" & CommandBarUI.CAP_SLIDE_MEMBERSHIP & "|"
+                       "|" & CommandBarUI.CAP_ADD_SLIDES & _
+                       "|" & CommandBarUI.CAP_RETIRE_SLIDES & _
+                       "|" & CommandBarUI.CAP_REPOINT_WORKBOOK & "|"
 
     Dim expectedCount As Long
     expectedCount = UBound(Split(expectedCaptions, "|")) - 1
@@ -5794,7 +5796,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     ' pass. Tightened 2026-07-30 while adding SyncNow, whose name contains
     ' another entry's prefix.
     Dim expectedActions As String
-    expectedActions = "|SyncNowChain|PutItOnTheSlides|ReviewChanges|SlideMembership|"
+    expectedActions = "|SyncNowChain|PutItOnTheSlides|ReviewChanges|AddMissingSlides|RetireSlides|ChangePairedWorkbook|"
 
     Dim i As Long
     Dim eachBar As Variant
@@ -5872,7 +5874,9 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
     wantAfter = UBound(Split("|" & CommandBarUI.CAP_SET_UP_QUARTER & _
                              "|" & CommandBarUI.CAP_PUT_ON_SLIDES & _
                              "|" & CommandBarUI.CAP_REVIEW_ONLY & _
-                             "|" & CommandBarUI.CAP_SLIDE_MEMBERSHIP & "|", "|")) - 1
+                             "|" & CommandBarUI.CAP_ADD_SLIDES & _
+                             "|" & CommandBarUI.CAP_RETIRE_SLIDES & _
+                             "|" & CommandBarUI.CAP_REPOINT_WORKBOOK & "|", "|")) - 1
     result = result & Assert(total2 = wantAfter, _
         "a second ShowToolbar leaves one button per declared caption -- expected " & wantAfter & ", got " & total2)
 
