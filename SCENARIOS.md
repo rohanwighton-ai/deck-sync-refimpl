@@ -49,8 +49,24 @@ Claude, no Python and no WSL.
 ## What is left, honestly
 
 **Scenario 1 is the last of "the quarter" that is neither closed nor built.** 2 and 7 are
-built and unrun, and both write to real files — which is what the known-good snapshot at
-`OneDrive\deck-sync-known-good\` exists for. Run them against it, not against a hope.
+now CLOSED (see the table) — the note that they were built and unrun is superseded.
+
+**Do NOT test against `OneDrive\deck-sync-known-good\`.** That deck still stores the LIVE
+register's path in its own `docProps/custom.xml`, so "testing on the snapshot" writes to
+the real register. Use `AppData\Local\deck-sync-backups\
+PRESERVED-known-good-20260815-1050\` (deck and register together, local, re-pointed and
+proven), or re-point a fresh copy with the `Change which workbook this deck uses` button.
+
+**The OneDrive risk is DIAGNOSED, and it is not what this file used to say.** The standing
+claim was "nothing is proven on OneDrive; everything was proven on a local copy because
+the OneDrive write failed outright". Measured 2026-08-15 midday on a scratch deck:
+**plain `pres.Save` works on a OneDrive-hosted file.** What fails is `SaveAs`-to-self,
+which raises `0x80CD1001` and leaves the presentation READ-ONLY so every later save fails
+— and `DeckRegistry` calls it as its escalation whenever a read-back does not confirm
+immediately. The tool breaks its own document and then reports that OneDrive did.
+File size, AutoSave and sync latency were each tested and are each innocent. Full
+evidence and the three call sites: `FIX-LIST.md` item **P**. Until P is fixed, work on a
+local copy — not because OneDrive is unproven, but because a known defect is waiting there.
 
 **Two defects found while closing 6, both still open (2026-08-15).**
 

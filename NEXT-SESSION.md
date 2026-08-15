@@ -1,8 +1,67 @@
 # NEXT SESSION — start here
 
-> ## 15 AUG, ~12:00. **HANDOVER. STATUS: CURRENT.** The 11:15 block below is still
-> accurate on scenarios 2/7 and the environment finding; this supersedes it on build
-> state, and adds everything after it. Everything else below is historical.
+> ## 15 AUG, ~12:45. **HANDOVER. STATUS: CURRENT.** Supersedes the ~12:00 block below on
+> the build state and, completely, on the OneDrive finding. Everything else there stands.
+>
+> ### THE ADD-IN IS BUILT AND LIVE. `addin99`.
+>
+> Built from a clean tree at `95ea7dd`, stamp `2026-08-15 12:10`, all 33 modules imported.
+> Saved to `OneDrive\Claude\addin99.ppam`, copied to the trusted `AppData\Roaming\
+> Microsoft\AddIns\` and hash-verified across both (md5 `4D5D78F783137BEB2BE89D372A1D6141`,
+> distinct from `addin98`'s `0A1C17FC…`, so it is not a re-save). Registered `AutoLoad=1`
+> and the ONLY entry — `addin98` was removed from the list, not just unticked; its file is
+> still on disk if it is ever needed back.
+>
+> **Verified loaded, not assumed:** `CodeLetterOf("3_P001")` returns `P`, and that function
+> exists only in this build. A nonsense macro name fails on the same channel, so the
+> success discriminates. Module list on disk and the build script's import list were
+> diffed and are identical — no module silently missing, the defect that once shipped a
+> `.ppam` that could not run Sync Now.
+>
+> ### THE ONEDRIVE RISK IS SOLVED AS A DIAGNOSIS. THE FIX IS NOT WRITTEN.
+>
+> **The recorded remedy was wrong and the risk was misattributed. OneDrive is not broken.**
+> Plain `pres.Save` works on a cloud-hosted deck. What fails is `pres.SaveAs path, 24` —
+> it raises `0x80CD1001` and leaves the open presentation READ-ONLY, after which every
+> save fails with *"must be saved with a different name"* for the life of that document.
+>
+> `DeckRegistry` escalates to exactly that call at **three sites** — `SaveDeckVerified:807`,
+> `SetDeckPeriodVerified:869`, `SetWorkbookPathVerified:940` — the instant a read-back does
+> not confirm. A cloud save lands a beat after the call returns, so the read is too early,
+> the escalation bricks the document, and the retry loop burns its remaining attempts
+> against a presentation it has already broken. **The rescue is the failure.**
+>
+> Measured on a scratch deck, every phase read back from the saved file: plain Save **3 of
+> 4 landed**; one SaveAs **raised**; plain Save after it **0 of 4**. Four theories died
+> against measurement first — file size (a 32KB deck fails identically), AutoSave
+> (settable, makes no difference either way), sync latency (two minutes plus a close,
+> never arrived), and URL translation (`LocalPathForUrl` maps the `d.docs.live.net` URL to
+> the local file correctly). **Full evidence: `FIX-LIST.md` item P.**
+>
+> **FIRST ACTION: WRITE P's FIX.** Branch on the existing `IsUrl(path)` at all three sites;
+> on a cloud deck never escalate — settle and re-read instead. Two private helpers and two
+> constants, and **the constants go at the TOP of the module** (a `Const` after a procedure
+> is a VBA compile error). Then suite → build → `addin100`.
+>
+> **Operational, until it is fixed:** a run that hits this leaves the deck read-only, so
+> anything done afterwards in the same session silently fails to save too. Close and
+> reopen the deck to clear it.
+>
+> ### WHAT DID NOT CHANGE
+>
+> Delivery count is still **5 of 9**. Suite `203/0` and `COMPILE OK (34 modules)` still
+> stand — no source was touched today, so the build matches the tested tree. Scenario 1 is
+> still the last of "the quarter". `SCENARIOS.md` is still the frame; its OneDrive section
+> has been corrected to match the above.
+>
+> Two scratch folders exist and are safe to delete: `OneDrive\Claude\onedrive-write-probe\`
+> and `AppData\Local\deck-sync-probe\`.
+>
+> ---
+
+> ## 15 AUG, ~12:00. **SUPERSEDED** on build state and on the OneDrive finding by the block
+> above — its "biggest unlit risk / nothing is proven on OneDrive" reading is now known to
+> be a defect in our own escalation, not a platform problem. Everything else here stands.
 >
 > ### FIRST ACTION: BUILD. THE ADD-IN IS BEHIND THE SOURCE.
 >

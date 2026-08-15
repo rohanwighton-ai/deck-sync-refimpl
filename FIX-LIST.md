@@ -1,7 +1,7 @@
 # Fix list
 
 > **CURRENT — the live list of what is known-broken and not yet fixed.** Re-audited
-> against the code 2026-08-14; five entries added 2026-08-15; A and E since fixed.
+> against the code 2026-08-14; six entries added 2026-08-15; A and E since fixed.
 > Entries say whether they are still live; anything marked fixed names the build it was
 > fixed in.
 
@@ -10,6 +10,47 @@ re-deriving the same findings. Three reviews have now paid to rediscover items t
 were already known — that cost is what this file exists to stop.
 
 Ranked by how much real work is destroyed, or wasted, before anyone notices.
+
+## Added 2026-08-15 (midday) — one, LIVE, and it is the top of the list
+
+**P. `SaveAs`-TO-SELF POISONS A CLOUD-HOSTED DECK, AND IT IS THE ESCALATION WE WROTE TO
+RESCUE A FAILED WRITE.** Measured on a scratch deck in `OneDrive\Claude\
+onedrive-write-probe\`, 2026-08-15 midday, all three phases read back from the saved file:
+
+| phase | result |
+|---|---|
+| plain `pres.Save` only, cloud-hosted | **3 of 4 landed** |
+| one `pres.SaveAs path, 24` | **raised `0x80CD1001`** |
+| plain `pres.Save` only, after that SaveAs | **0 of 4** — `"This presentation is read-only and must be saved with a different name."` |
+
+So on a OneDrive-hosted deck the SaveAs leaves the OPEN PRESENTATION FLAGGED READ-ONLY,
+and every later save fails for the life of that document. `DeckRegistry` escalates to
+exactly that call at three sites — `SaveDeckVerified:807`, `SetDeckPeriodVerified:869`,
+`SetWorkbookPathVerified:940` — each the moment its first read-back does not confirm. A
+cloud save lands a beat AFTER the call returns, so the read is simply too early; the
+escalation then converts a working save into a permanently broken document, and the
+retry loop spends its remaining attempts against a presentation it has already bricked.
+
+**This is the whole of "nothing works on OneDrive".** Plain `Save` works there. Four
+theories died against measurement first: file size (a 32KB deck fails identically),
+AutoSave (`AutoSaveOn` is settable and makes no difference either way), sync latency (two
+minutes plus a close, never arrived), and URL translation (`LocalPathForUrl` maps
+`https://d.docs.live.net/...` to the local file correctly — both reads agree).
+
+**The fix, not yet written:** branch on the existing `IsUrl(path)` at all three sites and
+never escalate on a cloud deck — settle and re-read instead. Needs two private helpers
+and two constants, and the constants must be declared at the TOP of the module: a `Const`
+after a procedure is a VBA compile error.
+
+**Operational note until it is fixed:** a run that hits this leaves the deck read-only, so
+anything done afterwards in the same PowerPoint session silently fails to save too.
+Closing and reopening the deck clears it.
+
+**Supersedes the recorded remedy.** `NEXT-SESSION`'s "turning AutoSave ON made the write
+land" is wrong and was corrected here; `SetDeckPeriodVerified:844-856`'s comment block
+diagnoses the same failure as "SaveAs returns without raising and writes nothing" and
+prescribes the escalation that causes it. Both were written from symptoms without
+probing the mechanism.
 
 ## Added 2026-08-15 (late morning) — four, all LIVE
 
