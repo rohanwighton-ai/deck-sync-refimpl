@@ -185,6 +185,33 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                 End If
             Next fieldName
 
+            ' DEVICE FIELDS ARE NOT REGISTER COLUMNS. FIX-LIST R, 2026-08-15:
+            ' the loop above can only ask about a field whose name is a
+            ' register column, and a device's identity tag (MILESTONE_TIMELINE)
+            ' is not one -- its data lives across 21 separate columns instead.
+            ' Discovered by walking the slide's own shapes, same test
+            ' InjectorFor already uses to decide a tag routes to a device, so
+            ' this asks about exactly the devices actually on this slide.
+            Dim deviceTags As Object
+            Set deviceTags = InjectPrimitive.DeviceRoleTagsOnSlide(instanceSlide)
+            Dim devTag As Variant
+            For Each devTag In deviceTags.Keys
+                If Not changedVerified.Exists(devTag) Then
+                    Dim rd As InjectResult
+                    rd = InjectPrimitive.InjectField(instanceSlide, CStr(devTag), "", dryRun, Nothing, rowValues)
+                    If rd.Found And (rd.Written Or rd.WouldChange) Then
+                        changedVerified(devTag) = rd.Verified
+                        changedError(devTag) = rd.ErrorMessage
+                        changedCurrent(devTag) = rd.CurrentValue
+                        ' No single "new value" exists for a device -- it is
+                        ' redrawn from many columns at once, not one cell.
+                        ' rd.ErrorMessage carries DrawFromRow's own Detail
+                        ' (drawn/hidden counts, any per-slot note) on success.
+                        changedNew(devTag) = "(redrawn from its register columns)"
+                    End If
+                End If
+            Next devTag
+
             n = n + 1
             ReDim Preserve actions(1 To n)
             If changedVerified.count > 0 Then

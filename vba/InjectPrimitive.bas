@@ -97,6 +97,49 @@ Public Const INJECTOR_REPEATING As String = "repeating-bar"
 Public Const INJECTOR_BAR As String = "bar"
 Public Const INJECTOR_TEXT As String = "text"
 
+' FIX-LIST R, 2026-08-15. A device's identity lives on the SLIDE (a tagged
+' group), and the register may hold nothing under that name at all --
+' MILESTONE_TIMELINE is the case that found this: 21 real data columns
+' (MS1_LABEL..MS7_DONE) and zero rows containing a cell literally named
+' "MILESTONE_TIMELINE". SyncOperations.PlanRoutineSync walks the register's
+' OWN column headers as field identities, so a device tag that is not a
+' column was never once asked about -- not routed wrong, never called.
+' Confirmed live: seeded real milestone data, ran the real sync button
+' against a real deck, nothing changed, confirmed from the slide's own
+' shapes afterward.
+'
+' This is the other half of the fix: find every device-routed tag by walking
+' the slide's shapes, the same way InjectorFor already decides a tag routes
+' to INJECTOR_DEVICE (msoGroup + MilestoneDevice.SlotCount > 0), so the sync
+' loop has something to call PlanRoutineSync with even when no register
+' column shares the tag's name.
+'
+' Deduplicated by tag, not by shape: two groups sharing one tag is the
+' ambiguous case FindShapeByRoleTag already refuses downstream (Nothing on
+' 2+ matches), so this only needs to ask ONCE per distinct tag.
+Public Function DeviceRoleTagsOnSlide(sld As Object) As Object
+    Dim tags As Object
+    Set tags = CreateObject("Scripting.Dictionary")
+    WalkForDeviceRoleTags sld.Shapes, tags
+    Set DeviceRoleTagsOnSlide = tags
+End Function
+
+Private Sub WalkForDeviceRoleTags(shapesColl As Object, ByRef tags As Object)
+    Dim shp As Object
+    For Each shp In shapesColl
+        If shp.Type = msoGroup Then
+            If MilestoneDevice.SlotCount(shp) > 0 Then
+                Dim roleVal As String
+                roleVal = shp.Tags("role")
+                If roleVal <> "" Then
+                    If Not tags.Exists(roleVal) Then tags.Add roleVal, True
+                End If
+            End If
+            WalkForDeviceRoleTags shp.GroupItems, tags
+        End If
+    Next shp
+End Sub
+
 ' PUBLIC since 2026-08-14, for Harvest.bas. Deliberately shared rather than
 ' copied: this walk carries two properties a second copy would lose within a
 ' week -- it TESTS a group as well as recursing into it (see WalkForRoleTag's

@@ -93,6 +93,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_SyncOperations_DeviceFieldReachableThroughPlanRoutineSync()
+    AppendResult report, "SyncOperations_DeviceFieldReachableThroughPlanRoutineSync", r
     r = Test_SyncOperations_Case6UnclassifiedSlide()
     AppendResult report, "SyncOperations_Case6UnclassifiedSlide", r
     On Error GoTo 0
@@ -1406,6 +1408,68 @@ Private Function Test_SyncOperations_Case3NewRecord() As String
     result = result & Assert(actions(1).Values("Title") = "Brand New", "Values carries the row's data")
 
     Test_SyncOperations_Case3NewRecord = result
+End Function
+
+' FIX-LIST R. The row dictionary below holds ONLY MS1_LABEL/MS1_DATE/MS1_DONE
+' -style keys -- never a "MILESTONE_TIMELINE" key, because no such register
+' column exists anywhere in the real project. Before this fix, PlanRoutineSync
+' could only ask InjectField about a field whose name was a dictionary key, so
+' a device tagged MILESTONE_TIMELINE was never once asked about, on any slide,
+' ever -- not routed wrong, never called. This proves the fix reaches it
+' anyway, discovered from the slide's own tag rather than the register.
+Private Function Test_SyncOperations_DeviceFieldReachableThroughPlanRoutineSync() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "project-progress"
+    sld.Tags.Add "instance_key", "3_P001"
+
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 3)
+    grp.Tags.Add "role", "MILESTONE_TIMELINE"
+
+    Dim instances(1 To 1) As Object
+    Set instances(1) = sld
+    Dim order As New Collection
+    order.Add "3_P001"
+
+    Dim rowValues As Object
+    Set rowValues = CreateObject("Scripting.Dictionary")
+    rowValues.Add "MS1_LABEL", "Kickoff": rowValues.Add "MS1_DATE", "Oct 2023": rowValues.Add "MS1_DONE", "Y"
+    rowValues.Add "MS2_LABEL", "Design": rowValues.Add "MS2_DATE", "Mar 2024": rowValues.Add "MS2_DONE", "N"
+
+    Dim rows As Object
+    Set rows = CreateObject("Scripting.Dictionary")
+    Set rows("3_P001") = rowValues
+
+    ' CONTROL: a dry run must classify the SAME way and touch NOTHING -- same
+    ' shape as the project's own load-bearing dry-run test for ordinary fields.
+    Dim dryActions() As SyncAction
+    dryActions = SyncOperations.PlanRoutineSync(instances, order, rows, True)
+    result = result & Assert(dryActions(1).Kind = "in_place_correction", _
+        "dry run still finds the device field, got '" & dryActions(1).Kind & "'")
+    result = result & Assert(NamedIn(grp, "MS1_LABEL").TextFrame.TextRange.Text <> "Kickoff", _
+        "dry run wrote NOTHING to the slide")
+
+    ' THE REAL RUN.
+    Dim actions() As SyncAction
+    actions = SyncOperations.PlanRoutineSync(instances, order, rows)
+
+    result = result & Assert(UBound(actions) = 1, "one action produced, got " & (UBound(actions) - LBound(actions) + 1))
+    result = result & Assert(actions(1).Kind = "in_place_correction", _
+        "THE FIX: a device tag with no matching register column is still found, got '" & actions(1).Kind & "'")
+    result = result & Assert(actions(1).ChangedFieldVerified.Exists("MILESTONE_TIMELINE"), _
+        "the change is keyed by the device's OWN tag, not a register column")
+
+    ' THE WRITE ACTUALLY HAPPENED -- read straight off the real shapes.
+    result = result & Assert(NamedIn(grp, "MS1_LABEL").TextFrame.TextRange.Text = "Kickoff", _
+        "slot 1 label actually written, got '" & NamedIn(grp, "MS1_LABEL").TextFrame.TextRange.Text & "'")
+    result = result & Assert(NamedIn(grp, "MS1_ON").Visible = msoTrue, "slot 1 shows achieved")
+    result = result & Assert(NamedIn(grp, "MS2_OFF").Visible = msoTrue, "slot 2 shows not achieved")
+
+    sld.Delete
+    Test_SyncOperations_DeviceFieldReachableThroughPlanRoutineSync = result
 End Function
 
 Private Function Test_SyncOperations_Case6UnclassifiedSlide() As String
