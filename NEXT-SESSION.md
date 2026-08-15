@@ -1,5 +1,52 @@
 # NEXT SESSION — start here
 
+> ## 15 AUG, ~17:15. **HANDOVER. STATUS: CURRENT.** Supersedes the 16:20 block on scenario
+> 1 and on what to do next. Everything else there stands.
+>
+> ### FIRST ACTION: PRESS PUBLISH ON THE RIG. IT IS ONE BUTTON FROM CLOSING SCENARIO 1.
+>
+> The rig is `AppData\Local\deck-sync-quarter-20260815-1623\` — a local copy of the REAL
+> deck and register, already re-pointed at its own register (verified in the deck's bytes).
+> `Q1F27` is rolled forward and sitting in it. **Nothing has been pushed to a slide:** the
+> `Sync Log` has no entry for the 16:23–16:52 window. That publish is the gap between
+> "proven in the register" and scenario 1 closed.
+>
+> ### WHAT ACTUALLY MOVED, AND WHAT DID NOT
+>
+> **Moved:** the quarter turn ran end to end on real files for the first time — period
+> `Q4F26`→`Q1F27` confirmed in the saved `.pptx`, **43 rows / 43 distinct keys** in the
+> register, old quarters intact at 43 each, 13 drafting sheets rebuilt and 13 parked.
+> Content is real, not stubs.
+>
+> **Did not move: the scenario count is still 5 of 9.** Scenario 1's pass condition is
+> *unaided*, and Claude found the blocker and the row number. **The mechanism is proven;
+> the scenario is owed a run where Claude says nothing.** Do not let this session's chat
+> transcript convince anyone it was closed — `SCENARIOS.md` is the count.
+>
+> ### THE THING MOST LIKELY TO STALL A REAL QUARTER AT WORK
+>
+> **Stale state, discovered one collision at a time.** Five leftover `Q1F27` stub rows
+> silently refused the roll-forward tonight; **the same five are in the live register**,
+> along with **38 `Y` ticks from 10 Aug**. There is no pre-flight. At work, that is a
+> refusal you cannot interpret with no Claude to ask. Full table and two more defects from
+> the run (`Roll Forward` asking a question it can answer itself; a bare Excel delete
+> prompt) are in `SCENARIOS.md`.
+>
+> ### RANKING, ARGUED FROM THE CODE
+>
+> **File-per-quarter belongs ahead of scenario 3 and the template thread.** Verified not
+> built (`ParkSheetCopy` copies within one workbook; the only `SaveCopyAs` is for deck
+> backups). It CLOSES four open problems rather than adding one — see `SCENARIOS.md`.
+>
+> ### DO NOT
+>
+> - **Do not resume probing the intermittent OneDrive write.** Eight hypotheses are dead
+>   and named in `FIX-LIST` P. A ninth without a new idea is the sunk-cost loop.
+> - **"P is fixed" does NOT mean "OneDrive works."** Four setup properties, ~50% land rate.
+> - **Do not approve anything** in `Review project-status-2D3D` — 38 stale ticks.
+>
+> ---
+
 > ## 15 AUG, ~16:20. **HANDOVER. STATUS: CURRENT.** Supersedes the 12:45 block below on
 > P and on the build. Everything else there stands.
 >
