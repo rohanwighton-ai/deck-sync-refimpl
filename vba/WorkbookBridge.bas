@@ -341,6 +341,95 @@ End Function
 ' sync path wrote a review sheet, told the user it had been "refreshed to match
 ' the deck as it is now", and the saved workbook contained no such sheet. The
 ' review the user is being asked to work from existed only on screen.
+' Freeze the quarter being rolled out of, as its own file beside the register.
+'
+' THE FIRST HALF OF FILE-PER-QUARTER, AND DELIBERATELY THE HALF THAT CANNOT
+' DESTROY ANYTHING. This only ever CREATES a file: it never edits, prunes or
+' deletes, and it refuses rather than overwriting an archive that already exists.
+' The pruning half -- dropping the old period's rows from the live register and
+' retiring ParkSheetCopy -- is not built, and must not be until it has tests and a
+' run at the keyboard. "Well-tested unit, unproven by a person" is the shape that
+' wiped 43 approve ticks.
+'
+' WHY THIS IS THE FOUNDATION. Rohan's ruling is that the archive IS last quarter's
+' file (DOCUMENT-MAP decision 6). Today that is aspirational: every quarter is
+' stacked in one workbook, so the rollover clear fires in the only copy, and
+' ParkSheetCopy exists solely to survive that. 26 park sheets in a 59-sheet
+' workbook, growing 13 a quarter, is the cost. Once a real frozen file exists per
+' quarter, the parking, the clear-in-place, and the whole class of defect where a
+' rebuild lands on work worth keeping all become unnecessary.
+'
+' NOT A GATE YET, AND THAT IS A DECISION. If this fails, the caller reports it and
+' CONTINUES, because today's roll-forward only APPENDS rows -- nothing is lost when
+' the archive is missing. THE MOMENT THE PRUNE LANDS THIS MUST BECOME A HARD GATE:
+' pruning without a verified archive is the destructive step this exists to make
+' safe. Whoever builds the prune changes that here, and says so in the caller.
+'
+' Returns "" when the archive is confirmed on disk, otherwise what went wrong.
+Public Function ArchiveWorkbookForPeriod(wb As Object, period As String) As String
+    On Error GoTo Failed
+
+    If Trim$(period) = "" Then
+        ArchiveWorkbookForPeriod = "No period was named, so the archive could not be named either."
+        Exit Function
+    End If
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    Dim livePath As String
+    livePath = wb.FullName
+    If LCase$(Left$(livePath, 4)) = "http" Then
+        ArchiveWorkbookForPeriod = "This register is cloud-hosted, so a local archive path " & _
+            "cannot be worked out from " & livePath & ". Nothing was written."
+        Exit Function
+    End If
+
+    Dim folder As String, baseName As String, ext As String
+    folder = fso.GetParentFolderName(livePath)
+    baseName = fso.GetBaseName(livePath)
+    ext = fso.GetExtensionName(livePath)
+    If ext = "" Then ext = "xlsx"
+
+    Dim target As String
+    target = fso.BuildPath(folder, baseName & "-" & period & "." & ext)
+
+    ' REFUSE, DO NOT OVERWRITE. An existing archive is a previous quarter's frozen
+    ' record; silently replacing it would destroy exactly the thing this function
+    ' exists to protect, and it would look like success.
+    If fso.FileExists(target) Then
+        ArchiveWorkbookForPeriod = "An archive for " & period & " already exists:" & vbCrLf & _
+            target & vbCrLf & vbCrLf & "Nothing was written. Move or rename it if you " & _
+            "genuinely want a fresh one."
+        Exit Function
+    End If
+
+    ' SaveCopyAs, NOT SaveAs: SaveAs would re-point the OPEN workbook at the archive,
+    ' so every subsequent write this session -- including the roll-forward about to
+    ' run -- would land in the frozen file and not in the live register. The deck's
+    ' pairing would still name the live one. That is a silent split, and it is the
+    ' single worst thing this function could do.
+    wb.SaveCopyAs target
+
+    ' THE FILE HAS THE ONLY WORD. SaveCopyAs returning quietly is not evidence, and
+    ' this project has been caught believing an API's self-report more than once.
+    If Not fso.FileExists(target) Then
+        ArchiveWorkbookForPeriod = "The archive was requested and did not appear on disk:" & _
+            vbCrLf & target
+        Exit Function
+    End If
+    If fso.GetFile(target).Size = 0 Then
+        ArchiveWorkbookForPeriod = "The archive was written but is empty:" & vbCrLf & target
+        Exit Function
+    End If
+
+    Exit Function
+
+Failed:
+    ArchiveWorkbookForPeriod = "Could not archive " & period & "." & vbCrLf & _
+        "Error " & Err.Number & ": " & Err.Description
+End Function
+
 Public Function SaveWorkbookVerified(wb As Object) As String
     On Error GoTo Failed
     If wb Is Nothing Then Exit Function

@@ -1232,8 +1232,28 @@ Public Sub RollForwardUI()
         End If
     Loop
 
+    ' FREEZE THE QUARTER BEING ROLLED OUT OF, BEFORE ANYTHING IS WRITTEN.
+    '
+    ' First half of file-per-quarter. It only CREATES a file, so it cannot damage
+    ' the register, and a failure here is reported and does not stop the run --
+    ' today's roll-forward only appends, so a missing archive loses nothing.
+    ' WHEN THE PRUNE IS BUILT THIS MUST BECOME A HARD GATE: `If archiveProblem <> ""
+    ' Then Say ... : Exit Sub`. Pruning the old period's rows without a verified
+    ' archive is the destructive step the archive exists to make safe.
+    Dim archiveProblem As String
+    archiveProblem = WorkbookBridge.ArchiveWorkbookForPeriod(wb, fromPeriod)
+
     Dim outcome As String
     outcome = ExcelOutput.RollForwardPeriod(regWs, fromPeriod, toPeriod)
+
+    If archiveProblem = "" Then
+        outcome = outcome & vbCrLf & vbCrLf & fromPeriod & " archived as its own file " & _
+            "beside the register."
+    Else
+        outcome = outcome & vbCrLf & vbCrLf & "ARCHIVE NOT WRITTEN -- the roll forward " & _
+            "still ran, and nothing was lost, because rolling forward only adds rows." & _
+            vbCrLf & archiveProblem
+    End If
 
     ' Rolling forward writes a whole period's rows. Leaving them unsaved would
     ' lose an entire quarter's worth of register on a crash, silently.
