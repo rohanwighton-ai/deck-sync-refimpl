@@ -13,7 +13,7 @@ Ranked by how much real work is destroyed, or wasted, before anyone notices.
 
 ## Added 2026-08-15 (evening) — one, LIVE
 
-**Q. THE MILESTONE DEVICE'S TWO WRITERS CANNOT FAIL VISIBLY.**
+**Q. FIXED 2026-08-15 (evening).** THE MILESTONE DEVICE'S TWO WRITERS CANNOT FAIL VISIBLY.
 `MilestoneDevice.SetVisible:627` and `MilestoneDevice.WriteText:634` each suppress the
 error around their only write, restore handling, and return nothing:
 
@@ -41,9 +41,23 @@ write that PowerPoint declines is invisible by construction — the exact case
 postcondition and a comment saying the guard can genuinely fail. Those two are the model
 to copy; these two are the same shape without the guard.
 
-**Fix:** make both `Function`s returning success, assert the postcondition (read
-`shp.Visible` / the text back off the shape), and let `DrawFromRow` count and report
-failures rather than assuming.
+**Fix, done:** both are now `Function`s returning `Boolean`, confirmed by reading the
+property back rather than trusting the assignment did not raise. `DrawMilestones` tracks
+a per-slot outcome across all 8 writes for an achieved slot (5 for a hidden one) and
+reports through the existing `NoteOnce`/`.Detail` mechanism — no new plumbing, same shape
+every other note on this device already uses. A failed write no longer changes the slot
+count: it still reports Drawn/Hidden, but now also names which slot had a write that did
+not take.
+
+**Proven by a deliberate break**, real slide, real shapes: swapped a real slot's label
+shape for a `Line` (genuinely no `TextFrame` — checked via `HasTextFrame`, not assumed;
+`AddShape` ovals actually do carry a text frame in modern PowerPoint, which would have
+been a false assumption here) and called `DrawMilestones` through its real public API.
+Before the fix: silent, `Drawn = 3`, nothing in the report. After: `Drawn = 3` still, but
+`.Detail` names the slot and says a write did not take. Reverting the fix (stubbing
+`WriteText` back to unconditional success) failed exactly that one assertion and no
+others — the other two slots' writes were confirmed unaffected. Suite 209/0, compile
+clean, static clean.
 
 **How it was found, because the method generalises.** Applying an "Invisible Failure"
 audit — an error suppressed and then never tested for by ANY means. Three iterations were

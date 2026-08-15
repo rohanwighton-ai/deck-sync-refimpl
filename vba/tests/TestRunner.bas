@@ -804,6 +804,8 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     AppendResult report, "MilestoneDevice_RefusesListsThatCannotBeAligned", r
     r = Test_MilestoneDevice_ReadsAColumnPerIntervalFromTheRow()
     AppendResult report, "MilestoneDevice_ReadsAColumnPerIntervalFromTheRow", r
+    r = Test_MilestoneDevice_ReportsAWriteThatDidNotTake()
+    AppendResult report, "MilestoneDevice_ReportsAWriteThatDidNotTake", r
     r = Test_MilestoneDevice_IntegrityNamesWhatIsMissing()
     AppendResult report, "MilestoneDevice_IntegrityNamesWhatIsMissing", r
     r = Test_InjectField_RoutesADeviceGroupToTheTimeline()
@@ -10508,6 +10510,59 @@ End Function
 ' the wrong date, and the slide would look finished. There is no way to tell
 ' which list is wrong, so nothing is drawn -- and nothing must MOVE either,
 ' which is the assertion that actually matters.
+' FIX-LIST item Q. Proves DrawMilestones now REPORTS a write that did not
+' take, through its real public API -- not by calling the private writers
+' directly, which would only prove the helper works in isolation, not that
+' the fix actually reaches the caller.
+'
+' A Line shape is used because it has no TextFrame -- a well-established COM
+' fact, unlike AddShape ovals, which DO carry a TextFrame in modern
+' PowerPoint and would have made this test assert something false. Checked
+' rather than assumed, per this project's own rule on Office automation.
+Private Function Test_MilestoneDevice_ReportsAWriteThatDidNotTake() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 3)
+
+    ' Swap slot 2's label for a shape that CANNOT hold text, keeping the same
+    ' name so the device still finds it by name as designed.
+    Dim badLabel As Object
+    Set badLabel = sld.Shapes.AddLine(130, 150, 250, 150)
+    result = result & Assert(Not badLabel.HasTextFrame, _
+        "control: a Line genuinely has no TextFrame, HasTextFrame=" & badLabel.HasTextFrame)
+
+    NamedIn(grp, "MS2_LABEL").Delete
+    badLabel.Name = "MS2_LABEL"
+    ' The swap-in must join the SAME group, or it will not be found by PartsOf.
+    Set grp = sld.Shapes.Range(Array(grp.Name, badLabel.Name)).Group
+
+    Dim r As MilestoneDrawResult
+    r = MilestoneDevice.DrawMilestones(grp, _
+        SplitList("Kickoff||Design||Build"), _
+        SplitList("Oct 2023||Mar 2024||Sep 2024"), _
+        SplitList("Y||Y||N"))
+
+    ' THE ONE THAT MATTERS. Before this fix, a declined write was invisible --
+    ' Drawn would read 3 and nothing would say slot 2 is wrong.
+    result = result & Assert(InStr(r.Detail, "MS2") > 0 And InStr(r.Detail, "did not take") > 0, _
+        "the report NAMES the failed slot, got '" & r.Detail & "'")
+    result = result & Assert(r.Drawn = 3, _
+        "the slot still counts as drawn -- a bad write is reported, not silently skipped, got " & r.Drawn)
+
+    ' THE OTHER TWO SLOTS ARE UNAFFECTED. One bad shape must not corrupt slots
+    ' that were never touched.
+    result = result & Assert(NamedIn(grp, "MS1_LABEL").TextFrame.TextRange.text = "Kickoff", _
+        "slot 1 still wrote correctly, got '" & NamedIn(grp, "MS1_LABEL").TextFrame.TextRange.text & "'")
+    result = result & Assert(NamedIn(grp, "MS3_LABEL").TextFrame.TextRange.text = "Build", _
+        "slot 3 still wrote correctly, got '" & NamedIn(grp, "MS3_LABEL").TextFrame.TextRange.text & "'")
+
+    sld.Delete
+    Test_MilestoneDevice_ReportsAWriteThatDidNotTake = result
+End Function
+
 Private Function Test_MilestoneDevice_RefusesListsThatCannotBeAligned() As String
     Dim result As String
 

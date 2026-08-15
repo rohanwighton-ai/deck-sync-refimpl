@@ -508,25 +508,39 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
             ' individually in each branch is how a stale circle survives a
             ' state change -- last quarter's _NOW would still be visible
             ' underneath this quarter's _ON.
-            SetVisible onShp, False
-            SetVisible offShp, False
-            SetVisible nowShp, False
-            If Not shown Is Nothing Then SetVisible shown, True
+            ' EVERY WRITE IS CHECKED, AND A FAILURE IS REPORTED, NOT SWALLOWED.
+            ' The slot still counts as Drawn -- a declined write is a defect to
+            ' flag, not a reason to pretend the slot was skipped.
+            Dim slotOk As Boolean
+            slotOk = True
+            slotOk = SetVisible(onShp, False) And slotOk
+            slotOk = SetVisible(offShp, False) And slotOk
+            slotOk = SetVisible(nowShp, False) And slotOk
+            If Not shown Is Nothing Then slotOk = SetVisible(shown, True) And slotOk
 
-            SetVisible labShp, True
-            SetVisible datShp, True
-            WriteText labShp, labels(LBound(labels) + i - 1)
-            WriteText datShp, dates(LBound(dates) + i - 1)
+            slotOk = SetVisible(labShp, True) And slotOk
+            slotOk = SetVisible(datShp, True) And slotOk
+            slotOk = WriteText(labShp, labels(LBound(labels) + i - 1)) And slotOk
+            slotOk = WriteText(datShp, dates(LBound(dates) + i - 1)) And slotOk
+
+            If Not slotOk Then NoteOnce result, SLOT_PREFIX & i & _
+                ": a write did not take -- the slide may not match this report"
 
             result.Drawn = result.Drawn + 1
         Else
             ' A SLOT WITH NO MILESTONE IS HIDDEN, NOT EMPTIED. Blanking its text
             ' would leave a circle floating with nothing beside it.
-            SetVisible onShp, False
-            SetVisible offShp, False
-            SetVisible nowShp, False
-            SetVisible labShp, False
-            SetVisible datShp, False
+            Dim hideOk As Boolean
+            hideOk = True
+            hideOk = SetVisible(onShp, False) And hideOk
+            hideOk = SetVisible(offShp, False) And hideOk
+            hideOk = SetVisible(nowShp, False) And hideOk
+            hideOk = SetVisible(labShp, False) And hideOk
+            hideOk = SetVisible(datShp, False) And hideOk
+
+            If Not hideOk Then NoteOnce result, SLOT_PREFIX & i & _
+                ": could not fully hide -- a visibility write did not take"
+
             result.Hidden = result.Hidden + 1
         End If
     Next i
@@ -624,16 +638,47 @@ Private Function PartOrNothing(parts As Object, nm As String) As Object
     If parts.Exists(UCase(nm)) Then Set PartOrNothing = parts(UCase(nm))
 End Function
 
-Private Sub SetVisible(shp As Object, show As Boolean)
-    If shp Is Nothing Then Exit Sub
+' FIX-LIST item Q, 2026-08-15. Both writers used to be Subs: suppress the
+' error, write, restore handling, tell the caller nothing. DrawMilestones
+' could report a milestone "drawn" against a shape that never actually
+' changed -- this project's own signature defect ("reports success without
+' confirming the effect"), sitting in the writer for 21 of the tool's 29
+' `Given` fields. Found by an Invisible-Failure audit the same evening;
+' `SlideDuplication.bas:115` and `TemplateSlide.bas:122` already guard the
+' same class of write with an explicit postcondition -- these two are that
+' shape, now applied here.
+'
+' Both now return whether the write is CONFIRMED, by reading the property
+' back rather than trusting the assignment did not raise. `shp.Visible` is
+' exactly the kind of property this project has already measured PowerPoint
+' silently declining elsewhere (LockAspectRatio, 2026-08-10) -- a write that
+' does not raise is not evidence it landed.
+Private Function SetVisible(shp As Object, show As Boolean) As Boolean
+    If shp Is Nothing Then
+        SetVisible = True     ' nothing to fail -- there was no shape to write to
+        Exit Function
+    End If
     On Error Resume Next
     shp.Visible = IIf(show, msoTrue, msoFalse)
+    Dim landed As Boolean
+    landed = (shp.Visible = IIf(show, msoTrue, msoFalse))
     On Error GoTo 0
-End Sub
+    SetVisible = landed
+End Function
 
-Private Sub WriteText(shp As Object, value As String)
-    If shp Is Nothing Then Exit Sub
+Private Function WriteText(shp As Object, value As String) As Boolean
+    If shp Is Nothing Then
+        WriteText = True      ' nothing to fail -- there was no shape to write to
+        Exit Function
+    End If
+    If Not shp.HasTextFrame Then
+        WriteText = False     ' the old code silently no-op'd here. This is that case, named.
+        Exit Function
+    End If
     On Error Resume Next
-    If shp.HasTextFrame Then shp.TextFrame.TextRange.text = value
+    shp.TextFrame.TextRange.text = value
+    Dim landed As Boolean
+    landed = (shp.TextFrame.TextRange.text = value)
     On Error GoTo 0
-End Sub
+    WriteText = landed
+End Function
