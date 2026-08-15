@@ -91,6 +91,50 @@
 > Plus a `MILESTONE_TIMELINE` column. That is a feature, not a research problem — and it is
 > **21 of the 29 `Given` fields**, so it is the largest remaining stopped data flow.
 >
+> ### SCENARIO 3 — TRACED TO THE BOTTOM. STEP 1 DONE, STEPS 2–5 PLANNED.
+>
+> **`FindTemplateFor` is NOT the blocker.** Slide creation never calls it. `SlideMembership`
+> resolves the template via `DeckRegistry.LookupType`, which reads a custom document
+> property `DeckSyncType:<slideType>` holding `slideId|worksheetName`. **One template per
+> type, by construction** — the property can hold one slide ID. `MakeTemplateFrom:78` says
+> so itself: *"a type with two templates has no defined behaviour — LookupType returns
+> whichever SlideID was registered last, so which one gets cloned depends on click order."*
+>
+> **The deck, from its own tags:** exactly ONE slide tagged `is_template` (slide 44, the
+> green/`P` one), all 44 slides `slide_type=project-progress`. Rohan's ranges: **1–11 green
+> `P`, 12–26 orange `K`, 27–43 purple `S`** — matching the tag counts P=11, K=15, S=17.
+> `K` and `S` have no template.
+>
+> **DONE (step 1):** `TemplateSlide.CodeLetterOf` + 10 assertions, proven by a deliberate
+> break. Handles both key shapes; returns `""` for no-letter rather than guessing, and `""`
+> means *"use the type's unlettered template"* — which is what keeps single-template decks
+> working unchanged.
+>
+> **STEP 2 — per-letter registration.** A NEW property namespace
+> `DeckSyncTemplate:<type>:<letter>` → slide ID, **alongside** `DeckSyncType:` rather than
+> replacing it. `LookupType` gains an optional letter: lettered property first, existing
+> unlettered registration as fallback. Backwards compatible by construction — a deck with
+> no lettered properties behaves exactly as today.
+>
+> **STEP 3 — choose PER ROW, not per type.** The letter varies row by row *inside* one type,
+> so the choice belongs where rows are iterated: **inside `RunSync.CreateMissingSlides`**,
+> not in `SlideMembershipCore` (which resolves one template per type and passes it in).
+> **This is the code path that closed S2 — re-run scenario 2 after touching it.**
+>
+> **STEP 4 — the guard at `RibbonUI.bas:2375`** refuses to create a second template for a
+> type (*"a type must have exactly one"*), and `MakeTemplateFrom:82` has its own. **Both
+> must become one-per-type-per-LETTER or the feature cannot be built at all.** Do this
+> before any deck surgery, or making the orange template will simply be refused.
+>
+> **STEP 5 — the deck surgery.** Make the `K` template from a slide in 12–26 and the `S`
+> template from one in 27–43, via the existing tested `MakeTemplateFrom`, then tag each with
+> its `code_letter` and register it. Name/tag the shapes. **On a copy — never the live deck.**
+>
+> **Still undecided:** whether a template's letter is a slide tag (`code_letter`, matching
+> the existing lowercase `slide_type`/`instance_key`/`is_template` vocabulary) or lives only
+> in the registration property. A tag is repairable by eye in the Selection Pane; the
+> property is invisible. Rohan's standing preference has been repairability.
+>
 > ### ALSO SEEN, NOT YET ACTED ON
 >
 > - **The `START HERE` panel is a stale snapshot presented as fact.** It showed
