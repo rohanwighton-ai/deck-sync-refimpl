@@ -67,10 +67,28 @@ Public Function EndCollecting() As String
     mCollecting = False
 End Function
 
+' PUBLIC AND PURE, so this is testable without a live presentation or the
+' mCollecting/mChainField state that only exists mid-chain. Say() is the only
+' real caller; the label logic does not need to live inside it to be correct.
+'
+' 2026-08-15: `2. Put it on the slides` runs 13 fields through this chain in
+' one press (a deliberate design -- see PublishAllDraftedFields's header, "a
+' person is not asked thirteen times"), and every field's Copy/Publish block
+' landed in the SAME dialog under the SAME two fixed headers, with the field
+' name buried in prose or missing entirely for the "nothing to do" case.
+' Rohan, reading the result: "this msg makes zero sense" -- correctly, since
+' two consecutive blocks reporting "0 rows" and "38 rows" with no visible
+' field label read as self-contradictory. The one-press LOOP is right and
+' stays; only the label was missing.
+Public Function ChainBlockHeader(caption As String, chainField As String) As String
+    ChainBlockHeader = caption
+    If chainField <> "" Then ChainBlockHeader = ChainBlockHeader & " (" & chainField & ")"
+End Function
+
 Private Sub Say(text As String, style As VbMsgBoxStyle, caption As String)
     If mCollecting Then
         If mReport <> "" Then mReport = mReport & vbCrLf & vbCrLf
-        mReport = mReport & "-- " & caption & " --" & vbCrLf & text
+        mReport = mReport & "-- " & ChainBlockHeader(caption, mChainField) & " --" & vbCrLf & text
     Else
         ' NOT Say. This line was rewritten into a call to its own procedure by a
         ' scripted MsgBox -> Say replacement that did not exclude the body of Say

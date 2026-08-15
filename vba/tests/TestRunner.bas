@@ -273,6 +273,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_DraftingUI_ChainBlockHeaderLabelsTheField()
+    AppendResult report, "DraftingUI_ChainBlockHeaderLabelsTheField", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_ExcelOutput_LargestPeriodRowCountSpotsAPartialQuarter()
     AppendResult report, "ExcelOutput_LargestPeriodRowCountSpotsAPartialQuarter", r
     On Error GoTo 0
@@ -8362,6 +8367,35 @@ CleanUp:
     If Not wb Is Nothing Then wb.Close False
     On Error GoTo 0
     Test_ExcelOutput_LargestPeriodRowCountSpotsAPartialQuarter = result
+End Function
+
+' 2026-08-15: proves the fix for "this msg makes zero sense" (Rohan, reading a
+' chained Put-it-on-the-slides run where 13 fields' Copy/Publish blocks landed
+' under the same two fixed headers with no field name visible). Tests the
+' PURE labeling function in isolation -- no live deck needed, and none of the
+' actual chain (Say/BeginCollecting/PublishAllDraftedFields) has been
+' re-exercised against a real presentation since this change. That is still
+' owed at the keyboard.
+Private Function Test_DraftingUI_ChainBlockHeaderLabelsTheField() As String
+    Dim result As String
+
+    result = result & Assert(DraftingUI.ChainBlockHeader("Copy AI to Submit", "") = "Copy AI to Submit", _
+        "no chain field: header is unchanged")
+
+    result = result & Assert( _
+        DraftingUI.ChainBlockHeader("Copy AI to Submit", "ABOUT_BODY") = "Copy AI to Submit (ABOUT_BODY)", _
+        "with a chain field: it is appended in parentheses")
+
+    ' THE ONE THAT MATTERS. Two consecutive fields must be DISTINGUISHABLE by
+    ' header alone -- that is the entire defect. A fix that appended the same
+    ' text regardless of field would pass the assertion above and still leave
+    ' every block looking identical.
+    Dim h1 As String, h2 As String
+    h1 = DraftingUI.ChainBlockHeader("Publish Drafts", "ABOUT_BODY")
+    h2 = DraftingUI.ChainBlockHeader("Publish Drafts", "KEY_EVENTS_BODY")
+    result = result & Assert(h1 <> h2, "two different fields produce two different headers, got '" & h1 & "' and '" & h2 & "'")
+
+    Test_DraftingUI_ChainBlockHeaderLabelsTheField = result
 End Function
 
 ' The archive is the first half of file-per-quarter, and the half trusted to be
