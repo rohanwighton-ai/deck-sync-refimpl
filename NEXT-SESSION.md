@@ -1,6 +1,110 @@
 # NEXT SESSION — start here
 
-> ## 15 AUG, ~10:45. **ADDENDUM.** The 08:30 block below remains CURRENT for state; this
+> ## 15 AUG, ~11:15. **STATUS: CURRENT.** Everything below is historical.
+>
+> ### SCENARIOS 2 AND 7 ARE CLOSED ON REAL FILES. DELIVERY COUNT IS 5.
+>
+> Both by button, unaided, **read from the saved files**. S2: one register row added →
+> `Add or retire slides` → `1 created, 0 failed`, and the saved `.pptx` went to **45 slide
+> parts** with `ppt/tags/tag666.xml` carrying `SLIDE_TYPE=project-progress` +
+> `INSTANCE_KEY=S999`. S7: same row removed → **slide 44 deleted**, back to 44 parts, **0
+> tags carrying S999**. The retire warning named the slide by index and key before asking.
+>
+> ### THE THING THAT BLOCKED IT, AND THE BUTTON THAT FIXED IT
+>
+> **A COPIED DECK KEEPS POINTING AT THE ORIGINAL'S REGISTER.** `GetWorkbookPath:170`
+> returns the stored path unchanged whenever that path EXISTS; the sibling lookup is a
+> fallback for a MISSING file only. The known-good snapshot's deck stored
+> `…\OneDrive\Claude\register-wide.xlsx` in its own `docProps/custom.xml` — so "test it on
+> the snapshot" would have read and WRITTEN THE LIVE REGISTER, including the `Field
+> Discovery` fixture. Caught by reading the file, before anything ran.
+>
+> `RepointWorkbookUI` already fixed this and was **unreachable**: offered only when the
+> pairing was EMPTY, never when it was WRONG. Now a 5th button, `CAP_REPOINT_WORKBOOK`,
+> and **it worked by button, verified from the deck's bytes** (mtime moved, stored path
+> changed; the same check on the untouched copy still shows the old path, so it
+> discriminates). Fifth reachability defect of the run; first caught before it cost
+> anything.
+>
+> ### ENVIRONMENT — THE RECORDED ONEDRIVE REMEDY DID NOT HOLD
+>
+> `NEXT-SESSION` records "turning AutoSave ON made the write land". **AutoSave was ON and
+> the write still did not land** on the OneDrive-hosted snapshot: `SetWorkbookPathVerified`
+> refused after 4 attempts, and the file's mtime was **still 06:27** — never written at
+> all, while PowerPoint reported `Saved=False` with the change sitting in its cache.
+> **The whole sitting was then done on a LOCAL copy outside any sync folder
+> (`AppData\Local\deck-sync-backups\PRESERVED-known-good-20260815-1050\`) and everything
+> worked first time.** The work machine will be OneDrive-hosted, so this is not academic —
+> but it is a separate problem from the code.
+>
+> ### NOT DONE, AND WHY
+>
+> - **The `DiscoverUI` change STILL has never run.** `1. Set up my quarter` went Start a
+>   Quarter → Roll Forward → Refresh Drafting Sheets and stopped. **No discovery offer
+>   appeared.** Its trigger condition is unknown — find it before trying again. The fixture
+>   is intact in the local copy: `Field Discovery`, header row 6, data rows 7–65 = **59
+>   rows**, exactly **9 marks** (`PROJECT_CODE`, `PROJECT_NAME`, `PROJECT_PROGRESS`,
+>   `PROJECT_STATUS`, `STRATEGIC_ALIGNMENT_BODY`, `ABOUT_BODY`, `PROBLEM_BODY`,
+>   `PROGRESS_BODY`, `KEY_EVENTS_BODY`). Pass condition is the message *"9 existing mark(s)
+>   kept."*
+> - **The two-button split and the caption fix are IN SOURCE ONLY.** Not built, not
+>   pressed, and **the VBA suite has not been re-run** (Office was in use). Static checks
+>   clean across 35 modules, all three module lists satisfied. **First action next session:
+>   build → Save As `addin98` → tick → restart → run the suite.**
+>
+> ### WHY THE TIMELINES LOOK FUNKY — ANSWERED, AND IT IS NOT WIRING
+>
+> Rohan asked. Publish is wired: `InjectorFor` routes a tagged group with
+> `MilestoneDevice.SlotCount > 0` to `INJECTOR_DEVICE` before anything else. **The data is
+> not there and never has been.** Counted from the register, columns found by header name:
+> **21 milestone columns × 43 `Q4F26` rows = 0 non-empty cells.** And **`MILESTONE_TIMELINE`
+> has no register column at all** — same shape as `STRATEGIC_LINKAGES`. So every timeline
+> on every slide is still hand-drawn, and the tool has never had one value to write.
+>
+> **CORRECTED SAME SESSION, after Rohan asked "I thought we harvested from the shapes?" —
+> and he was right.** This was first written as "the harvest CANNOT fill them, milestone
+> state lives in shape visibility (GAP 3)", taken from the handover without opening
+> `MilestoneDevice.bas`. **It is not a capability gap, it is a missing function plus a
+> policy refusal:**
+> - `Harvest.ShapeIsNotHarvestableText:410` refuses anything whose injector is not
+>   `INJECTOR_TEXT`. Devices are refused BY POLICY at the routing layer.
+> - `MilestoneDevice`'s entire public surface is `ColumnFor`, `IsDoneWord`, `SlotCount`,
+>   `DeviceIntegrity`, `DrawFromRow`, `DrawMilestones` — structural or write-direction.
+>   `SetVisible`/`WriteText` are private writers. **Nothing returns values.**
+> - **But the addressing is already built and in use:** `PartsOf`/`CollectNamed` enumerate
+>   the group's parts by name, and `ColumnFor(i, part)` already maps slot + part → register
+>   column. Labels and dates are plain text in named parts; `DONE` is `shp.Visible`.
+>
+> **So the work is a `RowFromDevice` mirroring `DrawFromRow` and sharing `ColumnFor`** (so
+> read and write cannot disagree about columns, exactly as `InjectorFor` stopped harvest
+> and publish disagreeing about injectors), plus letting the harvest route a device to it.
+> Plus a `MILESTONE_TIMELINE` column. That is a feature, not a research problem — and it is
+> **21 of the 29 `Given` fields**, so it is the largest remaining stopped data flow.
+>
+> ### ALSO SEEN, NOT YET ACTED ON
+>
+> - **The `START HERE` panel is a stale snapshot presented as fact.** It showed
+>   `Paired workbook … OneDrive\Claude\register-wide.xlsx` with state **`ok`**, "read from
+>   saved .pptx", four hours after that stopped being true. Row 2 says it is not live; the
+>   row says `ok`. Anyone re-pointing a deck and then reading this panel concludes the
+>   re-point failed.
+> - **"17 value(s) are not in their allowed list"** from the chain — the Controlled-field
+>   vocabulary problem, still unenforced.
+> - `Readiness.bas:55` and `WorkbookBridge.bas:17` are **two separate constants both
+>   hardcoding `"START HERE"`**. Change either and they diverge silently.
+> - The tab is named `START HERE` while its own A1 heading says `DECK SYNC -- WHERE YOU
+>   ARE`. Cost a minute tonight looking for a tab that does not exist.
+> - Toolbar is now **"Deck Sync 40"** — forty accumulated bars — beside 25 stale `.ppam`
+>   files. Both still worth a purge.
+>
+> Four new fix-list entries were added tonight: **L** (pairing, detection half still open),
+> **M** (`PROJECT_PROGRESS` `80%` vs `0.8` false diff, live in the 47-row queue), **N**
+> (invisible-character diffs with the explaining column cut off), **O** (`build_ppam.ps1`
+> quits PowerPoint with the user's deck open; its safety is a timeout side effect).
+>
+> ---
+
+> ## 15 AUG, ~10:45. **SUPERSEDED** by the block above. The 08:30 block below remains CURRENT for state; this
 > only records a scope ruling and three costs. Nothing was built.
 >
 > ### ROHAN RULED: FINISH THE QUARTER BEFORE THE TEMPLATE LAYER
