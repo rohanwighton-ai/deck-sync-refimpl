@@ -143,6 +143,11 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_TemplateSlide_CodeLetterOfReadsBothKeyShapes()
+    AppendResult report, "TemplateSlide_CodeLetterOfReadsBothKeyShapes", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_TemplateSlide_MakeTemplateProducesKeylessMarkedCopy()
     AppendResult report, "TemplateSlide_MakeTemplateProducesKeylessMarkedCopy", r
     On Error GoTo 0
@@ -1766,6 +1771,44 @@ End Function
 ' The source-untouched assertions are not padding. MakeTemplateFrom's whole
 ' safety story is "it only ever writes to the copy it just made", and the
 ' source here is standing in for a real slide a human authored.
+' Every case here comes from the REAL deck's 43 instance keys, not from an
+' imagined format. The five bare keys (S023 and friends) are the reason the
+' underscore cannot be assumed, and the digit case is the reason the first
+' character cannot be taken blindly.
+Private Function Test_TemplateSlide_CodeLetterOfReadsBothKeyShapes() As String
+    Dim result As String
+
+    result = result & Assert(TemplateSlide.CodeLetterOf("3_P001") = "P", _
+        "themed key 3_P001 reads P, got '" & TemplateSlide.CodeLetterOf("3_P001") & "'")
+    result = result & Assert(TemplateSlide.CodeLetterOf("1_K1008") = "K", _
+        "themed key 1_K1008 reads K, got '" & TemplateSlide.CodeLetterOf("1_K1008") & "'")
+    result = result & Assert(TemplateSlide.CodeLetterOf("2_S015") = "S", _
+        "themed key 2_S015 reads S, got '" & TemplateSlide.CodeLetterOf("2_S015") & "'")
+
+    ' Five real projects have no underscore at all.
+    result = result & Assert(TemplateSlide.CodeLetterOf("S023") = "S", _
+        "bare key S023 reads S, got '" & TemplateSlide.CodeLetterOf("S023") & "'")
+    result = result & Assert(TemplateSlide.CodeLetterOf("P008") = "P", _
+        "bare key P008 reads P, got '" & TemplateSlide.CodeLetterOf("P008") & "'")
+
+    ' No letter to read means NO OPINION -- never a guess, and never a digit
+    ' promoted to a fourth colour.
+    result = result & Assert(TemplateSlide.CodeLetterOf("1_2003") = "", _
+        "a key with digits after the underscore yields no letter")
+    result = result & Assert(TemplateSlide.CodeLetterOf("") = "", _
+        "an empty key yields no letter")
+    result = result & Assert(TemplateSlide.CodeLetterOf("   ") = "", _
+        "a whitespace key yields no letter")
+    result = result & Assert(TemplateSlide.CodeLetterOf("3_") = "", _
+        "a key ending in the underscore yields no letter")
+
+    ' Case is normalised so a hand-typed key cannot address a different template.
+    result = result & Assert(TemplateSlide.CodeLetterOf("3_p001") = "P", _
+        "lowercase key 3_p001 still reads P")
+
+    Test_TemplateSlide_CodeLetterOfReadsBothKeyShapes = result
+End Function
+
 Private Function Test_TemplateSlide_MakeTemplateProducesKeylessMarkedCopy() As String
     Dim result As String
 
@@ -5729,7 +5772,8 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
                        "|" & CommandBarUI.CAP_REVIEW_ONLY & _
                        "|" & CommandBarUI.CAP_ADD_SLIDES & _
                        "|" & CommandBarUI.CAP_RETIRE_SLIDES & _
-                       "|" & CommandBarUI.CAP_REPOINT_WORKBOOK & "|"
+                       "|" & CommandBarUI.CAP_REPOINT_WORKBOOK & _
+                       "|" & CommandBarUI.CAP_DISCOVER_FIELDS & "|"
 
     Dim expectedCount As Long
     expectedCount = UBound(Split(expectedCaptions, "|")) - 1
@@ -5796,7 +5840,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     ' pass. Tightened 2026-07-30 while adding SyncNow, whose name contains
     ' another entry's prefix.
     Dim expectedActions As String
-    expectedActions = "|SyncNowChain|PutItOnTheSlides|ReviewChanges|AddMissingSlides|RetireSlides|ChangePairedWorkbook|"
+    expectedActions = "|SyncNowChain|PutItOnTheSlides|ReviewChanges|AddMissingSlides|RetireSlides|ChangePairedWorkbook|DiscoverFieldsOnSlide|"
 
     Dim i As Long
     Dim eachBar As Variant
@@ -5876,7 +5920,8 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
                              "|" & CommandBarUI.CAP_REVIEW_ONLY & _
                              "|" & CommandBarUI.CAP_ADD_SLIDES & _
                              "|" & CommandBarUI.CAP_RETIRE_SLIDES & _
-                             "|" & CommandBarUI.CAP_REPOINT_WORKBOOK & "|", "|")) - 1
+                             "|" & CommandBarUI.CAP_REPOINT_WORKBOOK & _
+                             "|" & CommandBarUI.CAP_DISCOVER_FIELDS & "|", "|")) - 1
     result = result & Assert(total2 = wantAfter, _
         "a second ShowToolbar leaves one button per declared caption -- expected " & wantAfter & ", got " & total2)
 

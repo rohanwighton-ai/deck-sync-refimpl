@@ -52,7 +52,10 @@ Private Const FIRST_ROW As Long = 7
 ' BUTTON: Setup A2: Discover Fields
 ' ---------------------------------------------------------------------------
 Public Sub DiscoverFields()
-    Const CAP As String = "Discover Fields"
+    ' Named for the button that reaches it, not for the routine. This said
+    ' "Discover Fields", a caption matching no button on the toolbar -- the same
+    ' defect fixed in RepointWorkbookUI the same day.
+    Const CAP As String = CommandBarUI.CAP_DISCOVER_FIELDS
     On Error GoTo Failed
 
     Dim pres As Object

@@ -705,6 +705,18 @@ End Sub
 ' A Boolean rather than named constants deliberately: VBA requires module-level
 ' Const declarations above every procedure, and a pair declared up at the top of
 ' a 1700-line module is further from these call sites than the comment is.
+' The button target for CAP_DISCOVER_FIELDS. DiscoverUI.DiscoverFields does the
+' work and is self-contained; this only gives it a way in that does not require
+' the deck to be unconfigured.
+Public Sub DiscoverFieldsOnSlide()
+    On Error GoTo Failed
+    DiscoverUI.DiscoverFields
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult CommandBarUI.CAP_DISCOVER_FIELDS, _
+        RibbonUI.UnexpectedErrorText(CommandBarUI.CAP_DISCOVER_FIELDS, Err.Number, Err.Description, Err.Source)
+End Sub
+
 Public Sub AddMissingSlides()
     On Error GoTo Failed
     SlideMembershipCore False

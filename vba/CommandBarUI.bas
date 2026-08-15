@@ -73,6 +73,16 @@ Public Const CAP_REVIEW_ONLY As String = "Review changes (writes nothing)"
 ' which costs nothing because the scan already computes both.
 Public Const CAP_ADD_SLIDES As String = "Add missing slides"
 Public Const CAP_RETIRE_SLIDES As String = "Retire slides with no row"
+
+' FIELD DISCOVERY IS AN ACTIVITY, NOT A PRECONDITION -- given a button 2026-08-15.
+'
+' RibbonUI.bas:1549 gates the setup question on `Not hasTypes`, correctly: setting
+' up a slide type IS once-ever. But DiscoverFields was reachable ONLY from inside
+' that gate, so a CONFIGURED deck could never tag another field -- with 32 fields
+' untagged on the real deck and waiting for exactly this. The gate is right; the
+' entry point was missing. DiscoverFields is self-contained (active slide, paired
+' workbook, writes a sheet, marks in memory) and safe to run at any time.
+Public Const CAP_DISCOVER_FIELDS As String = "Tag fields on this slide"
 Public Const CAP_REPOINT_WORKBOOK As String = "Change which workbook this deck uses"
 
 Public Const STAGE_REVIEW_CHANGES As String = "Review Changes"
@@ -251,10 +261,15 @@ Public Sub ShowToolbar()
         "Use to put what you wrote onto the slides, AFTER you have finished writing: publishes every field you ticked, then shows each change and asks once.", True
     AddButton bar, CAP_REVIEW_ONLY, "RibbonUI.ReviewChanges", 1000, _
         "Use to read the register against your slides and tick what should change. It does NOT write to a slide -- button 2 does that."
+    ' Tooltips open with "Use to " on purpose, and a test enforces it -- so the
+    ' first thing a person reads is the verb, not the occasion. Broken by both
+    ' of these on their first write, 2026-08-15, and caught by that test.
     AddButton bar, CAP_ADD_SLIDES, "RibbonUI.AddMissingSlides", 1959, _
-        "Use after adding a project to the register: creates a slide, copied from the template and tagged, for every row that has none. It never deletes. It tells you if any slides have no row."
+        "Use to create a slide, copied from the template and tagged, for every register row that has none. It never deletes. It tells you if any slides have no row."
     AddButton bar, CAP_RETIRE_SLIDES, "RibbonUI.RetireSlides", 358, _
-        "Use when a project has finished reporting: DELETES every slide whose key the register no longer lists, after naming each one by index and key. It never creates. Last quarter's saved deck is the archive."
+        "Use to DELETE every slide whose key the register no longer lists, after naming each one by index and key. It never creates. Last quarter's saved deck is where they still exist."
+    AddButton bar, CAP_DISCOVER_FIELDS, "RibbonUI.DiscoverFieldsOnSlide", 1758, _
+        "Use to tag fields on the slide you are looking at: writes a grid of its shapes into the workbook, you mark what to track, and it tags them. Safe to re-run -- existing marks are kept."
 
     ' ---------------------------------------------------------------------
     ' WHY THIS IS A BUTTON, AND WHY IT IS NOT THE "REBUILD MY SHEETS" CLASS

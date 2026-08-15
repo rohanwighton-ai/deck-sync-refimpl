@@ -232,6 +232,48 @@ End Function
 '
 ' Returns Nothing when the type has no template yet -- the normal state for
 ' every deck onboarded before today, not an error.
+' WHICH TEMPLATE A PROJECT WANTS, DERIVED FROM WHAT THE REGISTER ALREADY HOLDS.
+'
+' Rohan, 2026-08-15: "P projects are green and normal research project, orange
+' projects are kickstart projects (K), S projects are PhD (student) project,
+' purple. You can tell by the letter in their project code after the underscore."
+'
+' So the colour is not a new fact to store -- it IS the code letter, and this
+' invents no column, no tag vocabulary and no term. `Kind` was NOT reused: it is
+' already an axis word here (Controlled/Prose/Static/Derived), and a word doing
+' two jobs is the defect that has already cost this project a feature.
+'
+' TWO KEY SHAPES EXIST IN THE REAL DECK and a parser assuming one would silently
+' mishandle five projects. Counted from the deck's own tags, 43 keys:
+'   38 of the form <theme>_<letter><digits>   e.g. 3_P001
+'    5 with NO underscore at all              e.g. S023, P008, S009, S021, S022
+' Letter counts K=15, P=11, S=17 -- which match Rohan's slide ranges 12-26,
+' 1-11 and 27-43 exactly, so the letter and the colour are the same fact
+' confirmed from two independent directions.
+'
+' Returns "" rather than guessing when there is no letter to read. "" means
+' "no opinion, use the type's unlettered template", which is what keeps today's
+' single-template decks working unchanged.
+Public Function CodeLetterOf(instanceKey As String) As String
+    Dim s As String
+    s = Trim(instanceKey)
+    If s = "" Then Exit Function
+
+    Dim p As Long
+    p = InStrRev(s, "_")
+    If p > 0 Then s = Mid(s, p + 1)
+    If s = "" Then Exit Function
+
+    Dim ch As String
+    ch = UCase(Left(s, 1))
+
+    ' A letter or nothing. A key like "1_2003" has no variant to read, and
+    ' returning its first digit would silently invent a fourth colour.
+    If ch < "A" Or ch > "Z" Then Exit Function
+
+    CodeLetterOf = ch
+End Function
+
 Public Function FindTemplateFor(slideType As String) As Object
     Dim sld As Object
     For Each sld In Application.ActivePresentation.Slides
