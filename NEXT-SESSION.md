@@ -39,14 +39,24 @@
 >
 > ### NOT DONE, AND WHY
 >
-> - **The `DiscoverUI` change STILL has never run.** `1. Set up my quarter` went Start a
->   Quarter → Roll Forward → Refresh Drafting Sheets and stopped. **No discovery offer
->   appeared.** Its trigger condition is unknown — find it before trying again. The fixture
->   is intact in the local copy: `Field Discovery`, header row 6, data rows 7–65 = **59
->   rows**, exactly **9 marks** (`PROJECT_CODE`, `PROJECT_NAME`, `PROJECT_PROGRESS`,
->   `PROJECT_STATUS`, `STRATEGIC_ALIGNMENT_BODY`, `ABOUT_BODY`, `PROBLEM_BODY`,
->   `PROGRESS_BODY`, `KEY_EVENTS_BODY`). Pass condition is the message *"9 existing mark(s)
->   kept."*
+> - **The `DiscoverUI` change CANNOT RUN ON A CONFIGURED DECK — sixth reachability finding.**
+>   `1. Set up my quarter` went Start a Quarter → Roll Forward → Refresh Drafting Sheets and
+>   stopped; no discovery offer appeared. **Not a bug — a gate.** `RibbonUI.bas:1549`:
+>   *"SETUP IS A PRECONDITION, NOT AN ACTIVITY — once ever per slide type, and only on a
+>   deck that has none. A configured deck never sees this."* `DiscoverFields` is reached
+>   only from `If setupAnswer = vbYes` (`:1599`), and `setupAnswer` exists only inside
+>   `If Not hasTypes`. This deck has `project-progress` registered, so the question is never
+>   asked. `DiscoverFields` is `BuildDiscoverySheet`'s only production caller — the split-out
+>   was for tests.
+>   **Corollary: the 9 marks the change protects cannot be wiped either**, because the code
+>   that would wipe them cannot run here. **It belongs to SCENARIO 8** (bring up a fresh
+>   deck and register from nothing) — that is the only path that reaches it. Do not try to
+>   exercise it on a configured deck again.
+>   Fixture recorded for whenever it is reachable: `Field Discovery`, header row 6, data
+>   rows 7–65 = **59 rows**, exactly **9 marks** (`PROJECT_CODE`, `PROJECT_NAME`,
+>   `PROJECT_PROGRESS`, `PROJECT_STATUS`, `STRATEGIC_ALIGNMENT_BODY`, `ABOUT_BODY`,
+>   `PROBLEM_BODY`, `PROGRESS_BODY`, `KEY_EVENTS_BODY`). Pass condition: *"9 existing
+>   mark(s) kept."*
 > - **The two-button split and the caption fix are IN SOURCE ONLY.** Not built, not
 >   pressed, and **the VBA suite has not been re-run** (Office was in use). Static checks
 >   clean across 35 modules, all three module lists satisfied. **First action next session:
