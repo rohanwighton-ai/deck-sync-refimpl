@@ -1,5 +1,47 @@
 # NEXT SESSION — start here
 
+> ## 15 AUG, ~10:45. **ADDENDUM.** The 08:30 block below remains CURRENT for state; this
+> only records a scope ruling and three costs. Nothing was built.
+>
+> ### ROHAN RULED: FINISH THE QUARTER BEFORE THE TEMPLATE LAYER
+>
+> chat proposed a shape-name join key (`=FIELD[#INDEX][.PART]`) replacing role tags, and
+> flagged possible drift toward the more interesting problem. **The ruling is
+> quarter-first**, made explicitly rather than by which document arrived next. Template
+> thread parked, not rejected. Full trace: `claude-brain/DECISIONS.md` 2026-08-15;
+> proposal at `OneDrive\Claude\chat-to-code-2026-08-15-template-names.md`, reply at
+> `code-to-chat-2026-08-15-scope-ruled-quarter-first.md`.
+>
+> **So the FIRST ACTION is unchanged — the snapshot sitting in the block below.**
+>
+> ### THREE COSTS PRICED, ALL UNPAID, ALL ON THE NAMING THREAD
+>
+> 1. **It reverses a July decision.** `TemplateAudit.bas:350` cites `specs/identity-tags.md`:
+>    the shape name was rejected as an identity key for being **visible and user-editable**,
+>    per `input-contract.md`'s `unique_named_shapes` rule — which PowerPoint does not
+>    enforce. The duplicate check must ship in the SAME commit as the first name read.
+> 2. **`=` collides with Excel.** `WriteAuditGrid` already writes a leading apostrophe on the
+>    TEXT column because slide text starting with `=` renders `#NAME?` — and writes
+>    `COL_SHAPE` with no guard. The audit grid breaks on day one under this convention.
+> 3. **`TemplateAudit.bas:377` stays open.** Verified: `ws.Cells(r, COL_DECISION).Value = ""`,
+>    unconditional, so removing the `Cells.Clear` above it fixes nothing. The fix needs a
+>    stable per-row key — the same key the naming thread would supply, and the one Discovery
+>    already solves with `shp.Id`. Design call, deliberately not done now.
+>
+> ### ONE TEST STILL OWED, AND IT GATES THE WHOLE THREAD
+>
+> **Does `=` survive what PowerPoint does to shape names** — copy/paste duplication,
+> group/ungroup, Reset Slide? Ten minutes on a SCRATCH deck, not the real one. If PowerPoint
+> mangles or auto-renames on any of them, the proposal needs a different sigil or a different
+> mechanism, and everything above is moot.
+>
+> **A correction worth keeping, because it is the third of its kind:** chat's argument rested
+> on S5 having never run. **S5 closed 14 Aug 20:45** (`3_P001`/`KEY_EVENTS_BODY`, by button).
+> It was reading a stale handover — the same stale line sat in Claude Code's session reminder
+> until this morning. Its instinct was right and its evidence was wrong.
+>
+> ---
+
 > ## 15 AUG, ~08:30. **STATUS: CURRENT.** Everything below is historical.
 >
 > ### SCENARIO 6 IS CLOSED ON REAL SLIDES. DELIVERY COUNT IS 3.
