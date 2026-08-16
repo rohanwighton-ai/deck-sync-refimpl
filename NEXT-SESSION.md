@@ -8,6 +8,89 @@
 > Written 2026-08-16 after a real architecture decision sat undiscovered for four
 > days because no session had done what it now mandates.
 
+> ## 16 AUG, EVENING. **SESSION-END HANDOVER. STATUS: CURRENT.** Long session,
+> multiple compactions. Supersedes everything below on build state, OneDrive risk,
+> and Scenario 1 status. `CHECKLIST.md` is still the primary tickable surface —
+> this block is the narrative *why* and the one open thread that needs eyes.
+>
+> ### BUILD: `addin110` IS CURRENT, TICKED, LOADED. Includes BOTH fixes below.
+> Copies in `OneDrive\Claude\` and the trusted `AppData\Roaming\Microsoft\AddIns\`.
+> `addin109` should be UNTICKED if it still is — having both loaded risks duplicate
+> toolbar buttons (`CommandBarUI`'s Auto_Open runs for each loaded add-in).
+>
+> ### THE ONEDRIVE WRITE-RELIABILITY RISK IS FULLY CLOSED, BOTH SIDES, PROVEN LIVE.
+> `FIX-LIST.md` items **P** (deck) and **S** (register) — read those two entries for
+> the full story, this is the short version:
+> - **P, the deck:** `DeckSyncPeriod`/`DeckSyncWorkbookPath`/`DeckSyncType`/
+>   `DeckSyncTemplate`/`DeckSyncId` moved off `Presentation.CustomDocumentProperties`
+>   (which only ever lands a session's FIRST write on a cloud deck, permanently stuck
+>   after that — confirmed, three rescue attempts failed) onto a dedicated hidden
+>   slide (`DeckSyncRegistry`), keyed by shape name. Proven: **8/8 repeated writes
+>   landed on one reused open cloud file** through the real `addin109`/`addin110`
+>   `SetDeckPeriodVerified`, the exact scenario that failed 0/8 before.
+> - **S, the register:** same class of defect, `ExcelOutput.WriteDeckReference`'s
+>   `Workbook.CustomDocumentProperties`, found by asking "check the register too"
+>   after P closed — not re-derived, generalised on purpose. Narrower shape (new
+>   properties land fine, RE-writing an existing one never does) but the same real
+>   consequence: `StampPairing` re-stamps on every repoint, so a workbook re-paired
+>   to a different deck would silently keep reporting the OLD one forever. Moved onto
+>   a cell on a very-hidden `DeckSyncMeta` sheet. Proven across two genuinely separate
+>   sessions (stamp, close, reopen, confirm; re-stamp with a DIFFERENT value, close,
+>   reopen, confirm the new value landed).
+> - Both fixes read-fall-back to the old `CustomDocumentProperties` location, so
+>   decks/workbooks stamped before 2026-08-16 keep reading correctly until the next
+>   real write moves them onto the new mechanism. No separate migration step.
+> - **Untested: OneDrive for Business / SharePoint** (the likely home of the REAL
+>   work deck). Everything above was proven against personal OneDrive
+>   (`d.docs.live.net`). Rohan's explicit call, 2026-08-16: get everything working
+>   locally/personally FIRST, verify SharePoint later. Don't re-open that question
+>   unprompted — it's deliberately deferred, not forgotten.
+> - Two real bugs found and fixed building this, both worth remembering as a CLASS
+>   not an instance: `sh.Namespace()` needs a `Variant` not a bare `String` (same
+>   defect `PropertyOnDisk` already documented once — check every `Namespace()` call
+>   in the repo if this class resurfaces); and a genuine VBA `""` success return
+>   marshals as PowerShell `$null` through `Application.Run`/`InvokeMember` — an
+>   early "8/8 failed" probe report was a false negative from the TEST SCRIPT, not
+>   the fix, caught only by checking the saved file's actual bytes independently of
+>   the return value.
+>
+> ### SCENARIO 1 ATTEMPT: STARTED, OUTCOME UNCONFIRMED, NOTHING UNSAFE HAPPENED.
+> Opened `AppData\Local\deck-sync-backups\PRESERVED-known-good-20260815-1050\
+> 3. Project Progress.pptx` (the sanctioned local test copy) for Rohan via COM,
+> visible, 44 slides. Rohan pressed `1. Set up my quarter` (the REAL button caption
+> is `CAP_SET_UP_QUARTER` = "1. Set up my quarter" -- `TOOLBAR.md`'s own prose table
+> says "Start the quarter", which is STALE; trust the `CAP_*` constant in
+> `CommandBarUI.bas`, not the table). Rohan then reported seeing something involving
+> "onedrive/claude" on screen and was asked to stop rather than press further.
+>
+> **Verified directly afterward, not assumed:** PowerPoint's process was still alive
+> but reported ZERO presentations open (the deck appears to have closed along the
+> way — cause unknown, not confirmed a crash vs. a normal close). Checked the actual
+> files: the LOCAL test deck and register **both show their original 15 Aug
+> timestamps, completely untouched** — no write happened. The LIVE OneDrive register
+> (`OneDrive\Claude\register-wide.xlsx`) **also shows its untouched timestamp from
+> before this entire session began** — confirmed by direct comparison against the
+> very first listing taken at the start of today's OneDrive investigation. Whatever
+> the "onedrive/claude" sighting was, it did not write to anything, safe or live.
+>
+> **Leading theory, not confirmed:** `RegistryValueOnDisk` (P's new verification
+> function) uses the same `Shell.Application` `CopyHere` zip-extraction technique
+> that was already caught red-handed once today causing an unrelated blank Word
+> window to pop up mid-probe (documented, harmless, never fully explained beyond
+> "real shell file-copy activity, happens a lot during verification"). Pressing
+> "Set up my quarter" calls `SetDeckPeriodVerified`, which calls this same mechanism
+> repeatedly. Plausible the same class of side effect fired again, more visibly this
+> time. NOT verified as the actual cause — say so plainly if picking this up.
+>
+> **Next action:** check current PowerPoint state fresh (don't assume anything
+> carried over is still true), confirm the test deck is genuinely closed/clean
+> before reopening, then retry `1. Set up my quarter` on the SAME local test copy —
+> watch closely for what exactly triggers any OneDrive/Explorer-looking window, and
+> report it in detail rather than stopping again if it recurs (now that both file
+> checks above confirm it's not writing anywhere unsafe). This is still the FIRST
+> unaided close of Scenario 1 -- not yet achieved. `2. Draft and publish` and
+> `3. Put it on the slides` haven't been reached yet either.
+>
 > ## 16 AUG. **`CHECKLIST.md` IS NOW THE PRIMARY HANDOVER SURFACE. READ IT FIRST.**
 >
 > Compiled 2026-08-16 from a full pass of every CURRENT-status document
