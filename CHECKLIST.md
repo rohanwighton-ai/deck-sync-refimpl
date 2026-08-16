@@ -282,8 +282,23 @@ code 2026-08-16, not assumed.*
       by 6 new tests, including the two-letters-don't-collide and
       prefers-letter-over-unlettered cases. Suite 203→217/0. Not yet wired to
       any caller — that's step 3.
-- [ ] Step 3 — choose the template **per row**, inside `RunSync.CreateMissingSlides`
-      (re-run scenario 2 after touching this — same code path).
+- [x] Step 3 — choose the template **per row**, inside `RunSync.CreateMissingSlides`
+      (re-run scenario 2 after touching this — same code path). **Done
+      2026-08-16.** Each `new_record` row now derives its own letter via
+      `CodeLetterOf(actions(i).RowInstanceKey)` and resolves its OWN template
+      via `DeckRegistry.LookupTemplateForLetter`, instead of every row in the
+      batch reusing the single `templateSld` the caller resolved once for the
+      whole type. Also re-added the `IsTemplateSlide` check per row — a
+      per-letter registration can point at a slide never actually marked
+      `is_template`, the same defect class the type-level guard already
+      existed to prevent, now reachable per-letter too. New test
+      (`RunSync_CreateMissingSlidesChoosesTemplateByRowLetter`) proves it by
+      deliberately passing the WRONG template as the type-level fallback and
+      confirming each row still gets cloned from its own letter's template,
+      not the passed-in one. Suite 217→218/0. Scenario 2 re-verified: its own
+      dedicated tests (`RunSync_EndToEndCreatesSlidesFromFreshSheet`,
+      `RunSync_CreateMissingRefusesWhileSlidesAreUnclassified`) still pass
+      unchanged.
 - [ ] Step 4 — relax the one-per-type guards (`RibbonUI.bas:2375` and
       `MakeTemplateFrom`) to one-per-type-**per-letter**, before step 5 or it's
       refused outright.

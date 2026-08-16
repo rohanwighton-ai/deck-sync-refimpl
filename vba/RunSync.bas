@@ -297,12 +297,40 @@ Public Function CreateMissingSlides(sheet As Sheet, slideType As String, templat
         Dim i As Long
         For i = lo To hi
             If actions(i).Kind = "new_record" Then
-                If dryRun Then
+                ' PER-ROW TEMPLATE CHOICE, not the single type-level templateSld
+                ' every row used to get. CodeLetterOf reads the letter straight
+                ' off the row's own instance key ("" when it carries none, which
+                ' is every key on a deck that predates per-letter registration),
+                ' and LookupTemplateForLetter falls back to the type's plain
+                ' registration on that same "" -- so this changes nothing for a
+                ' deck with one template per type, and only picks a different
+                ' template on a deck that has actually registered a second letter.
+                Dim rowLetter As String
+                rowLetter = TemplateSlide.CodeLetterOf(actions(i).RowInstanceKey)
+
+                Dim rowTemplateSld As Object
+                Dim rowWsName As String
+                If Not DeckRegistry.LookupTemplateForLetter(Application.ActivePresentation, _
+                        slideType, rowLetter, rowTemplateSld, rowWsName) Then
+                    Set rowTemplateSld = templateSld
+                End If
+
+                ' Same check the type-level guard above already makes on
+                ' templateSld, repeated here because a per-letter registration
+                ' can point at a slide that was never actually marked
+                ' is_template -- the exact defect class that guard exists to
+                ' prevent, now reachable per-letter instead of only per-type.
+                If Not Resolve.IsTemplateSlide(rowTemplateSld) Then
+                    failedCount = failedCount + 1
+                    report = report & "  FAILED " & actions(i).RowInstanceKey & _
+                        ": the template registered for letter '" & rowLetter & _
+                        "' is not marked as a template slide." & vbCrLf
+                ElseIf dryRun Then
                     createdCount = createdCount + 1
                     report = report & "  would create: " & actions(i).RowInstanceKey & vbCrLf
                 Else
                     Dim dr As DuplicateResult
-                    dr = SlideDuplication.DuplicateAndTag(templateSld, slideType, _
+                    dr = SlideDuplication.DuplicateAndTag(rowTemplateSld, slideType, _
                             actions(i).RowInstanceKey, actions(i).Values, instances)
                     If dr.Ok Then
                         createdCount = createdCount + 1

@@ -7,108 +7,193 @@ Option Explicit
 ' Excel workbook the driver script creates -- no .xlsx fixture, same
 ' round-trip/self-consistency approach as tests/test_excel_output.py.
 
-Public Function RunAllTests() As String
+' Same sentinel and same reasoning as TestRunner.bas's (see that file for why
+' this is a plain literal and not Chr(2)&"SKIPPED") -- kept as an independent
+' Const rather than shared, since these two modules run in separate host
+' applications (PowerPoint vs Excel) and never share state.
+Private Const TEST_SKIPPED As String = "@@DECKSYNC_TEST_SKIPPED@@"
+
+Public Function RunAllTests(Optional filterPattern As String = "") As String
     Dim report As String
     report = "=== deck-sync-refimpl VBA test run (Excel) ===" & vbCrLf
+    If filterPattern <> "" Then report = report & "(filtered: '" & filterPattern & "')" & vbCrLf
 
     Dim r As String
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_CreateSheet_SeedsDeckReferenceNoFieldsOrRows()
+    If TestMatches("CreateSheet_SeedsDeckReferenceNoFieldsOrRows", filterPattern) Then
+        r = Test_CreateSheet_SeedsDeckReferenceNoFieldsOrRows()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "CreateSheet_SeedsDeckReferenceNoFieldsOrRows", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_CreateSheet_RefusesToReinitialize()
+    If TestMatches("CreateSheet_RefusesToReinitialize", filterPattern) Then
+        r = Test_CreateSheet_RefusesToReinitialize()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "CreateSheet_RefusesToReinitialize", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_UpsertRow_SeedsNewInstanceFromHarvestedValues()
+    If TestMatches("UpsertRow_SeedsNewInstanceFromHarvestedValues", filterPattern) Then
+        r = Test_UpsertRow_SeedsNewInstanceFromHarvestedValues()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "UpsertRow_SeedsNewInstanceFromHarvestedValues", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_UpsertRow_NewFieldAppendsColumnWithoutTouchingExisting()
+    If TestMatches("UpsertRow_NewFieldAppendsColumnWithoutTouchingExisting", filterPattern) Then
+        r = Test_UpsertRow_NewFieldAppendsColumnWithoutTouchingExisting()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "UpsertRow_NewFieldAppendsColumnWithoutTouchingExisting", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_UpsertRow_PartialUpdateMergesNotReplaces()
+    If TestMatches("UpsertRow_PartialUpdateMergesNotReplaces", filterPattern) Then
+        r = Test_UpsertRow_PartialUpdateMergesNotReplaces()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "UpsertRow_PartialUpdateMergesNotReplaces", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_UpsertRow_NewInstanceDoesNotDisturbExistingRows()
+    If TestMatches("UpsertRow_NewInstanceDoesNotDisturbExistingRows", filterPattern) Then
+        r = Test_UpsertRow_NewInstanceDoesNotDisturbExistingRows()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "UpsertRow_NewInstanceDoesNotDisturbExistingRows", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ReadSheet_PreservesFieldAndInstanceOrderAcrossManyWrites()
+    If TestMatches("ReadSheet_PreservesFieldAndInstanceOrderAcrossManyWrites", filterPattern) Then
+        r = Test_ReadSheet_PreservesFieldAndInstanceOrderAcrossManyWrites()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReadSheet_PreservesFieldAndInstanceOrderAcrossManyWrites", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_HeaderRow_ReservesColumnsAAndBForIdentityAndPeriod()
+    If TestMatches("HeaderRow_ReservesColumnsAAndBForIdentityAndPeriod", filterPattern) Then
+        r = Test_HeaderRow_ReservesColumnsAAndBForIdentityAndPeriod()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "HeaderRow_ReservesColumnsAAndBForIdentityAndPeriod", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_UpsertRow_NextPeriodAppendsAndLeavesLastQuarterIntact()
+    If TestMatches("UpsertRow_NextPeriodAppendsAndLeavesLastQuarterIntact", filterPattern) Then
+        r = Test_UpsertRow_NextPeriodAppendsAndLeavesLastQuarterIntact()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "UpsertRow_NextPeriodAppendsAndLeavesLastQuarterIntact", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_UpsertRow_SamePeriodUpdatesThatRowInPlace()
+    If TestMatches("UpsertRow_SamePeriodUpdatesThatRowInPlace", filterPattern) Then
+        r = Test_UpsertRow_SamePeriodUpdatesThatRowInPlace()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "UpsertRow_SamePeriodUpdatesThatRowInPlace", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_UpsertRow_RefusesABlankPeriodOnAPeriodSheet()
+    If TestMatches("UpsertRow_RefusesABlankPeriodOnAPeriodSheet", filterPattern) Then
+        r = Test_UpsertRow_RefusesABlankPeriodOnAPeriodSheet()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "UpsertRow_RefusesABlankPeriodOnAPeriodSheet", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_UpsertRow_RefusesAFieldNamedLikeAStructuralColumn()
+    If TestMatches("UpsertRow_RefusesAFieldNamedLikeAStructuralColumn", filterPattern) Then
+        r = Test_UpsertRow_RefusesAFieldNamedLikeAStructuralColumn()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "UpsertRow_RefusesAFieldNamedLikeAStructuralColumn", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_UpsertRow_LegacySheetWithNoPeriodColumnStillMatchesOnInstance()
+    If TestMatches("UpsertRow_LegacySheetWithNoPeriodColumnStillMatchesOnInstance", filterPattern) Then
+        r = Test_UpsertRow_LegacySheetWithNoPeriodColumnStillMatchesOnInstance()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "UpsertRow_LegacySheetWithNoPeriodColumnStillMatchesOnInstance", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ReadForDeckPeriod_KeepsOnlyThatPeriodsRows()
+    If TestMatches("ReadForDeckPeriod_KeepsOnlyThatPeriodsRows", filterPattern) Then
+        r = Test_ReadForDeckPeriod_KeepsOnlyThatPeriodsRows()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReadForDeckPeriod_KeepsOnlyThatPeriodsRows", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ReadForDeckPeriod_RefusesTwoRowsForOneSlideInOnePeriod()
+    If TestMatches("ReadForDeckPeriod_RefusesTwoRowsForOneSlideInOnePeriod", filterPattern) Then
+        r = Test_ReadForDeckPeriod_RefusesTwoRowsForOneSlideInOnePeriod()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReadForDeckPeriod_RefusesTwoRowsForOneSlideInOnePeriod", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ReadForDeckPeriod_RefusesAPeriodTheSheetDoesNotHave()
+    If TestMatches("ReadForDeckPeriod_RefusesAPeriodTheSheetDoesNotHave", filterPattern) Then
+        r = Test_ReadForDeckPeriod_RefusesAPeriodTheSheetDoesNotHave()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReadForDeckPeriod_RefusesAPeriodTheSheetDoesNotHave", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ReadForDeckPeriod_SilentOnASheetWithNoQuarterColumn()
+    If TestMatches("ReadForDeckPeriod_SilentOnASheetWithNoQuarterColumn", filterPattern) Then
+        r = Test_ReadForDeckPeriod_SilentOnASheetWithNoQuarterColumn()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReadForDeckPeriod_SilentOnASheetWithNoQuarterColumn", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ReadForDeckPeriod_RefusesANeverInitializedSheet()
+    If TestMatches("ReadForDeckPeriod_RefusesANeverInitializedSheet", filterPattern) Then
+        r = Test_ReadForDeckPeriod_RefusesANeverInitializedSheet()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReadForDeckPeriod_RefusesANeverInitializedSheet", r
     On Error GoTo 0
 
     RunAllTests = report
 End Function
 
+Private Function TestMatches(testName As String, filterPattern As String) As Boolean
+    TestMatches = (filterPattern = "") Or (InStr(1, testName, filterPattern, vbTextCompare) > 0)
+End Function
+
 Private Sub AppendResult(ByRef report As String, testName As String, testResult As String)
     If Err.Number <> 0 Then
         report = report & "ERROR " & testName & " :: " & Err.Description & " (line context lost -- VBA has no stack trace)" & vbCrLf
+    ElseIf testResult = TEST_SKIPPED Then
+        report = report & "SKIP  " & testName & vbCrLf
     ElseIf testResult = "" Then
         report = report & "PASS  " & testName & vbCrLf
     Else

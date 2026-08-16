@@ -1,6 +1,16 @@
 Attribute VB_Name = "TestRunner"
 Option Explicit
 
+' A sentinel, not "" -- "" already means PASS, and SKIP must never be
+' countable as one. A plain literal, not Chr(2)&"SKIPPED" -- VBA's Const
+' requires a genuine constant expression at compile time, and Chr() is a
+' function call, not one ("Compile error: Constant expression required",
+' hit for real 2026-08-16). No Assert message is ever this exact literal, so
+' no real result can collide with it. Declared here, at the very top -- a
+' module-level Const after the first procedure is a VBA compile error that
+' surfaces in a DIFFERENT module (AGENTS.md).
+Private Const TEST_SKIPPED As String = "@@DECKSYNC_TEST_SKIPPED@@"
+
 ' First real-execution test harness for the PowerPoint-hosted modules
 ' (Discovery, InjectPrimitive, Matching, Resolve, SyncOperations,
 ' Onboarding). Every prior SPIKE_NOTES_*.md said "not executed or verified
@@ -25,223 +35,408 @@ Option Explicit
 ' way from a Windows-hosted COM session (see the driver script for how
 ' fixtures get staged).
 
-Public Function RunAllTests(fixturesDir As String, stagingDir As String) As String
+' filterPattern "" (the default, and every existing caller's behaviour)
+' runs everything, same as before this existed. Non-"" runs only tests whose
+' name contains it (case-insensitive substring, not a regex) -- for fast
+' iteration on one area without paying the full suite's real-Office COM
+' overhead every time. See run_vba_tests.ps1's -Filter for the driver side,
+' including the every-10th-run-forces-a-full-run cadence that exists because a
+' filtered run proves nothing about the tests it skipped.
+Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
+                             Optional filterPattern As String = "") As String
     Dim report As String
     report = "=== deck-sync-refimpl VBA test run (PowerPoint) ===" & vbCrLf
+    If filterPattern <> "" Then report = report & "(filtered: '" & filterPattern & "')" & vbCrLf
 
     Dim r As String
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Discovery_GroupRecursionFindsCandidates(fixturesDir)
+    If TestMatches("Discovery_GroupRecursionFindsCandidates", filterPattern) Then
+        r = Test_Discovery_GroupRecursionFindsCandidates(fixturesDir)
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Discovery_GroupRecursionFindsCandidates", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_InjectPrimitive_NoOpWhenValueAlreadyMatches()
+    If TestMatches("InjectPrimitive_NoOpWhenValueAlreadyMatches", filterPattern) Then
+        r = Test_InjectPrimitive_NoOpWhenValueAlreadyMatches()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectPrimitive_NoOpWhenValueAlreadyMatches", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_InjectPrimitive_WritesAndVerifiesOnMismatch()
+    If TestMatches("InjectPrimitive_WritesAndVerifiesOnMismatch", filterPattern) Then
+        r = Test_InjectPrimitive_WritesAndVerifiesOnMismatch()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectPrimitive_WritesAndVerifiesOnMismatch", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_InjectPrimitive_AmbiguousTagRefusesToGuess()
+    If TestMatches("InjectPrimitive_AmbiguousTagRefusesToGuess", filterPattern) Then
+        r = Test_InjectPrimitive_AmbiguousTagRefusesToGuess()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectPrimitive_AmbiguousTagRefusesToGuess", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_InjectPrimitive_DryRunReportsWithoutWriting()
+    If TestMatches("InjectPrimitive_DryRunReportsWithoutWriting", filterPattern) Then
+        r = Test_InjectPrimitive_DryRunReportsWithoutWriting()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectPrimitive_DryRunReportsWithoutWriting", r
 
-    r = Test_InjectPrimitive_FindsRoleTagInsideGroup()
+    If TestMatches("InjectPrimitive_FindsRoleTagInsideGroup", filterPattern) Then
+        r = Test_InjectPrimitive_FindsRoleTagInsideGroup()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectPrimitive_FindsRoleTagInsideGroup", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_InjectPrimitive_AmbiguousTagAcrossGroupAndTopLevelRefusesToGuess()
+    If TestMatches("InjectPrimitive_AmbiguousTagAcrossGroupAndTopLevelRefusesToGuess", filterPattern) Then
+        r = Test_InjectPrimitive_AmbiguousTagAcrossGroupAndTopLevelRefusesToGuess()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectPrimitive_AmbiguousTagAcrossGroupAndTopLevelRefusesToGuess", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Matching_SiblingAmbiguityResolvedByZOrder(fixturesDir)
+    If TestMatches("Matching_SiblingAmbiguityResolvedByZOrder", filterPattern) Then
+        r = Test_Matching_SiblingAmbiguityResolvedByZOrder(fixturesDir)
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Matching_SiblingAmbiguityResolvedByZOrder", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Matching_EnrichPlaceholderIdxReadsRealFile(stagingDir)
+    If TestMatches("Matching_EnrichPlaceholderIdxReadsRealFile", filterPattern) Then
+        r = Test_Matching_EnrichPlaceholderIdxReadsRealFile(stagingDir)
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Matching_EnrichPlaceholderIdxReadsRealFile", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Resolve_ReadsTagsOffLiveSlide()
+    If TestMatches("Resolve_ReadsTagsOffLiveSlide", filterPattern) Then
+        r = Test_Resolve_ReadsTagsOffLiveSlide()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Resolve_ReadsTagsOffLiveSlide", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_SyncOperations_Cases1And4()
+    If TestMatches("SyncOperations_Cases1And4", filterPattern) Then
+        r = Test_SyncOperations_Cases1And4()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "SyncOperations_Cases1And4", r
 
-    r = Test_SyncOperations_PlanRoutineSyncDryRunWritesNothing()
+    If TestMatches("SyncOperations_PlanRoutineSyncDryRunWritesNothing", filterPattern) Then
+        r = Test_SyncOperations_PlanRoutineSyncDryRunWritesNothing()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "SyncOperations_PlanRoutineSyncDryRunWritesNothing", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_SyncOperations_Case3NewRecord()
+    If TestMatches("SyncOperations_Case3NewRecord", filterPattern) Then
+        r = Test_SyncOperations_Case3NewRecord()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "SyncOperations_Case3NewRecord", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_SyncOperations_DeviceFieldReachableThroughPlanRoutineSync()
+    If TestMatches("SyncOperations_DeviceFieldReachableThroughPlanRoutineSync", filterPattern) Then
+        r = Test_SyncOperations_DeviceFieldReachableThroughPlanRoutineSync()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "SyncOperations_DeviceFieldReachableThroughPlanRoutineSync", r
-    r = Test_SyncOperations_Case6UnclassifiedSlide()
+    If TestMatches("SyncOperations_Case6UnclassifiedSlide", filterPattern) Then
+        r = Test_SyncOperations_Case6UnclassifiedSlide()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "SyncOperations_Case6UnclassifiedSlide", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Onboarding_HighAndMediumConfidence()
+    If TestMatches("Onboarding_HighAndMediumConfidence", filterPattern) Then
+        r = Test_Onboarding_HighAndMediumConfidence()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Onboarding_HighAndMediumConfidence", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Onboarding_OnboardNewInstanceAutoTagsHighOnly()
+    If TestMatches("Onboarding_OnboardNewInstanceAutoTagsHighOnly", filterPattern) Then
+        r = Test_Onboarding_OnboardNewInstanceAutoTagsHighOnly()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Onboarding_OnboardNewInstanceAutoTagsHighOnly", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Onboarding_PureDecorationNeverMatched()
+    If TestMatches("Onboarding_PureDecorationNeverMatched", filterPattern) Then
+        r = Test_Onboarding_PureDecorationNeverMatched()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Onboarding_PureDecorationNeverMatched", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Verification_StructureMatchesAfterDuplicate()
+    If TestMatches("Verification_StructureMatchesAfterDuplicate", filterPattern) Then
+        r = Test_Verification_StructureMatchesAfterDuplicate()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Verification_StructureMatchesAfterDuplicate", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Verification_DetectsShapeCountMismatch()
+    If TestMatches("Verification_DetectsShapeCountMismatch", filterPattern) Then
+        r = Test_Verification_DetectsShapeCountMismatch()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Verification_DetectsShapeCountMismatch", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Verification_DetectsZOrderSwap()
+    If TestMatches("Verification_DetectsZOrderSwap", filterPattern) Then
+        r = Test_Verification_DetectsZOrderSwap()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Verification_DetectsZOrderSwap", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_SlideDuplication_CreatesTaggedInjectedSlide()
+    If TestMatches("SlideDuplication_CreatesTaggedInjectedSlide", filterPattern) Then
+        r = Test_SlideDuplication_CreatesTaggedInjectedSlide()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "SlideDuplication_CreatesTaggedInjectedSlide", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_SlideDuplication_RefusesInstanceKeyCollision()
+    If TestMatches("SlideDuplication_RefusesInstanceKeyCollision", filterPattern) Then
+        r = Test_SlideDuplication_RefusesInstanceKeyCollision()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "SlideDuplication_RefusesInstanceKeyCollision", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_SlideDuplication_PartialRowStillCreatesSlideButFlagsMissing()
+    If TestMatches("SlideDuplication_PartialRowStillCreatesSlideButFlagsMissing", filterPattern) Then
+        r = Test_SlideDuplication_PartialRowStillCreatesSlideButFlagsMissing()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "SlideDuplication_PartialRowStillCreatesSlideButFlagsMissing", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_TemplateSlide_CodeLetterOfReadsBothKeyShapes()
+    If TestMatches("TemplateSlide_CodeLetterOfReadsBothKeyShapes", filterPattern) Then
+        r = Test_TemplateSlide_CodeLetterOfReadsBothKeyShapes()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "TemplateSlide_CodeLetterOfReadsBothKeyShapes", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_TemplateSlide_MakeTemplateProducesKeylessMarkedCopy()
+    If TestMatches("TemplateSlide_MakeTemplateProducesKeylessMarkedCopy", filterPattern) Then
+        r = Test_TemplateSlide_MakeTemplateProducesKeylessMarkedCopy()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "TemplateSlide_MakeTemplateProducesKeylessMarkedCopy", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_TemplateSlide_ExcludedFromGatherAndNeverFlagged()
+    If TestMatches("TemplateSlide_ExcludedFromGatherAndNeverFlagged", filterPattern) Then
+        r = Test_TemplateSlide_ExcludedFromGatherAndNeverFlagged()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "TemplateSlide_ExcludedFromGatherAndNeverFlagged", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_TemplateSlide_DuplicateStripsTheTemplateMarker()
+    If TestMatches("TemplateSlide_DuplicateStripsTheTemplateMarker", filterPattern) Then
+        r = Test_TemplateSlide_DuplicateStripsTheTemplateMarker()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "TemplateSlide_DuplicateStripsTheTemplateMarker", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_TemplateSlide_RefusesToTemplateATemplate()
+    If TestMatches("TemplateSlide_RefusesToTemplateATemplate", filterPattern) Then
+        r = Test_TemplateSlide_RefusesToTemplateATemplate()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "TemplateSlide_RefusesToTemplateATemplate", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_TemplateSlide_ConfirmTextStatesTheConsequences()
+    If TestMatches("TemplateSlide_ConfirmTextStatesTheConsequences", filterPattern) Then
+        r = Test_TemplateSlide_ConfirmTextStatesTheConsequences()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "TemplateSlide_ConfirmTextStatesTheConsequences", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ReviewQueue_HashDistinguishesEveryField()
+    If TestMatches("ReviewQueue_HashDistinguishesEveryField", filterPattern) Then
+        r = Test_ReviewQueue_HashDistinguishesEveryField()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReviewQueue_HashDistinguishesEveryField", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ReviewQueue_ProseNeverBatchesEvenWhenUniform()
+    If TestMatches("ReviewQueue_ProseNeverBatchesEvenWhenUniform", filterPattern) Then
+        r = Test_ReviewQueue_ProseNeverBatchesEvenWhenUniform()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReviewQueue_ProseNeverBatchesEvenWhenUniform", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ReviewQueue_UniformControlledGroupIsOneDecision()
+    If TestMatches("ReviewQueue_UniformControlledGroupIsOneDecision", filterPattern) Then
+        r = Test_ReviewQueue_UniformControlledGroupIsOneDecision()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReviewQueue_UniformControlledGroupIsOneDecision", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ReviewQueue_FastPathAppliesUniformPartOnly()
+    If TestMatches("ReviewQueue_FastPathAppliesUniformPartOnly", filterPattern) Then
+        r = Test_ReviewQueue_FastPathAppliesUniformPartOnly()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReviewQueue_FastPathAppliesUniformPartOnly", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ReviewQueue_ApprovalIsAffirmativeAndBatchWide()
+    If TestMatches("ReviewQueue_ApprovalIsAffirmativeAndBatchWide", filterPattern) Then
+        r = Test_ReviewQueue_ApprovalIsAffirmativeAndBatchWide()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReviewQueue_ApprovalIsAffirmativeAndBatchWide", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_InjectPrimitive_TrailingBreaksAreNotADifference()
+    If TestMatches("InjectPrimitive_TrailingBreaksAreNotADifference", filterPattern) Then
+        r = Test_InjectPrimitive_TrailingBreaksAreNotADifference()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectPrimitive_TrailingBreaksAreNotADifference", r
     On Error GoTo 0
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Drafting_OnlyTickedNonEmptyDraftsPublish()
+    If TestMatches("Drafting_OnlyTickedNonEmptyDraftsPublish", filterPattern) Then
+        r = Test_Drafting_OnlyTickedNonEmptyDraftsPublish()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Drafting_OnlyTickedNonEmptyDraftsPublish", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_WorkbookBridge_RegisteredNameWinsOverASheetCalledRegister()
+    If TestMatches("WorkbookBridge_RegisteredNameWinsOverASheetCalledRegister", filterPattern) Then
+        r = Test_WorkbookBridge_RegisteredNameWinsOverASheetCalledRegister()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "WorkbookBridge_RegisteredNameWinsOverASheetCalledRegister", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_WorkbookBridge_RefusesToInventAMissingRegisterSheet()
+    If TestMatches("WorkbookBridge_RefusesToInventAMissingRegisterSheet", filterPattern) Then
+        r = Test_WorkbookBridge_RefusesToInventAMissingRegisterSheet()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "WorkbookBridge_RefusesToInventAMissingRegisterSheet", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_FieldSpec_ValidationAppliesDownTheControlledColumn()
+    If TestMatches("FieldSpec_ValidationAppliesDownTheControlledColumn", filterPattern) Then
+        r = Test_FieldSpec_ValidationAppliesDownTheControlledColumn()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "FieldSpec_ValidationAppliesDownTheControlledColumn", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_FieldSpec_ValidationReportsValuesOutsideTheVocabulary()
+    If TestMatches("FieldSpec_ValidationReportsValuesOutsideTheVocabulary", filterPattern) Then
+        r = Test_FieldSpec_ValidationReportsValuesOutsideTheVocabulary()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "FieldSpec_ValidationReportsValuesOutsideTheVocabulary", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_FieldSpec_ValidationSaysSoWhenNothingIsControlled()
+    If TestMatches("FieldSpec_ValidationSaysSoWhenNothingIsControlled", filterPattern) Then
+        r = Test_FieldSpec_ValidationSaysSoWhenNothingIsControlled()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "FieldSpec_ValidationSaysSoWhenNothingIsControlled", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_FieldSpec_ValidationRefusesAVocabularyNamedLikeAStructuralColumn()
+    If TestMatches("FieldSpec_ValidationRefusesAVocabularyNamedLikeAStructuralColumn", filterPattern) Then
+        r = Test_FieldSpec_ValidationRefusesAVocabularyNamedLikeAStructuralColumn()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "FieldSpec_ValidationRefusesAVocabularyNamedLikeAStructuralColumn", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Drafting_QuarterTurnFerriesSubmitIntoReportedLastTime()
+    If TestMatches("Drafting_QuarterTurnFerriesSubmitIntoReportedLastTime", filterPattern) Then
+        r = Test_Drafting_QuarterTurnFerriesSubmitIntoReportedLastTime()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Drafting_QuarterTurnFerriesSubmitIntoReportedLastTime", r
     On Error GoTo 0
 
@@ -250,57 +445,101 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Drafting_TickSurvivesSamePeriodRebuildAndClearsOnRollover()
+    If TestMatches("Drafting_TickSurvivesSamePeriodRebuildAndClearsOnRollover", filterPattern) Then
+        r = Test_Drafting_TickSurvivesSamePeriodRebuildAndClearsOnRollover()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Drafting_TickSurvivesSamePeriodRebuildAndClearsOnRollover", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ExcelOutput_PeriodRowsAndRollForward()
+    If TestMatches("ExcelOutput_PeriodRowsAndRollForward", filterPattern) Then
+        r = Test_ExcelOutput_PeriodRowsAndRollForward()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ExcelOutput_PeriodRowsAndRollForward", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ExcelOutput_FindsExistingRegisters()
+    If TestMatches("ExcelOutput_FindsExistingRegisters", filterPattern) Then
+        r = Test_ExcelOutput_FindsExistingRegisters()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ExcelOutput_FindsExistingRegisters", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ExcelOutput_MissingRegisterColumns()
+    If TestMatches("ExcelOutput_MissingRegisterColumns", filterPattern) Then
+        r = Test_ExcelOutput_MissingRegisterColumns()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ExcelOutput_MissingRegisterColumns", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_WorkbookBridge_RefusesToCreateOverAnExistingFile()
+    If TestMatches("WorkbookBridge_RefusesToCreateOverAnExistingFile", filterPattern) Then
+        r = Test_WorkbookBridge_RefusesToCreateOverAnExistingFile()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "WorkbookBridge_RefusesToCreateOverAnExistingFile", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DraftingUI_ChainBlockHeaderLabelsTheField()
+    If TestMatches("DraftingUI_ChainBlockHeaderLabelsTheField", filterPattern) Then
+        r = Test_DraftingUI_ChainBlockHeaderLabelsTheField()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DraftingUI_ChainBlockHeaderLabelsTheField", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ExcelOutput_LargestPeriodRowCountSpotsAPartialQuarter()
+    If TestMatches("ExcelOutput_LargestPeriodRowCountSpotsAPartialQuarter", filterPattern) Then
+        r = Test_ExcelOutput_LargestPeriodRowCountSpotsAPartialQuarter()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ExcelOutput_LargestPeriodRowCountSpotsAPartialQuarter", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_WorkbookBridge_ArchivesAPeriodToItsOwnFile()
+    If TestMatches("WorkbookBridge_ArchivesAPeriodToItsOwnFile", filterPattern) Then
+        r = Test_WorkbookBridge_ArchivesAPeriodToItsOwnFile()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "WorkbookBridge_ArchivesAPeriodToItsOwnFile", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_WorkbookBridge_RefusesToOverwriteAnExistingArchive()
+    If TestMatches("WorkbookBridge_RefusesToOverwriteAnExistingArchive", filterPattern) Then
+        r = Test_WorkbookBridge_RefusesToOverwriteAnExistingArchive()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "WorkbookBridge_RefusesToOverwriteAnExistingArchive", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_WorkbookBridge_ArchiveRefusesABlankPeriod()
+    If TestMatches("WorkbookBridge_ArchiveRefusesABlankPeriod", filterPattern) Then
+        r = Test_WorkbookBridge_ArchiveRefusesABlankPeriod()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "WorkbookBridge_ArchiveRefusesABlankPeriod", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboard_NormalisesWorkbookPath()
+    If TestMatches("BatchOnboard_NormalisesWorkbookPath", filterPattern) Then
+        r = Test_BatchOnboard_NormalisesWorkbookPath()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboard_NormalisesWorkbookPath", r
     On Error GoTo 0
 
@@ -312,49 +551,102 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     ' simply never runs and the suite still says PASS. Added both of these and
     ' the count stayed at 135, which is the only reason it was noticed.
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DiscoverUI_GridListsEveryTextShapeWithUniqueIds()
+    If TestMatches("DiscoverUI_GridListsEveryTextShapeWithUniqueIds", filterPattern) Then
+        r = Test_DiscoverUI_GridListsEveryTextShapeWithUniqueIds()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DiscoverUI_GridListsEveryTextShapeWithUniqueIds", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DiscoverUI_MarksOnlyTickedAndNamedRows()
+    If TestMatches("DiscoverUI_MarksOnlyTickedAndNamedRows", filterPattern) Then
+        r = Test_DiscoverUI_MarksOnlyTickedAndNamedRows()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DiscoverUI_MarksOnlyTickedAndNamedRows", r
     On Error GoTo 0
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_RunSync_CreateMissingRefusesWhileSlidesAreUnclassified()
+    If TestMatches("RunSync_CreateMissingRefusesWhileSlidesAreUnclassified", filterPattern) Then
+        r = Test_RunSync_CreateMissingRefusesWhileSlidesAreUnclassified()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "RunSync_CreateMissingRefusesWhileSlidesAreUnclassified", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_DeckDeclaresItsOwnPeriod()
+    If TestMatches("RunSync_CreateMissingSlidesChoosesTemplateByRowLetter", filterPattern) Then
+        r = Test_RunSync_CreateMissingSlidesChoosesTemplateByRowLetter()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "RunSync_CreateMissingSlidesChoosesTemplateByRowLetter", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("DeckRegistry_DeckDeclaresItsOwnPeriod", filterPattern) Then
+        r = Test_DeckRegistry_DeckDeclaresItsOwnPeriod()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_DeckDeclaresItsOwnPeriod", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_WorkbookBridge_IndexExplainsEachSheet()
+    If TestMatches("WorkbookBridge_IndexExplainsEachSheet", filterPattern) Then
+        r = Test_WorkbookBridge_IndexExplainsEachSheet()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "WorkbookBridge_IndexExplainsEachSheet", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_FieldSpec_GuidanceDrivesThePrompt()
+    If TestMatches("FieldSpec_GuidanceDrivesThePrompt", filterPattern) Then
+        r = Test_FieldSpec_GuidanceDrivesThePrompt()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "FieldSpec_GuidanceDrivesThePrompt", r
-    r = Test_FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob()
+    If TestMatches("FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob", filterPattern) Then
+        r = Test_FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob", r
-    r = Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty()
+    If TestMatches("Drafting_AFieldWithNoValueLeavesColumnCEmpty", filterPattern) Then
+        r = Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Drafting_AFieldWithNoValueLeavesColumnCEmpty", r
-    r = Test_WorkbookBridge_RunLogSurvivesALineStartingWithEquals()
+    If TestMatches("WorkbookBridge_RunLogSurvivesALineStartingWithEquals", filterPattern) Then
+        r = Test_WorkbookBridge_RunLogSurvivesALineStartingWithEquals()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "WorkbookBridge_RunLogSurvivesALineStartingWithEquals", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_PlaceholderCheck_FindsRecordsNotTheTemplate()
+    If TestMatches("PlaceholderCheck_FindsRecordsNotTheTemplate", filterPattern) Then
+        r = Test_PlaceholderCheck_FindsRecordsNotTheTemplate()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "PlaceholderCheck_FindsRecordsNotTheTemplate", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_PlaceholderCheck_MarkerDistinguishesStale()
+    If TestMatches("PlaceholderCheck_MarkerDistinguishesStale", filterPattern) Then
+        r = Test_PlaceholderCheck_MarkerDistinguishesStale()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "PlaceholderCheck_MarkerDistinguishesStale", r
     On Error GoTo 0
     On Error GoTo 0
@@ -362,245 +654,445 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_TagMigration_RenamesIncludingTemplateAndGroups()
+    If TestMatches("TagMigration_RenamesIncludingTemplateAndGroups", filterPattern) Then
+        r = Test_TagMigration_RenamesIncludingTemplateAndGroups()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "TagMigration_RenamesIncludingTemplateAndGroups", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_TagMigration_MatchesValueCaseInsensitively()
+    If TestMatches("TagMigration_MatchesValueCaseInsensitively", filterPattern) Then
+        r = Test_TagMigration_MatchesValueCaseInsensitively()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "TagMigration_MatchesValueCaseInsensitively", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_IdentityCheck_FindsClonedKeys()
+    If TestMatches("IdentityCheck_FindsClonedKeys", filterPattern) Then
+        r = Test_IdentityCheck_FindsClonedKeys()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "IdentityCheck_FindsClonedKeys", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_IdentityCheck_IgnoresTheTemplate()
+    If TestMatches("IdentityCheck_IgnoresTheTemplate", filterPattern) Then
+        r = Test_IdentityCheck_IgnoresTheTemplate()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "IdentityCheck_IgnoresTheTemplate", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_TemplateAudit_ClassifyBoundaries()
+    If TestMatches("TemplateAudit_ClassifyBoundaries", filterPattern) Then
+        r = Test_TemplateAudit_ClassifyBoundaries()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "TemplateAudit_ClassifyBoundaries", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_TemplateAudit_SeparatesChromeFromProjectData()
+    If TestMatches("TemplateAudit_SeparatesChromeFromProjectData", filterPattern) Then
+        r = Test_TemplateAudit_SeparatesChromeFromProjectData()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "TemplateAudit_SeparatesChromeFromProjectData", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_TemplateAudit_NoComparisonSlidesStillLists()
+    If TestMatches("TemplateAudit_NoComparisonSlidesStillLists", filterPattern) Then
+        r = Test_TemplateAudit_NoComparisonSlidesStillLists()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "TemplateAudit_NoComparisonSlidesStillLists", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_TemplateAudit_RewriteLeavesNoStaleRows(stagingDir)
+    If TestMatches("TemplateAudit_RewriteLeavesNoStaleRows", filterPattern) Then
+        r = Test_TemplateAudit_RewriteLeavesNoStaleRows(stagingDir)
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "TemplateAudit_RewriteLeavesNoStaleRows", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_RunSync_GatherInstancesFiltersByType()
+    If TestMatches("RunSync_GatherInstancesFiltersByType", filterPattern) Then
+        r = Test_RunSync_GatherInstancesFiltersByType()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "RunSync_GatherInstancesFiltersByType", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_RunSync_EndToEndCreatesSlidesFromFreshSheet()
+    If TestMatches("RunSync_EndToEndCreatesSlidesFromFreshSheet", filterPattern) Then
+        r = Test_RunSync_EndToEndCreatesSlidesFromFreshSheet()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "RunSync_EndToEndCreatesSlidesFromFreshSheet", r
 
-    r = Test_RunSync_PreviewReportsWithoutTouchingTheDeck()
+    If TestMatches("RunSync_PreviewReportsWithoutTouchingTheDeck", filterPattern) Then
+        r = Test_RunSync_PreviewReportsWithoutTouchingTheDeck()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "RunSync_PreviewReportsWithoutTouchingTheDeck", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_RunSync_ConfirmSyncTextReportsUncreatableRows()
+    If TestMatches("RunSync_ConfirmSyncTextReportsUncreatableRows", filterPattern) Then
+        r = Test_RunSync_ConfirmSyncTextReportsUncreatableRows()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "RunSync_ConfirmSyncTextReportsUncreatableRows", r
     On Error GoTo 0
 
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckAdoption_AlreadyLinkedSlideSkipped()
+    If TestMatches("DeckAdoption_AlreadyLinkedSlideSkipped", filterPattern) Then
+        r = Test_DeckAdoption_AlreadyLinkedSlideSkipped()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckAdoption_AlreadyLinkedSlideSkipped", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Harvest_WritesOnlyWhereTheRegisterCellIsEmpty()
+    If TestMatches("Harvest_WritesOnlyWhereTheRegisterCellIsEmpty", filterPattern) Then
+        r = Test_Harvest_WritesOnlyWhereTheRegisterCellIsEmpty()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Harvest_WritesOnlyWhereTheRegisterCellIsEmpty", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Harvest_SkipsATaggedGroupInsteadOfReadingItAsEmpty()
+    If TestMatches("Harvest_SkipsATaggedGroupInsteadOfReadingItAsEmpty", filterPattern) Then
+        r = Test_Harvest_SkipsATaggedGroupInsteadOfReadingItAsEmpty()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Harvest_SkipsATaggedGroupInsteadOfReadingItAsEmpty", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Harvest_PropagationStampsOnlyTheMissingRole()
+    If TestMatches("Harvest_PropagationStampsOnlyTheMissingRole", filterPattern) Then
+        r = Test_Harvest_PropagationStampsOnlyTheMissingRole()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Harvest_PropagationStampsOnlyTheMissingRole", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Harvest_StoresSlideTextVerbatimRatherThanLettingExcelParseIt()
+    If TestMatches("Harvest_StoresSlideTextVerbatimRatherThanLettingExcelParseIt", filterPattern) Then
+        r = Test_Harvest_StoresSlideTextVerbatimRatherThanLettingExcelParseIt()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Harvest_StoresSlideTextVerbatimRatherThanLettingExcelParseIt", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Harvest_RefusesAFieldThePublishPathWouldTreatAsABar()
+    If TestMatches("Harvest_RefusesAFieldThePublishPathWouldTreatAsABar", filterPattern) Then
+        r = Test_Harvest_RefusesAFieldThePublishPathWouldTreatAsABar()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Harvest_RefusesAFieldThePublishPathWouldTreatAsABar", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Harvest_DryRunCountsFieldsThatLabellingWillCreate()
+    If TestMatches("Harvest_DryRunCountsFieldsThatLabellingWillCreate", filterPattern) Then
+        r = Test_Harvest_DryRunCountsFieldsThatLabellingWillCreate()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Harvest_DryRunCountsFieldsThatLabellingWillCreate", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Membership_RetirementSkipsTemplateAndUnclassifiedSlides()
+    If TestMatches("Membership_RetirementSkipsTemplateAndUnclassifiedSlides", filterPattern) Then
+        r = Test_Membership_RetirementSkipsTemplateAndUnclassifiedSlides()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Membership_RetirementSkipsTemplateAndUnclassifiedSlides", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous()
+    If TestMatches("Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous", filterPattern) Then
+        r = Test_Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Matching_ExactShapeNameBeatsGeometryOnlyWhenUnambiguous", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow()
+    If TestMatches("DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow", filterPattern) Then
+        r = Test_DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckAdoption_MediumConfidenceSlideNeedsConfirmationAndIsNotTagged()
+    If TestMatches("DeckAdoption_MediumConfidenceSlideNeedsConfirmationAndIsNotTagged", filterPattern) Then
+        r = Test_DeckAdoption_MediumConfidenceSlideNeedsConfirmationAndIsNotTagged()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckAdoption_MediumConfidenceSlideNeedsConfirmationAndIsNotTagged", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckAdoption_UnclassifiedSlideExcluded()
+    If TestMatches("DeckAdoption_UnclassifiedSlideExcluded", filterPattern) Then
+        r = Test_DeckAdoption_UnclassifiedSlideExcluded()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckAdoption_UnclassifiedSlideExcluded", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckAdoption_MatchesExistingKeylessRowLinksWithoutCreatingNewRow()
+    If TestMatches("DeckAdoption_MatchesExistingKeylessRowLinksWithoutCreatingNewRow", filterPattern) Then
+        r = Test_DeckAdoption_MatchesExistingKeylessRowLinksWithoutCreatingNewRow()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckAdoption_MatchesExistingKeylessRowLinksWithoutCreatingNewRow", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckAdoption_MultiSlideZeroBasedBatchKeepsIndicesAligned()
+    If TestMatches("DeckAdoption_MultiSlideZeroBasedBatchKeepsIndicesAligned", filterPattern) Then
+        r = Test_DeckAdoption_MultiSlideZeroBasedBatchKeepsIndicesAligned()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckAdoption_MultiSlideZeroBasedBatchKeepsIndicesAligned", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ResolveFields_ValidateSingleShapeSelectionAcceptsOneShape()
+    If TestMatches("ResolveFields_ValidateSingleShapeSelectionAcceptsOneShape", filterPattern) Then
+        r = Test_ResolveFields_ValidateSingleShapeSelectionAcceptsOneShape()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ResolveFields_ValidateSingleShapeSelectionAcceptsOneShape", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ResolveFields_ValidateSingleShapeSelectionRejectsMultiple()
+    If TestMatches("ResolveFields_ValidateSingleShapeSelectionRejectsMultiple", filterPattern) Then
+        r = Test_ResolveFields_ValidateSingleShapeSelectionRejectsMultiple()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ResolveFields_ValidateSingleShapeSelectionRejectsMultiple", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ResolveFields_BuildRolePickerPromptListsRolesNumbered()
+    If TestMatches("ResolveFields_BuildRolePickerPromptListsRolesNumbered", filterPattern) Then
+        r = Test_ResolveFields_BuildRolePickerPromptListsRolesNumbered()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ResolveFields_BuildRolePickerPromptListsRolesNumbered", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ResolveFields_PickRoleFromListAcceptsNumberOrName()
+    If TestMatches("ResolveFields_PickRoleFromListAcceptsNumberOrName", filterPattern) Then
+        r = Test_ResolveFields_PickRoleFromListAcceptsNumberOrName()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ResolveFields_PickRoleFromListAcceptsNumberOrName", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ResolveFields_EndToEndTagsSelectedShapeViaPickedRole()
+    If TestMatches("ResolveFields_EndToEndTagsSelectedShapeViaPickedRole", filterPattern) Then
+        r = Test_ResolveFields_EndToEndTagsSelectedShapeViaPickedRole()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ResolveFields_EndToEndTagsSelectedShapeViaPickedRole", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_BuildAndParseTypeRegistrationRoundTrip()
+    If TestMatches("DeckRegistry_BuildAndParseTypeRegistrationRoundTrip", filterPattern) Then
+        r = Test_DeckRegistry_BuildAndParseTypeRegistrationRoundTrip()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_BuildAndParseTypeRegistrationRoundTrip", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_ParseTypeRegistrationRejectsMalformed()
+    If TestMatches("DeckRegistry_ParseTypeRegistrationRejectsMalformed", filterPattern) Then
+        r = Test_DeckRegistry_ParseTypeRegistrationRejectsMalformed()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_ParseTypeRegistrationRejectsMalformed", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_GetOrCreateDeckIdIsStableAcrossCalls()
+    If TestMatches("DeckRegistry_GetOrCreateDeckIdIsStableAcrossCalls", filterPattern) Then
+        r = Test_DeckRegistry_GetOrCreateDeckIdIsStableAcrossCalls()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_GetOrCreateDeckIdIsStableAcrossCalls", r
 
-    r = Test_DeckRegistry_PairingVerdictOnlyRefusesAKnownDifferentDeck()
+    If TestMatches("DeckRegistry_PairingVerdictOnlyRefusesAKnownDifferentDeck", filterPattern) Then
+        r = Test_DeckRegistry_PairingVerdictOnlyRefusesAKnownDifferentDeck()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_PairingVerdictOnlyRefusesAKnownDifferentDeck", r
 
-    r = Test_Drafting_LayoutStampIsFoundNotAssumed()
+    If TestMatches("Drafting_LayoutStampIsFoundNotAssumed", filterPattern) Then
+        r = Test_Drafting_LayoutStampIsFoundNotAssumed()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Drafting_LayoutStampIsFoundNotAssumed", r
 
-    r = Test_Discovery_ADeviceGroupIsOneCandidateNotItsParts()
+    If TestMatches("Discovery_ADeviceGroupIsOneCandidateNotItsParts", filterPattern) Then
+        r = Test_Discovery_ADeviceGroupIsOneCandidateNotItsParts()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Discovery_ADeviceGroupIsOneCandidateNotItsParts", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_RegisterAndLookupTypeRoundTrip()
+    If TestMatches("DeckRegistry_RegisterAndLookupTypeRoundTrip", filterPattern) Then
+        r = Test_DeckRegistry_RegisterAndLookupTypeRoundTrip()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_RegisterAndLookupTypeRoundTrip", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_LookupTypeFalseWhenNotRegistered()
+    If TestMatches("DeckRegistry_LookupTypeFalseWhenNotRegistered", filterPattern) Then
+        r = Test_DeckRegistry_LookupTypeFalseWhenNotRegistered()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_LookupTypeFalseWhenNotRegistered", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_LookupTypeFalseWhenTemplateSlideDeleted()
+    If TestMatches("DeckRegistry_LookupTypeFalseWhenTemplateSlideDeleted", filterPattern) Then
+        r = Test_DeckRegistry_LookupTypeFalseWhenTemplateSlideDeleted()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_LookupTypeFalseWhenTemplateSlideDeleted", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_ListRegisteredTypesListsAllRegistered()
+    If TestMatches("DeckRegistry_ListRegisteredTypesListsAllRegistered", filterPattern) Then
+        r = Test_DeckRegistry_ListRegisteredTypesListsAllRegistered()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_ListRegisteredTypesListsAllRegistered", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_RegisterAndLookupTemplateLetterRoundTrip()
+    If TestMatches("DeckRegistry_RegisterAndLookupTemplateLetterRoundTrip", filterPattern) Then
+        r = Test_DeckRegistry_RegisterAndLookupTemplateLetterRoundTrip()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_RegisterAndLookupTemplateLetterRoundTrip", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_LookupTemplateLetterFalseWhenNotRegistered()
+    If TestMatches("DeckRegistry_LookupTemplateLetterFalseWhenNotRegistered", filterPattern) Then
+        r = Test_DeckRegistry_LookupTemplateLetterFalseWhenNotRegistered()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_LookupTemplateLetterFalseWhenNotRegistered", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_TwoLettersOfSameTypeDoNotCollide()
+    If TestMatches("DeckRegistry_TwoLettersOfSameTypeDoNotCollide", filterPattern) Then
+        r = Test_DeckRegistry_TwoLettersOfSameTypeDoNotCollide()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_TwoLettersOfSameTypeDoNotCollide", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterEmpty()
+    If TestMatches("DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterEmpty", filterPattern) Then
+        r = Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterEmpty()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterEmpty", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterUnregistered()
+    If TestMatches("DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterUnregistered", filterPattern) Then
+        r = Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterUnregistered()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterUnregistered", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_LookupTemplateForLetterPrefersLetterOverUnlettered()
+    If TestMatches("DeckRegistry_LookupTemplateForLetterPrefersLetterOverUnlettered", filterPattern) Then
+        r = Test_DeckRegistry_LookupTemplateForLetterPrefersLetterOverUnlettered()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_LookupTemplateForLetterPrefersLetterOverUnlettered", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_WorkbookPathRoundTrip()
+    If TestMatches("DeckRegistry_WorkbookPathRoundTrip", filterPattern) Then
+        r = Test_DeckRegistry_WorkbookPathRoundTrip()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_WorkbookPathRoundTrip", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_WorkbookBridge_SanitizeSheetNameStripsInvalidCharsAndTruncates()
+    If TestMatches("WorkbookBridge_SanitizeSheetNameStripsInvalidCharsAndTruncates", filterPattern) Then
+        r = Test_WorkbookBridge_SanitizeSheetNameStripsInvalidCharsAndTruncates()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "WorkbookBridge_SanitizeSheetNameStripsInvalidCharsAndTruncates", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_WorkbookBridge_IsDirtyDetectsUnsavedEdits()
+    If TestMatches("WorkbookBridge_IsDirtyDetectsUnsavedEdits", filterPattern) Then
+        r = Test_WorkbookBridge_IsDirtyDetectsUnsavedEdits()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "WorkbookBridge_IsDirtyDetectsUnsavedEdits", r
     On Error GoTo 0
     On Error GoTo 0
@@ -610,284 +1102,622 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_RibbonUI_ResolveTypeAnswerAcceptsNumberOrName()
+    If TestMatches("RibbonUI_ResolveTypeAnswerAcceptsNumberOrName", filterPattern) Then
+        r = Test_RibbonUI_ResolveTypeAnswerAcceptsNumberOrName()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "RibbonUI_ResolveTypeAnswerAcceptsNumberOrName", r
     On Error GoTo 0
 
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_RibbonUI_BuildTypePickerPromptListsAllTypes()
+    If TestMatches("RibbonUI_BuildTypePickerPromptListsAllTypes", filterPattern) Then
+        r = Test_RibbonUI_BuildTypePickerPromptListsAllTypes()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "RibbonUI_BuildTypePickerPromptListsAllTypes", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_CommandBarUI_ShowToolbarCreatesWiredButtons()
+    If TestMatches("CommandBarUI_ShowToolbarCreatesWiredButtons", filterPattern) Then
+        r = Test_CommandBarUI_ShowToolbarCreatesWiredButtons()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "CommandBarUI_ShowToolbarCreatesWiredButtons", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_PeriodOnDiskReadsTheSavedFile()
+    If TestMatches("DeckRegistry_PeriodOnDiskReadsTheSavedFile", filterPattern) Then
+        r = Test_DeckRegistry_PeriodOnDiskReadsTheSavedFile()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_PeriodOnDiskReadsTheSavedFile", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_DeckRegistry_SaveDeckVerifiedProvesTheFileMoved()
+    If TestMatches("DeckRegistry_SaveDeckVerifiedProvesTheFileMoved", filterPattern) Then
+        r = Test_DeckRegistry_SaveDeckVerifiedProvesTheFileMoved()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_SaveDeckVerifiedProvesTheFileMoved", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_ReviewQueue_DescribeDifferenceNamesTheInvisible()
+    If TestMatches("ReviewQueue_DescribeDifferenceNamesTheInvisible", filterPattern) Then
+        r = Test_ReviewQueue_DescribeDifferenceNamesTheInvisible()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReviewQueue_DescribeDifferenceNamesTheInvisible", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Sources_RefsForOtherPeriodCatchesTheWrongQuarter()
+    If TestMatches("Sources_RefsForOtherPeriodCatchesTheWrongQuarter", filterPattern) Then
+        r = Test_Sources_RefsForOtherPeriodCatchesTheWrongQuarter()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Sources_RefsForOtherPeriodCatchesTheWrongQuarter", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_Sources_RefsForOtherPeriodIsSilentOnNeutralAndUnknown()
+    If TestMatches("Sources_RefsForOtherPeriodIsSilentOnNeutralAndUnknown", filterPattern) Then
+        r = Test_Sources_RefsForOtherPeriodIsSilentOnNeutralAndUnknown()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Sources_RefsForOtherPeriodIsSilentOnNeutralAndUnknown", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_CommandBarUI_ShowToolbarIsIdempotent()
+    If TestMatches("CommandBarUI_ShowToolbarIsIdempotent", filterPattern) Then
+        r = Test_CommandBarUI_ShowToolbarIsIdempotent()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "CommandBarUI_ShowToolbarIsIdempotent", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_CommandBarUI_HideToolbarRemovesIt()
+    If TestMatches("CommandBarUI_HideToolbarRemovesIt", filterPattern) Then
+        r = Test_CommandBarUI_HideToolbarRemovesIt()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "CommandBarUI_HideToolbarRemovesIt", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_AdoptFlow_ValidateAdoptionSelectionSortsIntoDeckOrder()
+    If TestMatches("AdoptFlow_ValidateAdoptionSelectionSortsIntoDeckOrder", filterPattern) Then
+        r = Test_AdoptFlow_ValidateAdoptionSelectionSortsIntoDeckOrder()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "AdoptFlow_ValidateAdoptionSelectionSortsIntoDeckOrder", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_AdoptFlow_ValidateAdoptionSelectionRejectsNonSlideSelection()
+    If TestMatches("AdoptFlow_ValidateAdoptionSelectionRejectsNonSlideSelection", filterPattern) Then
+        r = Test_AdoptFlow_ValidateAdoptionSelectionRejectsNonSlideSelection()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "AdoptFlow_ValidateAdoptionSelectionRejectsNonSlideSelection", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_AdoptFlow_ExcludeTemplateSlideRemovesOnlyTemplate()
+    If TestMatches("AdoptFlow_ExcludeTemplateSlideRemovesOnlyTemplate", filterPattern) Then
+        r = Test_AdoptFlow_ExcludeTemplateSlideRemovesOnlyTemplate()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "AdoptFlow_ExcludeTemplateSlideRemovesOnlyTemplate", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_AdoptFlow_BuildAdoptionReviewSummaryCountsAndListsNonReady()
+    If TestMatches("AdoptFlow_BuildAdoptionReviewSummaryCountsAndListsNonReady", filterPattern) Then
+        r = Test_AdoptFlow_BuildAdoptionReviewSummaryCountsAndListsNonReady()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "AdoptFlow_BuildAdoptionReviewSummaryCountsAndListsNonReady", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_AllValuesIdenticalDetectsMatchAndMismatch()
+    If TestMatches("BatchOnboardFlow_AllValuesIdenticalDetectsMatchAndMismatch", filterPattern) Then
+        r = Test_BatchOnboardFlow_AllValuesIdenticalDetectsMatchAndMismatch()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_AllValuesIdenticalDetectsMatchAndMismatch", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_SuggestBatchFieldNameReusesPhNameOrFallsBack()
+    If TestMatches("BatchOnboardFlow_SuggestBatchFieldNameReusesPhNameOrFallsBack", filterPattern) Then
+        r = Test_BatchOnboardFlow_SuggestBatchFieldNameReusesPhNameOrFallsBack()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_SuggestBatchFieldNameReusesPhNameOrFallsBack", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_NormalizeFieldTypeAcceptsNumberOrName()
+    If TestMatches("BatchOnboardFlow_NormalizeFieldTypeAcceptsNumberOrName", filterPattern) Then
+        r = Test_BatchOnboardFlow_NormalizeFieldTypeAcceptsNumberOrName()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_NormalizeFieldTypeAcceptsNumberOrName", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_NormalizeFieldVolatilityAcceptsNumberOrName()
+    If TestMatches("BatchOnboardFlow_NormalizeFieldVolatilityAcceptsNumberOrName", filterPattern) Then
+        r = Test_BatchOnboardFlow_NormalizeFieldVolatilityAcceptsNumberOrName()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_NormalizeFieldVolatilityAcceptsNumberOrName", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_SuggestInstanceKeyUsesFirstFieldsHarvestedValue()
+    If TestMatches("BatchOnboardFlow_SuggestInstanceKeyUsesFirstFieldsHarvestedValue", filterPattern) Then
+        r = Test_BatchOnboardFlow_SuggestInstanceKeyUsesFirstFieldsHarvestedValue()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_SuggestInstanceKeyUsesFirstFieldsHarvestedValue", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_FindSameLayoutSlidesGroupsByLayoutOnly()
+    If TestMatches("BatchOnboardFlow_FindSameLayoutSlidesGroupsByLayoutOnly", filterPattern) Then
+        r = Test_BatchOnboardFlow_FindSameLayoutSlidesGroupsByLayoutOnly()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_FindSameLayoutSlidesGroupsByLayoutOnly", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides()
+    If TestMatches("BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides", filterPattern) Then
+        r = Test_BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_BuildBatchPlanFromMarkedFieldsUsesOnlyMarkedShapes()
+    If TestMatches("BatchOnboardFlow_BuildBatchPlanFromMarkedFieldsUsesOnlyMarkedShapes", filterPattern) Then
+        r = Test_BatchOnboardFlow_BuildBatchPlanFromMarkedFieldsUsesOnlyMarkedShapes()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_BuildBatchPlanFromMarkedFieldsUsesOnlyMarkedShapes", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_MarkShapeForBatchAccumulatesAndDedupes()
+    If TestMatches("BatchOnboardFlow_MarkShapeForBatchAccumulatesAndDedupes", filterPattern) Then
+        r = Test_BatchOnboardFlow_MarkShapeForBatchAccumulatesAndDedupes()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_MarkShapeForBatchAccumulatesAndDedupes", r
 
-    r = Test_BatchOnboardFlow_FieldPreviewIsShortAndSingleLine()
+    If TestMatches("BatchOnboardFlow_FieldPreviewIsShortAndSingleLine", filterPattern) Then
+        r = Test_BatchOnboardFlow_FieldPreviewIsShortAndSingleLine()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_FieldPreviewIsShortAndSingleLine", r
 
-    r = Test_BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived()
+    If TestMatches("BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived", filterPattern) Then
+        r = Test_BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_ExistingInstanceKeyIsReusedNotRederived", r
 
-    r = Test_DeckRegistry_WorkbookPathSurvivesAMovedDeck()
+    If TestMatches("DeckRegistry_WorkbookPathSurvivesAMovedDeck", filterPattern) Then
+        r = Test_DeckRegistry_WorkbookPathSurvivesAMovedDeck()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_WorkbookPathSurvivesAMovedDeck", r
 
-    r = Test_BatchOnboardFlow_ConflictingSlideTypeIsDetected()
+    If TestMatches("BatchOnboardFlow_ConflictingSlideTypeIsDetected", filterPattern) Then
+        r = Test_BatchOnboardFlow_ConflictingSlideTypeIsDetected()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_ConflictingSlideTypeIsDetected", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_MarkShapeForBatchAcceptsShapeInsideGroup()
+    If TestMatches("BatchOnboardFlow_MarkShapeForBatchAcceptsShapeInsideGroup", filterPattern) Then
+        r = Test_BatchOnboardFlow_MarkShapeForBatchAcceptsShapeInsideGroup()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_MarkShapeForBatchAcceptsShapeInsideGroup", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_MarkShapeForBatchRejectsWholeGroupSelection()
+    If TestMatches("BatchOnboardFlow_MarkShapeForBatchRejectsWholeGroupSelection", filterPattern) Then
+        r = Test_BatchOnboardFlow_MarkShapeForBatchRejectsWholeGroupSelection()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_MarkShapeForBatchRejectsWholeGroupSelection", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_MarkingSessionPropertyRoundTripsBeyond255Chars()
+    If TestMatches("BatchOnboardFlow_MarkingSessionPropertyRoundTripsBeyond255Chars", filterPattern) Then
+        r = Test_BatchOnboardFlow_MarkingSessionPropertyRoundTripsBeyond255Chars()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_MarkingSessionPropertyRoundTripsBeyond255Chars", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_RestoreMarkingSessionRecoversMarkedFields()
+    If TestMatches("BatchOnboardFlow_RestoreMarkingSessionRecoversMarkedFields", filterPattern) Then
+        r = Test_BatchOnboardFlow_RestoreMarkingSessionRecoversMarkedFields()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_RestoreMarkingSessionRecoversMarkedFields", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave()
+    If TestMatches("BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave", filterPattern) Then
+        r = Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSave", r
-    r = Test_BatchOnboardFlow_ShouldForceSaveLeavesHealthyAutoSaveAlone()
+    If TestMatches("BatchOnboardFlow_ShouldForceSaveLeavesHealthyAutoSaveAlone", filterPattern) Then
+        r = Test_BatchOnboardFlow_ShouldForceSaveLeavesHealthyAutoSaveAlone()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_ShouldForceSaveLeavesHealthyAutoSaveAlone", r
-    r = Test_BatchOnboardFlow_LastSaveTimeOfReadsARealTimestamp()
+    If TestMatches("BatchOnboardFlow_LastSaveTimeOfReadsARealTimestamp", filterPattern) Then
+        r = Test_BatchOnboardFlow_LastSaveTimeOfReadsARealTimestamp()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_LastSaveTimeOfReadsARealTimestamp", r
-    r = Test_DeckRegistry_PeriodIsReadableThroughSlideParent()
+    If TestMatches("DeckRegistry_PeriodIsReadableThroughSlideParent", filterPattern) Then
+        r = Test_DeckRegistry_PeriodIsReadableThroughSlideParent()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_PeriodIsReadableThroughSlideParent", r
-    r = Test_BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen()
+    If TestMatches("BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen", filterPattern) Then
+        r = Test_BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_NeedsSessionRestoreCoversSameDeckReopen", r
-    r = Test_BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes()
+    If TestMatches("BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes", filterPattern) Then
+        r = Test_BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_WorkbookPathProblemRejectsTheRealMistakes", r
-    r = Test_BatchOnboardFlow_InstanceKeyGridPrefillsAndCatchesClashes()
+    If TestMatches("BatchOnboardFlow_InstanceKeyGridPrefillsAndCatchesClashes", filterPattern) Then
+        r = Test_BatchOnboardFlow_InstanceKeyGridPrefillsAndCatchesClashes()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_InstanceKeyGridPrefillsAndCatchesClashes", r
-    r = Test_RibbonUI_UnexpectedErrorTextTellsTheTruth()
+    If TestMatches("RibbonUI_UnexpectedErrorTextTellsTheTruth", filterPattern) Then
+        r = Test_RibbonUI_UnexpectedErrorTextTellsTheTruth()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "RibbonUI_UnexpectedErrorTextTellsTheTruth", r
-    r = Test_RibbonUI_CapReportKeepsTheQuestion()
+    If TestMatches("RibbonUI_CapReportKeepsTheQuestion", filterPattern) Then
+        r = Test_RibbonUI_CapReportKeepsTheQuestion()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "RibbonUI_CapReportKeepsTheQuestion", r
-    r = Test_ReviewQueue_EmptyQueueDoesNotClaimTheDeckMatches()
+    If TestMatches("ReviewQueue_EmptyQueueDoesNotClaimTheDeckMatches", filterPattern) Then
+        r = Test_ReviewQueue_EmptyQueueDoesNotClaimTheDeckMatches()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReviewQueue_EmptyQueueDoesNotClaimTheDeckMatches", r
-    r = Test_CommandBarUI_EveryDeclaredCapabilityHasAButton()
+    If TestMatches("CommandBarUI_EveryDeclaredCapabilityHasAButton", filterPattern) Then
+        r = Test_CommandBarUI_EveryDeclaredCapabilityHasAButton()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "CommandBarUI_EveryDeclaredCapabilityHasAButton", r
-    r = Test_ReviewQueue_ParityAndTheCreateThreshold()
+    If TestMatches("ReviewQueue_ParityAndTheCreateThreshold", filterPattern) Then
+        r = Test_ReviewQueue_ParityAndTheCreateThreshold()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReviewQueue_ParityAndTheCreateThreshold", r
-    r = Test_RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero()
+    If TestMatches("RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero", filterPattern) Then
+        r = Test_RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero", r
-    r = Test_ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed()
+    If TestMatches("ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed", filterPattern) Then
+        r = Test_ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed", r
-    r = Test_DeckRegistry_LocalPathForUrlOnlyAnswersWhenTheFileIsThere()
+    If TestMatches("DeckRegistry_LocalPathForUrlOnlyAnswersWhenTheFileIsThere", filterPattern) Then
+        r = Test_DeckRegistry_LocalPathForUrlOnlyAnswersWhenTheFileIsThere()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_LocalPathForUrlOnlyAnswersWhenTheFileIsThere", r
-    r = Test_DeckRegistry_LocalPathForUrlFindsARealSyncedFile()
+    If TestMatches("DeckRegistry_LocalPathForUrlFindsARealSyncedFile", filterPattern) Then
+        r = Test_DeckRegistry_LocalPathForUrlFindsARealSyncedFile()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "DeckRegistry_LocalPathForUrlFindsARealSyncedFile", r
-    r = Test_ReviewQueue_BackupDestinationHandlesACloudDeck()
+    If TestMatches("ReviewQueue_BackupDestinationHandlesACloudDeck", filterPattern) Then
+        r = Test_ReviewQueue_BackupDestinationHandlesACloudDeck()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "ReviewQueue_BackupDestinationHandlesACloudDeck", r
-    r = Test_Sources_CitedBlockPutsTheDocumentInThePrompt()
+    If TestMatches("Sources_CitedBlockPutsTheDocumentInThePrompt", filterPattern) Then
+        r = Test_Sources_CitedBlockPutsTheDocumentInThePrompt()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Sources_CitedBlockPutsTheDocumentInThePrompt", r
-    r = Test_Drafting_CitedSourceReachesThePromptCell()
+    If TestMatches("Drafting_CitedSourceReachesThePromptCell", filterPattern) Then
+        r = Test_Drafting_CitedSourceReachesThePromptCell()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Drafting_CitedSourceReachesThePromptCell", r
-    r = Test_Drafting_Layout3SheetMigratesIntoLayout4Columns()
+    If TestMatches("Drafting_Layout3SheetMigratesIntoLayout4Columns", filterPattern) Then
+        r = Test_Drafting_Layout3SheetMigratesIntoLayout4Columns()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Drafting_Layout3SheetMigratesIntoLayout4Columns", r
-    r = Test_InjectPicture_FillsStampsAndThenStaysSilent()
+    If TestMatches("InjectPicture_FillsStampsAndThenStaysSilent", filterPattern) Then
+        r = Test_InjectPicture_FillsStampsAndThenStaysSilent()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectPicture_FillsStampsAndThenStaysSilent", r
-    r = Test_InjectPicture_RefusesABadLocatorWithoutLosingTheOldImage()
+    If TestMatches("InjectPicture_RefusesABadLocatorWithoutLosingTheOldImage", filterPattern) Then
+        r = Test_InjectPicture_RefusesABadLocatorWithoutLosingTheOldImage()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectPicture_RefusesABadLocatorWithoutLosingTheOldImage", r
-    r = Test_InjectPicture_CroppedFrameIsFilledUncroppedIsFitted()
+    If TestMatches("InjectPicture_CroppedFrameIsFilledUncroppedIsFitted", filterPattern) Then
+        r = Test_InjectPicture_CroppedFrameIsFilledUncroppedIsFitted()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectPicture_CroppedFrameIsFilledUncroppedIsFitted", r
-    r = Test_InjectProgress_MeasuresAgainstTheTrackNotItself()
+    If TestMatches("InjectProgress_MeasuresAgainstTheTrackNotItself", filterPattern) Then
+        r = Test_InjectProgress_MeasuresAgainstTheTrackNotItself()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectProgress_MeasuresAgainstTheTrackNotItself", r
-    r = Test_InjectProgress_RefusesWithoutATrack()
+    If TestMatches("InjectProgress_RefusesWithoutATrack", filterPattern) Then
+        r = Test_InjectProgress_RefusesWithoutATrack()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectProgress_RefusesWithoutATrack", r
-    r = Test_InjectField_RoutesEachTypeByItsShape()
+    If TestMatches("InjectField_RoutesEachTypeByItsShape", filterPattern) Then
+        r = Test_InjectField_RoutesEachTypeByItsShape()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectField_RoutesEachTypeByItsShape", r
-    r = Test_InjectField_RefusesANonNumberForABarWithoutGoingQuiet()
+    If TestMatches("InjectField_RefusesANonNumberForABarWithoutGoingQuiet", filterPattern) Then
+        r = Test_InjectField_RefusesANonNumberForABarWithoutGoingQuiet()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectField_RefusesANonNumberForABarWithoutGoingQuiet", r
-    r = Test_InjectField_TwoSlidesEachGetTheirOwnValue()
+    If TestMatches("InjectField_TwoSlidesEachGetTheirOwnValue", filterPattern) Then
+        r = Test_InjectField_TwoSlidesEachGetTheirOwnValue()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectField_TwoSlidesEachGetTheirOwnValue", r
-    r = Test_FieldWiring_NamesTheFieldsNothingCarries()
+    If TestMatches("FieldWiring_NamesTheFieldsNothingCarries", filterPattern) Then
+        r = Test_FieldWiring_NamesTheFieldsNothingCarries()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "FieldWiring_NamesTheFieldsNothingCarries", r
-    r = Test_FieldWiring_TemplateIsCheckedSeparatelyFromInstances()
+    If TestMatches("FieldWiring_TemplateIsCheckedSeparatelyFromInstances", filterPattern) Then
+        r = Test_FieldWiring_TemplateIsCheckedSeparatelyFromInstances()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "FieldWiring_TemplateIsCheckedSeparatelyFromInstances", r
-    r = Test_FieldWiring_OrphanTrackIsAHalfMarkedBar()
+    If TestMatches("FieldWiring_OrphanTrackIsAHalfMarkedBar", filterPattern) Then
+        r = Test_FieldWiring_OrphanTrackIsAHalfMarkedBar()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "FieldWiring_OrphanTrackIsAHalfMarkedBar", r
-    r = Test_FieldWiring_CoverageCountsSlidesNotPresence()
+    If TestMatches("FieldWiring_CoverageCountsSlidesNotPresence", filterPattern) Then
+        r = Test_FieldWiring_CoverageCountsSlidesNotPresence()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "FieldWiring_CoverageCountsSlidesNotPresence", r
-    r = Test_FieldWiring_ATrackIsATagNotAField()
+    If TestMatches("FieldWiring_ATrackIsATagNotAField", filterPattern) Then
+        r = Test_FieldWiring_ATrackIsATagNotAField()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "FieldWiring_ATrackIsATagNotAField", r
-    r = Test_FieldWiring_BothCompanionsAreTagsNotFields()
+    If TestMatches("FieldWiring_BothCompanionsAreTagsNotFields", filterPattern) Then
+        r = Test_FieldWiring_BothCompanionsAreTagsNotFields()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "FieldWiring_BothCompanionsAreTagsNotFields", r
-    r = Test_FieldWiring_CaseNearMissIsNamedNotSwallowed()
+    If TestMatches("FieldWiring_CaseNearMissIsNamedNotSwallowed", filterPattern) Then
+        r = Test_FieldWiring_CaseNearMissIsNamedNotSwallowed()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "FieldWiring_CaseNearMissIsNamedNotSwallowed", r
-    r = Test_Drafting_NothingToPublishReadsTheSameCounts()
+    If TestMatches("Drafting_NothingToPublishReadsTheSameCounts", filterPattern) Then
+        r = Test_Drafting_NothingToPublishReadsTheSameCounts()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "Drafting_NothingToPublishReadsTheSameCounts", r
-    r = Test_MilestoneDevice_DrawsFromDataAndCreatesNothing()
+    If TestMatches("MilestoneDevice_DrawsFromDataAndCreatesNothing", filterPattern) Then
+        r = Test_MilestoneDevice_DrawsFromDataAndCreatesNothing()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "MilestoneDevice_DrawsFromDataAndCreatesNothing", r
-    r = Test_MilestoneDevice_RefusesListsThatCannotBeAligned()
+    If TestMatches("MilestoneDevice_RefusesListsThatCannotBeAligned", filterPattern) Then
+        r = Test_MilestoneDevice_RefusesListsThatCannotBeAligned()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "MilestoneDevice_RefusesListsThatCannotBeAligned", r
-    r = Test_MilestoneDevice_ReadsAColumnPerIntervalFromTheRow()
+    If TestMatches("MilestoneDevice_ReadsAColumnPerIntervalFromTheRow", filterPattern) Then
+        r = Test_MilestoneDevice_ReadsAColumnPerIntervalFromTheRow()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "MilestoneDevice_ReadsAColumnPerIntervalFromTheRow", r
-    r = Test_MilestoneDevice_ReportWrapperMatchesTheRealResult()
+    If TestMatches("MilestoneDevice_ReportWrapperMatchesTheRealResult", filterPattern) Then
+        r = Test_MilestoneDevice_ReportWrapperMatchesTheRealResult()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "MilestoneDevice_ReportWrapperMatchesTheRealResult", r
-    r = Test_MilestoneDevice_ReportsAWriteThatDidNotTake()
+    If TestMatches("MilestoneDevice_ReportsAWriteThatDidNotTake", filterPattern) Then
+        r = Test_MilestoneDevice_ReportsAWriteThatDidNotTake()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "MilestoneDevice_ReportsAWriteThatDidNotTake", r
-    r = Test_MilestoneDevice_IntegrityNamesWhatIsMissing()
+    If TestMatches("MilestoneDevice_IntegrityNamesWhatIsMissing", filterPattern) Then
+        r = Test_MilestoneDevice_IntegrityNamesWhatIsMissing()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "MilestoneDevice_IntegrityNamesWhatIsMissing", r
-    r = Test_InjectField_RoutesADeviceGroupToTheTimeline()
+    If TestMatches("InjectField_RoutesADeviceGroupToTheTimeline", filterPattern) Then
+        r = Test_InjectField_RoutesADeviceGroupToTheTimeline()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectField_RoutesADeviceGroupToTheTimeline", r
-    r = Test_InjectField_RepeatingBarsOneCellManyMilestones()
+    If TestMatches("InjectField_RepeatingBarsOneCellManyMilestones", filterPattern) Then
+        r = Test_InjectField_RepeatingBarsOneCellManyMilestones()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectField_RepeatingBarsOneCellManyMilestones", r
-    r = Test_InjectProgress_TracklessPairMeasuresTheirSum()
+    If TestMatches("InjectProgress_TracklessPairMeasuresTheirSum", filterPattern) Then
+        r = Test_InjectProgress_TracklessPairMeasuresTheirSum()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "InjectProgress_TracklessPairMeasuresTheirSum", r
-    r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
+    If TestMatches("BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", filterPattern) Then
+        r = Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_MarkingSessionSurvivesRealCloseAndReopen()
+    If TestMatches("BatchOnboardFlow_MarkingSessionSurvivesRealCloseAndReopen", filterPattern) Then
+        r = Test_BatchOnboardFlow_MarkingSessionSurvivesRealCloseAndReopen()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_MarkingSessionSurvivesRealCloseAndReopen", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_RestoreMarkingSessionFindsNothingOnWrongSlide()
+    If TestMatches("BatchOnboardFlow_RestoreMarkingSessionFindsNothingOnWrongSlide", filterPattern) Then
+        r = Test_BatchOnboardFlow_RestoreMarkingSessionFindsNothingOnWrongSlide()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_RestoreMarkingSessionFindsNothingOnWrongSlide", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_FlattenGroupLeavesReturnsAllMembers()
+    If TestMatches("BatchOnboardFlow_FlattenGroupLeavesReturnsAllMembers", filterPattern) Then
+        r = Test_BatchOnboardFlow_FlattenGroupLeavesReturnsAllMembers()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_FlattenGroupLeavesReturnsAllMembers", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_ReviewGridRoundTrip()
+    If TestMatches("BatchOnboardFlow_ReviewGridRoundTrip", filterPattern) Then
+        r = Test_BatchOnboardFlow_ReviewGridRoundTrip()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_ReviewGridRoundTrip", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_CommitBatchTagsLinksAndVerifies()
+    If TestMatches("BatchOnboardFlow_CommitBatchTagsLinksAndVerifies", filterPattern) Then
+        r = Test_BatchOnboardFlow_CommitBatchTagsLinksAndVerifies()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_CommitBatchTagsLinksAndVerifies", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    r = Test_BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale()
+    If TestMatches("BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale", filterPattern) Then
+        r = Test_BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale()
+    Else
+        r = TEST_SKIPPED
+    End If
     AppendResult report, "BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale", r
     On Error GoTo 0
 
     RunAllTests = report
 End Function
 
+Private Function TestMatches(testName As String, filterPattern As String) As Boolean
+    TestMatches = (filterPattern = "") Or (InStr(1, testName, filterPattern, vbTextCompare) > 0)
+End Function
+
 Private Sub AppendResult(ByRef report As String, testName As String, testResult As String)
     If Err.Number <> 0 Then
         report = report & "ERROR " & testName & " :: " & Err.Description & " (line context lost -- VBA has no stack trace)" & vbCrLf
+    ElseIf testResult = TEST_SKIPPED Then
+        report = report & "SKIP  " & testName & vbCrLf
     ElseIf testResult = "" Then
         report = report & "PASS  " & testName & vbCrLf
     Else
@@ -3021,6 +3851,107 @@ Private Function Test_RunSync_CreateMissingRefusesWhileSlidesAreUnclassified() A
 
     keyed.Delete
     Test_RunSync_CreateMissingRefusesWhileSlidesAreUnclassified = result
+End Function
+
+' Proves Scenario 3 step 3: two rows of the same type, different letters, each
+' get cloned from THEIR letter's template -- not both from whichever template
+' happened to be passed in as CreateMissingSlides' own templateSld param. That
+' param stays only as the type-level fallback for a row with no letter.
+Private Function Test_RunSync_CreateMissingSlidesChoosesTemplateByRowLetter() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim tmplK As Object, tmplS As Object
+    Set tmplK = NewBlankSlide()
+    tmplK.Tags.Add "slide_type", "cml-type"
+    tmplK.Tags.Add "is_template", "1"
+    Dim markK As Object
+    Set markK = tmplK.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    markK.TextFrame.TextRange.Text = "MARK-K"
+    markK.Tags.Add "role", "Marker"
+
+    Set tmplS = NewBlankSlide()
+    tmplS.Tags.Add "slide_type", "cml-type"
+    tmplS.Tags.Add "is_template", "1"
+    Dim markS As Object
+    Set markS = tmplS.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    markS.TextFrame.TextRange.Text = "MARK-S"
+    markS.Tags.Add "role", "Marker"
+
+    DeckRegistry.RegisterTemplateLetter pres, "cml-type", "K", tmplK, "SheetK"
+    DeckRegistry.RegisterTemplateLetter pres, "cml-type", "S", tmplS, "SheetS"
+
+    Dim sheet As Sheet
+    Set sheet.Rows = CreateObject("Scripting.Dictionary")
+    Set sheet.Fields = New Collection
+    Set sheet.InstanceOrder = New Collection
+    Dim valsK As Object
+    Set valsK = CreateObject("Scripting.Dictionary")
+    Set sheet.Rows("3_K900") = valsK
+    sheet.InstanceOrder.Add "3_K900"
+    Dim valsS As Object
+    Set valsS = CreateObject("Scripting.Dictionary")
+    Set sheet.Rows("3_S900") = valsS
+    sheet.InstanceOrder.Add "3_S900"
+
+    ' templateSld deliberately passed as tmplK, the WRONG template for the S
+    ' row -- if the per-row lookup were silently ignored and every row cloned
+    ' this one param instead, the S row would come back carrying MARK-K, and
+    ' the assertion below would catch it.
+    Dim rep As String
+    rep = RunSync.CreateMissingSlides(sheet, "cml-type", tmplK, False)
+
+    Dim instances() As Object
+    instances = RunSync.GatherInstances("cml-type")
+    Dim lo As Long, hi As Long, hasAny As Boolean
+    On Error Resume Next
+    lo = LBound(instances): hi = UBound(instances): hasAny = (Err.Number = 0)
+    On Error GoTo 0
+
+    Dim byKey As Object
+    Set byKey = CreateObject("Scripting.Dictionary")
+    If hasAny Then
+        Dim i As Long
+        For i = lo To hi
+            Dim inst As SlideInstance
+            inst = Resolve.ResolveSlideInstance(instances(i))
+            If inst.HasInstanceKey Then Set byKey(inst.InstanceKey) = instances(i)
+        Next i
+    End If
+
+    result = result & Assert(byKey.Exists("3_K900") And byKey.Exists("3_S900"), _
+        "both rows got created -- report: " & rep)
+
+    If byKey.Exists("3_K900") Then
+        Dim kShp As Object
+        Set kShp = FindShapeByRole(byKey("3_K900"), "Marker")
+        Dim kText As String
+        kText = IIf(kShp Is Nothing, "<not found>", kShp.TextFrame.TextRange.Text)
+        result = result & Assert(kText = "MARK-K", "the K row was cloned from the K template, got '" & kText & "'")
+    End If
+
+    If byKey.Exists("3_S900") Then
+        Dim sShp As Object
+        Set sShp = FindShapeByRole(byKey("3_S900"), "Marker")
+        Dim sText As String
+        sText = IIf(sShp Is Nothing, "<not found>", sShp.TextFrame.TextRange.Text)
+        result = result & Assert(sText = "MARK-S", "the S row was cloned from the S template, not the passed-in K template, got '" & sText & "'")
+    End If
+
+    ' Clean up: the two clones plus both templates.
+    Dim extra As Object
+    For Each extra In Application.ActivePresentation.Slides
+        Dim ei As SlideInstance
+        ei = Resolve.ResolveSlideInstance(extra)
+        If ei.HasInstanceKey Then
+            If ei.InstanceKey = "3_K900" Or ei.InstanceKey = "3_S900" Then extra.Delete
+        End If
+    Next extra
+    tmplK.Delete
+    tmplS.Delete
+
+    Test_RunSync_CreateMissingSlidesChoosesTemplateByRowLetter = result
 End Function
 
 Private Function Test_DeckRegistry_DeckDeclaresItsOwnPeriod() As String

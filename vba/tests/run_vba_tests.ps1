@@ -17,10 +17,38 @@
 # across it are not, so staging is the only thing that crosses it.
 
 param(
-    [string]$RepoRoot = $(Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+    [string]$RepoRoot = $(Split-Path -Parent (Split-Path -Parent $PSScriptRoot)),
+    # Case-insensitive substring against each test's name (not a regex).
+    # "" (default) runs everything -- unchanged behaviour for every existing
+    # caller. A SKIPPED test is not a PASS: see TestRunner.bas's TEST_SKIPPED
+    # sentinel. A filtered run only tells you about the tests it ran; it
+    # proves nothing about the ones it skipped, which is what the every-10th-
+    # run-forces-a-full-run cadence below exists to bound.
+    [string]$Filter = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+# --- Every 10th run forces a full suite, regardless of -Filter ----------
+#
+# A filtered run is for fast iteration on the area you're actively changing.
+# It is not evidence about anything else -- a filtered "0 failed" says
+# nothing about modules the filter excluded. This counter (machine-local,
+# not repo state -- deliberately NOT under vba/tests/, so it never shows up
+# in `git status`) forces an unfiltered run periodically so a long filtered
+# stretch can't quietly drift into "the last full run was three days ago."
+$counterFile = Join-Path $env:TEMP "deck-sync-vba-test-run-count.txt"
+$runCount = 0
+if (Test-Path $counterFile) {
+    $raw = Get-Content $counterFile -Raw -ErrorAction SilentlyContinue
+    [int]::TryParse($raw, [ref]$runCount) | Out-Null
+}
+$runCount += 1
+Set-Content -Path $counterFile -Value $runCount -NoNewline
+if ($Filter -ne "" -and ($runCount % 10) -eq 0) {
+    Write-Output "=== Run #$runCount since last reset: forcing a FULL suite despite -Filter '$Filter' ==="
+    $Filter = ""
+}
 
 # A prior interrupted run (or you just having Office open) can leave a live
 # POWERPNT.EXE/EXCEL.EXE process behind. New-Object -ComObject would attach
@@ -449,7 +477,8 @@ try {
     # PowerShell's own (buggy, for this case) method-binding logic.
     $fixturesArg = [string]$fixturesStaging
     $stagingArg = [string]$staging
-    $pptReport = $ppt.GetType().InvokeMember("Run", [System.Reflection.BindingFlags]::InvokeMethod, $null, $ppt, @([string]"TestRunner.RunAllTests", $fixturesArg, $stagingArg))
+    $filterArg = [string]$Filter
+    $pptReport = $ppt.GetType().InvokeMember("Run", [System.Reflection.BindingFlags]::InvokeMethod, $null, $ppt, @([string]"TestRunner.RunAllTests", $fixturesArg, $stagingArg, $filterArg))
 }
 catch {
     $pptError = $_.Exception.Message + " [line " + $_.InvocationInfo.ScriptLineNumber + ": " + $_.InvocationInfo.Line.Trim() + "]"
@@ -484,7 +513,11 @@ try {
         $wb.VBProject.VBComponents.Import((Join-Path $staging $m)) | Out-Null
     }
 
-    $excelReport = $xl.Run("TestRunnerExcel.RunAllTests")
+    # Same InvokeMember workaround as the PowerPoint pass above, now that
+    # this call takes an argument too -- not proven to hit the same
+    # PowerShell/COM overload-resolution gap with only one arg, but there is
+    # no reason to find out the hard way when the working pattern is right there.
+    $excelReport = $xl.GetType().InvokeMember("Run", [System.Reflection.BindingFlags]::InvokeMethod, $null, $xl, @([string]"TestRunnerExcel.RunAllTests", [string]$Filter))
 }
 catch {
     $excelError = $_.Exception.Message + " [line " + $_.InvocationInfo.ScriptLineNumber + ": " + $_.InvocationInfo.Line.Trim() + "]"
@@ -574,13 +607,14 @@ $failCount = ([regex]::Matches($allOutput, '(?m)^FAIL')).Count
 # Same "silence is not success" rule as the empty-result check below; it had
 # simply never been applied to this case.
 $errorCount = ([regex]::Matches($allOutput, '(?m)^ERROR')).Count
+$skipCount = ([regex]::Matches($allOutput, '(?m)^SKIP')).Count
 
 Write-Output ""
 if ($errorCount -gt 0) {
-    Write-Output "=== $passCount passed, $failCount failed, $errorCount ERRORED ==="
+    Write-Output "=== $passCount passed, $failCount failed, $errorCount ERRORED ($skipCount skipped) ==="
     Write-Output "    An ERRORED test raised before it could assert. It is NOT a pass."
 } else {
-    Write-Output "=== $passCount passed, $failCount failed ==="
+    Write-Output "=== $passCount passed, $failCount failed ($skipCount skipped) ==="
 }
 
 if ($pptError -or $excelError) {
@@ -588,6 +622,15 @@ if ($pptError -or $excelError) {
     exit 3
 }
 if ($passCount -eq 0) {
+    # A narrow -Filter matching zero real tests looks identical to a compile
+    # error by the numbers alone (0 PASS, 0 FAIL) -- SKIP-only output is what
+    # tells them apart. Reported distinctly rather than as the scary compile-
+    # error message below, which would be actively misleading here.
+    if ($Filter -ne "" -and $skipCount -gt 0 -and $failCount -eq 0 -and $errorCount -eq 0) {
+        Write-Output "=== FILTER '$Filter' MATCHED NOTHING. $skipCount test(s) skipped, 0 ran. ==="
+        Write-Output "    Not a compile error -- every test was skipped, none failed or errored."
+        exit 0
+    }
     Write-Output "=== NO TESTS RAN. This is a FAILURE, not a pass. ==="
     Write-Output "Almost always a VBA compile error somewhere in the project:"
     Write-Output "  Application.Run reports 'Sub or function not defined' for a"
