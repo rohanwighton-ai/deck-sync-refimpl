@@ -368,14 +368,23 @@ real (or deliberately fake-but-real) data and the result checked from saved
 bytes. Started because the K/S template build above was mechanism-tested
 (step 2-4's suite) but never proven end-to-end until real rows forced it.
 
-- [ ] **#1, in progress:** three fake rows (`K900`/`S900`/`P900`, `Q4F26`)
-      added to `scenario3-template-surgery-20260816\register-wide.xlsx`
-      via real Excel, verified from a fresh read-only re-open. Next: Rohan
-      presses **"Add missing slides"** on the copy and we check the saved
-      deck — does each row clone from ITS OWN letter's template, or does
-      something silently fall back to `P` for all three? This is the actual
-      proof `RunSync.CreateMissingSlides`'s per-row letter resolution
-      (Scenario 3 step 3) works outside a synthetic fixture.
+- [x] **#1, DONE and proven, 2026-08-16.** Three fake rows
+      (`K900`/`S900`/`P900`, `Q4F26`) added via real Excel, verified from a
+      fresh read-only re-open. Rohan pressed "Add missing slides" on the
+      copy — "3 created, 0 failed." Verified from the SAVED file which
+      template each actually cloned from, via a structural fingerprint
+      (shape count) rather than trusting the dialog: P/K/S templates have
+      genuinely different shape counts (136/114/121 — real structural
+      differences, not coincidence), and each new slide's count matched
+      its own letter's template exactly and no other (K900=114=K-template,
+      S900=121=S-template, P900=136=P-template-via-fallback). A wrong
+      routing (e.g. everything silently defaulting to P) would have shown
+      up immediately as two mismatched counts — it didn't. Cross-checked via
+      stable `SlideID` (303/304/305), not part filenames, because this save
+      renumbered every `slideNN.xml` part -- the exact trap a filename-based
+      check would have fallen into. **`RunSync.CreateMissingSlides`'s
+      per-row letter resolution (Scenario 3 step 3) is now proven outside a
+      synthetic fixture, on a real register, through the real button.**
 - [ ] **#2:** Scenario 1 (generate a new quarter) end-to-end, Rohan alone,
       no agent in the loop — already the project's own stated finish line
       (`TRACKER.md` item 10), listed here too so it isn't only remembered
