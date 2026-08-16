@@ -197,15 +197,64 @@ run head-to-head via `vba/tools/onedrive_write_probe.ps1` immediately beforehand
 **failed 4 for 4**, each exhausting the full 4-attempt/30s-wait budget (~121s) with
 nothing landing.
 
-**Fixed**: `SaveDeckVerified`, `SetDeckPeriodVerified`, and `SetWorkbookPathVerified`
-in `DeckRegistry.bas` now escalate to `SaveAs`-to-self on a cloud-hosted deck exactly
-as they already did on a local one — the `IsUrl(path)` branch that split the two is
-gone, along with the now-dead `WaitForFileToMove`/`WaitForPropertyOnDisk`/
-`PauseSeconds` helpers and the `SETTLE_SECONDS`/`SETTLE_STEP_SECONDS` constants.
-Static checks clean, suite 230/0. **Not yet proven against the real production
-function** — that needs a rebuilt add-in (Rohan's one manual Save-As-in-VBE step) and
-a re-run of `onedrive_write_probe.ps1` against it, which is the direct before/after
-close-out for this fix.
+**Fixed, PARTIALLY**: `SaveDeckVerified`, `SetDeckPeriodVerified`, and
+`SetWorkbookPathVerified` in `DeckRegistry.bas` now escalate to `SaveAs`-to-self on a
+cloud-hosted deck exactly as they already did on a local one — the `IsUrl(path)`
+branch that split the two is gone, along with the now-dead
+`WaitForFileToMove`/`WaitForPropertyOnDisk`/`PauseSeconds` helpers and the
+`SETTLE_SECONDS`/`SETTLE_STEP_SECONDS` constants. Static checks clean, suite 230/0.
+
+**REBUILT AND RE-PROVEN ON THE REAL ADD-IN, 2026-08-16 — AND IT SURFACED A DEEPER,
+STRUCTURAL LIMIT THE FIX DOES NOT REACH.** Rebuilt `addin108`, re-ran
+`onedrive_write_probe.ps1` (unmodified) against the real production
+`SetDeckPeriodVerified`: **8 for 8 failed**, but *instantly* (~0.4s each, not the old
+~121s) — a different signature entirely, because the fix removed the wait but the
+underlying write genuinely still isn't landing.
+
+Isolated with a new probe (`onedrive_reused_file_probe.ps1`, reusing ONE open
+cloud-hosted file across 8 trials instead of a fresh file per trial, unlike the 5/5
+success above): **trial 1 landed; trials 2–8 all failed, permanently stuck reporting
+trial 1's value.** A follow-up scope check
+(`SaveAsSelfProbe.ProbeScopeCheck`) shows this is not per-property-name: writing a
+**second, never-before-used** property name in the same session, right after the
+first property's write already landed, **also failed on its first attempt**. So the
+real shape is: **the first custom-document-property write a session ever lands on a
+cloud-hosted deck is the LAST one that ever will, for the life of that open file** —
+not a per-property or a timing thing.
+
+Tried the one documented community workaround (close the presentation and reopen it
+from the same path, which several Microsoft Q&A threads describe as forcing a genuine
+resync) via `SaveAsSelfProbe.ProbeCloseReopenRescue` — **did not rescue it**, including
+with a deliberate 15s wait between close and reopen to rule out a local-cache timing
+race. Three real attempts at a rescue, all negative; capped there rather than
+continuing to guess.
+
+**This looks like a genuine OneDrive Personal limitation**, not a bug in this
+project's code — one community report found via search says plainly "there is no
+function to set custom properties to OneDrive files," and another describes VBA
+losing reliable access to SharePoint content-type properties after the first sync in
+a similar shape. `DeckSyncPeriod`/`DeckSyncWorkbookPath`/`DeckSyncType`/`DeckSyncId`
+are exactly the kind of value that needs updating every quarter on the SAME long-lived
+cloud deck — which this limitation appears to forbid outright via
+`CustomDocumentProperties`, no matter how the save/retry/reopen logic is written.
+
+**What still stands from the fix**: it's strictly better than before (a session's
+FIRST setup write, e.g. a brand-new deck's initial onboarding, now lands fast and
+reliably instead of failing 4/4 over 2 minutes) and it's real dead-code cleanup. What
+it does NOT do: make a QUARTERLY period update land on an existing, already-synced
+cloud deck — which is the actual Scenario 1 use case.
+
+**Real fix candidate, not yet built, needs a decision**: move these four values off
+`CustomDocumentProperties` entirely, onto something already proven to sync reliably —
+regular SLIDE CONTENT. This project's own scope note above already established
+"slide CONTENT is unaffected — text and tags wrote fine to a cloud deck in the same
+session." A hidden shape/textbox on a hidden slide (or the deck's own notes) storing
+these four values as plain text would sidestep the limitation entirely, at the cost of
+touching every reader/writer of these four properties — `DeckRegistry.bas`'s
+`GetDeckPeriod`/`SetDeckPeriod`, `GetOrCreateDeckId`, `GetWorkbookPath`, the type/
+template-letter registration functions, and this file's own P/Q/R entries' assumptions
+about where this state lives. A real architecture change, not a quick patch — flagged
+for a decision rather than built unprompted.
 
 ## Added 2026-08-15 (late morning) — four, all LIVE
 

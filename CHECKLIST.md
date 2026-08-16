@@ -391,29 +391,34 @@ bytes. Started because the K/S template build above was mechanism-tested
       in one place.
 - [ ] **#3:** Scenario 8 (portability) — bring up a genuinely fresh deck +
       register from nothing, unaided. Never attempted once.
-- [x] **#4, 2026-08-16: root cause found, fixed in source, not yet proven on
-      the real add-in.** Re-ran the production `SetDeckPeriodVerified`
-      unmodified against a fresh scratch OneDrive deck: **4 for 4 outright
-      failures**, each burning the full 4-attempt/30s-wait budget (~121s).
-      Read the code rather than re-guessing: the cloud branch's "wait, never
-      escalate" design was based on a `SaveAs`-bricks-cloud-decks
-      measurement taken BEFORE the same day's `ByRef`→`ByVal` fix
-      (`FIX-LIST` P) — before that fix, the verifier's own read-back
-      silently rewrote the SaveAs target to the wrong local path, which is
-      what actually bricked it, not `SaveAs`-to-self itself. Built an
-      isolated probe (`vba/tools/SaveAsSelfProbe.bas` +
-      `onedrive_saveas_self_probe.ps1`) that re-tests a clean
-      `SaveAs`-to-self on 5 fresh scratch cloud decks: **5/5 landed, each
-      under a second, none read-only** — verified via the raw-bytes read
-      `PropertyOnDisk` already uses, independent of PowerPoint's cache.
+- [ ] **#4, 2026-08-16: PARTIALLY fixed, and rebuilding+re-proving surfaced a
+      deeper structural limit the fix does NOT reach — real work still
+      open.** First pass: the cloud branch's old "wait, never escalate"
+      design was based on a `SaveAs`-bricks-cloud-decks measurement taken
+      BEFORE the same day's `ByRef`→`ByVal` fix (`FIX-LIST` P) — before
+      that fix, the verifier's own read-back silently rewrote the SaveAs
+      target to the wrong local path, which is what actually bricked it.
       Fixed `SaveDeckVerified`/`SetDeckPeriodVerified`/
       `SetWorkbookPathVerified` in `DeckRegistry.bas` to escalate to
-      `SaveAs`-to-self on cloud decks exactly as they already did on local
-      ones; deleted the now-dead wait-loop helpers. Static checks clean,
-      suite 230/0. **Still open:** prove it on the real production function
-      through a rebuilt add-in (needs Rohan's manual Save-As-in-VBE step),
-      by re-running `onedrive_write_probe.ps1` against it — the exact same
-      probe that demonstrated the 4/4 failure, now pointed at the fix.
+      `SaveAs`-to-self on cloud decks, same as local; deleted the dead
+      wait-loop helpers. Rebuilt `addin108`, re-ran the SAME probe that
+      caught the original 4/4 failure: still **8/8 failed**, but instantly
+      now (~0.4s, not ~121s) — a different signature, so kept digging
+      rather than declaring victory on timing alone. Isolated with a
+      reused-single-file probe (unlike the earlier 5/5 success, which used
+      a fresh file per trial): **trial 1 lands, every later write in the
+      SAME session is permanently stuck** — confirmed it's not per-property
+      (a second, never-before-used property name also fails on ITS first
+      write in that session). Tried the one documented community rescue
+      (close + reopen the file, even with a deliberate 15s wait) — did not
+      help, 3 real attempts, capped and stopped. Looks like a genuine
+      OneDrive Personal limitation on updating `CustomDocumentProperties`
+      after a file's first cloud sync, not something a retry loop can fix.
+      **Real candidate fix, not yet built, needs a decision:** move
+      `DeckSyncPeriod`/`DeckSyncWorkbookPath`/`DeckSyncType`/`DeckSyncId`
+      off `CustomDocumentProperties` onto slide CONTENT instead (proven
+      throughout this investigation to sync reliably) — see `FIX-LIST` P's
+      full 2026-08-16 update for the reasoning and what it would touch.
 - [ ] **#5:** `Tag fields on this slide` run fresh against `K900` and `S900`
       to get CURRENT field coverage ground truth, replacing the
       cross-referenced-from-tags inference in the Field Coverage Matrix

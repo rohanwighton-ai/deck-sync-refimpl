@@ -310,3 +310,118 @@ Public Function ProbeSaveAsToSelfVerified(pres As Object, propertyName As String
         End If
     Next n
 End Function
+
+' TESTS THE DOCUMENTED FIX FOR THE "stuck after the first write" behaviour:
+' close the presentation and reopen it from its own path, which forces a
+' genuine resync with the cloud backend (matches a Microsoft Q&A report --
+' "if you close the file and re-open it manually, it makes it sync... and
+' will now allow VBA to access [custom properties] again"). Deliberately
+' reproduces the bug FIRST (writes firstValue, which should land; then
+' secondValue on the SAME open presentation, which should get stuck
+' reporting firstValue -- matching the 7/7 reused-file-probe finding) before
+' testing whether the close/reopen escalation rescues the second write.
+' `pres` is ByRef by VBA default (Object params are unless marked ByVal) --
+' Set pres = ... here is what a real caller in this project would see too.
+Public Function ProbeCloseReopenRescue(ByRef pres As Object, propertyName As String, _
+                                       firstValue As String, secondValue As String) As String
+    Dim path As String
+    path = pres.FullName
+
+    Dim report As String
+
+    ' Step 1: establish the cloud baseline. Expected to land.
+    WriteStringProperty pres, propertyName, firstValue
+    On Error Resume Next
+    pres.SaveAs path, 24
+    On Error GoTo 0
+    Dim firstLanded As Boolean
+    firstLanded = (PropertyOnDisk(path, propertyName) = firstValue)
+    report = report & "Step 1 (first write, expect LAND): " & IIf(firstLanded, "LANDED", "FAILED") & vbCrLf
+
+    ' Step 2: reproduce the bug. Expected to get STUCK on firstValue.
+    WriteStringProperty pres, propertyName, secondValue
+    On Error Resume Next
+    pres.SaveAs path, 24
+    On Error GoTo 0
+    Dim secondLandedNormally As Boolean
+    secondLandedNormally = (PropertyOnDisk(path, propertyName) = secondValue)
+    report = report & "Step 2 (second write, SAME session, expect STUCK): " & _
+        IIf(secondLandedNormally, "LANDED (bug not reproduced!)", "STUCK at '" & PropertyOnDisk(path, propertyName) & "'") & vbCrLf
+
+    If secondLandedNormally Then
+        ProbeCloseReopenRescue = report & "Nothing to rescue -- second write landed normally."
+        Exit Function
+    End If
+
+    ' Step 3: the rescue. Close, give OneDrive time to actually flush the
+    ' close (bare close+reopen with no wait failed 2026-08-16 -- reopening
+    ' instantly may just reattach to a not-yet-synced local cache), THEN
+    ' reopen from the SAME path and retry.
+    On Error Resume Next
+    pres.Saved = True   ' the SaveAs above already issued the write; nothing new to discard
+    pres.Close
+    On Error GoTo 0
+
+    Dim closeWaitUntil As Double
+    closeWaitUntil = Timer + 15
+    Do While Timer < closeWaitUntil
+        DoEvents
+    Loop
+
+    Dim reopenErr As String
+    On Error Resume Next
+    Set pres = Application.Presentations.Open(path)
+    If Err.Number <> 0 Then reopenErr = "Error " & Err.Number & ": " & Err.Description
+    On Error GoTo 0
+
+    If pres Is Nothing Then
+        ProbeCloseReopenRescue = report & "REOPEN FAILED: " & reopenErr
+        Exit Function
+    End If
+
+    WriteStringProperty pres, propertyName, secondValue
+    On Error Resume Next
+    pres.SaveAs path, 24
+    On Error GoTo 0
+    Dim rescuedLanded As Boolean
+    rescuedLanded = (PropertyOnDisk(path, propertyName) = secondValue)
+    report = report & "Step 3 (after close+reopen, retry second write): " & _
+        IIf(rescuedLanded, "RESCUED" ,"STILL STUCK at '" & PropertyOnDisk(path, propertyName) & "'")
+
+    ProbeCloseReopenRescue = report
+End Function
+
+' SCOPE CHECK: is it the whole CustomDocumentProperties collection that
+' freezes after the first save, or just re-writes to the SAME property name?
+' Writes propA (expect LAND -- first-ever write to this file), then a
+' DIFFERENT, never-before-used propB (does a brand-new name still land in
+' the same session that already has one stuck?), then re-writes propA again
+' (expect STUCK, per ProbeCloseReopenRescue's finding).
+Public Function ProbeScopeCheck(pres As Object, propA As String, propB As String) As String
+    Dim path As String
+    path = pres.FullName
+    Dim report As String
+
+    WriteStringProperty pres, propA, "SCOPE-A-1"
+    On Error Resume Next
+    pres.SaveAs path, 24
+    On Error GoTo 0
+    report = report & propA & " first write: " & _
+        IIf(PropertyOnDisk(path, propA) = "SCOPE-A-1", "LANDED", "FAILED") & vbCrLf
+
+    WriteStringProperty pres, propB, "SCOPE-B-1"
+    On Error Resume Next
+    pres.SaveAs path, 24
+    On Error GoTo 0
+    report = report & propB & " first write, same session as " & propA & "'s: " & _
+        IIf(PropertyOnDisk(path, propB) = "SCOPE-B-1", "LANDED", "FAILED") & vbCrLf
+
+    WriteStringProperty pres, propA, "SCOPE-A-2"
+    On Error Resume Next
+    pres.SaveAs path, 24
+    On Error GoTo 0
+    report = report & propA & " SECOND write: " & _
+        IIf(PropertyOnDisk(path, propA) = "SCOPE-A-2", "LANDED", "STUCK at '" & PropertyOnDisk(path, propA) & "'")
+
+    ProbeScopeCheck = report
+End Function
