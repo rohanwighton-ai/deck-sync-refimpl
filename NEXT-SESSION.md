@@ -1,9 +1,103 @@
 # NEXT SESSION — start here
 
-> ## 16 AUG, NIGHT. **SESSION-END HANDOVER. STATUS: CURRENT.** Supersedes the "late
-> evening" block below on Scenario 1 status — the mechanism is now proven all the way
-> to a real slide, not just the register. `CHECKLIST.md` still the primary tickable
-> surface.
+> ## 17 AUG, LATE NIGHT (session started 16 Aug evening). **SESSION-END HANDOVER.
+> STATUS: CURRENT.** Very long single session — document control catch-up, the elapsed
+> bar built as a real new field, then a full architecture pivot (the Lobby) designed and
+> two of its four phases built and PROVEN LIVE. Supersedes everything below on current
+> build/design state. **Read `LOBBY-DESIGN.md` in full before touching anything it
+> names** — it is now the primary design doc, `CHECKLIST.md`'s Lobby section just points
+> to it.
+>
+> ### THE BIG THING: THE LOBBY. Architecture pivot, not a bug fix.
+> Rohan, after living through the two-press review/apply cycle and the 13-sheet crawl
+> one too many times: *"it now needs to start speeding up and be far less annoying to
+> use... I need to start showing it to people."* Full plan written and reviewed BEFORE
+> any of it was built, per his explicit request (*"do a full architectural plan for
+> this before we start, large changes"*) — see `LOBBY-DESIGN.md` for the complete
+> reasoning, not summarised again here. Headline decisions, all made live with him, all
+> recorded with the actual reasoning in the doc: a "pin, not scan" model (drafting
+> sheets pin to one shared Lobby on the APPROVE tick, nothing crawls anymore); the
+> register-to-slide queue defaults to PRE-TICKED/opt-out (not the exception-list model
+> first proposed — Rohan pushed back twice, correctly); onboarding stays out of scope
+> for pre-ticking (its own existing deliberate flow); a numeric threshold idea was
+> raised and explicitly rejected as worse than the categorical signal already available.
+>
+> **Phase 0 (cold-start crawl + core mechanics) and Phase 1 (the live pin-on-tick event)
+> are BUILT AND COMMITTED. Phase 1 is PROVEN LIVE**, not just green in the test suite:
+> with the real add-in loaded and a real deck/register open, a raw COM write to a
+> drafting sheet's APPROVE column — zero direct calls to `PinToLobby` — caused the
+> `Drafting Lobby` sheet to be created and correctly pinned automatically, and
+> un-ticking correctly cleared it. Both directions verified from the saved workbook.
+> **Phases 2-4 (wire Publish to read the Lobby instead of crawling; pre-tick the queue
+> and drop the Yes/No/Cancel gate; revisit sheet-merging only if still needed) are NOT
+> STARTED.** The Lobby populates itself correctly now, but nothing downstream reads it
+> yet — the 13-sheet crawl is still what actually runs on every "Put it on the slides"
+> press today.
+>
+> **New file: `vba/AppEvents.cls`** — the first class module this codebase has ever
+> had. Getting it working surfaced two genuinely new, well-documented gotchas (both
+> logged as classes in `AGENTS.md`, worth reading before touching `WithEvents` or any
+> future `.cls` file again):
+> - `WithEvents` needs an early-bound type, so this project now carries a reference to
+>   Excel's own object library, added *programmatically* in all four scripts that build
+>   a presentation from scratch (`build_ppam.ps1`, `run_vba_tests.ps1`,
+>   `compile_check.ps1`, `field_e2e.ps1`) — each one starts fresh every run, so the
+>   reference has to be re-added every time, it cannot be a one-off VBE setting.
+> - **The real one:** a `.cls` file with this repo's normal LF-only line endings
+>   imports SILENTLY as a Standard Module instead of a Class Module —
+>   `VBComponents.Import()` needs CRLF to recognise the `VERSION 1.0 CLASS` header at
+>   all. The only symptom was a generic `WithEvents` compile error that read exactly
+>   like a `WithEvents`-specific problem; two wrong theories (Public-vs-Private,
+>   qualified-vs-bare type name) were tried and discarded before checking the imported
+>   component's actual `.Type` property directly settled it. Fixed by CRLF-normalising
+>   `.cls` files specifically during staging, in all four scripts.
+>
+> **New file: `vba/DraftingLobby.bas`** — `PinToLobby`, `ReadLobby`, `ClearLobbyEntry`,
+> `LobbyCount`, `BuildLobbyFromScratch` (the cold-start/repair crawl, usable standalone
+> right now), `EnsureWatching` (wires the event sink, called from
+> `WorkbookBridge.OpenOrGetWorkbook`), `FieldIdForSheet`. Also fixed along the way: a
+> `Collection` cannot hold a VBA `Type` (compile error, hit a fourth time — see
+> `AGENTS.md`).
+>
+> **Three commits tonight, all pushed to `main`:** `eee22d1` (the milestone/derived-field
+> apply-path fix, item V, plus the elapsed-time bar's first cut and the `build_ppam.ps1`
+> save-before-quit fix, item O), `5eb4c28` (`LOBBY-DESIGN.md` + Lobby phase 0),
+> `b67941c` (Lobby phase 1, proven live).
+>
+> ### THE ELAPSED-TIME BAR — built, tagged live on `3_P001`, ONE BUG STILL OPEN
+> New `Kind = Derived` field, `TIMELINE_ELAPSED`, computed fresh every sync from
+> `START_DATE`/`END_DATE` (`SyncOperations.ElapsedFraction`), never a register column.
+> Discovery proven live (correct fraction computed, ~0.9578, matches the real dates).
+> Applying it is NOT reliably proven — `ReviewQueue.ApplyApproved` was extended for
+> `Kind = Derived` fields (same shape as the earlier milestone-device fix, item V) and
+> the actual bar-write succeeded once, but a SEPARATE, still-unexplained "changed since
+> you approved it" hash-mismatch recurred on retry even after rounding the width to 2dp
+> (the first theory, tried and it didn't fully fix it). **FIX-LIST has the full
+> diagnostic trail — read it before re-diagnosing from scratch.** Session ended this
+> thread deliberately, at Rohan's call, to go think about the workflow architecture
+> instead of one more live-debug round; that's what led directly to the Lobby.
+>
+> ### SCENARIO 1'S OFFICIAL UNAIDED CLOSE IS STILL NOT ACHIEVED
+> Unchanged from before tonight — every mechanism proof this session (milestone device,
+> elapsed bar, the Lobby) was heavily assisted, same as the earlier ABOUT_BODY/milestone
+> proofs. This remains open and is not what tonight's work was aimed at closing.
+>
+> ### MACHINE STATE AT HANDOVER — CHECK FRESH, DO NOT ASSUME
+> Checked directly at session end: PowerPoint has **0 presentations open** (the deck
+> closed at some point, cause not chased). Excel still has
+> `PRESERVED-known-good-20260815-1050\register-wide.xlsx` open, **Saved=False**. That
+> workbook now contains, live but unsaved: the `Drafting Lobby` sheet (header row only,
+> both live test pins were cleaned up in the same test), the `TIMELINE_ELAPSED`/
+> `TIMELINE_ELAPSED.rest` tags on `3_P001`'s slide (in the closed deck, separately
+> saved earlier and confirmed surviving a rebuild), and a rebuilt
+> `Review project-progress-A32C` queue (183 changes, untouched, "nothing has been
+> written" per its own report). **`PRESERVED-known-good-20260815-1050` is further from
+> pristine than ever** — treat the name as historical, not descriptive, same note as
+> last time. If Excel is closed without saving, the Lobby sheet and this session's
+> register-side test state will not persist; the CODE is safe regardless (committed and
+> pushed), only this one workbook's live content is at risk.
+>
+> ### addin115 IS THE CURRENT BUILD, confirmed loaded and working tonight.
 >
 > ### FULL PIPELINE PROVEN END TO END, ONE FIELD, VERIFIED AT EVERY STEP FROM FILE BYTES.
 > `TPL_ABOUT_BODY` row for `3_P001`: typed into `SUBMIT`/`APPROVE` -> `Publish Drafts`
