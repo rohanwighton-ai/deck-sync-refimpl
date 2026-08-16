@@ -360,6 +360,35 @@ human-facing flow works, not just the code behind it.
       wants it, using the same now-fixed button and now-accurate confirmation
       text.
 
+## Real end-to-end tests, tracked explicitly — Rohan, 2026-08-16
+
+Unit tests prove a function behaves when called; nothing in this list is
+satisfied by one. Each entry needs a person pressing a real button against
+real (or deliberately fake-but-real) data and the result checked from saved
+bytes. Started because the K/S template build above was mechanism-tested
+(step 2-4's suite) but never proven end-to-end until real rows forced it.
+
+- [ ] **#1, in progress:** three fake rows (`K900`/`S900`/`P900`, `Q4F26`)
+      added to `scenario3-template-surgery-20260816\register-wide.xlsx`
+      via real Excel, verified from a fresh read-only re-open. Next: Rohan
+      presses **"Add missing slides"** on the copy and we check the saved
+      deck — does each row clone from ITS OWN letter's template, or does
+      something silently fall back to `P` for all three? This is the actual
+      proof `RunSync.CreateMissingSlides`'s per-row letter resolution
+      (Scenario 3 step 3) works outside a synthetic fixture.
+- [ ] **#2:** Scenario 1 (generate a new quarter) end-to-end, Rohan alone,
+      no agent in the loop — already the project's own stated finish line
+      (`TRACKER.md` item 10), listed here too so it isn't only remembered
+      in one place.
+- [ ] **#3:** Scenario 8 (portability) — bring up a genuinely fresh deck +
+      register from nothing, unaided. Never attempted once.
+- [ ] **#4:** OneDrive-hosted write reliability. Proven only on a local
+      copy; the one real attempt on OneDrive failed outright (AutoSave on,
+      4 verified attempts, mtime never moved). The work machine is
+      OneDrive-hosted, so this is not a papercut.
+- [ ] Add more here as they're identified — this list is the record, not a
+      one-off.
+
 ## Scenario 3 — per-letter templates (blocked on a real defect, not reachability)
 
 - [x] Step 1 — `TemplateSlide.CodeLetterOf`, done and tested.
