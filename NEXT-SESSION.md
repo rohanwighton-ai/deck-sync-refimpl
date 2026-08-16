@@ -40,17 +40,15 @@
 > attempted — not worth it at 1am for a diagnostic retest. Next real occurrence
 > (whenever Rohan is doing genuine review work) is now the actual test.
 >
-> **MACHINE STATE AT HANDOVER:** PowerPoint is open with a fresh `build_ppam.ps1`
-> run's modules imported (35 modules, includes tonight's `ReviewQueue.bas`/
-> `TestRunner.bas`/`DraftingUI.bas` changes), waiting on the manual **File > Save
-> As > PowerPoint Add-in (*.ppam)** step — name it `addin118.ppam` (mind the
-> spelling — `addin116` first landed as `adin116`, caught and fixed). Once saved,
-> the routine is now: copy into `AppData\Roaming\Microsoft\AddIns\`, hash-verify
-> against the `OneDrive\Claude\` copy, register a new
-> `HKCU\...\PowerPoint\AddIns\addin118` key with `Path`/`AutoLoad=1`, set the
-> previous one's `AutoLoad=0`. `addin117` is the last one actually loaded and
-> proven live. Excel is closed. Full suite 235/0, static/module-list/doc checks
-> all clean, everything pushed to `main` at `211f7c8`.
+> **MACHINE STATE AT HANDOVER (final, ~02:20):** `addin118.ppam` saved, copied to
+> the trusted `AddIns` folder, hash-verified against the `OneDrive\Claude\` copy,
+> registered `HKCU\...\PowerPoint\AddIns\addin118` with `AutoLoad=1`, `addin117`
+> set to `AutoLoad=0`. **Confirmed loaded live** via a fresh PowerPoint launch
+> (`AddIns` collection, `Loaded = -1`) — this is the current build, includes
+> tonight's `ReviewQueue.bas`/`TestRunner.bas`/`DraftingUI.bas`/`AGENTS.md`/
+> `FIX-LIST.md` changes. PowerPoint and Excel both closed. Full suite 235/0,
+> static/module-list/doc checks all clean, everything pushed to `main` at
+> `3f18caa`.
 
 > ## 17 AUG, LATE NIGHT (session started 16 Aug evening). **SESSION-END HANDOVER.
 > STATUS: CURRENT.** Very long single session — document control catch-up, the elapsed
