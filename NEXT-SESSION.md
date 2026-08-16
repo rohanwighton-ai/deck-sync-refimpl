@@ -1,5 +1,13 @@
 # NEXT SESSION — start here
 
+> ## 16 AUG. **`CHECKLIST.md` IS NOW THE PRIMARY HANDOVER SURFACE. READ IT FIRST.**
+>
+> Compiled 2026-08-16 from a full pass of every CURRENT-status document
+> (`DOCUMENT-MAP.md`'s own list), not just the usual three. Flat, tickable, every item
+> linked to its source. This block and everything below it is still true and still worth
+> reading for the *why* — but "what's actually left to do" now lives in `CHECKLIST.md`,
+> and it gets ticked there, together, not re-derived from this prose each time.
+
 > ## 15 AUG, ~21:20. **SESSION-END HANDOVER. STATUS: CURRENT.** Rohan is calling it for
 > tonight. Supersedes the ~20:15 block below on build state and the milestone finding.
 > Everything else there stands.
