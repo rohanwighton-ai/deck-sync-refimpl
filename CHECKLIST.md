@@ -713,6 +713,11 @@ for the rest of our existence together." Standing practice now — see memory
       not real content) but real — worth either deleting that file so a
       fresh one gets created, or adding startup cleanup to
       `run_vba_tests.ps1` for a stale/oversized fixture.
+- [x] **Full suite re-run against the final banner-based `Watch()`, 2026-08-16:
+      230 passed, 0 failed, 0 skipped.** Confirms the on-slide-banner
+      implementation (after the two failed foreground-focus attempts above)
+      introduced no regressions anywhere in the suite, not just in the 2
+      tests it's wired into.
 
 ## Known open defects — not urgent, not forgotten
 
