@@ -1,8 +1,8 @@
 # The Lobby — architectural plan
 
-> **CURRENT — Phases 0, 1 and 2 built and PROVEN LIVE 2026-08-16/17 (night); phase 3
-> BUILT AND TESTED but NOT YET DEPLOYED — see its own status block below, this is a
-> deliberate gate, not an oversight. Phase 4 not started.** Written at Rohan's explicit
+> **CURRENT — Phases 0, 1, 2 and 3 built, tested, and DEPLOYED (`addin119`,
+> 2026-08-17 morning, after Rohan reviewed the diff and approved it explicitly:
+> "let's get it built properly"). Phase 4 not started.** Written at Rohan's explicit
 > request before any of this got built: *"please
 > do a full architectural plan for this before we start, large changes."* Supersedes the
 > shorter version of this design scattered across `CHECKLIST.md`'s "The Lobby" section —
@@ -80,7 +80,7 @@
 > Phase 2 regression: this is the third occurrence across three sessions and three
 > different call sites, still not root-caused (see `FIX-LIST.md` item V).
 >
-> **Phase 3 status: BUILT AND TESTED, deliberately NOT DEPLOYED.** Both halves landed
+> **Phase 3 status: BUILT, TESTED, REVIEWED, AND DEPLOYED.** Both halves landed
 > together, per section 9's own rollout order. `ReviewQueue.BuildQueue` now sets
 > `Approved = True` on every item it creates (was `False`) — proven with the same
 > discipline as tonight's other fixes: run against the old default first, confirmed a
@@ -93,20 +93,24 @@
 > updated to describe the new default rather than the old one. Full suite 236/0, static/
 > module-list/doc checks clean.
 >
-> **Why not deployed tonight, on purpose:** this is the single most consequential change
-> in the whole Lobby design — it changes what counts as a human decision on content that
-> reaches a real slide, which is the exact thing R13 exists to protect (`19 slides
-> changed, nobody looked` — ReviewQueue.bas's own header). The DESIGN was reviewed and
-> agreed by Rohan earlier the same night, at length (section 5's own record of that
-> back-and-forth) — what has NOT yet been reviewed by him is this specific
-> *implementation* of it. `PutItOnTheSlidesCore`'s new no-modal path has no test coverage
-> of its own (same pre-existing gap `PublishAllDraftedFields` has — it needs
-> `Application.ActivePresentation` and nothing in this codebase exercises that chain
-> end-to-end). Built and pushed to `main` so it is real, reviewable, and ready — but no
-> new `.ppam` was built or deployed with this change in it, and it will not go live until
-> Rohan reviews the diff and someone builds+deploys deliberately, which per this
-> project's own established practice (the `.ppam` Save-As step) is a real, permanent,
-> manual action regardless.
+> **Held back overnight on purpose, then reviewed and deployed the next morning.** This
+> is the single most consequential change in the whole Lobby design — it changes what
+> counts as a human decision on content that reaches a real slide, which is the exact
+> thing R13 exists to protect (`19 slides changed, nobody looked` — ReviewQueue.bas's
+> own header). The DESIGN was reviewed and agreed by Rohan the night before, at length
+> (section 5's own record of that back-and-forth); the *implementation* was built and
+> pushed but deliberately not deployed until he could review it himself. He did, asked
+> real questions about the layered no-overwrite mechanism (build-time diff filter,
+> apply-time hash revalidation, the injector's own no-op check) and about a proposed
+> "register as memory" shortcut (rejected — it would trust a remembered value over the
+> live slide, the exact anti-pattern this project has been burned by before), then
+> approved: *"let's get it built properly."* `addin119` built, moved to trusted, hash-
+> verified, registered `AutoLoad=1`, `addin118` set to `0`, confirmed loaded live via a
+> fresh PowerPoint launch. `PutItOnTheSlidesCore`'s new no-modal path still has no
+> automated test coverage of its own (same pre-existing gap `PublishAllDraftedFields`
+> has — it needs `Application.ActivePresentation`, and nothing in this codebase
+> exercises that chain end-to-end) — the next real "2. Put it on the slides" press,
+> live, is the actual proof.
 >
 > **Not yet built:** phase 4 (sheet-merging, only if still needed after 2-3).
 
