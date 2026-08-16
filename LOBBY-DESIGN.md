@@ -1,35 +1,56 @@
 # The Lobby — architectural plan
 
-> **CURRENT — Phase 0 built and tested 2026-08-16 (night); phases 1-4 not started.**
-> Written at Rohan's explicit request before any of this got built: *"please do a full
-> architectural plan for this before we start, large changes."* Supersedes the shorter
-> version of this design scattered across `CHECKLIST.md`'s "The Lobby" section — that
-> section now points here. Follow `SESSION-PROTOCOL.md`'s documentation discipline: read
-> this in full before touching any of the modules it names, and update it in the same
-> commit as any code that changes what it describes.
+> **CURRENT — Phases 0 and 1 built and PROVEN LIVE 2026-08-16/17 (night); phases 2-4 not
+> started.** Written at Rohan's explicit request before any of this got built: *"please
+> do a full architectural plan for this before we start, large changes."* Supersedes the
+> shorter version of this design scattered across `CHECKLIST.md`'s "The Lobby" section —
+> that section now points here. Follow `SESSION-PROTOCOL.md`'s documentation discipline:
+> read this in full before touching any of the modules it names, and update it in the
+> same commit as any code that changes what it describes.
 >
 > **Phase 0 status:** `vba/DraftingLobby.bas` exists — `PinToLobby`, `ReadLobby`,
 > `ClearLobbyEntry`, `LobbyCount`, and the cold-start `BuildLobbyFromScratch`. Three real
-> tests in `TestRunner.bas` (`DraftingLobby_PinReadClearRoundTrip`,
-> `DraftingLobby_BuildFromScratchFindsOnlyApprovedRows`,
-> `DraftingLobby_PinTwiceUpdatesInPlaceNotDuplicate`), full suite green (233/0). Two real
-> bugs found and fixed building this — both worth remembering as a CLASS, not an
-> instance: a `Collection` cannot hold a VBA `Type` (compile error, not runtime — see
-> `AGENTS.md`'s "Known Patterns", hit a fourth time here via `Collection` rather than
-> `Dictionary`), and a bare `Application.DisplayAlerts` inside code that is compiled into
-> PowerPoint's VBA project resolves to `PowerPoint.Application`, not the Excel instance
-> that actually owns the workbook being changed — `wb.Application` is required, exactly
-> the pattern already used everywhere else in `DraftingUI.bas`. The second bug was caught
-> by the test that proves a rebuild does not trust its own past content, not by
-> inspection — worth noting as a small proof that the "make it fail on purpose first"
-> discipline pays for itself.
+> tests in `TestRunner.bas`. Two real bugs found and fixed building it, both logged as
+> classes in `AGENTS.md`: a `Collection` cannot hold a VBA `Type` (fixed with
+> `LobbyEntry()` arrays), and a bare `Application.DisplayAlerts` inside PowerPoint-hosted
+> code resolves to the wrong application (fixed with `wb.Application`).
 >
-> **Not yet built:** phase 1 (the `Application.SheetChange` pin-on-tick event
-> mechanism), phase 2 (wiring `PublishAllDraftedFields` to read the Lobby instead of
-> crawling), phase 3 (pre-ticked queue items + removing the Yes/No/Cancel apply gate).
-> `BuildLobbyFromScratch` is fully usable right now as a manual/on-demand rebuild, but
-> nothing calls it automatically yet, and nothing reads the Lobby instead of the 13
-> sheets yet — the crawl this design exists to remove is still the live behaviour today.
+> **Phase 1 status: built AND proven live, not just compiled.** `vba/AppEvents.cls` (the
+> first class module this project has ever had) — `Private WithEvents mApp As
+> Excel.Application`, watching `SheetChange`, pinning/clearing on the APPROVE column only.
+> Wired via `DraftingLobby.EnsureWatching`, called from `WorkbookBridge.
+> OpenOrGetWorkbook` (LOBBY-DESIGN.md section 8's chosen hook point). `EnableEvents`
+> guard added around `DraftingUI.RefreshDraftingSheets`'s bulk-write loop, restored on
+> both the normal and error paths. **Proven live 2026-08-17, not just by the test
+> suite:** with the real add-in loaded and a real deck/register open, a cell write via
+> COM to a drafting sheet's APPROVE column — with ZERO direct calls to `PinToLobby` —
+> caused the Lobby sheet to be created and correctly pinned automatically. Un-ticking the
+> same cell correctly cleared the pin. Both directions verified from the saved workbook,
+> not assumed from the code.
+>
+> **Two more real bugs found and fixed getting Phase 1 working, both logged as classes
+> in `AGENTS.md`:**
+> - `WithEvents` requires an EARLY-BOUND type — a whole new class of dependency for this
+>   codebase (a reference to Excel's own object library, added programmatically in
+>   `build_ppam.ps1`/`run_vba_tests.ps1`/`compile_check.ps1`/`field_e2e.ps1`, every
+>   build, since each starts from a fresh presentation).
+> - **The real one, and the one worth remembering:** a `.cls` file with LF-only line
+>   endings (this repo's normal state, via WSL/git) imports SILENTLY as the wrong
+>   component type (`vbext_ct_StdModule`, not `vbext_ct_ClassModule`) — `Import()` needs
+>   CRLF to recognise the `VERSION 1.0 CLASS` header. The only visible symptom was
+>   `WithEvents` failing to compile with a generic "Expected: end of statement" reported
+>   on the `WithEvents` line itself — which reads exactly like a `WithEvents`-specific
+>   problem (two wrong theories were tried and discarded — Public-vs-Private,
+>   qualified-vs-bare type name — before checking the imported component's actual
+>   `.Type` property directly settled it). Fixed by CRLF-normalising `.cls` files
+>   specifically during staging, in all four scripts that import one.
+>
+> **Not yet built:** phase 2 (wiring `PublishAllDraftedFields` to read the Lobby instead
+> of crawling), phase 3 (pre-ticked queue items + removing the Yes/No/Cancel apply gate),
+> phase 4 (sheet-merging, only if still needed after 2-3). The Lobby now populates itself
+> automatically and correctly — but nothing downstream reads it yet, so the 13-sheet
+> crawl this design exists to remove is still the live behaviour on every "Put it on the
+> slides" press today.
 
 ---
 

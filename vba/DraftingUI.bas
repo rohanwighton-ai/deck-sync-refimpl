@@ -667,6 +667,16 @@ Public Sub RefreshDraftingSheets()
     ' Same "reports success without confirming the effect" shape this project has
     ' now fixed five times; counted here so it can be SAID.
     Dim refusedCount As Long, refusedFields As String
+    ' BULK-WRITE SAFETY FOR THE LOBBY'S PIN MECHANISM (LOBBY-DESIGN.md
+    ' section 4). WriteDraftingSheet does not normally write the APPROVE
+    ' column for an existing row (it is read, never rewritten -- carried
+    ' forward as-is), so this loop should not fire AppEvents.App_SheetChange
+    ' at all in the common case. Disabled anyway, defensively, rather than
+    ' relying on that as the only guard -- restored in the Failed: handler
+    ' below too, so an error mid-loop cannot leave events silently off for
+    ' the rest of the session.
+    wb.Application.EnableEvents = False
+
     Dim i As Long
     Dim draftOrder As String
     Dim seedIndex As Long
@@ -708,6 +718,8 @@ Public Sub RefreshDraftingSheets()
         report = report & fid & ": " & fieldReport & vbCrLf
         seedIndex = seedIndex + 1
     Next i
+
+    wb.Application.EnableEvents = True
 
     WorkbookBridge.ArrangeTabs wb, draftOrder
     WorkbookBridge.WriteWorkbookIndex wb
@@ -789,8 +801,25 @@ Public Sub RefreshDraftingSheets()
     Exit Sub
 
 Failed:
+    ' SAVE THE REAL ERROR BEFORE TOUCHING ANYTHING ELSE. The restore below
+    ' runs under its own On Error Resume Next, and if IT raises (however
+    ' unlikely), that error would silently overwrite Err and corrupt the
+    ' message this handler exists to report -- capture first, restore
+    ' events second, report the SAVED values always.
+    Dim origErrNum As Long, origErrDesc As String
+    origErrNum = Err.Number
+    origErrDesc = Err.Description
+
+    ' RESTORE EVENTS EVEN ON A MID-LOOP ERROR. `wb` may not be set yet if
+    ' Resolve itself failed -- guarded rather than assumed, since an error
+    ' inside error-handling would leave events off with no further chance to
+    ' fix it this session.
+    On Error Resume Next
+    If Not wb Is Nothing Then wb.Application.EnableEvents = True
+    On Error GoTo 0
+
     Say "Could not refresh the drafting sheets." & vbCrLf & vbCrLf & _
-           "Error " & Err.Number & ": " & Err.Description, vbCritical, CAP
+           "Error " & origErrNum & ": " & origErrDesc, vbCritical, CAP
 End Sub
 
 

@@ -58,9 +58,20 @@ $modules = @(
     "SlideDuplication.bas","TemplateSlide.bas","TemplateAudit.bas","IdentityCheck.bas",
     "TagMigration.bas","FieldWiring.bas","MilestoneDevice.bas","Readiness.bas","Register.bas","RegisterSeed.bas","PlaceholderCheck.bas","RunSync.bas","ReviewQueue.bas","Drafting.bas","FieldSpec.bas","Sources.bas","Timeline.bas",
     "DeckAdoption.bas","ResolveFields.bas","DeckRegistry.bas","WorkbookBridge.bas","Harvest.bas",
-    "OnboardFlow.bas","RibbonUI.bas","AdoptFlow.bas","BatchOnboardFlow.bas","CommandBarUI.bas","DraftingUI.bas","DiscoverUI.bas"
+    "OnboardFlow.bas","RibbonUI.bas","AdoptFlow.bas","BatchOnboardFlow.bas","CommandBarUI.bas","DraftingUI.bas","DiscoverUI.bas",
+    "DraftingLobby.bas","AppEvents.cls"
 )
-foreach ($m in $modules) { Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging }
+foreach ($m in $modules) {
+    $srcPath = Join-Path $vbaSourceDir $m
+    if ($m -like "*.cls") {
+        # CRLF, NOT A PLAIN COPY -- see run_vba_tests.ps1's identical step:
+        # Import() silently mis-types an LF-only .cls as a Standard Module,
+        # and WithEvents then fails to compile nowhere near this cause.
+        ((Get-Content $srcPath -Raw) -replace "`r`n", "`n" -replace "`n", "`r`n") | Set-Content (Join-Path $staging $m) -NoNewline
+    } else {
+        Copy-Item $srcPath -Destination $staging
+    }
+}
 Copy-Item (Join-Path $vbaSourceDir "tools\E2EField.bas") -Destination $staging
 
 function Invoke-ForceCompile {
@@ -101,6 +112,9 @@ try {
     $ppt = New-Object -ComObject PowerPoint.Application
     $ppt.Visible = -1
     $scratch = $ppt.Presentations.Add()
+    # Same reference build_ppam.ps1/run_vba_tests.ps1/compile_check.ps1 all add
+    # -- AppEvents.cls's WithEvents needs it (LOBBY-DESIGN.md).
+    $scratch.VBProject.References.AddFromGuid("{00020813-0000-0000-C000-000000000046}", 1, 9) | Out-Null
     foreach ($m in ($modules + "E2EField.bas")) {
         $scratch.VBProject.VBComponents.Import((Join-Path $staging $m)) | Out-Null
     }

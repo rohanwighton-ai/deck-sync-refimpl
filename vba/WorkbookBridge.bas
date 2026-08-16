@@ -150,6 +150,13 @@ Public Function OpenOrGetWorkbook(path As String) As Object
     On Error GoTo 0
 
     Set OpenOrGetWorkbook = wb
+
+    ' THE LOBBY'S PIN MECHANISM GETS WIRED HERE, NOT AT Auto_Open. There is no
+    ' Excel instance to watch until a workbook is actually resolved, and this
+    ' function is the one place every path through the add-in already goes
+    ' through to reach one (LOBBY-DESIGN.md section 8). Idempotent, safe to
+    ' call on every resolve.
+    If Not wb Is Nothing Then DraftingLobby.EnsureWatching wb
 End Function
 
 ' Why this workbook cannot be written to, or "" if it can.

@@ -67,6 +67,30 @@ guidance.
   first this time either, and would have caught it before the compile
   gate did.
 
+- **A `.cls` FILE WITH LF-ONLY LINE ENDINGS IMPORTS SILENTLY AS THE WRONG
+  COMPONENT TYPE.** `VBComponents.Import()` needs the `VERSION 1.0 CLASS` /
+  `BEGIN` / `END` header block terminated with CRLF to recognise a class
+  module at all. This repo's files are LF-only (WSL, git) -- fine for every
+  `.bas` file, because a standard module needs no header signature to
+  detect. `AppEvents.cls` (2026-08-16, the first class module this project
+  has ever had) imported with NO ERROR, but as `vbext_ct_StdModule` (Type
+  1) instead of `vbext_ct_ClassModule` (Type 2) -- confirmed by querying
+  `.Type` directly on the imported component, not assumed. The only visible
+  symptom was `WithEvents` failing to compile with a generic "Compile
+  error: Expected: end of statement", reported on the `WithEvents` line
+  itself, which reads exactly like a `WithEvents`-specific problem (tried
+  `Public` vs `Private`, qualified `Excel.Application` vs bare
+  `Application` -- neither made any difference, because neither was ever
+  the real cause). Confirmed root cause by reading the STAGED file's raw
+  bytes (`Get-Content -Encoding Byte`) and finding byte 10 with no
+  preceding byte 13 right after "VERSION 1.0 CLASS". Fixed in all three
+  places a `.cls` gets staged (`build_ppam.ps1`, `run_vba_tests.ps1`,
+  `field_e2e.ps1`): CRLF-normalise `.cls` files specifically during
+  staging, leave `.bas` files untouched. **Takeaway: when a symptom is on
+  the line that looks obviously relevant, check the file actually compiled
+  as the component type you think it is before trusting the symptom's own
+  framing of the problem.**
+
 - **ONE WRITER ON THE RIG AT A TIME. Delegating an Office task means not doing
   it yourself.** 2026-08-01: a Fable agent was put on the property-persistence
   bug, and the main agent then ran the same experiments concurrently -- same

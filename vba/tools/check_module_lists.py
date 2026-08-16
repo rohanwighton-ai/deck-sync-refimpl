@@ -29,9 +29,11 @@ LISTS = {
     "harness     (field_e2e.ps1)":     VBA / "tools" / "field_e2e.ps1",
 }
 
-# every module that exists, by its VB_Name
+# every module that exists, by its VB_Name -- .cls added 2026-08-16 for
+# AppEvents.cls, the first class module this project has ever had.
 modules = {}
-for f in list(VBA.glob("*.bas")) + list((VBA / "tools").glob("*.bas")) + list((VBA / "tests").glob("*.bas")):
+for f in (list(VBA.glob("*.bas")) + list((VBA / "tools").glob("*.bas")) + list((VBA / "tests").glob("*.bas")) +
+          list(VBA.glob("*.cls"))):
     m = re.search(r'Attribute VB_Name = "([^"]+)"', f.read_text(encoding="utf-8", errors="replace"))
     if m:
         modules[m.group(1)] = f
@@ -39,7 +41,7 @@ for f in list(VBA.glob("*.bas")) + list((VBA / "tools").glob("*.bas")) + list((V
 failed = False
 for label, script in LISTS.items():
     text = script.read_text(encoding="utf-8", errors="replace")
-    imported = set(re.findall(r'"([A-Za-z0-9_\\]+\.bas)"', text))
+    imported = set(re.findall(r'"([A-Za-z0-9_\\]+\.(?:bas|cls))"', text))
     imported = {pathlib.Path(i.replace("\\", "/")).stem for i in imported}
 
     # what do the imported modules actually reference?

@@ -42,6 +42,60 @@ Public Type LobbyEntry
     EntityKey As String
 End Type
 
+' HELD AT MODULE LEVEL, NOT LOCAL, OR IT WOULD STOP FIRING. A WithEvents
+' object only sinks events for as long as something keeps a live reference
+' to it; a local variable in EnsureWatching would be destroyed the instant
+' that Sub returned, and the pin mechanism would silently do nothing from
+' the very next keystroke. This is genuinely the only place in the codebase
+' this pattern is needed (the only class module) -- named here so the next
+' person does not "clean up" what looks like an unused module-level Object.
+Private mAppEvents As AppEvents
+
+' Wires the pin mechanism to whichever Excel instance actually owns `wb`.
+' Idempotent and cheap to call on every resolve -- called from
+' WorkbookBridge.OpenOrGetWorkbook, the one place every path through this
+' add-in already goes through to reach the register workbook (LOBBY-DESIGN.
+' md section 8). Re-pointing `.App` to the SAME instance it already watches
+' is a harmless no-op; the check exists only to cover a second Excel
+' instance (or the same workbook reopened in a fresh session) actually
+' being different from whatever was last watched.
+Public Sub EnsureWatching(wb As Object)
+    If mAppEvents Is Nothing Then Set mAppEvents = New AppEvents
+
+    ' Watch()/IsWatching(), not a direct property -- AppEvents.mApp is kept
+    ' Private by design (see AppEvents.cls's own header for why, and for the
+    ' real bug that first made this look like a WithEvents visibility rule
+    ' rather than what it actually was: a mis-imported .cls file).
+    If Not mAppEvents.IsWatching(wb.Application) Then mAppEvents.Watch wb.Application
+End Sub
+
+' Reverse of Drafting.DraftSheetNameFor -- "" if `sheetName` is not a real
+' drafting sheet for any currently-declared Prose field. This is the whole
+' safety net that lets AppEvents watch the entire Application rather than
+' one workbook: anything that fails this check (every unrelated sheet on
+' the machine, every non-drafting sheet in this workbook) exits in one
+' comparison per field, cheap enough to run on every keystroke.
+Public Function FieldIdForSheet(wb As Object, sheetName As String) As String
+    Dim fields As String
+    fields = DraftingUI.ProseFields(wb)
+    If Trim(fields) = "" Then Exit Function
+
+    Dim parts() As String
+    parts = Split(fields, ",")
+
+    Dim i As Long
+    For i = LBound(parts) To UBound(parts)
+        Dim fieldId As String
+        fieldId = Trim(parts(i))
+        If fieldId <> "" Then
+            If StrComp(Drafting.DraftSheetNameFor(fieldId), sheetName, vbTextCompare) = 0 Then
+                FieldIdForSheet = fieldId
+                Exit Function
+            End If
+        End If
+    Next i
+End Function
+
 Private Function EnsureLobbySheet(wb As Object) As Object
     Dim ws As Object
     Set ws = WorkbookBridge.GetOrAddWorksheet(wb, LOBBY_SHEET_NAME)

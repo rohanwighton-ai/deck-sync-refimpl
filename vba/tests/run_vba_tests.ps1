@@ -290,9 +290,25 @@ Write-Output "RepoRoot: $RepoRoot"
 Write-Output "vbaSourceDir: $vbaSourceDir"
 Write-Output "fixturesSourceDir: $fixturesSourceDir"
 
-$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "Verification.bas", "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "PlaceholderCheck.bas", "RunSync.bas", "ReviewQueue.bas", "Readiness.bas","FieldWiring.bas","MilestoneDevice.bas","Drafting.bas","FieldSpec.bas","Sources.bas","DraftingUI.bas","DiscoverUI.bas", "DraftingLobby.bas", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "Harvest.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "tests\TestRunner.bas")
+$pptModules = @("Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas", "SyncOperations.bas", "Onboarding.bas", "Verification.bas", "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "PlaceholderCheck.bas", "RunSync.bas", "ReviewQueue.bas", "Readiness.bas","FieldWiring.bas","MilestoneDevice.bas","Drafting.bas","FieldSpec.bas","Sources.bas","DraftingUI.bas","DiscoverUI.bas", "DraftingLobby.bas", "AppEvents.cls", "DeckAdoption.bas", "ResolveFields.bas", "DeckRegistry.bas", "WorkbookBridge.bas", "Harvest.bas", "RibbonUI.bas", "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas", "tests\TestRunner.bas")
 foreach ($m in $pptModules) {
-    Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging
+    $srcPath = Join-Path $vbaSourceDir $m
+    $dstPath = Join-Path $staging (Split-Path $m -Leaf)
+    if ($m -like "*.cls") {
+        # CRLF, NOT A PLAIN COPY. VBComponents.Import() needs the VERSION
+        # 1.0 CLASS / BEGIN / END header terminated with CRLF to recognise a
+        # class module at all -- this repo's files are LF-only (WSL/git),
+        # and with LF the header is not recognised as metadata, so the
+        # whole file imports as a plain Standard Module instead (silently --
+        # no error at import time). WithEvents then fails to compile with a
+        # generic "Expected: end of statement", nowhere near this actual
+        # cause. Confirmed live 2026-08-16 building AppEvents.cls, the first
+        # .cls this project has ever had -- .bas files never hit this
+        # because Import() does not need to detect a header for them.
+        ((Get-Content $srcPath -Raw) -replace "`r`n", "`n" -replace "`n", "`r`n") | Set-Content $dstPath -NoNewline
+    } else {
+        Copy-Item $srcPath -Destination $dstPath
+    }
 }
 $excelModules = @("ExcelOutput.bas", "tests\TestRunnerExcel.bas")
 foreach ($m in $excelModules) {
@@ -450,6 +466,11 @@ try {
     $ppt = New-Object -ComObject PowerPoint.Application
     $ppt.Visible = -1  # msoTrue -- visible on purpose for a first real run, see script header
     $pres = $ppt.Presentations.Add()
+
+    # Same reference compile_check.ps1 and build_ppam.ps1 both add -- see either
+    # for why (AppEvents.cls's WithEvents needs it). Must match exactly, or this
+    # pass, the compile gate, and the shipped add-in are three different projects.
+    $pres.VBProject.References.AddFromGuid("{00020813-0000-0000-C000-000000000046}", 1, 9) | Out-Null
 
     # Derived from $pptModules rather than repeated. These two lists were
     # separate literals until 2026-07-31, when adding ReviewQueue.bas to one and

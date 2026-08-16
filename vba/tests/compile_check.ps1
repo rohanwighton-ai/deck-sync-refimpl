@@ -85,6 +85,14 @@ try {
     $ppt.Visible = -1
     $pres = $ppt.Presentations.Add()
 
+    # AppEvents.cls declares `WithEvents App As Excel.Application` (the Drafting
+    # Lobby's pin-on-tick mechanism, LOBBY-DESIGN.md) -- an early-bound type
+    # WithEvents genuinely requires, so this project now needs a reference to
+    # Excel's own object library to compile at all. Must match build_ppam.ps1's
+    # own AddFromGuid call exactly, or the built add-in and this compile gate
+    # would be checking two different projects.
+    $pres.VBProject.References.AddFromGuid("{00020813-0000-0000-C000-000000000046}", 1, 9) | Out-Null
+
     # EXACTLY the caller's PowerPoint set -- see the $Modules note above for why
     # "every .bas in staging" was wrong rather than merely loose.
     $names = $Modules -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }

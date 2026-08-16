@@ -501,7 +501,13 @@ def check_unreachable_capabilities(files: list[Path], root: Path) -> list[str]:
 
 def main() -> int:
     root = Path(__file__).resolve().parent.parent
-    files = sorted(root.glob("*.bas")) + sorted((root / "tests").glob("*.bas"))
+    # .cls ADDED 2026-08-16 for AppEvents.cls, the first class module this
+    # project has ever had (LOBBY-DESIGN.md). The checks below are line-based
+    # over ordinary VBA code and do not depend on the .bas-specific
+    # `Attribute VB_Name` header position, so a class module's extra
+    # VERSION/BEGIN...END preamble does not need special-casing.
+    files = (sorted(root.glob("*.bas")) + sorted((root / "tests").glob("*.bas")) +
+             sorted(root.glob("*.cls")))
     if not files:
         print(f"no .bas files found under {root}", file=sys.stderr)
         return 1

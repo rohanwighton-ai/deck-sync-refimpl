@@ -69,7 +69,7 @@ $productionModules = @(
     # The drafting half. Present in the repo since 2026-07-31 and never shipped
     # in the add-in at all -- reachable only from the PowerShell test harness.
     "Drafting.bas", "FieldSpec.bas", "Sources.bas",  "DraftingUI.bas", "DiscoverUI.bas",
-    "DraftingLobby.bas"
+    "DraftingLobby.bas", "AppEvents.cls"
 )
 
 function Request-GracefulQuit {
@@ -129,9 +129,36 @@ foreach ($m in $productionModules) {
     if ($m -eq "CommandBarUI.bas") {
         (Get-Content $src -Raw) -replace 'BUILD_STAMP As String = "\(unbuilt\)"', ('BUILD_STAMP As String = "' + $stamp + '"') | Set-Content $dst -NoNewline
         Write-Output ("Stamped build: " + $stamp)
+    } elseif ($m -like "*.cls") {
+        # CRLF, NOT A PLAIN COPY -- see run_vba_tests.ps1's identical step for
+        # why: Import() silently mis-types an LF-only .cls as a Standard
+        # Module instead of a Class Module, and WithEvents then fails to
+        # compile nowhere near this actual cause.
+        ((Get-Content $src -Raw) -replace "`r`n", "`n" -replace "`n", "`r`n") | Set-Content $dst -NoNewline
     } else {
         Copy-Item $src $dst
     }
+}
+
+# EXCEL OBJECT LIBRARY REFERENCE -- required for AppEvents.cls's
+# `WithEvents App As Excel.Application`. VBA's WithEvents needs an
+# EARLY-BOUND type to sink events from; a late-bound `As Object` simply does
+# not compile. This VBA project lives inside PowerPoint (COM-add-in-first,
+# per DECISIONS.md), so watching an EXCEL event (SheetChange, for the
+# Drafting Lobby's pin-on-tick mechanism -- see LOBBY-DESIGN.md) means the
+# PowerPoint VBA project needs a reference to Excel's own object library.
+# Added programmatically, every build, because build_ppam.ps1 always starts
+# from a brand-new presentation -- a reference added by hand in the VBE
+# would not survive the next build. GUID and version confirmed against this
+# machine's actual registered type library (2026-08-16):
+#   HKLM\SOFTWARE\Classes\TypeLib\{00020813-0000-0000-C000-000000000046}\1.9
+#   = "Microsoft Excel 16.0 Object Library"
+try {
+    $pres.VBProject.References.AddFromGuid("{00020813-0000-0000-C000-000000000046}", 1, 9) | Out-Null
+    Write-Output "Added reference: Microsoft Excel 16.0 Object Library"
+} catch {
+    Write-Output ("=== ABORTED: could not add the Excel object library reference (" + $_.Exception.Message + "). ===")
+    exit 2
 }
 
 foreach ($m in $productionModules) {

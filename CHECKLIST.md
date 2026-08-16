@@ -789,7 +789,12 @@ a machine-knowable fact lives once).
       `BuildLobbyFromScratch`). Three real tests, full suite green (233/0). Built and
       tested 2026-08-16 (night). Two real bugs found and fixed building it — see
       `LOBBY-DESIGN.md`'s status banner and `AGENTS.md`'s Known Patterns.
-- [ ] Phase 1 — the `Application.SheetChange` pin-on-tick event mechanism.
+- [x] **Phase 1 — the `Application.SheetChange` pin-on-tick event mechanism.**
+      `vba/AppEvents.cls` (first class module in the codebase). Proven LIVE
+      2026-08-17, both directions (tick pins, un-tick clears), zero direct
+      `PinToLobby` calls in the test — a real cell write via COM caused a real,
+      correct pin. Two more real bugs found and fixed, both logged as classes in
+      `AGENTS.md` — see `LOBBY-DESIGN.md`'s status banner for detail.
 - [ ] Phase 2 — wire `PublishAllDraftedFields` to read the Lobby instead of crawling
       the 13 sheets directly.
 - [ ] Phase 3 — pre-ticked queue items + remove the Yes/No/Cancel apply gate (see
