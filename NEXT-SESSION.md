@@ -73,14 +73,19 @@
 > very first listing taken at the start of today's OneDrive investigation. Whatever
 > the "onedrive/claude" sighting was, it did not write to anything, safe or live.
 >
-> **Leading theory, not confirmed:** `RegistryValueOnDisk` (P's new verification
-> function) uses the same `Shell.Application` `CopyHere` zip-extraction technique
-> that was already caught red-handed once today causing an unrelated blank Word
-> window to pop up mid-probe (documented, harmless, never fully explained beyond
-> "real shell file-copy activity, happens a lot during verification"). Pressing
-> "Set up my quarter" calls `SetDeckPeriodVerified`, which calls this same mechanism
-> repeatedly. Plausible the same class of side effect fired again, more visibly this
-> time. NOT verified as the actual cause — say so plainly if picking this up.
+> **Theory, PARTIALLY corroborated by Rohan directly:** `RegistryValueOnDisk` (P's
+> new verification function) uses the same `Shell.Application` `CopyHere`
+> zip-extraction technique that was already caught red-handed once today causing an
+> unrelated blank Word window to pop up mid-probe. Pressing "Set up my quarter" calls
+> `SetDeckPeriodVerified`, which calls this same mechanism repeatedly. Rohan confirmed
+> what he saw WAS `OneDrive\Claude` specifically — the exact folder this whole
+> mechanism operates in (the live deck, register, and every scratch probe folder all
+> live there) — which matches the theory's location. **Still not fully explained**:
+> the precise OS/Explorer-level mechanism that turns real `CopyHere` shell activity
+> into a visible window is genuinely outside this code's (or any code's) visibility —
+> that gap was named directly to Rohan, not glossed over. If it recurs and needs
+> closing for real, the fix is removing `Shell.Application`/`CopyHere` from the
+> verification path entirely, not a better explanation of the current one.
 >
 > **Next action:** check current PowerPoint state fresh (don't assume anything
 > carried over is still true), confirm the test deck is genuinely closed/clean
