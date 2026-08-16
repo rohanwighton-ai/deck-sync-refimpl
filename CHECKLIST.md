@@ -473,12 +473,19 @@ built and tested on.
       name, `InjectorFor` routing an untagged device correctly, the safety
       rail (untagged textbox/non-device group NOT matched by name), and tag
       still winning over name when both exist. Suite 224 → 229/0.
-- [ ] **Not yet proven against the real file** — only synthetic fixtures so
-      far. Real proof needs `addin107` built with this fix, then a Preview
-      Sync (dry run — writes nothing) against the copy with `3_P001` in
-      scope, checking whether it now reports a milestone field needing sync
-      instead of being silently skipped, per this project's own "verify from
-      the far side of the boundary" rule.
+- [x] **Proven against the real file, 2026-08-16 14:00.** `addin107` built,
+      Rohan pressed "Review changes (writes nothing)" on the copy against
+      `3_P001`. Verified from the SAVED workbook, not the dialog (the macro
+      writes the review sheet to memory but never saves it — caught a
+      real save-timing gap doing this check, asked Rohan to save Excel
+      before re-reading): `Review project-progress-A32C`, run stamp
+      `2026-08-16 14:00:02`, row 4 —
+      `3_P001 | MILESTONE_TIMELINE | 7 slot(s), all parts present |
+      (redrawn from its register columns)`. That row could not have existed
+      before this fix; the device was completely invisible to
+      `PlanRoutineSync`. **Unrelated, pre-existing defect noticed in the same
+      sheet, flagged to Rohan, not touched:** row 3 is the already-known
+      `PROJECT_PROGRESS` false-diff bug (`80%` → `0.8`) — do not approve it.
 - [ ] **Separate, later decision, NOT this fix's job:** whether/how to
       backfill the milestone device onto the 45 real slides that don't have
       the shapes at all (only `3_P001` was ever built out) — this fix makes
