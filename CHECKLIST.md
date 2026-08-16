@@ -120,31 +120,109 @@ just its own stated build steps, restated as a checklist.*
       `SCENARIOS.md`'s file-per-quarter section.*
 - [ ] Tests + one real keyboard run before the prune touches anything live.
 
-## ARCHITECTURE FORK — Rohan's decision needed before scenario 3 continues
+## Win ledger — reviewed 2026-08-16, one open call for Rohan
 
-- [ ] **A ratified 12 Aug decision may conflict with the Scenario 3 plan below.**
-      *Source: `archive/NEXT-SESSION-2026-08-12.md`, "DECISION, 12 Aug evening —
-      pre-placed shapes + visibility, NOT computed sizing," found 2026-08-16.*
-      Verbatim: *"positions are pre-drawn and known; state is shown by hiding and
-      showing, never by resizing at run time... this generalises beyond the
-      timeline, and is why the deck should NOT split into three slide types...
-      one template, not three."* Scenario 3's plan (below) does the opposite —
-      builds SEPARATE K and S templates. The plan doesn't reference this
-      decision; it may have been written without seeing it. **Not resolved —
-      needs Rohan's call before step 2 of Scenario 3 starts:** either the
-      per-letter-template plan is wrong and should become "one template,
-      pre-placed K/S variant shapes, shown/hidden like the milestone circles,"
-      or this decision was specific to the timeline device and doesn't
-      generalise the way its own text claims. Either answer is fine; not
-      deciding and building both is not.
-      **Constraint confirmed by Rohan, 2026-08-16, applies whichever way this
-      is resolved:** circle/shape SIZE must stay pre-drawn, never computed at
-      runtime. Matches the milestone device's own existing rule exactly — its
-      writers (`SetVisible`) only ever toggle which pre-drawn shape shows, they
-      never resize one. Whatever the K/S/P answer turns out to be, it must not
-      introduce runtime sizing to get there.
-      **Sent to chat for a second read, 2026-08-16** —
-      `code-to-chat-2026-08-16-template-architecture-question.md`, awaiting reply.
+*Source: `archive/correspondence/chat-to-code-2026-08-16-win-ledger.md`, sent
+unprompted alongside the architecture reply. Chat's own reconstruction from
+documents, flagged as hypothesis, not read from the repo — treated that way here.*
+
+- [x] Confirmed the stated rule matches what this project actually enforces:
+      proven **by button**, on **real files**, verified from the **saved
+      bytes** — a green suite alone is not a win. Matches
+      `feedback_tested_unit_behind_locked_door` and the reachability-defect
+      pattern this session already knows well.
+- [x] **`DELETIONS.md` created** — one line per killed thing (what, the
+      question that killed it, what it would have cost), per chat's suggestion
+      that rejections leave no trace the way decisions do. Seeded from the
+      ledger's known casualties list.
+- [ ] **STILL OPEN, needs Rohan's call, not resolved here:** the "5 of 9"
+      scenario count has a moving denominator — 7 scenarios on 14 Aug, 9 on 15
+      Aug, unnumbered plain-language framing as of 16 Aug — so the fraction
+      isn't comparable across dates and can read as flat when it isn't. Chat's
+      own recommendation is to drop the fraction and keep only a dated list of
+      byte-verified closures (which is what `NEXT-SESSION.md` and this ledger
+      section already do in practice). **Not changed here** — "5 of 9" is
+      embedded through `NEXT-SESSION.md`'s history and `SCENARIOS.md`'s own
+      title, and a reframe touches both; Rohan's call on whether to freeze the
+      nine as the denominator or drop it.
+- [ ] Two classes of win chat flagged as leaving no trace at all: **deletions**
+      (now addressed by `DELETIONS.md`) and **correct refusals** — a refusal
+      that names no alternative reads downstream exactly like a dead end. No
+      entry format proposed for the refusal class yet; open.
+
+## ARCHITECTURE FORK — RESOLVED 2026-08-16. "Template" was doing two jobs.
+
+*Full exchange preserved: `archive/correspondence/code-to-chat-2026-08-16-
+template-architecture-question.md` (the question) and
+`archive/correspondence/chat-to-code-2026-08-16-template-architecture-colour-vs-
+structure.md` (the answer).*
+
+- [x] **The 12 Aug "one template, not three" ruling and Scenario 3's per-letter
+      plan do NOT conflict — they're answering different questions.** The 12 Aug
+      ruling is about slide **TYPE**: one project-progress design. Scenario 3 is
+      about template-slide **VARIANTS** of that one type (K/S/P colour). Checked,
+      not assumed: the 12 Aug ruling was built by enumerating actual K/S/P
+      differences — slot count, subtitle segments, team rows — and colour was
+      never in that list. The ruling's own text carves colour out explicitly:
+      *"colour MAY be applied from a declared spec... SIZE stays
+      visibility-driven"* — two mechanisms, colour assigned to the other one.
+      **Scenario 3's existing plan (per-letter registration, separate K/S
+      template slides) is correct as written. Proceed with it.**
+- [x] **Vocabulary, so this doesn't recur:** *type* decides which fields exist
+      (register columns, Field Spec rows). *Variant* decides how a type looks —
+      owns nothing of its own. *Template slide* is one registered `is_template`
+      slide implementing one type/variant pair. The test that keeps type and
+      variant apart: adding the K or S template must touch **zero** field
+      definitions. If it ever needs the 29 fields declared three times, the
+      design has failed and decision (1) has actually been violated.
+- [ ] **The condition, recorded so it isn't silently violated or re-litigated
+      blind:** three drawn templates beats runtime recolour **only because no
+      colour-role declaration mechanism exists today.** If the parked
+      `=FIELD[#INDEX][.PART]` naming thread is ever built, that would supply
+      exactly such a declaration and the right answer for colour specifically
+      flips to runtime recolour. **Not a live alternative right now** — checked
+      2026-08-16, that thread's own first prerequisite (does `=`/`$` survive
+      copy/paste, group/ungroup, Reset Slide in PowerPoint) has never been run;
+      the test protocol sits with an empty results table. Nothing today argues
+      for switching away from cloning.
+- [x] `SCENARIOS.md` scenario 3 corrected — it described three colour templates
+      as already colliding; only one (`P`, green) exists today. Fixed 2026-08-16.
+
+**Constraint confirmed by Rohan, 2026-08-16, applies regardless:** circle/shape
+SIZE must stay pre-drawn, never computed at runtime. Matches the milestone
+device's own rule exactly — `SetVisible` only ever toggles which pre-drawn shape
+shows, never resizes one.
+
+## Output slide type — real, mostly designed, one ruling still needed from Rohan
+
+*Source: `archive/correspondence/chat-to-code-2026-08-16-template-output-slide-
+notes.md`, comparing notes per Rohan's request. A separate, python-pptx-based
+pipeline, not the VBA add-in this checklist otherwise tracks.*
+
+- [x] `OUTPUT-template.pptx` exists (built 14 Aug, single slide, untagged), with
+      a genuinely clean naming scheme: `OUT_` for addressable shapes (99),
+      `CHROME_` for decoration nothing ever touches (27). Matches the milestone
+      device's own rules on purpose — visibility-only state changes, one named
+      exception where geometry carries the value (`OUT_MSn_BAR` length), no
+      runtime colour changes at all on this slide type.
+- [ ] **Shape count doesn't reconcile** — the build sheet specifies 119, the
+      built file has 133 (`OUT_` 99 + `CHROME_` 27 = 126). Three different
+      numbers, nobody has checked which is right. Not urgent, not forgotten.
+- [ ] **Real blocker: `STRATEGIC_LINKAGES` has no register column**, so the
+      chips this slide type needs have nothing to inject from at sync time.
+      Same missing-column pile as `HIGHLIGHTS_BODY`. A cheaper prerequisite
+      sits under it: 48 unscored linkage lines across 12 projects (10 of 12
+      S-type) need scoring, since the contribution score becomes a chip weight
+      here specifically.
+- [ ] **STILL OPEN, needs Rohan's ruling specifically — not chat's, not mine:**
+      whether the python-pptx pipeline and the VBA pipeline are a one-way
+      handoff (python-pptx draws the Output template once from the Family Tree,
+      VBA onboards it as a new slide type and owns it forever after, the two
+      never talk again) or something else. Chat's explicit that this is a
+      proposal, open since 12 Aug, not something either AI should adopt
+      quietly. If the handoff reading is right, the two pipelines never need to
+      interoperate at runtime — but it decides real build work, so it needs to
+      actually be decided.
 
 ## Register/field items found in the 12 Aug cross-surface handover
 
