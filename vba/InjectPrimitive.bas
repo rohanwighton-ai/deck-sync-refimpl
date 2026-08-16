@@ -124,6 +124,17 @@ Public Function DeviceRoleTagsOnSlide(sld As Object) As Object
     Set DeviceRoleTagsOnSlide = tags
 End Function
 
+' A DEVICE IS ADDRESSED BY NAME, NOT BY TAG -- and requiring a tag here made
+' the mechanism unreachable on every real slide in the deck, found 2026-08-16.
+' MilestoneDevice.bas's own header is explicit about the convention this
+' module has to match: "they are simply addressed by name... this is what
+' stands in for the robustness a tag would have given" (Rohan, 2026-08-10).
+' The prototype slide (3_P001) has a fully-built, correctly-named
+' MILESTONE_TIMELINE group with zero tags on it -- by design, not omission --
+' and this walk required a tag anyway, so PlanRoutineSync had never once
+' synced it. A tag still WINS when present (an explicit override stays
+' possible), it is just no longer REQUIRED for a structurally-confirmed
+' device (msoGroup + a real slot structure).
 Private Sub WalkForDeviceRoleTags(shapesColl As Object, ByRef tags As Object)
     Dim shp As Object
     For Each shp In shapesColl
@@ -131,6 +142,7 @@ Private Sub WalkForDeviceRoleTags(shapesColl As Object, ByRef tags As Object)
             If MilestoneDevice.SlotCount(shp) > 0 Then
                 Dim roleVal As String
                 roleVal = shp.Tags("role")
+                If roleVal = "" Then roleVal = shp.Name
                 If roleVal <> "" Then
                     If Not tags.Exists(roleVal) Then tags.Add roleVal, True
                 End If
@@ -210,8 +222,36 @@ End Function
 ' an empty-string role value is not a meaningful identity tag in this
 ' project's scheme, treating "absent" and "empty" the same way here is a
 ' safe simplification, not a correctness gap -- documented in SPIKE_NOTES.md.
+' The name-fallback for a device (see WalkForDeviceRoleTags's header) has to
+' land here too, not just in discovery -- InjectorFor and every other caller
+' re-find the shape by whatever identityTag discovery handed back, and if
+' this function still demanded a tag, a device found by name upstream would
+' vanish again the moment anything tried to locate it a second time.
+'
+' Scoped STRICTLY to a structurally-confirmed device (msoGroup with a real
+' slot structure, no tag already present) so this cannot widen matching for
+' an ordinary text/bar/picture field that happens to share a shape's name --
+' only a shape MilestoneDevice.SlotCount already recognises as a device gets
+' the name fallback; everything else still requires an exact tag match,
+' unchanged.
 Private Function ShapeHasRoleTag(shp As Object, identityTag As String) As Boolean
-    ShapeHasRoleTag = (shp.Tags("role") = identityTag) And (identityTag <> "")
+    If identityTag = "" Then
+        ShapeHasRoleTag = False
+        Exit Function
+    End If
+    If shp.Tags("role") = identityTag Then
+        ShapeHasRoleTag = True
+        Exit Function
+    End If
+    If shp.Type = msoGroup Then
+        If shp.Tags("role") = "" Then
+            If MilestoneDevice.SlotCount(shp) > 0 Then
+                ShapeHasRoleTag = (shp.Name = identityTag)
+                Exit Function
+            End If
+        End If
+    End If
+    ShapeHasRoleTag = False
 End Function
 
 ' Port of inject_primitive(path, part_name, shape, source_value). Takes a

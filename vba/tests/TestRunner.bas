@@ -1686,6 +1686,36 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "InjectField_RoutesADeviceGroupToTheTimeline", r
+    If TestMatches("InjectPrimitive_DeviceDiscoveredByNameWhenUntagged", filterPattern) Then
+        r = Test_InjectPrimitive_DeviceDiscoveredByNameWhenUntagged()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectPrimitive_DeviceDiscoveredByNameWhenUntagged", r
+    If TestMatches("InjectPrimitive_FindShapeByRoleTagFindsUntaggedDeviceByName", filterPattern) Then
+        r = Test_InjectPrimitive_FindShapeByRoleTagFindsUntaggedDeviceByName()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectPrimitive_FindShapeByRoleTagFindsUntaggedDeviceByName", r
+    If TestMatches("InjectPrimitive_InjectorForRoutesUntaggedDeviceToDevice", filterPattern) Then
+        r = Test_InjectPrimitive_InjectorForRoutesUntaggedDeviceToDevice()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectPrimitive_InjectorForRoutesUntaggedDeviceToDevice", r
+    If TestMatches("InjectPrimitive_NameFallbackDoesNotWidenOrdinaryFieldLookup", filterPattern) Then
+        r = Test_InjectPrimitive_NameFallbackDoesNotWidenOrdinaryFieldLookup()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectPrimitive_NameFallbackDoesNotWidenOrdinaryFieldLookup", r
+    If TestMatches("InjectPrimitive_ExplicitTagStillWinsOverDeviceName", filterPattern) Then
+        r = Test_InjectPrimitive_ExplicitTagStillWinsOverDeviceName()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectPrimitive_ExplicitTagStillWinsOverDeviceName", r
     If TestMatches("InjectField_RepeatingBarsOneCellManyMilestones", filterPattern) Then
         r = Test_InjectField_RepeatingBarsOneCellManyMilestones()
     Else
@@ -12255,6 +12285,141 @@ Private Function Test_InjectField_RoutesADeviceGroupToTheTimeline() As String
     sld2.Delete
     sld.Delete
     Test_InjectField_RoutesADeviceGroupToTheTimeline = result
+End Function
+
+' THE REAL BUG, PROVEN AGAINST THE REAL SHAPE: found 2026-08-16 that 3_P001,
+' the deck's own prototype slide, has a fully-built MILESTONE_TIMELINE group
+' -- correctly named, every MS1..MS7 part present -- with literally zero tags
+' on it. WalkForDeviceRoleTags required a tag anyway, so PlanRoutineSync had
+' never once synced it. This fixture reproduces that exact shape: named, not
+' tagged.
+Private Function Test_InjectPrimitive_DeviceDiscoveredByNameWhenUntagged() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 3)
+    grp.Name = "MILESTONE_TIMELINE"
+    ' Deliberately NOT tagged -- that is the whole point of this test.
+
+    Dim tags As Object
+    Set tags = InjectPrimitive.DeviceRoleTagsOnSlide(sld)
+    result = result & Assert(tags.Exists("MILESTONE_TIMELINE"), _
+        "an untagged-but-correctly-named device is discovered by name")
+
+    sld.Delete
+    Test_InjectPrimitive_DeviceDiscoveredByNameWhenUntagged = result
+End Function
+
+Private Function Test_InjectPrimitive_FindShapeByRoleTagFindsUntaggedDeviceByName() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 3)
+    grp.Name = "MILESTONE_TIMELINE"
+
+    Dim found As Object
+    Set found = InjectPrimitive.FindShapeByRoleTag(sld, "MILESTONE_TIMELINE")
+    result = result & Assert(Not found Is Nothing, "the untagged device is found by name")
+    If Not found Is Nothing Then
+        result = result & Assert(found.Id = grp.Id, "and it is the SAME group, not a coincidence")
+    End If
+
+    sld.Delete
+    Test_InjectPrimitive_FindShapeByRoleTagFindsUntaggedDeviceByName = result
+End Function
+
+Private Function Test_InjectPrimitive_InjectorForRoutesUntaggedDeviceToDevice() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 3)
+    grp.Name = "MILESTONE_TIMELINE"
+
+    result = result & Assert(InjectPrimitive.InjectorFor(sld, "MILESTONE_TIMELINE") = InjectPrimitive.INJECTOR_DEVICE, _
+        "an untagged device still routes to the device injector, got '" & InjectPrimitive.InjectorFor(sld, "MILESTONE_TIMELINE") & "'")
+
+    ' And the real end-to-end proof: InjectField actually draws into it,
+    ' through the exact same entry point Test_InjectField_RoutesADeviceGroupToTheTimeline
+    ' uses for the tagged case -- this is that same test, minus the tag.
+    Dim row As Object
+    Set row = CreateObject("Scripting.Dictionary")
+    row("MS1_LABEL") = "Kickoff": row("MS1_DATE") = "Oct 2023": row("MS1_DONE") = "Y"
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectField(sld, "MILESTONE_TIMELINE", "", False, Nothing, row)
+    result = result & Assert(r.Found, "the untagged device is found through InjectField")
+    result = result & Assert(r.Written, "and drawn [" & r.ErrorMessage & "]")
+    result = result & Assert(NamedIn(grp, "MS1_LABEL").TextFrame.TextRange.text = "Kickoff", _
+        "the label was actually written, with no tag anywhere on the group")
+
+    sld.Delete
+    Test_InjectPrimitive_InjectorForRoutesUntaggedDeviceToDevice = result
+End Function
+
+' THE SAFETY RAIL: the name fallback must not leak into ordinary field
+' lookup. A ROLE tag is still how every text/bar/picture field is found --
+' only a shape MilestoneDevice.SlotCount already confirms IS a device gets
+' the name fallback.
+Private Function Test_InjectPrimitive_NameFallbackDoesNotWidenOrdinaryFieldLookup() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    ' An ordinary, untagged textbox that HAPPENS to be named like a real
+    ' FieldID -- must NOT be found by that name. Only tags find text fields.
+    Dim txt As Object
+    Set txt = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 10, 10, 100, 20)
+    txt.Name = "ABOUT_BODY"
+    result = result & Assert(InjectPrimitive.FindShapeByRoleTag(sld, "ABOUT_BODY") Is Nothing, _
+        "an untagged textbox is NOT matched by name, even if its name matches a real FieldID")
+
+    ' A group that IS msoGroup but is NOT a real device (no MS-named parts)
+    ' -- must not be matched by name either. Structure, not just group-ness,
+    ' is what earns the fallback.
+    Dim plainGrp As Object
+    Dim s1 As Object, s2 As Object
+    Set s1 = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 10, 40, 50, 20)
+    Set s2 = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 70, 40, 50, 20)
+    Set plainGrp = sld.Shapes.Range(Array(s1.Name, s2.Name)).Group
+    plainGrp.Name = "MILESTONE_TIMELINE"
+    result = result & Assert(InjectPrimitive.FindShapeByRoleTag(sld, "MILESTONE_TIMELINE") Is Nothing, _
+        "a group named like a device but with no real slot structure is NOT matched -- SlotCount must be > 0")
+
+    sld.Delete
+    Test_InjectPrimitive_NameFallbackDoesNotWidenOrdinaryFieldLookup = result
+End Function
+
+Private Function Test_InjectPrimitive_ExplicitTagStillWinsOverDeviceName() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 3)
+    grp.Name = "MILESTONE_TIMELINE"
+    grp.Tags.Add "role", "OTHER_DEVICE_ID"
+
+    Dim foundByTag As Object
+    Set foundByTag = InjectPrimitive.FindShapeByRoleTag(sld, "OTHER_DEVICE_ID")
+    result = result & Assert(Not foundByTag Is Nothing, "an explicit tag is still found")
+    If Not foundByTag Is Nothing Then
+        result = result & Assert(foundByTag.Id = grp.Id, "and it is the same group")
+    End If
+
+    Dim foundByName As Object
+    Set foundByName = InjectPrimitive.FindShapeByRoleTag(sld, "MILESTONE_TIMELINE")
+    result = result & Assert(foundByName Is Nothing, _
+        "and the name fallback does NOT ALSO fire once a real tag is present -- one identity, not two")
+
+    sld.Delete
+    Test_InjectPrimitive_ExplicitTagStillWinsOverDeviceName = result
 End Function
 
 ' Local copy of the trailing-break normalisation, for comparing what a textbox

@@ -419,17 +419,16 @@ sheets, which predate today and were checked but not trusted as current.
       `PROJECT_CODE`, `PROJECT_NAME`, `SUBTITLE_A`, `START_DATE`, `END_DATE`,
       `PROJECT_PROGRESS`, `INDUSTRY_CASH`, `TOTAL_VALUE`, `PROJECT_LEAD`) —
       cloning preserved tagging correctly for everything that WAS tagged.
-- [x] **Real defect found: K and S templates are missing the
-      `MILESTONE_TIMELINE` group anchor tag that P has.** Milestone fields
-      (`MS1_LABEL` through `MS7_DONE`, 21 of 48) are found by shape NAME
-      *inside* that tagged group, not individually — so this is not "K/S have
-      fewer milestones" (that's expected and fine, different real projects
-      have different milestone counts), it is "the whole milestone device is
-      likely unreachable on K/S regardless of what the register holds."
-      Needs a live check (open K900 or the K-template, look for the timeline
-      shapes, check whether `RunSync` even attempts them) before deciding
-      whether this is a cloning defect or the SOURCE real slides (`1_K1001`,
-      `1_S001`) were never tagged for it either.
+- [x] **Real defect found and root-caused: this was never a K/S-vs-P
+      gap.** Scanned all 46 real slides across every letter — **zero** carry
+      a `MILESTONE_TIMELINE` role tag. Only the P **template** has it. The
+      real source slides K/S were cloned from (`1_K1001`, `1_S001`) never had
+      it either, so `MakeTemplateFrom` faithfully copied their actual state —
+      not a cloning bug. The prototype, `3_P001`, has a fully-built,
+      correctly-**named** `MILESTONE_TIMELINE` group (all `MS1..MS7` parts
+      present) with **zero tags on it** — confirmed from the raw XML
+      (`<p:cNvPr id="17" name="MILESTONE_TIMELINE">`, no `r:id`, no tags
+      relationship at all). **Fixed 2026-08-16**, see below.
 - [x] **Confirmed, from Field Spec's own text, not inferred:** the three
       deliverable thumbnail picture cards have "no Field Spec row yet" —
       untagged by design-so-far, so `MakeTemplateFrom`/sync cannot touch
@@ -444,6 +443,47 @@ sheets, which predate today and were checked but not trusted as current.
 - [ ] Fresh `Tag fields on this slide` runs against `K900` and `S900`
       (real test #5, tracked above) would give current ground truth on all
       of this instead of the cross-referenced-from-tags inference used here.
+
+## Milestone device reachability — the real fix, 2026-08-16
+
+**The bug:** `WalkForDeviceRoleTags` (`InjectPrimitive.bas`, the FIX-LIST R
+reachability fix from 2026-08-15) required the timeline group to carry a
+`role` **tag** before `PlanRoutineSync` would ever attempt to sync it. But
+this device's own convention — stated by Rohan, 2026-08-10, and baked into
+`MilestoneDevice.SlotCount`/`PartsOf`/`DeviceIntegrity` — is that its parts
+are addressed by **name**, not tag: *"they are simply addressed by name...
+this is what stands in for the robustness a tag would have given."* The
+group on every real slide is correctly *named* `MILESTONE_TIMELINE`. It was
+never *tagged* that way, because tagging it was never the convention. The
+reachability fix contradicted the device's own design and made it
+unreachable everywhere, including the one slide (`3_P001`) it was actually
+built and tested on.
+
+- [x] **Fixed.** `WalkForDeviceRoleTags` now falls back to the group's own
+      `.Name` when no tag is present, before adding it as a discovered device
+      identity. `ShapeHasRoleTag` (used by `FindShapeByRoleTag`, which
+      `InjectorFor` and the actual injection call both re-run) got the same
+      fallback, scoped **strictly** to a structurally-confirmed device
+      (`msoGroup` + `MilestoneDevice.SlotCount > 0` + no tag already present)
+      — an explicit tag still wins when one exists, and an ordinary
+      text/bar/picture field that happens to share a shape's name is
+      untouched, proven by a dedicated negative-control test.
+- [x] **5 new tests, all passing, plus the existing tagged-device test
+      re-confirmed unchanged:** discovery-by-name, `FindShapeByRoleTag`-by-
+      name, `InjectorFor` routing an untagged device correctly, the safety
+      rail (untagged textbox/non-device group NOT matched by name), and tag
+      still winning over name when both exist. Suite 224 → 229/0.
+- [ ] **Not yet proven against the real file** — only synthetic fixtures so
+      far. Real proof needs `addin107` built with this fix, then a Preview
+      Sync (dry run — writes nothing) against the copy with `3_P001` in
+      scope, checking whether it now reports a milestone field needing sync
+      instead of being silently skipped, per this project's own "verify from
+      the far side of the boundary" rule.
+- [ ] **Separate, later decision, NOT this fix's job:** whether/how to
+      backfill the milestone device onto the 45 real slides that don't have
+      the shapes at all (only `3_P001` was ever built out) — this fix makes
+      an EXISTING, correctly-built device reachable; it cannot invent circles
+      that were never drawn. Content work, not sync work.
 
 ## Scenario 3 — per-letter templates (blocked on a real defect, not reachability)
 
