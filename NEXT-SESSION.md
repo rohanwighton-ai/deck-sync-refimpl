@@ -1,5 +1,13 @@
 # NEXT SESSION — start here
 
+> ## READ `SESSION-PROTOCOL.md` FIRST, EVERY SESSION. THIS IS NOW MANDATED.
+>
+> Not this file. `SESSION-PROTOCOL.md`. It says what order to read things in
+> (`DOCUMENT-MAP.md` before this one), the documentation-upkeep discipline, where
+> test results actually live, and how Rohan works on this project specifically.
+> Written 2026-08-16 after a real architecture decision sat undiscovered for four
+> days because no session had done what it now mandates.
+
 > ## 16 AUG. **`CHECKLIST.md` IS NOW THE PRIMARY HANDOVER SURFACE. READ IT FIRST.**
 >
 > Compiled 2026-08-16 from a full pass of every CURRENT-status document
