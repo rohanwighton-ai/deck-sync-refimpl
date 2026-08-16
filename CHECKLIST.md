@@ -395,8 +395,55 @@ bytes. Started because the K/S template build above was mechanism-tested
       copy; the one real attempt on OneDrive failed outright (AutoSave on,
       4 verified attempts, mtime never moved). The work machine is
       OneDrive-hosted, so this is not a papercut.
+- [ ] **#5:** `Tag fields on this slide` run fresh against `K900` and `S900`
+      to get CURRENT field coverage ground truth, replacing the
+      cross-referenced-from-tags inference in the Field Coverage Matrix
+      below with a direct discovery pass. Would also settle the open
+      `PROJECT_PROGRESS` bar-vs-text routing question.
 - [ ] Add more here as they're identified — this list is the record, not a
       one-off.
+
+## Field coverage — real gaps found while checking, 2026-08-16
+
+Rohan asked whether Field Spec is the right place to hold a per-template target
+field list (yes) and flagged that pictures didn't carry across to the new K/S
+templates. Built a **Field Coverage Matrix** sheet (flanking `Field Spec` in
+`scenario3-template-surgery-20260816\register-wide.xlsx`) cross-referencing
+Field Spec's 48 FieldIDs against the REAL `ROLE` tags read directly from the
+saved P/K/S template slides — not the stale `Template Audit`/`Field Discovery`
+sheets, which predate today and were checked but not trusted as current.
+
+- [x] **Confirmed, from real tags, not guessed:** P/K/S all carry the SAME 15
+      real fields (`ABOUT_BODY`, `KEY_EVENTS_BODY`, `PROJECT_STATUS`,
+      `STRATEGIC_ALIGNMENT_BODY`, `PROBLEM_BODY`, `PROGRESS_BODY`,
+      `PROJECT_CODE`, `PROJECT_NAME`, `SUBTITLE_A`, `START_DATE`, `END_DATE`,
+      `PROJECT_PROGRESS`, `INDUSTRY_CASH`, `TOTAL_VALUE`, `PROJECT_LEAD`) —
+      cloning preserved tagging correctly for everything that WAS tagged.
+- [x] **Real defect found: K and S templates are missing the
+      `MILESTONE_TIMELINE` group anchor tag that P has.** Milestone fields
+      (`MS1_LABEL` through `MS7_DONE`, 21 of 48) are found by shape NAME
+      *inside* that tagged group, not individually — so this is not "K/S have
+      fewer milestones" (that's expected and fine, different real projects
+      have different milestone counts), it is "the whole milestone device is
+      likely unreachable on K/S regardless of what the register holds."
+      Needs a live check (open K900 or the K-template, look for the timeline
+      shapes, check whether `RunSync` even attempts them) before deciding
+      whether this is a cloning defect or the SOURCE real slides (`1_K1001`,
+      `1_S001`) were never tagged for it either.
+- [x] **Confirmed, from Field Spec's own text, not inferred:** the three
+      deliverable thumbnail picture cards have "no Field Spec row yet" —
+      untagged by design-so-far, so `MakeTemplateFrom`/sync cannot touch
+      them. This is why pictures didn't come across — a pre-existing,
+      already-named gap that today's cloning made visible, not a regression.
+- [ ] **Not yet resolved:** whether `PROJECT_PROGRESS` actually routes
+      through the bar injector (`InjectProgressVia`) or the plain-text one
+      on these templates. `InjectorFor()` auto-detects this from the shape's
+      own structure at sync time, not from Field Spec's "Renders as" column
+      — so the stale audit calling the shape "text" doesn't settle it either
+      way. Needs a fresh check, not an assumption in either direction.
+- [ ] Fresh `Tag fields on this slide` runs against `K900` and `S900`
+      (real test #5, tracked above) would give current ground truth on all
+      of this instead of the cross-referenced-from-tags inference used here.
 
 ## Scenario 3 — per-letter templates (blocked on a real defect, not reachability)
 
