@@ -23,6 +23,14 @@ Public Const PROP_DECK_PERIOD As String = "DeckSyncPeriod"
 Private Const DECK_ID_PROPERTY_NAME As String = "DeckSyncId"
 Private Const WORKBOOK_PATH_PROPERTY_NAME As String = "DeckSyncWorkbookPath"
 Private Const TYPE_PROPERTY_PREFIX As String = "DeckSyncType:"
+' A SEPARATE property, not a wider TYPE_PROPERTY_PREFIX value, because a type
+' with no letter still needs to resolve for every deck that predates this --
+' one type can carry both an unlettered registration and one or more lettered
+' ones at once, and LookupTemplateForLetter below is what chooses between
+' them. Same "|"-joined SlideID/worksheetName payload as RegisterType, reusing
+' BuildTypeRegistration/ParseTypeRegistration rather than inventing a second
+' format for the same fact.
+Private Const TEMPLATE_LETTER_PROPERTY_PREFIX As String = "DeckSyncTemplate:"
 ' A CLOUD-HOSTED SAVE LANDS A BEAT AFTER THE CALL RETURNS, so a verifier that reads
 ' once, immediately, reports a working save as failed -- which is what drove the
 ' SaveAs escalation that then bricked the document. See the block above
@@ -410,6 +418,65 @@ Public Function LookupType(pres As Object, slideType As String, ByRef templateSl
 
     worksheetName = ws
     LookupType = True
+End Function
+
+Private Function TemplateLetterPropertyName(slideType As String, letter As String) As String
+    TemplateLetterPropertyName = TEMPLATE_LETTER_PROPERTY_PREFIX & slideType & ":" & UCase(letter)
+End Function
+
+Public Sub RegisterTemplateLetter(pres As Object, slideType As String, letter As String, templateSld As Object, worksheetName As String)
+    WriteStringProperty pres, TemplateLetterPropertyName(slideType, letter), _
+        BuildTypeRegistration(templateSld.SlideID, worksheetName)
+End Sub
+
+' Same contract as LookupType: False (both ByRef args left Nothing/"") if this
+' exact type+letter pair was never registered, or its SlideID no longer
+' resolves.
+Public Function LookupTemplateLetter(pres As Object, slideType As String, letter As String, ByRef templateSld As Object, ByRef worksheetName As String) As Boolean
+    Set templateSld = Nothing
+    worksheetName = ""
+
+    Dim raw As String
+    raw = ReadStringProperty(pres, TemplateLetterPropertyName(slideType, letter))
+
+    Dim slideId As Long
+    Dim ws As String
+    If Not ParseTypeRegistration(raw, slideId, ws) Then
+        LookupTemplateLetter = False
+        Exit Function
+    End If
+
+    On Error Resume Next
+    Set templateSld = pres.Slides.FindBySlideID(slideId)
+    On Error GoTo 0
+
+    If templateSld Is Nothing Then
+        worksheetName = ""
+        LookupTemplateLetter = False
+        Exit Function
+    End If
+
+    worksheetName = ws
+    LookupTemplateLetter = True
+End Function
+
+' THE FALLBACK THAT KEEPS TODAY'S SINGLE-TEMPLATE DECKS WORKING UNCHANGED.
+' `letter` is normally CodeLetterOf(instanceKey) -- "" when the row's key
+' carries no letter (see TemplateSlide.CodeLetterOf: "" means "no opinion,
+' use the type's unlettered template"). Tries the per-letter registration
+' first and only falls back to the plain type registration when there is no
+' letter to look up, or nothing was ever registered against it -- so a deck
+' with one project-progress template keeps resolving exactly as it did before
+' this existed, and only a deck that has actually registered a second letter
+' sees a different template chosen.
+Public Function LookupTemplateForLetter(pres As Object, slideType As String, letter As String, ByRef templateSld As Object, ByRef worksheetName As String) As Boolean
+    If letter <> "" Then
+        If LookupTemplateLetter(pres, slideType, letter, templateSld, worksheetName) Then
+            LookupTemplateForLetter = True
+            Exit Function
+        End If
+    End If
+    LookupTemplateForLetter = LookupType(pres, slideType, templateSld, worksheetName)
 End Function
 
 ' Every registered type's name (the part after the "DeckSyncType:" prefix),

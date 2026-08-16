@@ -8,10 +8,12 @@
 
 ## Immediate — nothing else is real until this happens
 
-- [ ] Build `addin104`: run `build_ppam.ps1`, Save As `addin104`, tick it, untick
+- [x] Build `addin104`: run `build_ppam.ps1`, Save As `addin104`, tick it, untick
       `addin102`, restart PowerPoint. Four fixes from 2026-08-15 (Q, R, the
       drafting-report labels, the readiness partial-quarter check) exist only in
-      source. *Source: `NEXT-SESSION.md`, "FIRST ACTION" block.*
+      source. *Source: `NEXT-SESSION.md`, "FIRST ACTION" block.* **Done
+      2026-08-16** — 33 modules imported clean, build stamped `2026-08-16
+      11:02`, Rohan confirmed `addin104` loaded and `addin102` unticked.
 
 ## The actual finish line
 
@@ -267,8 +269,19 @@ code 2026-08-16, not assumed.*
 ## Scenario 3 — per-letter templates (blocked on a real defect, not reachability)
 
 - [x] Step 1 — `TemplateSlide.CodeLetterOf`, done and tested.
-- [ ] Step 2 — per-letter registration property (`DeckSyncTemplate:<type>:<letter>`
+- [x] Step 2 — per-letter registration property (`DeckSyncTemplate:<type>:<letter>`
       alongside the existing `DeckSyncType:`, with fallback for untouched decks).
+      **Done 2026-08-16** — `DeckRegistry.RegisterTemplateLetter` /
+      `LookupTemplateLetter` / `LookupTemplateForLetter` added. Traced the real
+      call path first: `RunSync.CreateMissingSlides` gets its `templateSld`
+      from `DeckRegistry.LookupType`, not `TemplateSlide.FindTemplateFor` (that
+      one's only used by Audit Fields and the MakeTemplateFrom guard) — so the
+      fix belongs in `DeckRegistry.bas`, confirming the plan's own scoping.
+      `LookupTemplateForLetter` tries the letter first, falls back to the
+      plain type registration when the letter is `""` or unregistered — proven
+      by 6 new tests, including the two-letters-don't-collide and
+      prefers-letter-over-unlettered cases. Suite 203→217/0. Not yet wired to
+      any caller — that's step 3.
 - [ ] Step 3 — choose the template **per row**, inside `RunSync.CreateMissingSlides`
       (re-run scenario 2 after touching this — same code path).
 - [ ] Step 4 — relax the one-per-type guards (`RibbonUI.bas:2375` and

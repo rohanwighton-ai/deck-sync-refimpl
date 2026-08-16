@@ -560,6 +560,36 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String) As Stri
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_RegisterAndLookupTemplateLetterRoundTrip()
+    AppendResult report, "DeckRegistry_RegisterAndLookupTemplateLetterRoundTrip", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_LookupTemplateLetterFalseWhenNotRegistered()
+    AppendResult report, "DeckRegistry_LookupTemplateLetterFalseWhenNotRegistered", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_TwoLettersOfSameTypeDoNotCollide()
+    AppendResult report, "DeckRegistry_TwoLettersOfSameTypeDoNotCollide", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterEmpty()
+    AppendResult report, "DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterEmpty", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterUnregistered()
+    AppendResult report, "DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterUnregistered", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    r = Test_DeckRegistry_LookupTemplateForLetterPrefersLetterOverUnlettered()
+    AppendResult report, "DeckRegistry_LookupTemplateForLetterPrefersLetterOverUnlettered", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     r = Test_DeckRegistry_WorkbookPathRoundTrip()
     AppendResult report, "DeckRegistry_WorkbookPathRoundTrip", r
     On Error GoTo 0
@@ -5430,6 +5460,143 @@ Private Function Test_DeckRegistry_ListRegisteredTypesListsAllRegistered() As St
     result = result & Assert(foundType2, "list includes 'test-registry-list-type-2'")
 
     Test_DeckRegistry_ListRegisteredTypesListsAllRegistered = result
+End Function
+
+Private Function Test_DeckRegistry_RegisterAndLookupTemplateLetterRoundTrip() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+
+    DeckRegistry.RegisterTemplateLetter pres, "test-letter-type-A", "K", templateSld, "TestSheetK"
+
+    Dim foundSld As Object
+    Dim ws As String
+    Dim ok As Boolean
+    ok = DeckRegistry.LookupTemplateLetter(pres, "test-letter-type-A", "K", foundSld, ws)
+
+    result = result & Assert(ok, "lookup found the registered letter")
+    result = result & Assert(Not foundSld Is Nothing, "lookup returned a slide")
+    If Not foundSld Is Nothing Then
+        result = result & Assert(foundSld.SlideID = templateSld.SlideID, "returned slide matches the registered template, got SlideID " & foundSld.SlideID & " want " & templateSld.SlideID)
+    End If
+    result = result & Assert(ws = "TestSheetK", "returned worksheet name is 'TestSheetK', got '" & ws & "'")
+
+    ' Case-insensitive: registered "K", looked up "k".
+    Dim foundSld2 As Object
+    Dim ws2 As String
+    ok = DeckRegistry.LookupTemplateLetter(pres, "test-letter-type-A", "k", foundSld2, ws2)
+    result = result & Assert(ok, "lookup is case-insensitive on the letter")
+
+    Test_DeckRegistry_RegisterAndLookupTemplateLetterRoundTrip = result
+End Function
+
+Private Function Test_DeckRegistry_LookupTemplateLetterFalseWhenNotRegistered() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim foundSld As Object
+    Dim ws As String
+    Dim ok As Boolean
+    ok = DeckRegistry.LookupTemplateLetter(pres, "test-letter-type-never", "K", foundSld, ws)
+
+    result = result & Assert(Not ok, "lookup of an unregistered letter returns False")
+    result = result & Assert(foundSld Is Nothing, "outSld left Nothing")
+    result = result & Assert(ws = "", "worksheetName left empty, got '" & ws & "'")
+
+    Test_DeckRegistry_LookupTemplateLetterFalseWhenNotRegistered = result
+End Function
+
+Private Function Test_DeckRegistry_TwoLettersOfSameTypeDoNotCollide() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim sldK As Object, sldS As Object
+    Set sldK = NewBlankSlide()
+    Set sldS = NewBlankSlide()
+    DeckRegistry.RegisterTemplateLetter pres, "test-letter-type-collide", "K", sldK, "SheetK"
+    DeckRegistry.RegisterTemplateLetter pres, "test-letter-type-collide", "S", sldS, "SheetS"
+
+    Dim foundK As Object, foundS As Object
+    Dim wsK As String, wsS As String
+    DeckRegistry.LookupTemplateLetter pres, "test-letter-type-collide", "K", foundK, wsK
+    DeckRegistry.LookupTemplateLetter pres, "test-letter-type-collide", "S", foundS, wsS
+
+    result = result & Assert(Not foundK Is Nothing And foundK.SlideID = sldK.SlideID, "K resolves to the K slide")
+    result = result & Assert(Not foundS Is Nothing And foundS.SlideID = sldS.SlideID, "S resolves to the S slide")
+    result = result & Assert(wsK = "SheetK", "K's worksheet name is 'SheetK', got '" & wsK & "'")
+    result = result & Assert(wsS = "SheetS", "S's worksheet name is 'SheetS', got '" & wsS & "'")
+
+    Test_DeckRegistry_TwoLettersOfSameTypeDoNotCollide = result
+End Function
+
+Private Function Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterEmpty() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim unlettered As Object
+    Set unlettered = NewBlankSlide()
+    DeckRegistry.RegisterType pres, "test-fallback-type-empty", unlettered, "SheetUnlettered"
+
+    Dim foundSld As Object
+    Dim ws As String
+    Dim ok As Boolean
+    ok = DeckRegistry.LookupTemplateForLetter(pres, "test-fallback-type-empty", "", foundSld, ws)
+
+    result = result & Assert(ok, "an empty letter falls back to the plain type registration")
+    result = result & Assert(Not foundSld Is Nothing And foundSld.SlideID = unlettered.SlideID, "fallback returned the unlettered template")
+
+    Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterEmpty = result
+End Function
+
+Private Function Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterUnregistered() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    ' A deck that has only ever registered the plain type -- this is what
+    ' keeps every deck predating per-letter registration working unchanged.
+    Dim unlettered As Object
+    Set unlettered = NewBlankSlide()
+    DeckRegistry.RegisterType pres, "test-fallback-type-unreg", unlettered, "SheetUnlettered2"
+
+    Dim foundSld As Object
+    Dim ws As String
+    Dim ok As Boolean
+    ok = DeckRegistry.LookupTemplateForLetter(pres, "test-fallback-type-unreg", "K", foundSld, ws)
+
+    result = result & Assert(ok, "a letter with no per-letter registration falls back to the plain type")
+    result = result & Assert(Not foundSld Is Nothing And foundSld.SlideID = unlettered.SlideID, "fallback returned the unlettered template")
+
+    Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterUnregistered = result
+End Function
+
+Private Function Test_DeckRegistry_LookupTemplateForLetterPrefersLetterOverUnlettered() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim unlettered As Object, lettered As Object
+    Set unlettered = NewBlankSlide()
+    Set lettered = NewBlankSlide()
+    DeckRegistry.RegisterType pres, "test-fallback-type-prefer", unlettered, "SheetUnlettered3"
+    DeckRegistry.RegisterTemplateLetter pres, "test-fallback-type-prefer", "K", lettered, "SheetK3"
+
+    Dim foundSld As Object
+    Dim ws As String
+    Dim ok As Boolean
+    ok = DeckRegistry.LookupTemplateForLetter(pres, "test-fallback-type-prefer", "K", foundSld, ws)
+
+    result = result & Assert(ok, "lookup succeeds when both are registered")
+    result = result & Assert(Not foundSld Is Nothing And foundSld.SlideID = lettered.SlideID, "the per-letter template wins over the unlettered one, got SlideID " & IIf(foundSld Is Nothing, "Nothing", foundSld.SlideID) & " want " & lettered.SlideID)
+    result = result & Assert(ws = "SheetK3", "worksheet name is the letter's, got '" & ws & "'")
+
+    Test_DeckRegistry_LookupTemplateForLetterPrefersLetterOverUnlettered = result
 End Function
 
 Private Function Test_DeckRegistry_WorkbookPathRoundTrip() As String
