@@ -25,6 +25,15 @@ from pathlib import Path
 
 PROC_RE = re.compile(r"^(?:Public |Private |Friend )?(?:Sub|Function|Property(?:\s+(?:Get|Let|Set))?)\s+(\w+)")
 DECL_RE = re.compile(r"^(?:Public |Private )?(Type|Const|Enum)\s+(\w+)")
+# A bare module-level variable/WithEvents declaration -- `Public foo As Bar`,
+# `Private WithEvents mApp As Excel.Application`. DECL_RE above only catches
+# Type/Const/Enum; this is the same rule (must precede the first procedure)
+# for the shape that rule's own regex cannot see. Excludes the procedure and
+# Declare keywords so a signature line (already handled by PROC_RE) or a
+# Windows API import is never misread as a variable.
+VAR_DECL_RE = re.compile(
+    r"^(?:Public |Private )(?!Type\b|Const\b|Enum\b|Sub\b|Function\b|Property\b|Declare\b)(\w+)\s+As\s+"
+)
 END_PROC_RE = re.compile(r"^End (?:Sub|Function|Property)\b")
 DIM_RE = re.compile(r"^Dim\s+(.*)$")
 NAME_AS_RE = re.compile(r"\b(\w+)\s*(?:\([^)]*\))?\s+As\s+\w")
@@ -67,11 +76,18 @@ def code_only(line: str) -> str:
 
 
 def check_declaration_order(path: Path, lines: list[str]) -> list[str]:
-    """Module-level Type/Const/Enum must precede the first procedure.
+    """Module-level Type/Const/Enum/variable declarations must precede the
+    first procedure.
 
     VBA rejects a module-level declaration that appears after any Sub/Function,
     and reports it from a DIFFERENT module. Procedure-local Const is legal and
-    is excluded by only matching column-0 declarations.
+    is excluded by only matching column-0 declarations. Hit twice in one night
+    (2026-08-17) by the SAME gap: a bare `Public foo As Bar` module-level
+    variable placed after other procedures compiled clean here and then failed
+    live, because the original check only recognised Type/Const/Enum -- not a
+    plain variable or WithEvents declaration, the two shapes that actually
+    caused both incidents (`DraftingLobby.mAppEvents`, `ReviewQueue.
+    mTestForceInjectCrash`). VAR_DECL_RE closes that gap.
     """
     findings: list[str] = []
     first_proc: tuple[int, str] | None = None
@@ -90,6 +106,16 @@ def check_declaration_order(path: Path, lines: list[str]) -> list[str]:
                 f"procedure '{first_proc[1]}' (line {first_proc[0]}). Move all "
                 f"Type/Const/Enum above the first procedure -- VBA reports this "
                 f"error in whichever OTHER module references it."
+            )
+            continue
+        m = VAR_DECL_RE.match(raw)
+        if m and first_proc:
+            findings.append(
+                f"{path}:{i}: module-level variable '{m.group(1)}' declared AFTER "
+                f"procedure '{first_proc[1]}' (line {first_proc[0]}). Move all "
+                f"module-level Dim/Public/Private variable declarations above the "
+                f"first procedure -- VBA reports this error in whichever OTHER "
+                f"module references it."
             )
     return findings
 

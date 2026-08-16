@@ -182,6 +182,19 @@ Public Const KIND_CONTROLLED As String = "Controlled"   ' batchable when uniform
 Public Const KIND_PROSE As String = "Prose"             ' never batchable (R13.2)
 Public Const KIND_STATIC As String = "Static"           ' individually, but rare
 
+' TEST-ONLY HOOK. Error 50290 (FIX-LIST.md item V) has crashed ApplyApproved's
+' write loop three times across three sessions, each time reported to the
+' top-level chain handler as nothing more specific than "VBAProject" --
+' because nothing captured Err.Description/Source at the actual point of
+' failure. The fault itself cannot be forced to occur on demand; its
+' unreliability is the whole reason it has gone three sessions unfixed. This
+' flag lets a test simulate one deterministically, to prove the per-item
+' capture in ApplyApproved actually captures and enriches the error rather
+' than merely compiling. Set only by
+' Test_ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashes; never read
+' by anything reachable from a button.
+Public mTestForceInjectCrash As Boolean
+
 ' ---------------------------------------------------------------------
 ' Sheet naming
 ' ---------------------------------------------------------------------
@@ -1379,9 +1392,43 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                     " -- the register no longer has a value for this field" & vbCrLf
                 AppendLogLine logWs, q.RunStamp, q.Items(n), "dropped: register row gone"
             Else
+                ' EVERY COM CALL BELOW IS TRAPPED LOCALLY, ITEM BY ITEM. Before this,
+                ' an unhandled fault here (Error 50290, recurring and not yet
+                ' root-caused -- FIX-LIST.md item V) propagated straight past this
+                ' whole loop to the top-level chain handler, which only ever sees
+                ' Err.Source = "VBAProject" (VBA's default once specific context is
+                ' lost) and the generic COM text "Application-defined or
+                ' object-defined error" -- true, but useless for finding which of
+                ' potentially dozens of items was mid-write. Three occurrences across
+                ' three sessions and still no idea which item, which field, or which
+                ' of the two InjectField calls (dry probe vs. real write) raised it.
+                '
+                ' Logged BEFORE re-raising, same reasoning as AppendLogLine's own
+                ' comment: a crash on item 12 of 19 must leave a record of what was
+                ' being attempted when it happened, because the top-level dialog's
+                ' own text warns the run may have already changed the deck -- this is
+                ' what lets that warning be checked against something concrete next
+                ' time, instead of guessed at again.
+                Dim itemErrNum As Long, itemErrDesc As String, itemErrSrc As String
+
                 ' Dry inject reads the slide's current text without touching it.
+                On Error Resume Next
+                Err.Clear
                 Dim probe As InjectResult
-                probe = InjectPrimitive.InjectField(sld, q.Items(n).FieldID, proposed, True, srcWs, rowValues)
+                If mTestForceInjectCrash Then
+                    Err.Raise 12345, "InjectPrimitive.InjectField", "TEST: deliberately injected fault"
+                Else
+                    probe = InjectPrimitive.InjectField(sld, q.Items(n).FieldID, proposed, True, srcWs, rowValues)
+                End If
+                itemErrNum = Err.Number: itemErrDesc = Err.Description: itemErrSrc = Err.Source
+                On Error GoTo 0
+                If itemErrNum <> 0 Then
+                    AppendLogLine logWs, q.RunStamp, q.Items(n), _
+                        "CRASHED in dry probe: " & itemErrNum & " " & itemErrDesc & " [" & itemErrSrc & "]"
+                    Err.Raise itemErrNum, _
+                        "ReviewQueue.ApplyApproved: dry probe of " & q.Items(n).EntityKey & "/" & q.Items(n).FieldID & _
+                        " (originally from " & itemErrSrc & ")", itemErrDesc
+                End If
 
                 Dim liveHash As String
                 liveHash = ChangeHash(q.Items(n).EntityKey, q.Items(n).FieldID, _
@@ -1398,8 +1445,20 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                         " -- " & probe.ErrorMessage & vbCrLf
                     AppendLogLine logWs, q.RunStamp, q.Items(n), "failed: " & probe.ErrorMessage
                 Else
+                    On Error Resume Next
+                    Err.Clear
                     Dim wrote As InjectResult
                     wrote = InjectPrimitive.InjectField(sld, q.Items(n).FieldID, proposed, False, srcWs, rowValues)
+                    itemErrNum = Err.Number: itemErrDesc = Err.Description: itemErrSrc = Err.Source
+                    On Error GoTo 0
+                    If itemErrNum <> 0 Then
+                        AppendLogLine logWs, q.RunStamp, q.Items(n), _
+                            "CRASHED in real write: " & itemErrNum & " " & itemErrDesc & " [" & itemErrSrc & "]"
+                        Err.Raise itemErrNum, _
+                            "ReviewQueue.ApplyApproved: writing " & q.Items(n).EntityKey & "/" & q.Items(n).FieldID & _
+                            " (originally from " & itemErrSrc & ")", itemErrDesc
+                    End If
+
                     If wrote.Verified Then
                         writtenCount = writtenCount + 1
                         report = report & "  written: " & q.Items(n).EntityKey & "/" & q.Items(n).FieldID & vbCrLf

@@ -205,6 +205,22 @@ guidance.
   (procedure-local `Const`s inside a body are legal and will show up as false
   positives — check the indentation).
 
+  **The SAME rule applies to a bare module-level variable, and the checker
+  did not know that until 2026-08-17.** `Public foo As Bar` / `Private
+  WithEvents mApp As Excel.Application` at column 0 is a declaration exactly
+  like `Type`/`Const`/`Enum` — it must precede the first procedure or VBA
+  reports the error somewhere else entirely. Hit twice in one night:
+  `DraftingLobby.mAppEvents` (building the Lobby's event mechanism) and
+  `ReviewQueue.mTestForceInjectCrash` (building this file's own 50290 fix,
+  two hours later, same mistake) — both times `check_vba_static.py` reported
+  "clean" immediately before the live compile failure, because its
+  `DECL_RE` only matched the `Type|Const|Enum` keyword, never a plain
+  variable. Fixed by adding `VAR_DECL_RE` alongside it; proven by
+  deliberately reintroducing the real `ReviewQueue.bas` defect and
+  confirming the checker now names it before restoring the fix — the same
+  "make it fail once before trusting it" discipline this project applies to
+  its own VBA, now applied to the checker that watches the VBA.
+
 - **VBA: `ReDim arr(1 To 0)` throws "Subscript out of range" (Err 9) at
   runtime** -- confirmed real via multiple clean, isolated repros against a
   genuine PowerPoint 16.0 install (2026-07-25), not a hypothetical or a

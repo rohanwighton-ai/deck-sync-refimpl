@@ -80,13 +80,43 @@ fault fired one stage later, in `PutItOnTheSlidesCore` (the review-queue apply s
 Reported by: VBAProject"`. Three occurrences across three sessions, three different call
 sites (milestone-apply, `PublishDrafts`, now `ApplyApproved`'s chain) rules out a
 single-function cause — this reads as a genuine intermittent COM/automation fault, not a
-logic bug in any one of them. Still no `Err.Description` captured (same gap named above,
-still not closed). Workbook was left `Saved=False` after the fault; not resaved or
-investigated further that session per the dialog's own warning ("this run may have
-already changed your deck or its Data sheet before it stopped — check both before
-running it again"). Next session: check the register and slide state against what was
-last known-good BEFORE retrying, then finally add the `Err.Description` capture this
-entry has asked for twice now.
+logic bug in any one of them.
+
+**FIXED (the diagnostic gap, not the underlying fault) same night, ~01:30.**
+`ReviewQueue.ApplyApproved`'s per-item write block (both the dry-probe and the real
+`InjectPrimitive.InjectField` calls) now traps locally: captures `Err.Number`/
+`Description`/`Source` immediately, writes a `"CRASHED in dry probe/real write: ..."`
+line to the Sync Log via `AppendLogLine` BEFORE re-raising (so it survives even if
+PowerPoint dies entirely, same reasoning as `AppendLogLine`'s own header), then
+re-raises with the specific `EntityKey`/`FieldID` folded into `Err.Source` so the
+top-level dialog names the item instead of just "VBAProject". **Proven, not just
+compiled**: Office cannot be made to raise 50290 on demand — that unreliability is the
+whole reason this bug has gone three sessions unfixed — so a test-only hook
+(`ReviewQueue.mTestForceInjectCrash`, gated, never reachable from a button) simulates a
+deterministic fault; `Test_ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashes`
+genuinely failed against the unwrapped code first (nothing propagated, everything
+empty — the fixture's own presentation was never saved, so `BackupBeforeWrite` was
+exiting the whole function before the write loop ever ran; fixed by saving the test
+presentation to a real temp path), then passed once the wrapper was added. Full suite
+235/0.
+
+Next session, when this recurs for real: the Sync Log line and the dialog's `Reported
+by:` field will finally name which item was mid-write. Root cause is still open --
+this only makes the next occurrence diagnosable, it does not explain why Office raises
+the fault at all.
+
+**Byproduct: a real gap found in `check_vba_static.py`'s own declaration-order check.**
+Building this fix hit the exact bug `AGENTS.md` already documents from 2026-07-30 --
+TWICE in one night (`DraftingLobby.mAppEvents` earlier, then
+`ReviewQueue.mTestForceInjectCrash` here) — a module-level variable declaration placed
+after other procedures, which compiles quietly wrong and reports its error in a
+different module. `check_vba_static.py` already had a check for this shape, but its
+regex only matched `Type`/`Const`/`Enum` keywords, never a bare `Public foo As Bar` or
+`Private WithEvents ...` variable declaration — so it reported "static checks clean"
+immediately before both live compile failures tonight, the exact "a check that cannot
+fail looks exactly like one that passed" shape. Fixed by adding `VAR_DECL_RE`; proven
+by deliberately reintroducing the real defect (moved `mTestForceInjectCrash` back to
+its broken position) and confirming the checker now names it, then restoring.
 
 **SEPARATE, STILL OPEN: `TIMELINE_ELAPSED` (the elapsed bar) still fails "changed since
 you approved it" even after rounding `CurrentValue` to 2dp (`InjectPrimitive.bas`,

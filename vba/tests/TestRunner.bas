@@ -1539,6 +1539,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "ReviewQueue_BackupDestinationHandlesACloudDeck", r
+    If TestMatches("ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashes", filterPattern) Then
+        r = Test_ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashes()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashes", r
     If TestMatches("Sources_CitedBlockPutsTheDocumentInThePrompt", filterPattern) Then
         r = Test_Sources_CitedBlockPutsTheDocumentInThePrompt()
     Else
@@ -10789,6 +10795,131 @@ Private Function Test_ReviewQueue_BackupDestinationHandlesACloudDeck() As String
     On Error GoTo 0
 
     Test_ReviewQueue_BackupDestinationHandlesACloudDeck = result
+End Function
+
+' Error 50290 (FIX-LIST.md item V) has crashed ApplyApproved's write loop
+' three times across three sessions with no more diagnostic value than
+' "Reported by: VBAProject" -- because nothing captured Err.Description/
+' Source at the actual point of failure, only at the generic top-level chain
+' handler far above it. This proves the fix that closes that gap: an
+' unhandled error inside the per-item write must be caught, logged with the
+' specific EntityKey/FieldID, and re-raised with that context folded into
+' Err.Source -- not swallowed, not generic.
+'
+' CANNOT FORCE OFFICE TO GENUINELY RAISE 50290 ON DEMAND -- that unreliability
+' is the whole reason this bug has gone three sessions unfixed. So this
+' proves the WRAPPER is correct against a deliberate, controlled fault
+' (ReviewQueue.mTestForceInjectCrash), not that Office will always fault at
+' this point. Made to fail on purpose first, same discipline as
+' DistinctPinnedFields's test earlier tonight: run by hand against the
+' unwrapped call first, confirmed the crash escaped with Source = "VBAProject"
+' and no item named anywhere -- then the wrapper was added and this is what
+' proves it now.
+Private Function Test_ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashes() As String
+    Dim result As String
+
+    ' ISOLATED PRESENTATION, SAVED TO A REAL PATH. ApplyApproved's first act is
+    ' BackupBeforeWrite(Application.ActivePresentation, ...) -- an unsaved
+    ' Presentations.Add() deck (what NewBlankSlide/NewTaggedSlide add to,
+    ' unless the shared suite deck happens to be saved) has nowhere for
+    ' SaveCopyAs to land, backupPath comes back "", and ApplyApproved exits
+    ' with "STOPPED before writing" before the write loop this test exists to
+    ' probe ever runs. First run of this test genuinely failed that way --
+    ' every assertion below came back on an empty string, because nothing had
+    ' reached the crash branch at all.
+    Dim testPres As Object
+    Set testPres = Application.Presentations.Add
+    Dim tmpPath As String
+    tmpPath = Environ("TEMP") & "\applyapproved_crash_test_" & Format(Now, "yyyymmddhhnnss") & ".pptx"
+    testPres.SaveAs tmpPath
+
+    Dim sld As Object
+    Set sld = testPres.Slides.Add(1, ppLayoutBlank)
+    sld.Tags.Add "slide_type", "test-crash-type"
+    sld.Tags.Add "instance_key", "CRASH001"
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    shp.TextFrame.TextRange.Text = "before"
+    shp.Tags.Add "role", "ABOUT_BODY"
+
+    Dim sheet As Sheet
+    Set sheet.Rows = CreateObject("Scripting.Dictionary")
+    Set sheet.Fields = New Collection
+    Set sheet.InstanceOrder = New Collection
+    Dim vals As Object
+    Set vals = CreateObject("Scripting.Dictionary")
+    vals("ABOUT_BODY") = "after"
+    Set sheet.Rows("CRASH001") = vals
+    sheet.InstanceOrder.Add "CRASH001"
+
+    Dim q As ReviewQueueSet
+    q.SlideType = "test-crash-type"
+    q.RunStamp = "TEST"
+    q.Consumed = False
+    q.Count = 1
+    ReDim q.Items(1 To 1)
+    q.Items(1).EntityKey = "CRASH001"
+    q.Items(1).FieldID = "ABOUT_BODY"
+    q.Items(1).Approved = True
+    q.Items(1).ChangeHash = ReviewQueue.ChangeHash("CRASH001", "ABOUT_BODY", "before", "after")
+
+    Dim xl As Object, wb As Object, ws As Object, logWs As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+    ws.Name = ReviewQueue.ReviewSheetNameFor("test-crash-type")
+    ReviewQueue.WriteQueueSheet ws, q
+    Set logWs = wb.Worksheets.Add
+    logWs.Name = "TestLog"
+
+    ReviewQueue.mTestForceInjectCrash = True
+    Dim report As String
+    Dim raised As Boolean, raisedNum As Long, raisedDesc As String, raisedSrc As String
+    On Error Resume Next
+    Err.Clear
+    report = ReviewQueue.ApplyApproved(sheet, "test-crash-type", ws, logWs)
+    raised = (Err.Number <> 0)
+    raisedNum = Err.Number: raisedDesc = Err.Description: raisedSrc = Err.Source
+    On Error GoTo 0
+    ReviewQueue.mTestForceInjectCrash = False
+
+    result = result & Assert(raised, "the deliberate fault propagates out of ApplyApproved rather than being swallowed")
+    result = result & Assert(InStr(raisedSrc, "CRASH001") > 0 And InStr(raisedSrc, "ABOUT_BODY") > 0, _
+        "the re-raised error's Source names the specific item, got '" & raisedSrc & "'")
+    result = result & Assert(raisedDesc = "TEST: deliberately injected fault", _
+        "the original Err.Description survives the re-raise unchanged, got '" & raisedDesc & "'")
+
+    ' The Sync Log line is the part that survives even if PowerPoint crashes
+    ' entirely mid-run -- AppendLogLine's own reasoning, extended to the crash
+    ' case. Written BEFORE the re-raise, so it must be there even though the
+    ' call above never returned normally.
+    Dim logText As String
+    logText = CStr(logWs.Cells(2, 5).Value)
+    result = result & Assert(InStr(logText, "CRASHED") > 0, _
+        "the crash is logged to the Sync Log before re-raising, got '" & logText & "'")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing
+    Set xl = Nothing
+
+    testPres.Saved = True
+    testPres.Close
+
+    ' BackupBeforeWrite runs (and succeeds) BEFORE the crash branch this test
+    ' forces, so a real .bak.pptx sibling was actually created next to
+    ' tmpPath -- clean up both, not just the presentation.
+    On Error Resume Next
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Dim f As Object
+    For Each f In fso.GetFolder(Environ("TEMP")).Files
+        If InStr(f.Name, "applyapproved_crash_test_") > 0 Then f.Delete
+    Next f
+    On Error GoTo 0
+
+    Test_ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashes = result
 End Function
 
 ' The link that did not exist until 2026-08-09: a cited source reaching the
