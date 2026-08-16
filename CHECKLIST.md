@@ -266,6 +266,65 @@ code 2026-08-16, not assumed.*
       hand-widened once. Anything that regenerates that sheet needs to match the
       wider range, or it silently reverts. Not verified against current code.
 
+## Scenario 3 step 5 — the deck surgery. Needs Rohan at the keyboard.
+
+*Not automatable past this point* — `Create Template Slide` now drives
+`InputBox`/`MsgBox` (the new `PickTemplateSource` picker from step 4), and a
+modal blocks headless COM the same way the `.ppam` Save As step always has.
+Scripting past it would also defeat the point: this step is what proves the
+human-facing flow works, not just the code behind it.
+
+- [x] `addin104` predates steps 2-4 entirely. Rebuilt 2026-08-16 12:14 — 34
+      modules imported clean, PowerPoint left open at the Save As point.
+      **Still needed from Rohan:** File > Save As > PowerPoint Add-in, name
+      it `addin105`, tick it, untick `addin104`, restart PowerPoint.
+- [x] A fresh, dedicated copy made for this operation — never the live deck,
+      and not reusing `PRESERVED-known-good-20260815-1050` in place (other
+      scenarios may depend on that one staying as it is). Copied to:
+      `AppData\Local\deck-sync-backups\scenario3-template-surgery-20260816\`
+      (the Project Progress deck + `register-wide.xlsx`).
+- [ ] **THE COPY'S WORKBOOK PAIRING IS CURRENTLY WRONG, not just unverified.**
+      Checked the saved bytes directly: `DeckSyncWorkbookPath` still reads
+      `...\PRESERVED-known-good-20260815-1050\register-wide.xlsx` — the OLD
+      folder. `GetWorkbookPath`'s sibling-fallback never fires because that
+      stale path still resolves (the old file is still there), so writes
+      made on this copy would silently land in the OLD reference copy's
+      register, not this one's. **Must fix before touching templates:**
+      press "Change which workbook this deck uses" and type
+      `C:\Users\rohan\AppData\Local\deck-sync-backups\scenario3-template-surgery-20260816\register-wide.xlsx`
+      exactly. It's verified against saved bytes by the tool itself
+      (`SetWorkbookPathVerified`) — trust its own report, not a re-open.
+- [ ] **Then, in order, on the copy only:**
+      1. Press "Create Template Slide". Type auto-picks (only one type
+         registered: `project-progress`).
+      2. The new source picker lists every real onboarded instance by key +
+         derived letter. **Pick a K-lettered instance** (15 exist). Confirm
+         the summary dialog.
+      3. Press "Create Template Slide" again. **Pick an S-lettered instance**
+         this time (17 exist). Confirm.
+      4. Do **not** pick a P-lettered instance in either pass — see the known
+         gap noted below.
+- [ ] **Known gap, accepted rather than fixed here:** the existing green `P`
+      template was registered before per-letter registration existed, so it
+      only holds the plain `DeckSyncType:project-progress` property, never
+      `DeckSyncTemplate:project-progress:P`. `ExistingTemplateForLetter`
+      would not currently recognise it as blocking a NEW `P` template — P
+      rows still resolve correctly today (via `LookupTemplateForLetter`'s
+      fallback, which is exactly what the plain registration IS), so nothing
+      is broken, but the guard has a real hole specifically for `P` until it
+      gets an explicit per-letter registration too. Not fixed here because
+      the only way to write it is through the tool itself (never hand-edit
+      the OOXML property) and there's no standalone "register an existing
+      template under a letter" button yet — only `MakeTemplateFrom`'s own
+      flow writes one. Low practical risk for step 5 specifically, since
+      Rohan is choosing K and S deliberately, not by blind number entry.
+- [ ] Verify from the SAVED file afterward (not a dialog): both new template
+      slides exist, tagged `is_template`, hidden from the slideshow, and
+      `DeckSyncTemplate:project-progress:K` / `:S` both resolve to them.
+- [ ] `SCENARIOS.md`'s scenario 3 row rewrite (flagged at the end of step 4)
+      happens after this, once real behaviour is observed rather than
+      reasoned about.
+
 ## Scenario 3 — per-letter templates (blocked on a real defect, not reachability)
 
 - [x] Step 1 — `TemplateSlide.CodeLetterOf`, done and tested.
