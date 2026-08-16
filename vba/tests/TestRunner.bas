@@ -314,6 +314,24 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("TemplateSlide_ConfirmTextIsLetterAwareAndDoesNotStealTheFallback", filterPattern) Then
+        r = Test_TemplateSlide_ConfirmTextIsLetterAwareAndDoesNotStealTheFallback()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "TemplateSlide_ConfirmTextIsLetterAwareAndDoesNotStealTheFallback", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("TemplateSlide_ConfirmTextNamesWhenALetterBecomesTheFallback", filterPattern) Then
+        r = Test_TemplateSlide_ConfirmTextNamesWhenALetterBecomesTheFallback()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "TemplateSlide_ConfirmTextNamesWhenALetterBecomesTheFallback", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("TemplateSlide_ExistingTemplateForLetterFindsTheRightOne", filterPattern) Then
         r = Test_TemplateSlide_ExistingTemplateForLetterFindsTheRightOne()
     Else
@@ -3085,6 +3103,40 @@ Private Function Test_TemplateSlide_ConfirmTextStatesTheConsequences() As String
     result = result & Assert(TemplateSlide.PlaceholderFor("Status") = "<<Status>>", "PlaceholderFor wraps the role name, got '" & TemplateSlide.PlaceholderFor("Status") & "'")
 
     Test_TemplateSlide_ConfirmTextStatesTheConsequences = result
+End Function
+
+' Proves the letter-aware wording fixed 2026-08-16, found live: the old
+' unconditional "RE-REGISTERED" text was FALSE the moment a second letter
+' was added to a type that already had a template. Two real shapes, both
+' exercised live that day (K and S against an existing P template) --
+' willClaimFallback=False -- and the other real shape (a genuinely first-ever
+' template for a type) -- willClaimFallback=True.
+Private Function Test_TemplateSlide_ConfirmTextIsLetterAwareAndDoesNotStealTheFallback() As String
+    Dim result As String
+
+    Dim s As String
+    s = TemplateSlide.ConfirmTemplateText("project-progress", "1_K1001 (slide 12)", 15, "K", False)
+
+    result = result & Assert(InStr(s, "letter 'K'") > 0, "confirmation names the letter, got: " & s)
+    result = result & Assert(InStr(s, "RE-REGISTERED") = 0, _
+        "confirmation does NOT claim the whole type is re-registered when it is not")
+    result = result & Assert(InStr(s, "ONLY letter 'K' rows") > 0, _
+        "confirmation states the scope is limited to this letter, not the whole type")
+
+    Test_TemplateSlide_ConfirmTextIsLetterAwareAndDoesNotStealTheFallback = result
+End Function
+
+Private Function Test_TemplateSlide_ConfirmTextNamesWhenALetterBecomesTheFallback() As String
+    Dim result As String
+
+    Dim s As String
+    s = TemplateSlide.ConfirmTemplateText("new-type", "1_K1001 (slide 12)", 15, "K", True)
+
+    result = result & Assert(InStr(s, "letter 'K'") > 0, "confirmation names the letter, got: " & s)
+    result = result & Assert(InStr(s, "FIRST template") > 0, _
+        "confirmation states this letter is also becoming the type-level default")
+
+    Test_TemplateSlide_ConfirmTextNamesWhenALetterBecomesTheFallback = result
 End Function
 
 Private Function Test_TemplateSlide_ExistingTemplateForLetterFindsTheRightOne() As String

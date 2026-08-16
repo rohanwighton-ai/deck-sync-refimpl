@@ -2425,7 +2425,23 @@ Private Sub CreateTemplateSlideCore()
     Dim fieldCount As Long
     If hasFields Then fieldCount = fHi - fLo + 1
 
-    If MsgBox(TemplateSlide.ConfirmTemplateText(slideType, sourceLabel, fieldCount), _
+    ' Same predicate DeckRegistry.RegisterNewTemplateLetter uses to decide
+    ' whether it claims the type-level fallback -- computed here too so the
+    ' confirmation the human reads matches the write it is confirming,
+    ' instead of describing a fixed assumption that stopped being true the
+    ' first time a type got a second letter.
+    Dim willClaimFallback As Boolean
+    If letter <> "" Then
+        Dim fallbackPreviewSld As Object
+        Dim fallbackPreviewWs As String
+        If Not DeckRegistry.LookupType(pres, slideType, fallbackPreviewSld, fallbackPreviewWs) Then
+            willClaimFallback = True
+        ElseIf Not Resolve.IsTemplateSlide(fallbackPreviewSld) Then
+            willClaimFallback = True
+        End If
+    End If
+
+    If MsgBox(TemplateSlide.ConfirmTemplateText(slideType, sourceLabel, fieldCount, letter, willClaimFallback), _
               vbYesNo + vbQuestion, CommandBarUI.CAP_CREATE_TEMPLATE) <> vbYes Then
         Exit Sub
     End If

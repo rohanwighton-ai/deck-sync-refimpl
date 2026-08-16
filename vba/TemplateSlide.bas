@@ -206,14 +206,39 @@ End Function
 ' wording. C3's lesson (2026-07-30) was that a writing action reaching the
 ' toolbar without a confirmation is one click from damage; the wording IS
 ' the guard here, so it is worth asserting rather than hand-checking.
-Public Function ConfirmTemplateText(slideType As String, sourceLabel As String, fieldCount As Long) As String
+' letter/willClaimFallback let this stay accurate after Scenario 3 (per-letter
+' templates) without guessing: found live 2026-08-16 that the unconditional
+' "'<type>' RE-REGISTERED" wording is FALSE the moment a type already has one
+' template and a second letter is being added -- only that letter's own slot
+' gets registered; the existing fallback is deliberately left alone
+' (DeckRegistry.RegisterNewTemplateLetter). Caught by Rohan reading the actual
+' dialog before clicking through it, not by this pinned test, which still
+' passed the whole time -- it only ever exercised the letter="" case.
+'
+' willClaimFallback is the caller's job to compute (same predicate
+' RegisterNewTemplateLetter itself uses: does a real template already hold
+' the type-level slot), not this function's -- it only WRITES text from a
+' fact it is handed, it does not go looking for the fact itself.
+Public Function ConfirmTemplateText(slideType As String, sourceLabel As String, fieldCount As Long, _
+                                     Optional letter As String = "", Optional willClaimFallback As Boolean = False) As String
+    Dim registrationLine As String
+    If letter = "" Then
+        registrationLine = "    '" & slideType & "' RE-REGISTERED to clone this new slide from now on"
+    ElseIf willClaimFallback Then
+        registrationLine = "    '" & slideType & "' letter '" & letter & "' registered to clone this new slide from now on" & vbCrLf & _
+            "    -- the FIRST template for this type, so it ALSO becomes the default for any row with no letter"
+    Else
+        registrationLine = "    '" & slideType & "' letter '" & letter & "' registered to clone this new slide from now on" & vbCrLf & _
+            "    -- ONLY letter '" & letter & "' rows; other letters keep cloning from their own templates"
+    End If
+
     Dim s As String
     s = "This will change the deck." & vbCrLf & vbCrLf & _
         "Type:   " & slideType & vbCrLf & _
         "Copy of: " & sourceLabel & vbCrLf & vbCrLf & _
         "    1 new slide, added at the END and hidden from the slideshow" & vbCrLf & _
         "    its " & fieldCount & " field(s) replaced with " & PlaceholderFor("placeholders") & vbCrLf & _
-        "    '" & slideType & "' RE-REGISTERED to clone this new slide from now on" & vbCrLf & vbCrLf & _
+        registrationLine & vbCrLf & vbCrLf & _
         "The slide it is copied from is NOT touched -- it stays an" & vbCrLf & _
         "ordinary project record." & vbCrLf & vbCrLf & _
         "Why: new slides are currently cloned from a real project's" & vbCrLf & _

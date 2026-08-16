@@ -320,26 +320,45 @@ human-facing flow works, not just the code behind it.
          instance** this time (17 exist). Confirm.
       4. Do **not** pick a P-lettered instance in either pass — see the known
          gap noted below.
-- [ ] **Known gap, accepted rather than fixed here:** the existing green `P`
-      template was registered before per-letter registration existed, so it
-      only holds the plain `DeckSyncType:project-progress` property, never
-      `DeckSyncTemplate:project-progress:P`. `ExistingTemplateForLetter`
-      would not currently recognise it as blocking a NEW `P` template — P
-      rows still resolve correctly today (via `LookupTemplateForLetter`'s
-      fallback, which is exactly what the plain registration IS), so nothing
-      is broken, but the guard has a real hole specifically for `P` until it
-      gets an explicit per-letter registration too. Not fixed here because
-      the only way to write it is through the tool itself (never hand-edit
-      the OOXML property) and there's no standalone "register an existing
-      template under a letter" button yet — only `MakeTemplateFrom`'s own
-      flow writes one. Low practical risk for step 5 specifically, since
-      Rohan is choosing K and S deliberately, not by blind number entry.
-- [ ] Verify from the SAVED file afterward (not a dialog): both new template
-      slides exist, tagged `is_template`, hidden from the slideshow, and
-      `DeckSyncTemplate:project-progress:K` / `:S` both resolve to them.
-- [ ] `SCENARIOS.md`'s scenario 3 row rewrite (flagged at the end of step 4)
-      happens after this, once real behaviour is observed rather than
-      reasoned about.
+- [x] **Both done, 2026-08-16.** K built from `1_K1001` (slide 12), S from
+      `1_S001` (slide 27). Both dialogs correctly said the new slide "will
+      not appear in Preview Sync or Sync Now reports" and named which
+      instance each was copied from.
+- [x] **Found a THIRD real defect live, mid-flow: the confirmation dialog's
+      own wording was stale.** It unconditionally said `'project-progress'
+      RE-REGISTERED to clone this new slide from now on` — true for the
+      old one-template-per-type world, false the moment a type already has
+      a template and a second letter is being added (only that letter's own
+      slot gets registered; the existing fallback is deliberately left
+      alone). The underlying WRITE was already correct — this was a
+      text-only defect, caught by reading the actual dialog before Rohan
+      clicked through it, not by the pinned test, which had only ever
+      exercised the letter-less case. Fixed: `ConfirmTemplateText` takes
+      `letter`/`willClaimFallback` now and states the real scope — "ONLY
+      letter 'K' rows" vs "the FIRST template for this type, so it ALSO
+      becomes the default." 2 new tests. Suite 222→224/0.
+- [x] Verified from the SAVED file, not a dialog: 46 slides (was 44). Slides
+      45/46 both hidden, both tagged `is_template=1`/`slide_type=project-
+      progress`, neither carries an `instance_key`.
+      `DeckSyncTemplate:project-progress:K` → slide 45,
+      `:S` → slide 46. `DeckSyncType:project-progress` **unchanged**, still
+      `303|Register` — the original P template, confirming the fallback was
+      not stolen. Workbook pairing still correctly self-referential.
+- [x] **Known gap, still accepted, not fixed here:** the existing green `P`
+      template still only holds the plain `DeckSyncType:project-progress`
+      property, never a per-letter one — see the reasoning recorded above
+      this list before step 5 ran. Unaffected by anything in this pass;
+      P rows still resolve correctly via the fallback path.
+- [ ] **`SCENARIOS.md`'s scenario 3 row rewrite** (flagged since step 4) —
+      still pending. Now genuinely ready to write from observed behaviour
+      rather than reasoning about it.
+- [ ] **Not yet decided: does this land on the LIVE deck, or does the copy
+      stay the proof-of-concept?** Everything above happened on
+      `scenario3-template-surgery-20260816\`, never the real deck — that was
+      the point. Rohan's call, not something to do unilaterally: the real
+      deck getting K/S templates is a separate, deliberate step whenever he
+      wants it, using the same now-fixed button and now-accurate confirmation
+      text.
 
 ## Scenario 3 — per-letter templates (blocked on a real defect, not reachability)
 
