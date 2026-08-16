@@ -414,6 +414,23 @@ bytes. Started because the K/S template build above was mechanism-tested
       P's final 2026-08-16 update. This was the last blocker on Scenario 1
       (updating the period on an existing, already-synced deck every
       quarter).
+- [x] **#4b, CLOSED 2026-08-16 evening.** Prompted by "check the register
+      too" — the register had the same class of defect as #4, on a
+      different application: `ExcelOutput.WriteDeckReference` used
+      `Workbook.CustomDocumentProperties`, and a probe found a NEW property
+      lands fine (even a second one, same session — narrower than the
+      deck's version) but RE-WRITING an existing one never persists, via
+      `.Value=` (the real function's actual pattern) or Delete+Add. Called
+      on every repoint via `StampPairing`, so a workbook re-paired to a
+      different deck after its first stamp would silently keep reporting
+      the OLD deck's identity forever. Fixed the same shape as #4: moved
+      `DeckReference` onto a cell on a dedicated very-hidden `DeckSyncMeta`
+      sheet, with a read-fallback to the old location. **Proven against the
+      real re-pairing scenario across two genuinely separate sessions**
+      (stamp, close, reopen, confirm; re-stamp with a different value,
+      close, reopen, confirm the NEW value landed, not stuck on the old
+      one). Static checks clean, suite 230/0. Full evidence: `FIX-LIST.md`
+      item S.
 - [ ] **#5:** `Tag fields on this slide` run fresh against `K900` and `S900`
       to get CURRENT field coverage ground truth, replacing the
       cross-referenced-from-tags inference in the Field Coverage Matrix

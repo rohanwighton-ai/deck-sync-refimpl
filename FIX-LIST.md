@@ -1,7 +1,8 @@
 # Fix list
 
 > **CURRENT — the live list of what is known-broken and not yet fixed.** Re-audited
-> against the code 2026-08-14; six entries added 2026-08-15; A and E since fixed.
+> against the code 2026-08-14; six entries added 2026-08-15; A and E since fixed; S
+> added and fixed 2026-08-16.
 > Entries say whether they are still live; anything marked fixed names the build it was
 > fixed in.
 
@@ -10,6 +11,43 @@ re-deriving the same findings. Three reviews have now paid to rediscover items t
 were already known — that cost is what this file exists to stop.
 
 Ranked by how much real work is destroyed, or wasted, before anyone notices.
+
+## Added 2026-08-16 (evening) — one, FIXED same day, the register-side twin of P
+
+**S. THE REGISTER HAD THE SAME CLASS OF DEFECT AS P, ON A DIFFERENT MECHANISM AND
+APPLICATION. FIXED 2026-08-16.** Prompted directly by "check the register too" after P
+closed — not found by re-deriving from scratch, found by asking whether a defect found
+on one application generalises to the sibling one doing the analogous job.
+`ExcelOutput.WriteDeckReference`/`ReadDeckReference` used `Workbook.CustomDocumentProperties`
+— same storage class as the deck's `Presentation.CustomDocumentProperties`, different
+application (Excel, not PowerPoint), so tested independently rather than assumed safe by
+analogy.
+
+Probed directly (PowerShell's own COM interop cannot introspect
+`CustomDocumentProperties`'s type info at all — a `NullReferenceException` in
+`ComRuntimeHelpers.GetTypeAttrForTypeInfo`, confirmed twice with different call shapes,
+a limitation of that interop layer, not a fact about Excel — so driven from VBA
+instead, `vba/tools/ExcelPropertyProbe.bas`): a brand-new property lands, and a
+SECOND, different new property in the SAME session also lands — narrower than the
+deck's version, which locked up entirely after one write. But RE-WRITING an EXISTING
+property never persists, via `.Value =` (`WriteDeckReference`'s actual pattern) or via
+Delete+Add (the "safe" pattern the deck side used to rely on). `StampPairing` calls
+`WriteDeckReference` on every repoint, so a workbook re-paired to a different deck
+after its first stamp would have silently kept reporting the OLD deck's identity
+forever — exactly the cross-wiring risk this mechanism exists to close
+(`DeckRegistry.bas`'s own header comment).
+
+**Fixed**: moved off `CustomDocumentProperties` onto a cell (A1) on a dedicated,
+very-hidden `DeckSyncMeta` sheet, appended at the end — same shape as the deck's fix,
+using the plain `Cells`/`Range` writes this whole module already relies on for every
+other piece of register data, proven reliable on OneDrive by this project's entire
+operating history rather than freshly probed. `ReadDeckReference` falls back to the old
+`CustomDocumentProperties` location so workbooks stamped before this change keep
+reading correctly until the next repoint moves them over. Static checks clean, suite
+230/0. **Proven against the real re-pairing scenario**, not just a same-session repeat:
+stamped a real cloud-hosted scratch workbook, closed, reopened (genuinely separate
+session), read back correct; re-stamped with a DIFFERENT value, closed, reopened again,
+read back the NEW value, not stuck on the old one.
 
 ## Added 2026-08-15 (late evening) — one, LIVE, and it is bigger than Q
 

@@ -30,6 +30,25 @@ Option Explicit
 
 Public Const INSTANCE_ID_HEADER As String = "Instance ID"
 Private Const DECK_REFERENCE_PROPERTY_NAME As String = "DeckReference"
+' STORAGE MOVED OFF CustomDocumentProperties, 2026-08-16 -- same class of
+' defect as DeckRegistry.bas's registry slide (see that file's
+' REGISTRY_SLIDE_NAME comment for the full PowerPoint-side story), confirmed
+' independently on THIS application rather than assumed by analogy: a probe
+' against a real OneDrive-hosted workbook found a brand-new custom property
+' lands, and a SECOND, different new property in the same session also
+' lands (narrower than PowerPoint's version) -- but RE-WRITING an EXISTING
+' property never persists, via `.Value =` (the pattern WriteDeckReference
+' used) or via Delete+Add. `StampPairing` calls WriteDeckReference on every
+' repoint, so a workbook ever re-paired to a different deck after its first
+' stamp would have silently kept reporting the OLD deck's identity forever
+' -- exactly the cross-wiring risk this mechanism exists to close.
+'
+' Now a cell on a dedicated, very-hidden meta sheet, using the SAME plain
+' Cells/Range writes this whole module already relies on for every other
+' piece of register data -- proven reliable on OneDrive by this project's
+' entire operating history, not freshly probed, since that is the
+' mechanism the register has always used.
+Private Const META_SHEET_NAME As String = "DeckSyncMeta"
 
 ' XlDirection enum values, as numeric literals rather than the named
 ' constants (xlToLeft/xlUp) -- confirmed real (2026-07-25) that the named
@@ -45,6 +64,9 @@ Private Const DECK_REFERENCE_PROPERTY_NAME As String = "DeckReference"
 ' constants, unaffected by which host application's project this runs in.
 Private Const XL_TO_LEFT As Long = -4159
 Private Const XL_UP As Long = -4162
+' Same reason as XL_TO_LEFT/XL_UP above -- numeric, not xlSheetVeryHidden,
+' for cross-app safety when this module is driven from PowerPoint.
+Private Const XL_SHEET_VERY_HIDDEN As Long = 2
 
 ' Sheet.Fields/InstanceOrder are Collections (ordered, append-only), not
 ' Dictionary keys -- matches this project's existing convention for ordered
@@ -500,30 +522,80 @@ End Function
 ' (CreateSheet, at onboarding), which is why the GUID was written once per
 ' workbook and then never maintained or consulted again. DeckRegistry needs both
 ' directions to keep the pairing mutually verifiable across a repoint.
-Public Sub WriteDeckReference(wb As Object, deckReference As String)
-    Dim prop As Object
-    On Error Resume Next
-    Set prop = wb.CustomDocumentProperties(DECK_REFERENCE_PROPERTY_NAME)
-    On Error GoTo 0
 
-    If prop Is Nothing Then
-        wb.CustomDocumentProperties.Add Name:=DECK_REFERENCE_PROPERTY_NAME, _
-            LinkToContent:=False, Type:=msoPropertyTypeString, Value:=deckReference
-    Else
-        prop.Value = deckReference
+' Nothing (never creates) -- a read-only lookup must not spring a hidden
+' sheet into existence on a workbook that has never been stamped.
+Private Function FindMetaSheet(wb As Object) As Object
+    Dim ws As Object
+    On Error Resume Next
+    For Each ws In wb.Worksheets
+        If ws.Name = META_SHEET_NAME Then
+            Set FindMetaSheet = ws
+            Exit Function
+        End If
+    Next ws
+    On Error GoTo 0
+End Function
+
+' Appended at the END so it never disturbs the position of a real sheet
+' anything else in this project addresses by name or index. Very-hidden
+' (not just hidden) deliberately: this holds the GUID the cross-wiring check
+' depends on, and that check is worth more protection from an accidental
+' right-click-unhide-and-delete than a normal hidden sheet gets.
+Private Function FindOrCreateMetaSheet(wb As Object) As Object
+    Dim existing As Object
+    Set existing = FindMetaSheet(wb)
+    If Not existing Is Nothing Then
+        Set FindOrCreateMetaSheet = existing
+        Exit Function
     End If
+
+    Dim ws As Object
+    Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+    ws.Name = META_SHEET_NAME
+    ws.Visible = XL_SHEET_VERY_HIDDEN
+    Set FindOrCreateMetaSheet = ws
+End Function
+
+Public Sub WriteDeckReference(wb As Object, deckReference As String)
+    Dim ws As Object
+    Set ws = FindOrCreateMetaSheet(wb)
+    ws.Cells(1, 1).Value = deckReference
 End Sub
 
+' Tries the meta sheet first; falls back to the pre-2026-08-16
+' CustomDocumentProperties location so workbooks stamped before this change
+' keep reading correctly until the next repoint moves them onto the new
+' mechanism for good.
 Public Function ReadDeckReference(wb As Object) As String
+    Dim ws As Object
+    Set ws = FindMetaSheet(wb)
+    If Not ws Is Nothing Then
+        Dim v As Variant
+        v = ws.Cells(1, 1).Value
+        If Not IsEmpty(v) And Not IsNull(v) Then
+            If CStr(v) <> "" Then
+                ReadDeckReference = CStr(v)
+                Exit Function
+            End If
+        End If
+    End If
+
+    ReadDeckReference = ReadOldDeckReferenceProperty(wb)
+End Function
+
+' THE OLD MECHANISM. Read-only fallback now -- see META_SHEET_NAME's
+' comment for why nothing writes here any more.
+Private Function ReadOldDeckReferenceProperty(wb As Object) As String
     Dim prop As Object
     On Error Resume Next
     Set prop = wb.CustomDocumentProperties(DECK_REFERENCE_PROPERTY_NAME)
     On Error GoTo 0
 
     If prop Is Nothing Then
-        ReadDeckReference = ""
+        ReadOldDeckReferenceProperty = ""
     Else
-        ReadDeckReference = CStr(prop.Value)
+        ReadOldDeckReferenceProperty = CStr(prop.Value)
     End If
 End Function
 
