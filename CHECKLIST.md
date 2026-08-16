@@ -307,6 +307,23 @@ code 2026-08-16, not assumed.*
       built and are themselves now stale against the current chain-based
       toolbar model — but the underlying gap persists. Minor, not urgent.
 
+## Drafting sheets — make them easier to work with (flagged by Rohan, 2026-08-16)
+
+Specifics not yet defined — flagged as a goal, not a spec. Related papercuts
+already on this list belong under this heading rather than scattered:
+
+- [ ] A bare Excel "permanently delete this sheet" prompt fires during the
+      drafting-sheet rebuild — no context, not the tool's own words. (moved
+      from "Known open defects" below — same goal)
+- [ ] `Roll Forward` requires clicking a cell to name the source quarter, when
+      the tool already knows the deck's period and which periods have rows.
+      (moved from "Known open defects" below — same goal)
+- [ ] Per-field drafting sheets stay separate (reversed from a long-format
+      merge, see "Parked" below) — so whatever "easier to work with" means, it
+      works within that shape, not by re-opening the merge question.
+- [ ] Rohan to add what's actually slow or annoying day to day — this section
+      exists to collect it.
+
 ## Known open defects — not urgent, not forgotten
 
 *Source: `FIX-LIST.md`, live entries.*
@@ -317,10 +334,6 @@ code 2026-08-16, not assumed.*
 - [ ] Review grid may not be safe to rebuild under a live Excel AutoFilter —
       strongly implicated, not proven. Proving test: re-apply a filter, rebuild,
       check for duplicate rows.
-- [ ] `Roll Forward` requires clicking a cell to name the source quarter, when the
-      tool already knows the deck's period and which periods have rows.
-- [ ] A bare Excel "permanently delete this sheet" prompt fires during the
-      drafting-sheet rebuild — no context, not the tool's own words.
 - [ ] The apply-confirmation dialog title is hardcoded wrong when reached from
       `2. Put it on the slides`.
 
