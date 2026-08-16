@@ -1331,6 +1331,45 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                 If rowValues.Exists(q.Items(n).FieldID) Then
                     proposed = CStr(rowValues(q.Items(n).FieldID))
                     haveProposed = True
+                ElseIf InjectPrimitive.DeviceRoleTagsOnSlide(sld).Exists(q.Items(n).FieldID) Then
+                    ' DEVICE FIELDS ARE NOT REGISTER COLUMNS -- FIX-LIST R's own
+                    ' reasoning (InjectPrimitive.bas:100), hit again one layer
+                    ' downstream. A device's data lives across many columns
+                    ' (MS1_LABEL..MS7_DONE), not one cell named after the device's
+                    ' tag, so `rowValues.Exists(FieldID)` can never be True for it
+                    ' -- R fixed BuildQueue's discovery of this row (SyncOperations.
+                    ' bas:188-210) but this apply loop, a different consumer of the
+                    ' same FieldID, was never updated to match, so every approved
+                    ' device change was dropped as "stale" on every run. Found live
+                    ' 2026-08-16 chasing why the milestone device still would not
+                    ' write after Q and R.
+                    '
+                    ' Matches BuildQueue's own literal, so the hash computed below
+                    ' agrees with the one stored at approval time (SyncOperations.
+                    ' bas:210). InjectField's INJECTOR_DEVICE case ignores
+                    ' sourceValue entirely (InjectPrimitive.bas:432-434) and derives
+                    ' everything from rowValues instead, so this string is never
+                    ' actually written anywhere -- it only has to match itself.
+                    proposed = "(redrawn from its register columns)"
+                    haveProposed = True
+                ElseIf q.Items(n).FieldID = SyncOperations.TIMELINE_ELAPSED_TAG Then
+                    ' THE ELAPSED-TIME BAR IS THE SAME SHAPE OF DEFECT AGAIN, ONE
+                    ' NIGHT LATER. Kind = Derived fields are NEVER register columns
+                    ' by design (ExcelOutput.KIND_DERIVED's own reasoning) -- and
+                    ' that means every non-column FieldID this apply loop meets is
+                    ' a fresh instance of the same class the device branch above
+                    ' already names. Unlike a device, the elapsed bar's VALUE
+                    ' genuinely matters to the write (InjectProgressVia reads
+                    ' sourceValue as the fraction to draw, it is not ignored the
+                    ' way INJECTOR_DEVICE ignores it) -- so this cannot reuse a
+                    ' placeholder string the way the device branch does. The
+                    ' fraction was already computed once, at build time
+                    ' (SyncOperations.PlanRoutineSync), and is sitting right here
+                    ' in the queue item itself; re-deriving it a second time from
+                    ' rowValues would be a second copy of a computed value, which
+                    ' is exactly what Derived exists to prevent.
+                    proposed = q.Items(n).ProposedValue
+                    haveProposed = True
                 End If
             End If
 

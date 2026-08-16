@@ -77,6 +77,21 @@ function Request-GracefulQuit {
         param($ProgId)
         try { $app = [System.Runtime.InteropServices.Marshal]::GetActiveObject($ProgId) }
         catch { return "no-instance" }
+        # SAVE EVERY OPEN PRESENTATION BEFORE QUITTING. FIX-LIST item O: this
+        # used to call Quit() directly, on the documented assumption that an
+        # unsaved deck would raise a modal and safely time this job out. Found
+        # 2026-08-16: that assumption was wrong at least once -- a real,
+        # deliberate tag edit (unsaved) was silently discarded with no prompt
+        # and no timeout, because Quit() inside a background job's isolated
+        # COM apartment doesn't necessarily surface a UI prompt at all. An
+        # explicit Save() here is the actual fix; the old "it'll time out"
+        # behavior was never a real safety net, just an assumption that
+        # happened not to be tested against the failure it was meant to catch.
+        try {
+            foreach ($pres in @($app.Presentations)) {
+                if (-not $pres.Saved) { $pres.Save() }
+            }
+        } catch { }
         try { $app.Quit(); return "quit-ok" } catch { return "quit-error: $($_.Exception.Message)" }
     } -ArgumentList $ProgId
     $completed = Wait-Job $job -Timeout $TimeoutSeconds

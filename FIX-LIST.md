@@ -2,15 +2,135 @@
 
 > **CURRENT — the live list of what is known-broken and not yet fixed.** Re-audited
 > against the code 2026-08-14; six entries added 2026-08-15; A and E since fixed; S
-> added and fixed 2026-08-16.
+> added and fixed 2026-08-16; T added 2026-08-16 (late evening).
 > Entries say whether they are still live; anything marked fixed names the build it was
-> fixed in.
+> fixed in. U added 2026-08-16 (night); V added and FIXED same night, addin111.
 
 One place for what is known-broken and not yet fixed, so each new review stops
 re-deriving the same findings. Three reviews have now paid to rediscover items that
 were already known — that cost is what this file exists to stop.
 
 Ranked by how much real work is destroyed, or wasted, before anyone notices.
+
+## Added 2026-08-16 (night) — one, FIXED same night in addin111 — R's discovery fix had no matching write fix
+
+**V. THE MILESTONE DEVICE WAS DISCOVERABLE (R) BUT STILL COULD NOT BE WRITTEN THROUGH THE
+REVIEW QUEUE — THE ONLY PATH THIS TOOL EVER WRITES A SLIDE THROUGH. FIXED 2026-08-16.**
+Found chasing "are we there with shapes yet" live: with real `MS1_LABEL`..`MS3_DONE` data
+seeded and ticked `Y` in `Review project-progress-A32C`, pressing "2. Put it on the
+slides" reported `DROPPED 3_P001/MILESTONE_TIMELINE -- the register no longer has a
+value for this field` — every single time, regardless of the register actually holding
+real data (checked directly, it did).
+
+Root cause: `ReviewQueue.ApplyApproved`'s proposed-value lookup (`ReviewQueue.bas:~1328`)
+assumes every `FieldID` is a literal register column and requires
+`rowValues.Exists(FieldID)` before it will even attempt a write. That is true for
+ordinary fields and never true for a device tag — `MILESTONE_TIMELINE`'s data lives
+across 21 columns (`MS1_LABEL`..`MS7_DONE`), never one cell named after the device,
+which is the exact fact R's own comment already states
+(`InjectPrimitive.bas:100-109`). R fixed `SyncOperations.PlanRoutineSync` (the
+*discovery* path, used by `BuildQueue`) to ask about device tags via
+`InjectPrimitive.DeviceRoleTagsOnSlide` — but `ApplyApproved` is a *different* consumer
+of the same `FieldID` list, downstream, and was never updated to match. So R made the
+device reachable for preview and completely unreachable for the write that preview was
+supposed to lead to — the exact "built for one consumer, unreachable from the next"
+shape this project has hit repeatedly (milestone writers themselves, picture injection,
+progress bars).
+
+Fixed by making `ApplyApproved` ask the same question `BuildQueue` already does: when
+`rowValues.Exists(FieldID)` is false, check `InjectPrimitive.DeviceRoleTagsOnSlide(sld)`
+for the tag before giving up, and if found, use the same literal
+`"(redrawn from its register columns)"` `BuildQueue` already stores as `ProposedValue`
+(so the drift-protection hash still agrees with what was approved).
+`InjectPrimitive.InjectField`'s `INJECTOR_DEVICE` case ignores the `sourceValue`
+argument entirely regardless, so this string is never actually written anywhere — it
+only has to match itself.
+
+**Proven properly, not just patched:** every downstream function
+(`MilestoneDevice.DrawFromRow`, `.DeviceIntegrity`, `InjectPrimitive.InjectorFor`,
+`.FindShapeByRoleTag`) was probed directly against the real slide via `Application.Run`
+first and each came back clean — isolating the defect specifically to
+`ApplyApproved`'s own lookup before touching any code. One transient `Error 50290`
+occurred mid-diagnosis with no code difference before/after (backup created, no Sync Log
+line written, nothing changed on disk) and did not reproduce on immediate retry — logged
+here as a loose end, not chased further, since the deterministic defect it was found
+alongside is confirmed fixed and independently verified: `written: 3_P001/
+MILESTONE_TIMELINE` in the real Sync Log, and `Kickoff`/`Design complete`/`Trial
+underway` confirmed present in the saved `.pptx`'s own `slide1.xml`, read directly, not
+through PowerPoint. Built in `addin111` (2026-08-16 19:44).
+
+**CORRECTION, same night, ~21:33: "one-off" does not hold up.** `Error 50290` recurred —
+this time during `Drafting.PublishDrafts` re-publishing `ABOUT_BODY` ("Could not
+publish."), a completely different code path from the milestone-apply crash it first
+appeared in. Two occurrences in two unrelated call sites in one session is a real,
+recurring intermittent failure, not a fluke to stop tracking. **Not yet root-caused** —
+still no `Err.Description` captured either time (the generic `UnexpectedErrorText`
+wrapper reports only the number), and it has not been possible to reproduce on demand.
+Next session: before dismissing it again, add `Err.Description`/`Err.Source` capture at
+the point it's actually raised (not just the top-level chain handler), and watch for
+whether it clusters around long sessions / many consecutive Office automation calls
+rather than any specific code path.
+
+**SEPARATE, STILL OPEN: `TIMELINE_ELAPSED` (the elapsed bar) still fails "changed since
+you approved it" even after rounding `CurrentValue` to 2dp (`InjectPrimitive.bas`,
+`InjectProgressField`).** Verified the rounding fix is genuinely active (`Current` in the
+queue now reads `127.28`, not `127.2757`) and hand-checked the hash algorithm against the
+stored `Current`/`Proposed` twice — both times the stored hash IS correctly derivable
+from the stored values, so the hash function itself is not the bug. Still failed on
+apply regardless. **The precision theory was incomplete or wrong** — paused mid-diagnosis
+at Rohan's call, to think about the workflow architecture instead of one more live
+debug round. Next session: don't re-assume precision: instead compare the build-time
+`Current` against a fresh apply-time dry-run read side by side, in the same run, to see
+concretely which one differs and by how much, rather than reasoning about it from two
+separate reads taken minutes apart.
+
+**Rohan asked directly, correctly: "what if it's the first thing every time?"** — a fair
+challenge, since the one successful button-driven write happened right after a
+diagnostic probe had already written to that same slide once, which could have masked a
+"fails on a truly untouched group" defect. Tested properly rather than assumed: found
+`PRESERVED-known-good-20260815-1050`'s own copy of the deck, confirmed via raw XML it
+had never been touched by anything this session (no `Kickoff`, still the original
+authored `ABOUT_BODY` text), confirmed its `MILESTONE_TIMELINE` group was genuinely
+pristine (37/37 shapes visible, nothing ever toggled), then ran the real chain against
+it with zero diagnostic probes in between — a true first-ever write, through the actual
+button. **Succeeded cleanly, no crash, no error, no probe priming it first**, verified
+again from the saved file's own bytes. The 50290 crash was a one-off, not a
+first-write-every-time defect.
+
+## Added 2026-08-16 (night) — one, LIVE, cosmetic — looks like the OLD destructive bug but isn't
+
+**U. "2. PUT IT ON THE SLIDES" VISIBLY FLICKERS THROUGH ALL 13 DRAFTING SHEETS, AND IT
+READS AS THE REBUILD-DESTROYS-WORK DEFECT EVEN THOUGH IT ISN'T.** Rohan, live tonight,
+after watching it run: *"why are drafting sheets still getting rebuilt like that I can
+see clear at work? I thought we'd been over and over this?"* — the exact question this
+project has already answered structurally (decision 1, `DOCUMENT-MAP.md`). Checked
+directly, not assumed: `ABOUT_BODY`'s `SUBMIT`/`APPROVE` cells (`G10`/`H10`) survived
+completely intact across the run. `Drafting.bas:751`'s `ws.Cells.Clear` is correctly
+gated to `If Not layoutMatches` only (a genuine layout migration) — it did not fire.
+The real cause: `PublishAllDraftedFields`/`RibbonUI.PutItOnTheSlides` steps through all
+13 `TPL_*` sheets, one at a time, checking each field's 43 rows for an AI draft to copy
+into SUBMIT, without suppressing `Application.ScreenUpdating`. Watching Excel flip
+through 13 tabs touching cells in real time LOOKS like the destructive rebuild even
+though nothing is being lost — confirmed by the "38 left alone" count staying identical
+across repeated runs tonight. Fix: wrap the loop in `ScreenUpdating = False` /
+`= True`. Cosmetic, not data loss — but worth fixing precisely because it keeps
+re-triggering the same alarm as the real, already-fixed defect.
+
+## Added 2026-08-16 (late evening) — one, LIVE, found during a real successful quarter turn
+
+**T. `Sources.ApplyPeriodValidation` SWALLOWS ITS OWN ERROR NUMBER, THE EXACT PATTERN
+ITEM 1 ALREADY NAMES.** Hit live during tonight's Scenario 1 mechanism run (the one that
+actually succeeded — 43 rows Q4F26 -> Q1F27, drafting sheets refreshed): the Run Log
+recorded `Sources validation: NOT APPLIED -- Excel refused (the workbook may be read-only
+or the sheet protected)`, the exact generic text `Sources.bas:255` always emits on this
+path. The real cause is thrown away — `rng.Validation.Add` fails inside an
+`On Error Resume Next` block (`Sources.bas:244-252`) and only a Boolean survives; `Err.Number`
+and `Err.Description` are read, checked, then discarded (`Err.Clear`) without ever being
+put in the message. Nothing else in the run was affected — the roll-forward, the drafting
+sheet rebuild, and the workbook save all completed and saved correctly regardless. Not yet
+reproduced on demand or root-caused (candidates: the `Sources` sheet mid-write from the
+same run, or a genuine protection/read-only state) — next session, reproduce it once with
+`Err.Number`/`Err.Description` temporarily appended to the message before deciding a fix.
 
 ## Added 2026-08-16 (evening) — one, FIXED same day, the register-side twin of P
 
@@ -348,14 +468,18 @@ tick until the comparison is format-aware or refuses this field.**
 what they cannot see. Widen the column, or render the differing character by name
 (`<space>`, `<nbsp>`, `<CRLF>`).
 
-**O. `build_ppam.ps1` QUITS POWERPOINT WITH THE USER'S DECK OPEN, UNANNOUNCED.** Line 88
-calls `Request-GracefulQuit "PowerPoint.Application"` before building. It closed the live
-deck mid-session on 2026-08-15. Nothing was lost — the deck was saved and AutoSave was on —
-but the guard is accidental: an unsaved deck raises a modal save prompt, which makes the
-30s wait time out and the script abort with "did not close cleanly". So the safe path is a
-side effect of a timeout, not a check. Excel is not in the loop and is never touched. The
-script's header comment describes what it builds and never mentions the quit, which is how
-it got asserted as harmless.
+**O. `build_ppam.ps1` QUITS POWERPOINT WITH THE USER'S DECK OPEN, UNANNOUNCED. FIXED
+2026-08-16 (night).** Line 88 calls `Request-GracefulQuit "PowerPoint.Application"`
+before building. It closed the live deck mid-session on 2026-08-15; that time nothing was
+lost because AutoSave happened to be on and the deck happened to be saved already. The
+"safe path" was believed to be the 30-second timeout an unsaved deck's modal save prompt
+would trigger — but that assumption was never actually tested against the failure it was
+supposed to catch. **It was wrong.** 2026-08-16: a real, deliberate, unsaved edit (a role
+tag on a real shape) was silently discarded — no modal, no timeout, no message — because
+`Quit()` runs inside a background job's isolated COM apartment, which does not
+necessarily surface a UI prompt to anyone. Fixed properly: the job now explicitly
+`Save()`s every open presentation before calling `Quit()`, rather than trusting a prompt
+that may never appear. Excel is still not in the loop and still never touched.
 
 ---
 

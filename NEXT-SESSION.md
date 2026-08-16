@@ -1,5 +1,108 @@
 # NEXT SESSION — start here
 
+> ## 16 AUG, NIGHT. **SESSION-END HANDOVER. STATUS: CURRENT.** Supersedes the "late
+> evening" block below on Scenario 1 status — the mechanism is now proven all the way
+> to a real slide, not just the register. `CHECKLIST.md` still the primary tickable
+> surface.
+>
+> ### FULL PIPELINE PROVEN END TO END, ONE FIELD, VERIFIED AT EVERY STEP FROM FILE BYTES.
+> `TPL_ABOUT_BODY` row for `3_P001`: typed into `SUBMIT`/`APPROVE` -> `Publish Drafts`
+> wrote it into the register (verified in the saved `.xlsx`'s `sharedStrings.xml`,
+> independent of Excel) -> `2. Put it on the slides` built a review queue
+> (`Review project-progress-A32C`) with the diff -> ticked `Y` on that one row only ->
+> `Apply Approved` wrote it to the real slide (verified in the saved `.pptx`'s
+> `slide1.xml`, independent of PowerPoint): `ABOUTTEST TEXT AS INSTRUCTED TO
+> TYPECI / PI...`. **Not counted as the official unaided Scenario 1 close** — heavily
+> guided throughout — but the mechanism itself is now genuinely proven, at the file
+> level, not just trusted from dialog text.
+>
+> ### THE REVIEW QUEUE (R13) IS A DELIBERATE SECOND GATE, NOT REDUNDANT WITH DRAFTING
+> APPROVAL — worth recording since it came up as a real question tonight. Drafting's
+> `APPROVE` answers "is this text right?". The review queue answers "is this change,
+> to this exact slide, still right at the moment it's about to become irreversible?" —
+> catches drift between draft-approval-time and apply-time (slide hand-edited
+> meanwhile, etc). Confirmed from `ReviewQueue.bas`'s own header: built after a real
+> incident (`PROJECT_STATUS`, a non-prose field with no prior approval at all, changed
+> 19 slides with nobody seeing a before/after). Landed on: keep it for prose fields too
+> — it's usually a no-op confirmation, but it's the last check before the write is
+> irreversible, same as a final look at an envelope before it's posted.
+>
+> ### MACHINE STATE AT HANDOVER — DECK AND REGISTER ARE IN TWO DIFFERENT FOLDERS.
+> PowerPoint has `AppData\Local\deck-sync-backups\WORKING-20260816-180335\3. Project
+> Progress.pptx` open (Saved=True). Excel has
+> `PRESERVED-known-good-20260815-1050\register-wide.xlsx` open — the deck's stored
+> `DeckSyncWorkbookPath` still resolves there (FIX-LIST L, hit live twice tonight).
+> This mismatched pair is WORKING correctly via the fallback, but don't assume it's
+> tidy — check state fresh next session rather than assume either folder is what you
+> left it as. **`PRESERVED-known-good-20260815-1050` is no longer pristine** (period
+> is `Q1F27`, register has real Q1F27 rows and one real published field) — the name is
+> now aspirational, not accurate.
+>
+> ### THE REVIEW QUEUE STILL HOLDS 181 UNREVIEWED CHANGES.
+> `Review project-progress-A32C`, rebuilt fresh tonight (run stamp `2026-08-16
+> 18:52:50`), has 181 changes still sitting unapproved after tonight's one deliberate
+> tick was applied. Real diffs from the Q1F27 roll-forward against the still-Q4F26
+> slides — includes the known bad ones (`PROJECT_PROGRESS` format bug, item M; invisible
+> date-character diffs, item N — both re-confirmed live in this exact queue tonight, not
+> re-derived). **Do not bulk-approve this queue** — same standing rule as before.
+>
+> ### FOUR FIX-LIST ITEMS TOUCHED TONIGHT, ONE NEW.
+> **L** (workbook path fallback) and **M**/**N** (format/invisible-diff bugs in the
+> review queue) were all hit LIVE, corroborating existing entries — not re-derived from
+> scratch. **T is new**: `Sources.ApplyPeriodValidation` swallowed a real `Err.Number`
+> during tonight's successful roll-forward, reporting only a generic "Excel refused"
+> message. Did not block or corrupt anything else. See `FIX-LIST.md` for detail.
+>
+> ### THE ONEDRIVE\CLAUDE SIGHTING FROM EARLIER TONIGHT IS EXPLAINED, CONFIRMED HARMLESS.
+> Reproduced and SEEN this time (screenshot): a normal File Explorer window, tab titled
+> "Claude", browsing straight into the live `OneDrive\Claude` folder. Matches last
+> session's theory exactly — `RegistryValueOnDisk`'s `Shell.Application`/`CopyHere`
+> verification technique popping the window open as an unwanted but harmless visible
+> side effect. Read-only browsing, confirmed nothing written by it. Not chased further
+> tonight (not asked to); if it needs closing for real, the fix is removing
+> `Shell.Application`/`CopyHere` from the verification path, per last session's note.
+>
+> ### SCENARIO 1'S MECHANISM SUCCEEDED FOR REAL THIS TIME — ROLL FORWARD ACTUALLY RAN.
+> On `AppData\Local\deck-sync-backups\PRESERVED-known-good-20260815-1050\` (the deck's
+> stored `DeckSyncWorkbookPath` keeps resolving here regardless of which copy the deck
+> itself is opened from — see FIX-LIST item L, hit live tonight, not re-derived).
+> `1. Set up my quarter` ran its full chain: deck period confirmed `Q1F27`; Roll Forward
+> copied all **43 rows Q4F26 -> Q1F27**; `Q4F26` archived as its own file beside the
+> register; workbook saved; Refresh Drafting Sheets rebuilt all `TPL_*` sheets and
+> reported ready. Verified independently via COM at each step, not just trusted from the
+> dialog text. **Still NOT counted as the official unaided close** — heavy diagnostic
+> assistance and guidance throughout, same reasoning as the 15 Aug attempt (`769a280`).
+> What this proves: the mechanism itself is now sound on a real quarter turn end to end.
+> A clean solo rerun (deck already knows the steps) is the only thing still needed to
+> flip the count.
+>
+> **New, real, and separate from the above:** `Sources validation: NOT APPLIED -- Excel
+> refused` appeared in the Run Log during this same successful run — a genuine live
+> defect, not routine noise. Logged as FIX-LIST item **T**: the real `Err.Number`/
+> `Err.Description` is swallowed by `Sources.bas`'s `On Error Resume Next` block, so the
+> actual cause was never learned. Did not block or corrupt anything else in the run.
+>
+> **Testing-methodology lesson, not a code defect:** copying a deck+register pair to a
+> new folder (`WORKING-20260816-180335` was built for this, unused in the end) does NOT
+> repoint the copy at its own sibling register, because `GetWorkbookPath` only falls back
+> to the sibling when the ORIGINAL stored path is missing — and it wasn't, because the
+> original folder was left in place alongside the copy. To make a truly independent test
+> copy: either don't leave the original at the same absolute path, or use
+> `RepointWorkbookUI` (`CAP_REPOINT_WORKBOOK`, written and statically proven per FIX-LIST
+> L, not yet confirmed in a built add-in) to explicitly point the copy at its own
+> register.
+>
+> **PRESERVED-known-good-20260815-1050 is no longer pristine** — tonight's real run
+> changed its deck's period to `Q1F27` and rebuilt its register for real. Don't assume
+> "known-good" still means untouched; check state fresh next time this folder is used,
+> same discipline as everywhere else.
+>
+> **Next action:** you're mid content-review — the 43 rolled-forward `Q1F27` rows are
+> sitting in the `TPL_*` drafting sheets (`ORIGINAL`/`REPORTED LAST TIME` columns
+> populated, `SUBMIT`/`APPROVE` columns blank, ready for column G wording + `Y` in column
+> H), waiting to be approved and published via `2. Put it on the slides`. That publish
+> step has not been attempted yet this session.
+
 > ## READ `SESSION-PROTOCOL.md` FIRST, EVERY SESSION. THIS IS NOW MANDATED.
 >
 > Not this file. `SESSION-PROTOCOL.md`. It says what order to read things in

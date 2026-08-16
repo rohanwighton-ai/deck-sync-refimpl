@@ -69,6 +69,55 @@ End Type
 ' part -- PlanRoutineSync calls InjectPrimitive directly rather than returning
 ' actions for a caller to execute, so before this flag existed there was no way
 ' to look at a routine sync without performing it.
+' -----------------------------------------------------------------------
+' THE ELAPSED-TIME BAR -- Kind = Derived, per ExcelOutput.KIND_DERIVED.
+' -----------------------------------------------------------------------
+'
+' Rohan, 2026-08-09: "timeline will move towards end but not necessarily
+' every quarter, vs time elapsed bar autoshapes that move with the clock
+' regardless of progress." A pure function of the date, computed fresh
+' every run from START_DATE/END_DATE -- never stored, per KIND_DERIVED's
+' own header: a stored copy of a computed value is exactly the drift a
+' Derived field exists to prevent.
+'
+' ONE NAMED FIELD, NOT A GENERAL DERIVED MECHANISM. The only Derived field
+' that exists is this one, so PlanRoutineSync below looks for this exact
+' tag rather than reading the Field Spec at sync time to discover Derived
+' fields generally -- the same way the first device was reached by name,
+' before MILESTONE_TIMELINE ever generalised anything about devices. If a
+' second Derived field is ever added, THAT is the moment to replace this
+' with a real Field-Spec-driven walk; building the general mechanism now,
+' for one case, would be exactly the kind of speculative generality this
+' project has already paid for once.
+Public Const TIMELINE_ELAPSED_TAG As String = "TIMELINE_ELAPSED"
+
+' Returns a string fraction 0-1 (e.g. "0.42"), clamped, or "" if either
+' date is missing or unparseable -- refusing rather than drawing a wrong
+' bar, the same rule InjectProgressVia already applies to an out-of-range
+' register value.
+Public Function ElapsedFraction(startText As String, endText As String) As String
+    If Trim(startText) = "" Or Trim(endText) = "" Then Exit Function
+
+    Dim startDate As Date, endDate As Date
+    On Error GoTo BadDate
+    startDate = CDate(Trim(startText))
+    endDate = CDate(Trim(endText))
+    On Error GoTo 0
+
+    If endDate <= startDate Then Exit Function
+
+    Dim frac As Double
+    frac = (Date - startDate) / (endDate - startDate)
+    If frac < 0 Then frac = 0
+    If frac > 1 Then frac = 1
+
+    ElapsedFraction = Format(frac, "0.####")
+    Exit Function
+
+BadDate:
+    ElapsedFraction = ""
+End Function
+
 Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collection, dataRows As Object, Optional dryRun As Boolean = False) As SyncAction()
     Dim actions() As SyncAction
     Dim n As Long
@@ -211,6 +260,35 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                     End If
                 End If
             Next devTag
+
+            ' THE ELAPSED-TIME BAR. See ElapsedFraction's own header. Computed
+            ' here, at sync time, from START_DATE/END_DATE already present in
+            ' this row -- never read from or written to a register column of
+            ' its own.
+            If Not changedVerified.Exists(TIMELINE_ELAPSED_TAG) Then
+                Dim elapsedShp As Object
+                Set elapsedShp = InjectPrimitive.FindShapeByRoleTag(instanceSlide, TIMELINE_ELAPSED_TAG)
+                If Not elapsedShp Is Nothing Then
+                    Dim startVal As String, endVal As String
+                    startVal = ""
+                    endVal = ""
+                    If rowValues.Exists("START_DATE") Then startVal = CStr(rowValues("START_DATE"))
+                    If rowValues.Exists("END_DATE") Then endVal = CStr(rowValues("END_DATE"))
+
+                    Dim frac As String
+                    frac = ElapsedFraction(startVal, endVal)
+                    If frac <> "" Then
+                        Dim re As InjectResult
+                        re = InjectPrimitive.InjectField(instanceSlide, TIMELINE_ELAPSED_TAG, frac, dryRun, Nothing, rowValues)
+                        If re.Found And (re.Written Or re.WouldChange) Then
+                            changedVerified(TIMELINE_ELAPSED_TAG) = re.Verified
+                            changedError(TIMELINE_ELAPSED_TAG) = re.ErrorMessage
+                            changedCurrent(TIMELINE_ELAPSED_TAG) = re.CurrentValue
+                            changedNew(TIMELINE_ELAPSED_TAG) = frac
+                        End If
+                    End If
+                End If
+            End If
 
             n = n + 1
             ReDim Preserve actions(1 To n)

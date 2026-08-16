@@ -1155,7 +1155,18 @@ Public Function InjectProgressField(sld As Object, identityTag As String, _
     wantLeft = extentLeft
     wantWidth = extentWidth * f
 
-    result.CurrentValue = CStr(doneShp.Width)
+    ' ROUNDED, NOT RAW. `doneShp.Width` is a Single, and a value like 127.2757
+    ' sits right at the edge of Single's ~7-significant-digit precision -- CStr
+    ' on the raw value can produce a different last digit across two reads of
+    ' the exact same, untouched shape, which is invisible to a person and fatal
+    ' to a hash comparison expecting byte-identical strings. Found 2026-08-16:
+    ' the elapsed-time bar's own review-queue approval was dropped as "changed
+    ' since you approved it" on every attempt, never once written, because the
+    ' build-time read and the apply-time read of an UNCHANGED shape produced
+    ' two different strings. Same defect class as item N (a formatting-
+    ' sensitive value reported as a real change) -- rounding to hundredths is
+    ' well past the precision that matters on a slide and stable across reads.
+    result.CurrentValue = Format(doneShp.Width, "0.00")
     result.WouldChange = (Abs(doneShp.Width - wantWidth) > 0.5) Or (Abs(doneShp.Left - wantLeft) > 0.5)
 
     If Not result.WouldChange Then

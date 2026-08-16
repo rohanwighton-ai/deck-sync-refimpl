@@ -768,6 +768,131 @@ for the rest of our existence together." Standing practice now — see memory
 - [ ] The apply-confirmation dialog title is hardcoded wrong when reached from
       `2. Put it on the slides`.
 
+## The milestone-family drafting sheets could share one sheet — superseded by The Lobby, above
+
+Rohan's original question, live: *"can't complex shape groups be drafted on one sheet
+together? Like the timeline elements?"* — worked through the same night into the Lobby
+design above, which solves the actual complaint (the crawl, the two-loop pattern)
+without the sheet-merge's risk. See "The Lobby" section, and "Milestone-sheet-merge —
+superseded" immediately under it, for the full reasoning and why sheet-merging was ruled
+out as the primary fix.
+
+## The Lobby — Rohan's design, replaces the milestone-sheet-merge idea below, PRIORITY for next session
+
+**The real fix for the crawl AND the two-loop problem, worked out live 2026-08-16
+(night), Rohan's own model, not a redesign of it:** a "pin, not scan" architecture. The
+13-sheet Excel crawl (item U) and the two-press "build then apply" pattern (dialog-count
+item below) are the same root problem from two angles — every check re-visits every
+drafting sheet from scratch because nothing summarises what's actually pending anywhere.
+
+**The model, in Rohan's own words:** *"it's more like the work being pinned on a board
+by the author, and the crawler just looking at the board, not every author's desk...
+authorship pins on board next to other authors' notes for the period... it's pinned as
+part of authoring."*
+
+**Concretely:**
+- A new "Drafting Lobby" sheet — one shared board, not per-field.
+- The pin fires on the **APPROVE tick itself** — the existing, already-deliberate "this
+  is ready" signal (`Type Y in column H` — already Step 5 of every drafting sheet's own
+  instructions), not a listener on every keystroke. Narrow surface, rare event.
+- Mechanism: `Worksheet_Change` (or `Application.SheetChange`) watching only the APPROVE
+  column across the 13 sheets, writing an entry to the Lobby the moment a tick lands.
+- Publish and the review-queue build then read **only the Lobby**, never the 13 sheets
+  directly, for "what's pending" — the crawl a person watches and waits through
+  disappears entirely, not just gets faster.
+- **Does not touch `Drafting.WriteDraftingSheet`'s row-addressing at all** — sidesteps
+  the five-real-incidents risk that ruled out merging the sheets themselves (see the
+  parked idea below, which this replaces as the recommended fix).
+
+**The trade being made, deliberately, not accidentally:** every other safety mechanism
+in this project (R13, the drift-hash on every approved change, the register-vs-slide
+re-read on every sync) exists because it refuses to trust a maintained record and
+re-checks reality instead — that discipline has caught real bugs repeatedly tonight
+alone. A Lobby that is *written to* rather than recomputed is the first place in the
+tool where something would be trusted without re-verifying against the sheets
+themselves. Narrowed by firing only on the tick (bulk rebuilds never touch an existing
+tick, so a refresh can't flood false pins) — but the one honest residual gap: a person
+hand-editing the workbook directly, no macro running (the explicit at-work,
+no-Claude-no-Python case this project already designs for), pins nothing, and the Lobby
+would silently miss it. Worth deciding on purpose before building, not discovering
+after.
+
+**Not attempted tonight** — deliberately, per Rohan's own call to stop and think rather
+than keep live-debugging. Next session: design the Lobby's exact shape (columns,
+one-row-per-pending-change), decide how the residual hand-edit gap gets closed or
+accepted, then build.
+
+### The Lobby's approval default: PRE-TICKED, opt-OUT — Rohan's explicit call, no exception list
+
+Worked out the same night, directly contradicts what an earlier draft of this section
+would have recommended (an exception list for fields with no drafting-sheet gate, e.g.
+`PROJECT_STATUS`) — **superseded, not layered on top of.** Rohan's reasoning, twice,
+considered both times: *"I don't want to approve it twice, sync once... the lobby can be
+automatic and pretick Y's and then if I don't want elements like budget I take the ticks
+off them... all fields will be scanned by the author, particularly if on less
+worksheets for small devices etc."* Consolidating small/device-style fields onto fewer
+sheets (see the milestone-merge reasoning below, and the general "fewer worksheets"
+direction) means the author sees all of them as a natural part of authoring, not buried
+in a wide register — a genuinely different visibility story than the one that produced
+the original R13 incident.
+
+**The rule: every field in the queue arrives pre-ticked `Y`. Working the queue is
+removing ticks from what you don't want synced this round, not adding them to what you
+do.** No exception for fields with no drafting-sheet approval step — `PROJECT_STATUS`
+included.
+
+**Residual risk, on record on purpose, not a blocker:** the original incident happened
+because visibility was assumed and never actually checked. Any implicit-visibility
+design (structural consolidation included) carries the same shape of risk if it
+recurs — something changes in a consolidated sheet while attention is on a different
+section of it, unnoticed. Accepted deliberately, Rohan's call, given the structural
+change (fewer, denser sheets) genuinely differs from the register-scale visibility
+problem that caused the original incident.
+
+**What survives from R13 unchanged:** the diff-only filtering (`R13.3` — unchanged
+carried-forward content still never enters the queue at all, pre-tick or not) and the
+drift-hash re-check at apply time (still refuses to write anything that changed between
+tick and apply). Pre-ticking changes who has to act to prevent a write, not whether the
+write is re-verified against live reality before it happens.
+
+## Milestone-sheet-merge — superseded by the Lobby above, kept for the reasoning only
+
+Original idea (still true, just no longer the recommended path): combine the 5
+`MS2_LABEL`..`MS6_LABEL` drafting sheets into one. Ruled out as the primary fix once the
+Lobby design landed — merging sheets means reworking `Drafting.WriteDraftingSheet`'s
+fixed row-addressing (`DRAFT_FIRST_ROW=10` etc.), the single most incident-prone
+function in the codebase (five real data-loss bugs, 1–14 Aug). The Lobby solves the same
+underlying complaint (the crawl, the two-loop pattern) without touching that function at
+all. Revisit sheet-merging only if the Lobby alone doesn't fully address the sheet-count
+friction.
+
+## Dialog count across one full cycle — real friction, flagged 2026-08-16 (night), PRIORITY for next session
+
+**Rohan's explicit call, same night, after living through the two-press review/approve
+cycle again for the elapsed bar: "that should all be one approval step, prioritise it
+after this."** Specifically: build-the-queue and apply-the-queue currently need two
+separate presses of "2. Put it on the slides" (rebuild, go tick Y in Excel, come back,
+press again to apply) — collapsing that into one step is the first thing to look at
+next, ahead of the other items below.
+
+Rohan, live, after running set-up-quarter through apply once tonight: *"too many
+message boxes and confirmations across that chain and excel takes ages."* Counted back
+through the transcript: roughly 10-12 separate dialogs in one full "set up quarter ->
+review -> approve -> apply" cycle (period confirm, deck-period result, roll-forward
+result, drafting-sheets-ready result, publish-drafts result x2, the unsaved-workbook
+save guard x2, the pending-approvals gate, the apply result), plus Excel's own
+flicker/slowness between them (see item U). Same underlying shape as the drafting-sheet
+double-approval question earlier the same night (`NEXT-SESSION.md`'s "night" block) —
+individually-justified gates, never looked at together as one sequence a person
+actually has to sit through every quarter. **Deliberately not sized or redesigned
+tonight** — touches the R13 safety model directly, which is exactly the kind of call
+that needs a clear head, not a last-thing-at-night one. Candidates for a real review:
+which of the two "unsaved workbook" guards could be one check run once at the start of
+the whole chain rather than twice mid-chain; whether the publish-drafts report needs to
+interrupt when it published nothing; whether roll-forward's own report needs to be a
+separate click when nothing else in the chain waits for acknowledgment before
+continuing.
+
 ## Explicitly out of scope — from `TRACKER.md`, do not re-add without a reason
 
 The other ~30 unwired fields. A GUID-based key redesign. R13's full review

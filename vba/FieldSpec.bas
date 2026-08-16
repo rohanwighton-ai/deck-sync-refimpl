@@ -149,7 +149,7 @@ Public Function WriteSpecSheet(ws As Object) As String
     On Error GoTo 0
 
     ws.Cells(SPEC_HEADER_ROW, COL_S_FIELDID).Value = "FieldID"
-    ws.Cells(SPEC_HEADER_ROW, COL_S_KIND).Value = "Kind (Controlled/Prose/Static)"
+    ws.Cells(SPEC_HEADER_ROW, COL_S_KIND).Value = "Kind (Controlled/Prose/Static/Derived)"
     ws.Cells(SPEC_HEADER_ROW, COL_S_PURPOSE).Value = "Purpose -- the question this field answers"
     ws.Cells(SPEC_HEADER_ROW, COL_S_VOICE).Value = "Voice"
     ws.Cells(SPEC_HEADER_ROW, COL_S_LENGTH).Value = "Length"
@@ -219,6 +219,24 @@ Public Function WriteSpecSheet(ws As Object) As String
             "Dump a raw activity list. Restate standing facts about the project (that is ABOUT_BODY). Report an event as this quarter's when the workbook does not say so. GUESS a quarter tag -- leave it untagged and flag it instead."
         r = r + 1: added = added + 1
     End If
+    ' THE ELAPSED-TIME BAR. Kind = Derived (ExcelOutput.KIND_DERIVED) -- computed
+    ' fresh every sync from START_DATE/END_DATE, never drafted, never a register
+    ' column of its own. Rohan, 2026-08-09: "time elapsed bar autoshapes that
+    ' move with the clock regardless of progress." Purpose/Voice/etc are still
+    ' filled in for consistency with every other row on this sheet, even though
+    ' a Derived field is never drafted and none of this guidance is ever read by
+    ' a person or an AI -- SeedRow has no optional parameters, and inventing a
+    ' second row shape for one Kind would be a bigger change than filling five
+    ' cells nothing reads.
+    If Not existing.Exists("TIMELINE_ELAPSED") Then
+        SeedRow ws, r, "TIMELINE_ELAPSED", "Derived", _
+            "How far the project is through its declared timeline, as a fraction of today's date between START_DATE and END_DATE.", _
+            "N/A -- computed, never drafted.", _
+            "N/A.", _
+            "N/A.", _
+            "N/A -- this field is never drafted; SyncOperations.ElapsedFraction computes it directly from START_DATE and END_DATE at sync time."
+        r = r + 1: added = added + 1
+    End If
     If Not existing.Exists("PROJECT_STATUS") Then
         SeedRow ws, r, "PROJECT_STATUS", "Controlled", _
             "The project's current state, from a fixed vocabulary.", _
@@ -228,6 +246,20 @@ Public Function WriteSpecSheet(ws As Object) As String
             "Invent a new status. Vary the capitalisation. Explain or qualify it."
         r = r + 1: added = added + 1
     End If
+
+    ' TIMELINE_ELAPSED renders as a progress bar, not text -- set explicitly
+    ' rather than relying on the blank-fills-to-Text pass below, same as
+    ' PROJECT_STATUS's Allowed-values pass immediately after this one.
+    Dim er As Long
+    er = SPEC_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(er, COL_S_FIELDID).Value)) <> ""
+        If StrComp(Trim(CStr(ws.Cells(er, COL_S_FIELDID).Value)), "TIMELINE_ELAPSED", vbTextCompare) = 0 Then
+            If Trim(CStr(ws.Cells(er, COL_S_RENDERS).Value)) = "" Then
+                ws.Cells(er, COL_S_RENDERS).Value = RENDER_PROGRESS
+            End If
+        End If
+        er = er + 1
+    Loop
 
     ' Seeded onto whatever row PROJECT_STATUS is on, only when that cell is
     ' still empty -- like every other cell on this sheet, an edit is the
