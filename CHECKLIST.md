@@ -196,6 +196,31 @@ code 2026-08-16, not assumed.*
 - [ ] Bring up a genuinely fresh deck + fresh register from nothing, unaided —
       the standing requirement, the tool has to travel with Rohan.
 
+## Found while archiving `FIRST-REAL-RUN.md`, 2026-08-16
+
+- [ ] **Team distribution / multi-user — deliberately parked, genuinely unresolved,
+      not previously on this checklist.** *Source: `archive/FIRST-REAL-RUN.md`,
+      "Open, parked deliberately," 2026-08-01.* Rohan raised it the same day it
+      was parked: *"hang on we dont have to do it now."* It reverses the
+      "personal tool, not org adoption" decision the whole current architecture
+      rests on (see `project_deck_sync` memory, answered 2026-07-28). Forces two
+      things if ever picked up: code-signing the `.ppam` becomes required (not
+      optional), and the register becomes shared mutable state with no
+      concurrency control — two people publishing at once can overwrite each
+      other, a rebuild can wipe a sheet someone is typing into, OneDrive's
+      conflict-copy resolution could make the add-in silently read the wrong
+      file. **Unanswered, and decides the shape of any solution:** how many
+      people, and one shared register or one each? Not urgent — genuinely
+      parked — but real, and adjacent to Scenario 8 (portability), which
+      currently assumes one person only.
+- [ ] **No self-service way to unmark a single field** — `Clear Marks` discards
+      every mark, cannot remove just one (confirmed still true today, per
+      `WORKFLOW.md`'s own SETUP table). *Source: `archive/FIRST-REAL-RUN.md`
+      finding 7, 2026-08-01.* The three specific buttons it proposed
+      (`List Marked Fields`, `Unmark Field`, `Unmark By Name`) were never
+      built and are themselves now stale against the current chain-based
+      toolbar model — but the underlying gap persists. Minor, not urgent.
+
 ## Known open defects — not urgent, not forgotten
 
 *Source: `FIX-LIST.md`, live entries.*
