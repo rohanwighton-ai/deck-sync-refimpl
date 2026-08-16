@@ -454,7 +454,23 @@ Public Function BuildQueue(sheet As Sheet, slideType As String) As ReviewQueueSe
                         q.Items(q.Count).EntityKey, q.Items(q.Count).FieldID, _
                         q.Items(q.Count).CurrentValue, q.Items(q.Count).ProposedValue)
                     q.Items(q.Count).BatchLabel = ""
-                    q.Items(q.Count).Approved = False
+                    ' PRE-TICKED, NOT BLANK. LOBBY-DESIGN.md section 5, settled
+                    ' after real back-and-forth, not a snap call: every field a
+                    ' queue ever shows arrives approved by default. Working the
+                    ' queue is REMOVING ticks from what should not sync this
+                    ' round, not adding ticks to bless what should -- because
+                    ' this queue only ever holds real diffs (never an
+                    ' undifferentiated dump of the whole register), and most of
+                    ' what lands here already passed a real human decision
+                    ' upstream, at the drafting sheet's SUBMIT+APPROVE tick.
+                    ' Requiring a second, independent tick for the identical
+                    ' content is the double-approval redundancy Rohan caught
+                    ' with ABOUT_BODY. The one field this does NOT come for
+                    ' free -- PROJECT_STATUS and anything else typed straight
+                    ' into the register with no drafting-sheet gate -- is a
+                    ' known, accepted residual risk, not an oversight: see
+                    ' LOBBY-DESIGN.md section 5's own record of it.
+                    q.Items(q.Count).Approved = True
                 Next fieldName
 
             ElseIf actions(i).Kind = "new_record" Then
@@ -632,7 +648,7 @@ Public Sub WriteQueueSheet(ws As Object, q As ReviewQueueSet)
     ws.Cells(ROW_BANNER, 1).Value = "SYNC REVIEW -- " & q.SlideType
     ws.Cells(ROW_BANNER, 2).Value = "Run: " & q.RunStamp
     ws.Cells(ROW_BANNER, 3).Value = IIf(q.Consumed, STATE_CONSUMED, STATE_OPEN)
-    ws.Cells(ROW_BANNER, 4).Value = "Put Y in the Approve column. Nothing is written until you press '" & CommandBarUI.CAP_PUT_ON_SLIDES & "' again."
+    ws.Cells(ROW_BANNER, 4).Value = "Every row starts ticked Y. Remove the Y from anything that should NOT reach a slide this round -- nothing is written until you press '" & CommandBarUI.CAP_PUT_ON_SLIDES & "' again."
     ws.Rows(ROW_BANNER).Font.Bold = True
 
     ws.Cells(ROW_HEADER, COL_ENTITY).Value = "EntityCode"
@@ -1555,7 +1571,11 @@ Public Function QueueSummaryText(q As ReviewQueueSet) As String
     Next i
 
     Dim s As String
-    s = q.Count & " change(s) need review." & vbCrLf & _
+    ' PRE-TICKED BY DEFAULT (LOBBY-DESIGN.md section 5). "Need review" used to
+    ' be true -- nothing was approved until a person put Y beside it. Now
+    ' every row already carries one, so the honest framing is what is actually
+    ' being asked: look for anything that should NOT go out this round.
+    s = q.Count & " change(s) queued, pre-approved by default." & vbCrLf & _
         "    " & individual & " to review one at a time" & vbCrLf & _
         "    " & batched & " grouped into uniform batches" & vbCrLf & vbCrLf
 
@@ -1570,7 +1590,8 @@ Public Function QueueSummaryText(q As ReviewQueueSet) As String
     ' identical banner -- so the sentence pointed at a real sheet that was the
     ' WRONG one, and ticking it would leave approvals somewhere nothing reads.
     s = s & "Nothing has been written. Review the '" & ReviewSheetNameFor(q.SlideType) & _
-        "' sheet, put Y against what you approve, then press '" & CommandBarUI.CAP_PUT_ON_SLIDES & "' again." & vbCrLf
+        "' sheet -- remove Y from anything that should NOT reach a slide this round -- then " & _
+        "press '" & CommandBarUI.CAP_PUT_ON_SLIDES & "' again." & vbCrLf
 
     QueueSummaryText = s
 End Function

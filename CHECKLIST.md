@@ -777,7 +777,7 @@ without the sheet-merge's risk. See "The Lobby" section, and "Milestone-sheet-me
 superseded" immediately under it, for the full reasoning and why sheet-merging was ruled
 out as the primary fix.
 
-## The Lobby — full design in `LOBBY-DESIGN.md`, PRIORITY, phases 0-2 done
+## The Lobby — full design in `LOBBY-DESIGN.md`, PRIORITY, phases 0-2 done, phase 3 built (not deployed)
 
 **Full architecture, reasoning, and the pre-ticked/opt-out approval rule now live in
 `LOBBY-DESIGN.md`** — read that, not this, for the design. This entry is just the
@@ -806,8 +806,12 @@ a machine-knowable fact lives once).
       ("1. Set up my quarter") now silently repairs the Lobby from ground truth every
       run, at no extra cost (it already reads every row of every sheet) -- closes the
       at-work hand-edit gap without a third button.
-- [ ] Phase 3 — pre-ticked queue items + remove the Yes/No/Cancel apply gate (see
-      `LOBBY-DESIGN.md` section 5 for the approval-default rule).
+- [~] **Phase 3 — pre-ticked queue items + remove the Yes/No/Cancel apply gate.**
+      BUILT AND TESTED, deliberately NOT DEPLOYED — the most consequential change in
+      this design (what counts as a human decision on content reaching a slide), and
+      the design was reviewed by Rohan, this specific implementation has not been yet.
+      Full suite 236/0. See `LOBBY-DESIGN.md` section 5 (the rule) and its own Phase 3
+      status block (why deployment is a deliberate gate, not a TODO).
 - [ ] Phase 4 — revisit sheet-merging, only if the Lobby alone doesn't fully address
       the sheet-count/tab-clutter complaint once 0-3 are proven live.
 

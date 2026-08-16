@@ -1794,11 +1794,6 @@ Failed:
 End Sub
 
 Private Sub PutItOnTheSlidesCore()
-    ' Titled from the caption that actually exists. This said "3. Put it on the
-    ' slides" -- a caption from the three-button design, which lasted three hours.
-    Dim TITLE As String
-    TITLE = CommandBarUI.CAP_SET_UP_QUARTER & " -- slide changes"
-
     ' The guards for a missing workbook, missing types and an unopenable file
     ' live in ReviewChangesCore and say why in each case. Duplicating them here
     ' would mean two sets of wording to keep true, so when the detection cannot
@@ -1824,26 +1819,34 @@ Private Sub PutItOnTheSlidesCore()
         Exit Sub
     End If
 
-    ' STOP 1. Names the sheet, the count and when it was built, because a count
-    ' without its subject sends you to check the wrong thing.
-    Dim msg As String
-    msg = sheetNames & " holds " & pending & " ticked change(s) from " & stamp & _
-          ", not yet applied." & vbCrLf & vbCrLf & _
-          "Yes -- apply those " & pending & " change(s) to the slides now." & vbCrLf & _
-          "No -- build a fresh review instead. THE " & pending & " TICK(S) ARE LOST." & vbCrLf & _
-          "Cancel -- change nothing."
-
-    Dim answer As VbMsgBoxResult
-    answer = MsgBox(msg, vbYesNoCancel + vbQuestion, TITLE)
-
-    If answer = vbYes Then
-        ApplyApprovedCore
-    ElseIf answer = vbNo Then
-        ReviewChangesCore
-    Else
-        MsgBox "Nothing was changed. " & sheetNames & " still holds its " & _
-               pending & " ticked change(s).", vbInformation, TITLE
-    End If
+    ' THE YES/NO/CANCEL GATE IS GONE. LOBBY-DESIGN.md phase 3, 2026-08-17.
+    '
+    ' It asked three questions this stage cannot answer any better than
+    ' ApplyApproved already does, one ticked item at a time:
+    '   - "Apply now?" -- yes, that is the entire point of pressing this button
+    '     with pending ticks sitting in a review sheet.
+    '   - "Or build a fresh review instead, losing the ticks?" -- a fresh
+    '     review is exactly what a STALE tick needs, and ApplyApproved already
+    '     revalidates every single item against the LIVE slide by hash before
+    '     writing it (ReviewQueue.bas's own header: "THE REVALIDATION IS THE
+    '     POINT, not a defensive extra"). A tick that has genuinely gone stale
+    '     is DROPPED there, individually, with its own line in the report --
+    '     "changed since you approved it; re-review" -- which is more precise
+    '     than a blanket rebuild-or-not choice made before any item is looked
+    '     at. This modal could only ever get that choice right by accident.
+    '   - "Cancel, change nothing?" -- pressing THIS button, with ticks
+    '     already sitting in a review sheet from an earlier pass, already
+    '     communicated intent to apply them; a person who does not want that
+    '     does not press it.
+    ' Every field a queue ever shows now arrives pre-ticked (BuildQueue,
+    ' ReviewQueue.bas) -- working the queue is REMOVING ticks from what should
+    ' not sync, not adding them to bless what should (LOBBY-DESIGN.md section
+    ' 5's full reasoning, including the deliberately-accepted residual risk
+    ' for fields with no drafting-sheet gate). Requiring a second confirmation
+    ' on top of that default is the same double-approval redundancy Rohan
+    ' caught with ABOUT_BODY earlier the same night: approved once already,
+    ' asked to approve the identical diff again with zero new information.
+    ApplyApprovedCore
 End Sub
 
 ' Totals the unapplied ticks across every registered slide type, and names the

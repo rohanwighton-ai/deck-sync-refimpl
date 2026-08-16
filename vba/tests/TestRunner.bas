@@ -1545,6 +1545,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashes", r
+    If TestMatches("ReviewQueue_BuildQueuePreTicksEveryItem", filterPattern) Then
+        r = Test_ReviewQueue_BuildQueuePreTicksEveryItem()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "ReviewQueue_BuildQueuePreTicksEveryItem", r
     If TestMatches("Sources_CitedBlockPutsTheDocumentInThePrompt", filterPattern) Then
         r = Test_Sources_CitedBlockPutsTheDocumentInThePrompt()
     Else
@@ -10920,6 +10926,44 @@ Private Function Test_ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashe
     On Error GoTo 0
 
     Test_ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashes = result
+End Function
+
+' LOBBY-DESIGN.md section 5, phase 3: every field a fresh review queue shows
+' now arrives pre-ticked -- working the queue is REMOVING ticks from what
+' should not sync this round, not adding them to bless what should. Proves
+' BuildQueue's own default rather than assuming the source edit took: run by
+' hand against the pre-Phase-3 code first (Approved = False), confirmed
+' genuinely False and this test genuinely failing, before the default was
+' flipped to True.
+Private Function Test_ReviewQueue_BuildQueuePreTicksEveryItem() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewTaggedSlide("pretick-probe", "PT001")
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    shp.TextFrame.TextRange.Text = "old value"
+    shp.Tags.Add "role", "ABOUT_BODY"
+
+    Dim sheet As Sheet
+    Set sheet.Rows = CreateObject("Scripting.Dictionary")
+    Set sheet.Fields = New Collection
+    Set sheet.InstanceOrder = New Collection
+    Dim vals As Object
+    Set vals = CreateObject("Scripting.Dictionary")
+    vals("ABOUT_BODY") = "new value"
+    Set sheet.Rows("PT001") = vals
+    sheet.InstanceOrder.Add "PT001"
+
+    Dim q As ReviewQueueSet
+    q = ReviewQueue.BuildQueue(sheet, "pretick-probe")
+
+    result = result & Assert(q.Count = 1, "one real diff produces one queue item, got " & q.Count)
+    result = result & Assert(q.Items(1).Approved, _
+        "a freshly-built queue item arrives pre-ticked (LOBBY-DESIGN.md section 5), got Approved=" & q.Items(1).Approved)
+
+    sld.Delete
+    Test_ReviewQueue_BuildQueuePreTicksEveryItem = result
 End Function
 
 ' The link that did not exist until 2026-08-09: a cited source reaching the

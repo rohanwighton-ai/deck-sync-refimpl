@@ -1,7 +1,9 @@
 # The Lobby — architectural plan
 
-> **CURRENT — Phases 0, 1 and 2 built and PROVEN LIVE 2026-08-16/17 (night); phases 3-4
-> not started.** Written at Rohan's explicit request before any of this got built: *"please
+> **CURRENT — Phases 0, 1 and 2 built and PROVEN LIVE 2026-08-16/17 (night); phase 3
+> BUILT AND TESTED but NOT YET DEPLOYED — see its own status block below, this is a
+> deliberate gate, not an oversight. Phase 4 not started.** Written at Rohan's explicit
+> request before any of this got built: *"please
 > do a full architectural plan for this before we start, large changes."* Supersedes the
 > shorter version of this design scattered across `CHECKLIST.md`'s "The Lobby" section —
 > that section now points here. Follow `SESSION-PROTOCOL.md`'s documentation discipline:
@@ -78,8 +80,35 @@
 > Phase 2 regression: this is the third occurrence across three sessions and three
 > different call sites, still not root-caused (see `FIX-LIST.md` item V).
 >
-> **Not yet built:** phase 3 (pre-ticked queue items + removing the Yes/No/Cancel apply
-> gate), phase 4 (sheet-merging, only if still needed after 2-3).
+> **Phase 3 status: BUILT AND TESTED, deliberately NOT DEPLOYED.** Both halves landed
+> together, per section 9's own rollout order. `ReviewQueue.BuildQueue` now sets
+> `Approved = True` on every item it creates (was `False`) — proven with the same
+> discipline as tonight's other fixes: run against the old default first, confirmed a
+> genuine failure (`got Approved=False`), then passed once flipped.
+> `RibbonUI.PutItOnTheSlidesCore`'s Yes/No/Cancel gate is gone entirely — `pending > 0`
+> now calls `ApplyApprovedCore` directly, no modal, reasoning recorded in the code
+> itself (the "No, rebuild" option was redundant with `ApplyApproved`'s own per-item
+> hash revalidation; "Cancel" was redundant with the fact that pressing the button at
+> all already stated intent). `QueueSummaryText` and `WriteQueueSheet`'s banner text
+> updated to describe the new default rather than the old one. Full suite 236/0, static/
+> module-list/doc checks clean.
+>
+> **Why not deployed tonight, on purpose:** this is the single most consequential change
+> in the whole Lobby design — it changes what counts as a human decision on content that
+> reaches a real slide, which is the exact thing R13 exists to protect (`19 slides
+> changed, nobody looked` — ReviewQueue.bas's own header). The DESIGN was reviewed and
+> agreed by Rohan earlier the same night, at length (section 5's own record of that
+> back-and-forth) — what has NOT yet been reviewed by him is this specific
+> *implementation* of it. `PutItOnTheSlidesCore`'s new no-modal path has no test coverage
+> of its own (same pre-existing gap `PublishAllDraftedFields` has — it needs
+> `Application.ActivePresentation` and nothing in this codebase exercises that chain
+> end-to-end). Built and pushed to `main` so it is real, reviewable, and ready — but no
+> new `.ppam` was built or deployed with this change in it, and it will not go live until
+> Rohan reviews the diff and someone builds+deploys deliberately, which per this
+> project's own established practice (the `.ppam` Save-As step) is a real, permanent,
+> manual action regardless.
+>
+> **Not yet built:** phase 4 (sheet-merging, only if still needed after 2-3).
 
 ---
 
