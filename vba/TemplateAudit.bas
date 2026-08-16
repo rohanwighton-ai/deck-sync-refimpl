@@ -344,14 +344,44 @@ End Function
 ' previous run's rows 1..M leaves M-N stale rows sitting below the new ones,
 ' indistinguishable from current findings -- so the audit would get LESS
 ' trustworthy the more of the work you did, which is the worst possible
-' direction for a progress tool. The cost is that a re-run discards decisions
-' typed into the last column; SummaryText says so outright. Merging instead
-' would need a stable per-row key, and the only candidates are shape name and
-' text -- shape name is explicitly not an identity key in this project
-' (specs/identity-tags.md), and text is the thing being changed. So a real
-' merge is a design job, not a line of code, and pretending otherwise would
-' silently drop decisions on rows whose text had been edited.
-Public Sub WriteAuditGrid(ws As Object, rows() As AuditRow, rowCount As Long)
+' direction for a progress tool. Merging instead would need a stable per-row
+' key, and the only candidates are shape name and text -- shape name is
+' explicitly not an identity key in this project (specs/identity-tags.md),
+' and text is the thing being changed. So a real merge is a design job, not a
+' line of code, and pretending otherwise would silently drop decisions on
+' rows whose text had been edited.
+'
+' REFUSES rather than silently discarding, 2026-08-16 -- found auditing this
+' exact class of bug in DiscoverUI.bas the same day. SummaryText's own
+' warning ("Re-running this REPLACES that sheet, decisions included") used to
+' be the ONLY protection, and it is shown to the human AFTER this Sub had
+' already cleared the sheet -- by the time anyone reads "copy them out
+' first", there is nothing left to copy. Returns "" on success, "!..." on
+' refusal, same convention as DiscoverUI.BuildDiscoverySheet; the caller must
+' check it instead of treating a call to this as unconditional success.
+Public Function WriteAuditGrid(ws As Object, rows() As AuditRow, rowCount As Long) As String
+    Dim priorLastRow As Long
+    priorLastRow = AUDIT_FIRST_ROW - 1
+    Do While Trim(CStr(ws.Cells(priorLastRow + 1, COL_SHAPE).Value)) <> ""
+        priorLastRow = priorLastRow + 1
+    Loop
+
+    If priorLastRow >= AUDIT_FIRST_ROW Then
+        Dim pendingCount As Long
+        pendingCount = 0
+        Dim pr As Long
+        For pr = AUDIT_FIRST_ROW To priorLastRow
+            If Trim(CStr(ws.Cells(pr, COL_DECISION).Value)) <> "" Then pendingCount = pendingCount + 1
+        Next pr
+        If pendingCount > 0 Then
+            WriteAuditGrid = "!The '" & AUDIT_SHEET_NAME & "' sheet still has " & pendingCount & _
+                " decision(s) recorded (field/chrome/drop) from the LAST audit, not yet acted on. " & _
+                "Copy them out first -- re-running this would REPLACE that sheet and discard them, " & _
+                "which is exactly what this refusal exists to prevent."
+            Exit Function
+        End If
+    End If
+
     ws.Cells.Clear
 
     ws.Cells(AUDIT_HEADER_ROW, COL_SHAPE).Value = "Shape"
@@ -376,7 +406,9 @@ Public Sub WriteAuditGrid(ws As Object, rows() As AuditRow, rowCount As Long)
         ws.Cells(r, COL_SEEN).Value = rows(i).SeenOn & " of " & rows(i).InstanceCount
         ws.Cells(r, COL_DECISION).Value = ""
     Next i
-End Sub
+
+    WriteAuditGrid = ""
+End Function
 
 ' What the human sees in the dialog. Counts and a pointer, never the list --
 ' the list is the whole reason this writes a sheet.
@@ -396,8 +428,9 @@ Public Function SummaryText(slideType As String, subjectLabel As String, tracked
         s = s & "The full list is on the '" & AUDIT_SHEET_NAME & "' sheet of the paired" & vbCrLf & _
             "workbook, most-likely-project-data first, with a column to record" & vbCrLf & _
             "your decision on each: field / chrome / drop." & vbCrLf & vbCrLf & _
-            "Re-running this REPLACES that sheet, decisions included. Copy them" & vbCrLf & _
-            "out first if you want to keep them." & vbCrLf & vbCrLf
+            "Re-running this REPLACES that sheet. If you have recorded decisions" & vbCrLf & _
+            "not yet acted on, it will refuse rather than discard them -- copy" & vbCrLf & _
+            "them out and clear the column yourself to proceed." & vbCrLf & vbCrLf
     End If
 
     If instanceCount = 0 Then

@@ -444,6 +444,67 @@ sheets, which predate today and were checked but not trusted as current.
       (real test #5, tracked above) would give current ground truth on all
       of this instead of the cross-referenced-from-tags inference used here.
 
+## Field Discovery cross-slide bug, and a repo-wide Clear audit — 2026-08-16
+
+Real test #5 (running `Tag fields on this slide` against K900) surfaced this.
+`Field Discovery`'s "existing marks" for two K900 shapes turned out to be
+**fabricated** — a shape whose real text is "Industry" was reported as
+tagged `PROJECT_CODE`; a section-header label was reported as
+`PROJECT_PROGRESS`. Neither shape carries a tag at all (confirmed from the
+raw XML — no `r:id`, no tags relationship).
+
+- [x] **Root cause found: `DiscoverUI.ExistingRowsById` keys purely on the
+      bare shape `id`.** PowerPoint restarts shape-ID numbering on every
+      slide, so it isn't unique across the deck. Running "Tag fields on this
+      slide" against a NEW slide whose shapes happen to share ID numbers
+      with a PRIOR run's marked shapes silently attaches the old marks to
+      the new, unrelated shapes.
+- [x] **First fix attempt would have introduced a NEW silent-loss bug —
+      caught by Rohan, not by me, before it shipped.** Naively clearing the
+      sheet on every slide switch would have discarded any pending,
+      un-applied marks from whatever slide was analysed previously, with no
+      warning — trading the cross-slide misattribution bug for exactly the
+      "why is clear needed there? It is not" class of loss DOCUMENT-MAP
+      decision 1 already eliminated once, for the drafting sheets.
+- [x] **Real fix:** a slide-identity marker (the slide's own stable
+      `SlideID`, stored off to the side) decides whether `rowById` carries
+      forward at all. Different slide + pending marks still on the sheet →
+      **refuse** ("!..." message, same convention as every other refusal in
+      this codebase), naming the count, telling the person to apply or
+      clear first. Different slide + nothing pending → proceeds, but with a
+      **scoped tail-clear** (only the specific leftover rows beyond the new
+      slide's own content), not a blanket `ws.Cells.Clear` — `ws.Cells.Clear`
+      is now called ZERO times in `DiscoverUI.bas`, down from one
+      unconditional call.
+- [x] **Repo-wide audit of every `.Clear`/`.ClearContents` in production
+      code, per Rohan's direct instruction** ("verify every use of it and
+      justify its existence... everywhere in the repo"). `Err.Clear`
+      excluded (a different thing — the VBA error object, not data).
+      Checked and confirmed already-justified: `Drafting.bas` (layout
+      migration guarded by `Not layoutMatches` + unconditional backup; the
+      ratified quarter-rollover ferry, decision 6; scoped intro-row stamps),
+      `Readiness.bas`/`WorkbookBridge.bas` (pure generated reports, nothing
+      ever typed into them), `ReviewQueue.bas` (ratified R13.5 — approvals
+      are deliberately single-use per build, not carried; flagged as the
+      SAME risk shape as this bug, by design rather than by accident, worth
+      Rohan knowing).
+- [x] **One real match found and fixed the same way:** `TemplateAudit.bas`'s
+      `WriteAuditGrid` — its own comment already admitted *"a re-run
+      discards decisions typed into the last column"* for a worklist
+      explicitly meant to be filled in *"across several sittings,"* and the
+      only protection was a warning shown to the human **after** the sheet
+      had already been cleared. Now a `Function` returning `""`/`"!..."`
+      (was a `Sub`), refuses when the sheet has recorded field/chrome/drop
+      decisions not yet acted on. `RibbonUI.AuditFieldsCore` updated to
+      check the result instead of assuming success. `SummaryText`'s own
+      wording corrected to match (was describing the old, dangerous
+      behaviour).
+- [x] **6 new/updated tests**, all passing: `DiscoverUI`'s cross-slide
+      refusal and its own safety rail, `TemplateAudit`'s refusal proving the
+      pending decision survives untouched and the second write never
+      happens. Suite 229 → (pending full run — Office apps still open,
+      static checks clean across 35 modules).
+
 ## Milestone device reachability — the real fix, 2026-08-16
 
 **The bug:** `WalkForDeviceRoleTags` (`InjectPrimitive.bas`, the FIX-LIST R

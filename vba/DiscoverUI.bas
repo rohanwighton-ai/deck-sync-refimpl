@@ -48,6 +48,21 @@ Private Const COL_VOL As Long = 9
 Private Const HEADER_ROW As Long = 6
 Private Const FIRST_ROW As Long = 7
 
+' A DIFFERENT SLIDE than the sheet was last built for -- shape IDs are only
+' unique WITHIN a slide (PowerPoint restarts its own numbering per slide), so
+' carrying rows forward by bare id alone silently attaches one slide's marks
+' to a different slide's same-numbered shapes. Found 2026-08-16: a freshly
+' created slide's "Text 109" (says "Industry") was reported as an "existing
+' mark" for PROJECT_CODE, with no tag anywhere on the real shape -- carried
+' over from a PRIOR run's shape id 53 on a completely different slide. Stored
+' far right, out of the person's way. The scoped tail-clear a slide switch
+' can trigger (see priorLastRow below) never reaches this column, but the
+' marker is re-stamped unconditionally at the end of every build regardless,
+' so it is always correct for whichever slide the build actually finished
+' against.
+Private Const LAST_SLIDE_ID_ROW As Long = 1
+Private Const LAST_SLIDE_ID_COL As Long = 20
+
 ' ---------------------------------------------------------------------------
 ' BUTTON: Setup A2: Discover Fields
 ' ---------------------------------------------------------------------------
@@ -197,13 +212,52 @@ Public Function BuildDiscoverySheet(sld As Object, wb As Object) As String
     ' grid already carries in column A. The row never moves, so a person's mark
     ' cannot end up beside a different shape, and nothing has to be held in
     ' memory during the write.
+    '
+    ' BUT ONLY WHEN IT IS THE SAME SLIDE. A shape id is unique within a slide,
+    ' not across the deck -- PowerPoint restarts the numbering on every slide
+    ' -- so carrying rows forward across a slide change would attach one
+    ' slide's marks to a different slide's same-numbered shapes. See
+    ' LAST_SLIDE_ID_ROW/COL's header comment for the real case this found.
+    ' priorLastRow, not just rowById, survives past this block -- the
+    ' cross-slide branch needs it again after the main loop, to clear ONLY
+    ' the leftover tail (old rows the new slide's shapes never touch), not
+    ' the whole sheet. See the tail-clear right after the main loop below.
     Dim rowById As Object
-    Set rowById = ExistingRowsById(ws)
+    Dim sameSlide As Boolean
+    Dim priorLastRow As Long
+    priorLastRow = FIRST_ROW - 1
+    sameSlide = (Trim(CStr(ws.Cells(LAST_SLIDE_ID_ROW, LAST_SLIDE_ID_COL).Value)) = CStr(sld.SlideID))
 
-    ' A sheet with no rows to preserve is still built from scratch -- and this
-    ' clear also drops stale FORMATTING from an earlier layout, which a
-    ' ClearContents would leave behind.
-    If rowById.count = 0 Then ws.Cells.Clear
+    If sameSlide Then
+        Set rowById = ExistingRowsById(ws)
+    Else
+        ' REFUSE rather than silently discard -- a different slide with
+        ' PENDING, un-applied marks still sitting in the grid is exactly the
+        ' shape of loss "why is clear needed there? It is not" already ruled
+        ' out for the drafting sheets (DOCUMENT-MAP decision 1). Trading that
+        ' silent-loss class for the cross-slide id-collision class would not
+        ' be a fix. Only proceeds unattended when there is nothing to lose.
+        Do While Trim(CStr(ws.Cells(priorLastRow + 1, COL_ID).Value)) <> ""
+            priorLastRow = priorLastRow + 1
+        Loop
+        Dim pendingCount As Long
+        pendingCount = 0
+        If priorLastRow >= FIRST_ROW Then pendingCount = CountMarks(ws, priorLastRow)
+
+        If pendingCount > 0 Then
+            BuildDiscoverySheet = "!This grid still has " & pendingCount & _
+                " mark(s) from a DIFFERENT slide, not yet applied. Go apply them (or " & _
+                "deliberately clear the grid yourself) before running this on a new " & _
+                "slide -- switching slides here does not discard pending work silently."
+            Exit Function
+        End If
+
+        ' Deliberately EMPTY, not ExistingRowsById(ws) -- this is a different
+        ' slide, so none of these old rows' shape ids mean anything here.
+        ' Populating rowById from them is the exact cross-slide collision bug
+        ' this fix exists to remove.
+        Set rowById = CreateObject("Scripting.Dictionary")
+    End If
 
     ws.Cells(1, 1).Value = "FIELD DISCOVERY  --  every text shape on your template slide"
     ws.Cells(1, 1).Font.Bold = True
@@ -298,6 +352,19 @@ Public Function BuildDiscoverySheet(sld As Object, wb As Object) As String
         End If
     Next rk
 
+    ' CROSS-SLIDE TAIL. rowById was deliberately left empty for a different
+    ' slide (see above), so the "gone" loop just above had nothing to
+    ' iterate -- the old slide's rows got overwritten cell-by-cell as far as
+    ' the new slide's own shapes reach, but nothing shrinks the sheet back
+    ' down if the OLD slide had MORE rows than this one does. This is the one
+    ' remaining case ws.Cells.Clear used to paper over for every run, not
+    ' just this one -- scoped here to exactly the leftover range, and only
+    ' ever reached having already proven (the refusal above) that nothing in
+    ' it was pending/unmarked work.
+    If Not sameSlide And priorLastRow > maxRow Then
+        ws.Range(ws.Cells(maxRow + 1, COL_ID), ws.Cells(priorLastRow, COL_VOL)).Clear
+    End If
+
     ' The formatting below addresses rows FIRST_ROW..r-1, so `r` must end one
     ' past the last row in use -- which is the append cursor only when nothing
     ' was updated in place further down the sheet.
@@ -329,6 +396,12 @@ Public Function BuildDiscoverySheet(sld As Object, wb As Object) As String
     ' that is the bug report.
     Dim kept As Long
     kept = CountMarks(ws, r - 1)
+
+    ' Stamped LAST, unconditionally, after every write and clear above has
+    ' already happened -- so the next run's same-slide/different-slide check
+    ' reflects the slide this build actually finished against, not a value a
+    ' Clear() earlier in this same call could have wiped.
+    ws.Cells(LAST_SLIDE_ID_ROW, LAST_SLIDE_ID_COL).Value = CStr(sld.SlideID)
 
     BuildDiscoverySheet = written & " text shape(s) listed in '" & DISCOVERY_SHEET & "'."
     If kept > 0 Then

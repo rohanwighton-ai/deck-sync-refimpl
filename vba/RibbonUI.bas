@@ -2270,6 +2270,7 @@ Private Sub AuditFieldsCore()
     ' paired workbook still gets the counts -- the audit reads the DECK, so
     ' refusing outright would withhold an answer it already has.
     Dim wroteGrid As Boolean
+    Dim gridRefusal As String
     Dim workbookPath As String
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath <> "" And rowCount > 0 Then
@@ -2278,14 +2279,24 @@ Private Sub AuditFieldsCore()
         If Not wb Is Nothing Then
             Dim ws As Object
             Set ws = WorkbookBridge.GetOrAddWorksheet(wb, TemplateAudit.AUDIT_SHEET_NAME)
-            TemplateAudit.WriteAuditGrid ws, rows, rowCount
-            wroteGrid = True
+            ' WriteAuditGrid now REFUSES rather than silently discarding
+            ' recorded field/chrome/drop decisions from a prior, not-yet-
+            ' acted-on audit -- check its result instead of assuming success.
+            Dim writeResult As String
+            writeResult = TemplateAudit.WriteAuditGrid(ws, rows, rowCount)
+            If Left(writeResult, 1) = "!" Then
+                gridRefusal = Mid(writeResult, 2)
+            Else
+                wroteGrid = True
+            End If
         End If
     End If
 
     Dim report As String
     report = TemplateAudit.SummaryText(slideType, subjectLabel, trackedCount, rowCount, likelyDataCount, comparisonCount)
-    If rowCount > 0 And Not wroteGrid Then
+    If gridRefusal <> "" Then
+        report = report & vbCrLf & vbCrLf & "GRID NOT UPDATED: " & gridRefusal
+    ElseIf rowCount > 0 And Not wroteGrid Then
         report = report & vbCrLf & vbCrLf & "COULD NOT WRITE THE LIST: no paired workbook was reachable, so only the counts above are available."
     End If
 

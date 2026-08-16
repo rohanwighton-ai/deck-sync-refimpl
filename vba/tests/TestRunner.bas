@@ -780,6 +780,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("TemplateAudit_RefusesToDiscardPendingDecisions", filterPattern) Then
+        r = Test_TemplateAudit_RefusesToDiscardPendingDecisions()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "TemplateAudit_RefusesToDiscardPendingDecisions", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("RunSync_GatherInstancesFiltersByType", filterPattern) Then
         r = Test_RunSync_GatherInstancesFiltersByType()
     Else
@@ -5023,7 +5032,8 @@ Private Function Test_TemplateAudit_NoComparisonSlidesStillLists() As String
     Dim s2 As String
     s2 = TemplateAudit.SummaryText("q", "slide 1", 5, 3, 1, 4)
     result = result & Assert(InStr(s2, "no other slides to compare") = 0, "the UNKNOWN caveat is ABSENT when comparisons exist")
-    result = result & Assert(InStr(s2, "REPLACES that sheet") > 0, "summary warns that a re-run discards typed decisions")
+    result = result & Assert(InStr(s2, "REPLACES that sheet") > 0, "summary warns the sheet gets replaced")
+    result = result & Assert(InStr(s2, "refuse") > 0, "and that a re-run with pending decisions refuses rather than discarding them")
 
     Test_TemplateAudit_NoComparisonSlidesStillLists = result
 End Function
@@ -5061,6 +5071,53 @@ Private Function Test_TemplateAudit_RewriteLeavesNoStaleRows(stagingDir As Strin
     xl.Quit
 
     Test_TemplateAudit_RewriteLeavesNoStaleRows = result
+End Function
+
+' THE REAL BUG THIS FIXES: found 2026-08-16 auditing every .Clear in the repo
+' after the same-shape defect in DiscoverUI.bas. SummaryText's own warning
+' fired AFTER WriteAuditGrid had already cleared the sheet -- by the time a
+' person read "copy them out first", there was nothing left to copy. Proves
+' the refusal actually fires, and that it leaves the pending decision
+' completely untouched, not just that it returns a string.
+Private Function Test_TemplateAudit_RefusesToDiscardPendingDecisions() As String
+    Dim result As String
+
+    Dim xl As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Dim wb As Object
+    Set wb = xl.Workbooks.Add
+    Dim ws As Object
+    Set ws = wb.Worksheets(1)
+
+    Dim first(1 To 2) As AuditRow
+    first(1).ShapeName = "A": first(1).Text = "first": first(1).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    first(2).ShapeName = "B": first(2).Text = "second": first(2).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    Dim r1 As String
+    r1 = TemplateAudit.WriteAuditGrid(ws, first, 2)
+    result = result & Assert(r1 = "", "the first, clean write succeeds, got '" & r1 & "'")
+
+    ' A PERSON RECORDS A DECISION -- not yet acted on.
+    ws.Cells(3, 6).Value = "field"
+
+    Dim second(1 To 1) As AuditRow
+    second(1).ShapeName = "C": second(1).Text = "third": second(1).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    Dim r2 As String
+    r2 = TemplateAudit.WriteAuditGrid(ws, second, 1)
+    result = result & Assert(Left(r2, 1) = "!", "a re-run with a pending decision REFUSES, got '" & r2 & "'")
+    result = result & Assert(InStr(r2, "1 decision") > 0, "the refusal names how many, got '" & r2 & "'")
+
+    ' NOTHING WAS TOUCHED. The original grid, decision included, must survive
+    ' a refused call exactly as it was -- that is the whole point.
+    result = result & Assert(ws.Cells(2, 1).Value = "A", "row A survives the refused call")
+    result = result & Assert(ws.Cells(3, 1).Value = "B", "row B survives the refused call")
+    result = result & Assert(ws.Cells(3, 6).Value = "field", "the recorded decision itself survives, got '" & CStr(ws.Cells(3, 6).Value) & "'")
+    result = result & Assert(Trim(CStr(ws.Cells(4, 1).Value & "")) = "", "the second run's row C was NOT written -- the refusal happened before any write")
+
+    wb.Close False
+    xl.Quit
+
+    Test_TemplateAudit_RefusesToDiscardPendingDecisions = result
 End Function
 
 ' ---------------------------------------------------------------------
