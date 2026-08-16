@@ -124,16 +124,17 @@ the real register. Use `AppData\Local\deck-sync-backups\
 PRESERVED-known-good-20260815-1050\` (deck and register together, local, re-pointed and
 proven), or re-point a fresh copy with the `Change which workbook this deck uses` button.
 
-**The OneDrive risk is DIAGNOSED, and it is not what this file used to say.** The standing
-claim was "nothing is proven on OneDrive; everything was proven on a local copy because
-the OneDrive write failed outright". Measured 2026-08-15 midday on a scratch deck:
-**plain `pres.Save` works on a OneDrive-hosted file.** What fails is `SaveAs`-to-self,
-which raises `0x80CD1001` and leaves the presentation READ-ONLY so every later save fails
-— and `DeckRegistry` calls it as its escalation whenever a read-back does not confirm
-immediately. The tool breaks its own document and then reports that OneDrive did.
-File size, AutoSave and sync latency were each tested and are each innocent. Full
-evidence and the three call sites: `FIX-LIST.md` item **P**. Until P is fixed, work on a
-local copy — not because OneDrive is unproven, but because a known defect is waiting there.
+**The OneDrive risk is DIAGNOSED AND FIXED IN SOURCE, 2026-08-16 — not yet proven on the
+real add-in.** The original finding (`SaveAs`-to-self raises `0x80CD1001` and bricks a
+cloud deck read-only) was itself a measurement artifact: it was taken before the same
+day's `ByRef`→`ByVal` fix, so the `SaveAs` that got measured was silently targeting a
+different, wrongly-translated local path, not the document's own URL. Re-measured
+2026-08-16 with the fix in place: `SaveAs`-to-self on a cloud deck landed 5/5, instantly,
+none read-only. `DeckRegistry.bas`'s three verifiers now escalate to `SaveAs`-to-self on
+cloud decks exactly as they already did on local ones — no more passive wait. Static
+checks clean, suite 230/0. **Still needs**: a rebuilt add-in and a live re-run of the
+production function to close the loop — see `FIX-LIST.md` item P's 2026-08-16 update.
+Until that rebuild happens, still work on a local copy for anything that matters.
 
 **Two defects found while closing 6, both still open (2026-08-15).**
 

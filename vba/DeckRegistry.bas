@@ -32,22 +32,23 @@ Private Const TYPE_PROPERTY_PREFIX As String = "DeckSyncType:"
 ' format for the same fact.
 Private Const TEMPLATE_LETTER_PROPERTY_PREFIX As String = "DeckSyncTemplate:"
 ' A CLOUD-HOSTED SAVE LANDS A BEAT AFTER THE CALL RETURNS, so a verifier that reads
-' once, immediately, reports a working save as failed -- which is what drove the
-' SaveAs escalation that then bricked the document. See the block above
-' PauseSeconds. These are declared HERE, in the declarations section: a Const after
-' a procedure is a VBA compile error and takes out the whole project.
-' 30s, in 5s steps -- and the STEP matters as much as the total. Every re-read
-' COPIES THE WHOLE PACKAGE to open it as a zip, so polling once a second against
-' the real 49MB deck would copy half a gigabyte to answer one question. Six reads
-' over thirty seconds is the same evidence for a fraction of the work.
+' once, immediately, can report a working plain Save as failed. The three
+' verifiers below used to handle that by WAITING on a cloud-hosted deck rather
+' than escalating to `SaveAs path, 24` -- FIX-LIST P (2026-08-15 midday) had
+' measured that SaveAs bricking a cloud deck read-only. That measurement
+' predates the SAME DAY's afternoon fix to PropertyOnDisk's ByRef->ByVal bug:
+' before the fix, reading the file (which every verifier does right before
+' deciding whether to escalate) silently rewrote the caller's `path` from the
+' true https:// URL to a local mapped path, so the SaveAs being measured
+' targeted a DIFFERENT location than the document was open from -- which is
+' what detaches and bricks it, not SaveAs-to-self itself.
 '
-' Thirty rather than twelve because the cloud failure is INTERMITTENT, not slow:
-' measured 2026-08-15, identical writes to fresh cloud decks landed roughly half
-' the time with no discriminator found across eight hypotheses. For an intermittent
-' fault, waiting and re-reading is the correct remedy -- it is the ESCALATION that
-' was wrong, and that is gone on the cloud path.
-Private Const SETTLE_SECONDS As Single = 30
-Private Const SETTLE_STEP_SECONDS As Single = 5
+' Re-measured 2026-08-16 with the fix in place, path genuinely unmangled:
+' `pres.SaveAs path, 24` landed 5/5 in well under a second each, none flagged
+' read-only afterward -- see vba/tools/onedrive_saveas_self_probe.ps1 and
+' vba/tools/SaveAsSelfProbe.bas. All three verifiers now escalate to SaveAs on
+' a cloud-hosted deck exactly as they already did on a local one; the
+' cloud/local asymmetry these functions used to have is gone.
 ' Literal, NOT Application.PathSeparator: that property exists on Excel's
 ' Application object, not PowerPoint's, and this module is PowerPoint-hosted --
 ' using it is a hard compile error ("Method or data member not found"), confirmed
@@ -245,95 +246,16 @@ Public Function IsUrl(path As String) As Boolean
 End Function
 
 ' ---------------------------------------------------------------------
-' CLOUD-HOSTED SAVES: WAIT FOR THE FILE, NEVER ESCALATE TO SaveAs
+' CLOUD-HOSTED SAVES NOW ESCALATE TO SaveAs-TO-SELF, SAME AS LOCAL ONES
 ' ---------------------------------------------------------------------
 '
-' MEASURED 2026-08-15 on a scratch deck in a OneDrive folder, every phase read back
-' from the SAVED file rather than from the object:
-'
-'     plain pres.Save only ................ 3 of 4 landed
-'     one pres.SaveAs path, 24 ............ RAISED 0x80CD1001
-'     plain pres.Save after that SaveAs ... 0 of 4, each failing with
-'         "This presentation is read-only and must be saved with a different name."
-'
-' On a cloud-hosted deck SaveAs-to-self leaves the OPEN PRESENTATION FLAGGED
-' READ-ONLY, and every later save fails for the life of that document. So the
-' escalation written to rescue a failed write is what CAUSED the failure this
-' project spent weeks attributing to OneDrive. Plain Save works there; it just
-' needs a moment to land, and the too-early read is what looked like a failure
-' worth escalating. The retry loops then spent their remaining attempts against a
-' presentation they had already bricked.
-'
-' Four other explanations were tested first and are all innocent: file size (a 32KB
-' deck fails identically), AutoSave (AutoSaveOn is settable and changes nothing in
-' either position), sync latency (two minutes plus a close, never arrived) and URL
-' translation (LocalPathForUrl maps the d.docs.live.net URL to the local file
-' correctly -- reads via URL and via path agree).
-'
-' THE ASYMMETRY IS DELIBERATE: on a LOCAL file SaveAs-to-self is harmless and is
-' still used, because a plain Save is incremental and this project has measured it
-' not regenerating docProps/custom.xml. Only the cloud path changes.
-
-' Blocks for `secs`, pumping messages so Office stays responsive. Timer resets to 0
-' at midnight; a backwards jump ends the wait rather than parking here until
-' tomorrow night.
-Private Sub PauseSeconds(ByVal secs As Single)
-    Dim started As Single
-    started = Timer
-    Do
-        DoEvents
-        If Timer < started Then Exit Do
-    Loop While Timer - started < secs
-End Sub
-
-' True as soon as the property is in the SAVED file. Re-READS; it never re-writes.
-' The write has already been issued -- the only open question is whether it landed.
-'
-' ignoreCase is explicit because the two callers genuinely differ and neither may be
-' quietly converted to the other: the workbook path is compared case-insensitively,
-' while the period is matched EXACTLY on purpose -- periods are free-text and a
-' near-miss is silent data loss, not a tolerable variation.
-Private Function WaitForPropertyOnDisk(deckPath As String, propertyName As String, _
-                                       wanted As String, ByVal ignoreCase As Boolean) As Boolean
-    Dim waited As Single
-    Do
-        Dim matched As Boolean
-        If ignoreCase Then
-            matched = (StrComp(PropertyOnDisk(deckPath, propertyName), wanted, vbTextCompare) = 0)
-        Else
-            matched = (PropertyOnDisk(deckPath, propertyName) = wanted)
-        End If
-        If matched Then
-            WaitForPropertyOnDisk = True
-            Exit Function
-        End If
-        PauseSeconds SETTLE_STEP_SECONDS
-        waited = waited + SETTLE_STEP_SECONDS
-    Loop While waited < SETTLE_SECONDS
-End Function
-
-' True as soon as the file's modification time has moved past `before`. Same shape
-' as above, for the one caller whose evidence is the mtime rather than a value.
-Private Function WaitForFileToMove(checkPath As String, ByVal before As Date) As Boolean
-    Dim fso As Object
-    Set fso = CreateObject("Scripting.FileSystemObject")
-
-    Dim waited As Single
-    Do
-        Dim moved As Boolean
-        moved = False
-        On Error Resume Next
-        moved = (fso.GetFile(checkPath).DateLastModified > before)
-        Err.Clear
-        On Error GoTo 0
-        If moved Then
-            WaitForFileToMove = True
-            Exit Function
-        End If
-        PauseSeconds SETTLE_STEP_SECONDS
-        waited = waited + SETTLE_STEP_SECONDS
-    Loop While waited < SETTLE_SECONDS
-End Function
+' Used to wait passively instead (up to 30s, in 5s steps) rather than ever
+' calling `SaveAs path, 24` on a cloud-hosted deck -- see the declarations
+' section above for why that used to be the rule and why it changed
+' 2026-08-16. The wait-loop helpers this comment used to sit above
+' (PauseSeconds, WaitForPropertyOnDisk, WaitForFileToMove) are gone with it;
+' grep history if they're ever needed again, but they have no callers left in
+' this module.
 
 Private Function FileExists(path As String) As Boolean
     If Trim(path) = "" Then Exit Function
@@ -1013,24 +935,17 @@ Public Function SaveDeckVerified(pres As Object) As String
     ' with no changes never pays for a 49MB rewrite to prove it.
     If wasClean Then Exit Function                                            ' "" = nothing to save
 
-    ' Save reported nothing and moved nothing.
+    ' Save reported nothing and moved nothing -- force the full rewrite, TO
+    ' SELF. Cloud and local decks are treated identically now; see the
+    ' declarations section for why the cloud path used to only wait.
     Dim retryErr As String
-    If IsUrl(path) Then
-        ' CLOUD-HOSTED: WAIT, NEVER ESCALATE. SaveAs-to-self would flag this
-        ' presentation read-only and break every save after it -- see the block
-        ' above PauseSeconds. The save has already been issued; give it time.
-        If WaitForFileToMove(checkPath, before) Then Exit Function             ' "" = saved
-    Else
-        ' Local file: force the full rewrite, which is safe here and is why this
-        ' escalation exists at all.
-        On Error Resume Next
-        pres.SaveAs path, 24                      ' ppSaveAsOpenXMLPresentation
-        If Err.Number <> 0 Then retryErr = "Error " & Err.Number & ": " & Err.Description
-        Err.Clear
-        On Error GoTo 0
+    On Error Resume Next
+    pres.SaveAs path, 24                      ' ppSaveAsOpenXMLPresentation
+    If Err.Number <> 0 Then retryErr = "Error " & Err.Number & ": " & Err.Description
+    Err.Clear
+    On Error GoTo 0
 
-        If fso.GetFile(checkPath).DateLastModified > before Then Exit Function ' "" = saved
-    End If
+    If fso.GetFile(checkPath).DateLastModified > before Then Exit Function ' "" = saved
 
     SaveDeckVerified = "THE DECK WAS NOT SAVED." & vbCrLf & vbCrLf & _
         path & vbCrLf & vbCrLf & _
@@ -1086,22 +1001,19 @@ Public Function SetDeckPeriodVerified(pres As Object, period As String, ByVal at
 
         If PeriodOnDisk(path) = period Then Exit Function      ' "" = confirmed
 
-        If IsUrl(path) Then
-            ' CLOUD-HOSTED: WAIT, NEVER ESCALATE -- the block above PauseSeconds
-            ' has the measurement. Exact match, deliberately: see that helper.
-            If WaitForPropertyOnDisk(path, PROP_DECK_PERIOD, period, False) Then Exit Function
-        Else
-            On Error Resume Next
-            pres.SaveAs path, 24        ' ppSaveAsOpenXMLPresentation -- forces a full rewrite
-            If Err.Number <> 0 Then
-                If writeErr <> "" Then writeErr = writeErr & vbCrLf
-                writeErr = writeErr & "SaveAs -- Error " & Err.Number & ": " & Err.Description
-            End If
-            Err.Clear
-            On Error GoTo 0
-
-            If PeriodOnDisk(path) = period Then Exit Function  ' "" = confirmed
+        ' Force the full rewrite, TO SELF -- cloud and local decks are treated
+        ' identically now; see the declarations section for why the cloud path
+        ' used to only wait instead.
+        On Error Resume Next
+        pres.SaveAs path, 24        ' ppSaveAsOpenXMLPresentation -- forces a full rewrite
+        If Err.Number <> 0 Then
+            If writeErr <> "" Then writeErr = writeErr & vbCrLf
+            writeErr = writeErr & "SaveAs -- Error " & Err.Number & ": " & Err.Description
         End If
+        Err.Clear
+        On Error GoTo 0
+
+        If PeriodOnDisk(path) = period Then Exit Function  ' "" = confirmed
 
         If n = attempts Then
             SetDeckPeriodVerified = "THE PERIOD DID NOT REACH THE FILE after " & attempts & _
@@ -1163,22 +1075,19 @@ Public Function SetWorkbookPathVerified(pres As Object, newPath As String, ByVal
 
         If StrComp(WorkbookPathOnDisk(path), newPath, vbTextCompare) = 0 Then Exit Function
 
-        If IsUrl(path) Then
-            ' CLOUD-HOSTED: WAIT, NEVER ESCALATE -- the block above PauseSeconds
-            ' has the measurement. Case-insensitive, matching the check below it.
-            If WaitForPropertyOnDisk(path, WORKBOOK_PATH_PROPERTY_NAME, newPath, True) Then Exit Function
-        Else
-            On Error Resume Next
-            pres.SaveAs path, 24        ' ppSaveAsOpenXMLPresentation -- forces a full rewrite
-            If Err.Number <> 0 Then
-                If writeErr <> "" Then writeErr = writeErr & vbCrLf
-                writeErr = writeErr & "SaveAs -- Error " & Err.Number & ": " & Err.Description
-            End If
-            Err.Clear
-            On Error GoTo 0
-
-            If StrComp(WorkbookPathOnDisk(path), newPath, vbTextCompare) = 0 Then Exit Function
+        ' Force the full rewrite, TO SELF -- cloud and local decks are treated
+        ' identically now; see the declarations section for why the cloud path
+        ' used to only wait instead.
+        On Error Resume Next
+        pres.SaveAs path, 24        ' ppSaveAsOpenXMLPresentation -- forces a full rewrite
+        If Err.Number <> 0 Then
+            If writeErr <> "" Then writeErr = writeErr & vbCrLf
+            writeErr = writeErr & "SaveAs -- Error " & Err.Number & ": " & Err.Description
         End If
+        Err.Clear
+        On Error GoTo 0
+
+        If StrComp(WorkbookPathOnDisk(path), newPath, vbTextCompare) = 0 Then Exit Function
 
         If n = attempts Then
             SetWorkbookPathVerified = "THE PAIRING DID NOT REACH THE FILE after " & attempts & _

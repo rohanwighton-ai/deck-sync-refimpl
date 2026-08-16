@@ -175,6 +175,38 @@ diagnoses the same failure as "SaveAs returns without raising and writes nothing
 prescribes the escalation that causes it. Both were written from symptoms without
 probing the mechanism.
 
+**P. THE "STILL OPEN" ABOVE WAS ITSELF A MEASUREMENT ARTIFACT. FIXED 2026-08-16.**
+The "cloud persistence is INTERMITTENT" finding above was real, but the fix chosen for
+it — wait passively up to 30s, never escalate to `SaveAs` on a cloud deck — was wrong
+for the same reason the original bricking was: the midday measurement that ruled
+SaveAs out was taken **before** this same entry's afternoon `ByRef`→`ByVal` fix.
+Before that fix, `PeriodOnDisk(path)` (called right before the escalation decision)
+silently rewrote the caller's `path` from the `https://` URL to a local mapped path —
+so the `SaveAs` that got measured bricking a cloud deck was actually "save this
+cloud-open document to a *different* local path," not "save it to itself." Nobody had
+re-run the three-phase measurement since the fix.
+
+Re-measured 2026-08-16 with an isolated, self-contained probe module
+(`vba/tools/SaveAsSelfProbe.bas` + `vba/tools/onedrive_saveas_self_probe.ps1`, each
+trial on its own fresh scratch OneDrive deck): **`pres.SaveAs path, 24` (to self,
+unmangled URL) landed 5/5, each in under a second, none flagged read-only
+afterward** — verified both by the copy-and-unzip read `PropertyOnDisk` already uses
+(independent of PowerPoint's object cache) and cross-checked separately via .NET's
+own zip reader. Contrast: the SAME production `SetDeckPeriodVerified`, unmodified,
+run head-to-head via `vba/tools/onedrive_write_probe.ps1` immediately beforehand,
+**failed 4 for 4**, each exhausting the full 4-attempt/30s-wait budget (~121s) with
+nothing landing.
+
+**Fixed**: `SaveDeckVerified`, `SetDeckPeriodVerified`, and `SetWorkbookPathVerified`
+in `DeckRegistry.bas` now escalate to `SaveAs`-to-self on a cloud-hosted deck exactly
+as they already did on a local one — the `IsUrl(path)` branch that split the two is
+gone, along with the now-dead `WaitForFileToMove`/`WaitForPropertyOnDisk`/
+`PauseSeconds` helpers and the `SETTLE_SECONDS`/`SETTLE_STEP_SECONDS` constants.
+Static checks clean, suite 230/0. **Not yet proven against the real production
+function** — that needs a rebuilt add-in (Rohan's one manual Save-As-in-VBE step) and
+a re-run of `onedrive_write_probe.ps1` against it, which is the direct before/after
+close-out for this fix.
+
 ## Added 2026-08-15 (late morning) — four, all LIVE
 
 **L. A COPIED DECK KEEPS POINTING AT THE ORIGINAL'S REGISTER, AND THE REPAIR WAS

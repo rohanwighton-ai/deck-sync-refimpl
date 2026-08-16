@@ -391,10 +391,29 @@ bytes. Started because the K/S template build above was mechanism-tested
       in one place.
 - [ ] **#3:** Scenario 8 (portability) — bring up a genuinely fresh deck +
       register from nothing, unaided. Never attempted once.
-- [ ] **#4:** OneDrive-hosted write reliability. Proven only on a local
-      copy; the one real attempt on OneDrive failed outright (AutoSave on,
-      4 verified attempts, mtime never moved). The work machine is
-      OneDrive-hosted, so this is not a papercut.
+- [x] **#4, 2026-08-16: root cause found, fixed in source, not yet proven on
+      the real add-in.** Re-ran the production `SetDeckPeriodVerified`
+      unmodified against a fresh scratch OneDrive deck: **4 for 4 outright
+      failures**, each burning the full 4-attempt/30s-wait budget (~121s).
+      Read the code rather than re-guessing: the cloud branch's "wait, never
+      escalate" design was based on a `SaveAs`-bricks-cloud-decks
+      measurement taken BEFORE the same day's `ByRef`→`ByVal` fix
+      (`FIX-LIST` P) — before that fix, the verifier's own read-back
+      silently rewrote the SaveAs target to the wrong local path, which is
+      what actually bricked it, not `SaveAs`-to-self itself. Built an
+      isolated probe (`vba/tools/SaveAsSelfProbe.bas` +
+      `onedrive_saveas_self_probe.ps1`) that re-tests a clean
+      `SaveAs`-to-self on 5 fresh scratch cloud decks: **5/5 landed, each
+      under a second, none read-only** — verified via the raw-bytes read
+      `PropertyOnDisk` already uses, independent of PowerPoint's cache.
+      Fixed `SaveDeckVerified`/`SetDeckPeriodVerified`/
+      `SetWorkbookPathVerified` in `DeckRegistry.bas` to escalate to
+      `SaveAs`-to-self on cloud decks exactly as they already did on local
+      ones; deleted the now-dead wait-loop helpers. Static checks clean,
+      suite 230/0. **Still open:** prove it on the real production function
+      through a rebuilt add-in (needs Rohan's manual Save-As-in-VBE step),
+      by re-running `onedrive_write_probe.ps1` against it — the exact same
+      probe that demonstrated the 4/4 failure, now pointed at the fix.
 - [ ] **#5:** `Tag fields on this slide` run fresh against `K900` and `S900`
       to get CURRENT field coverage ground truth, replacing the
       cross-referenced-from-tags inference in the Field Coverage Matrix
