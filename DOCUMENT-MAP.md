@@ -108,17 +108,18 @@ the record.
 | document | authoritative for | status |
 |---|---|---|
 | `NEXT-SESSION.md` | **where the project actually is.** Read first, always. | CURRENT — rewritten each session |
+| `CHECKLIST.md` | **what's actually left, flat and tickable.** The primary handover surface as of 2026-08-16. | CURRENT — ticked together, in session |
+| `SYSTEM-OVERVIEW.md` | what this system is, for a reader with zero context | CURRENT — added 2026-08-16, migrated from `archive/HANDOVER-Q4F26-DRAFTING.md` with provenance |
 | `DOCUMENT-MAP.md` | this index and the review protocol | CURRENT |
 | `FIX-LIST.md` | what is known-broken and not yet fixed | CURRENT — re-audited 14 Aug |
 | `TRACKER.md` | the framing and the manual baseline | CURRENT for framing; defers status to `NEXT-SESSION.md` |
 | `COLUMNS.md` | the *reasoning* behind the register's columns | CURRENT — the Field Spec owns the list |
-| `PROVENANCE.md` | the provenance design | CURRENT — designed, not built |
+| `PROVENANCE.md` | the provenance design | CURRENT — designed, not built; build steps now on `CHECKLIST.md` |
 | `SOURCE-CAPTURE-FORM.md` | the paper form for capturing sources | CURRENT — tool-independent |
 | `AGENTS.md` | platform gotchas earned the hard way | CURRENT — append-only |
-| `WORKPLAN.md` | the 31 July build plan | superseded in part; kept for the record |
-| `WORKFLOW.md` | what each stage *does* | STALE in part — its reach-it-by instructions are wrong |
-| `TOOLBAR.md` | the rule that a boundary needs a decision in it | design doc; its UI description is SUPERSEDED |
-| `RUNSHEET.md`, `HANDOVER-Q4F26-DRAFTING.md`, `WORKED-EXAMPLE-*.md` | method, not steps | HISTORICAL |
+| `TOOLBAR.md` | the rule that a boundary needs a decision in it | design doc; its UI description is SUPERSEDED, its REASONING is still the governing rule — kept active, not archived (re-affirmed 2026-08-16) |
+| `WORKFLOW.md` | what each stage *does* | STALE in part — its reach-it-by instructions are wrong; the one specific "not yet fixed" note it carried is itself superseded by the Aug 14 toolbar rebuild (checked 2026-08-16) |
+| `archive/*` | historical record, moved 2026-08-16 from repo root: `WORKPLAN.md`, `RUNSHEET.md`, `HANDOVER-Q4F26-DRAFTING.md`, `WORKED-EXAMPLE-STRATEGIC-ALIGNMENT.md` | HISTORICAL — never edit to match today. Anything still-useful from these was migrated into `SYSTEM-OVERVIEW.md` or `CHECKLIST.md` with provenance before archiving. |
 | `specs/*`, `IMPLEMENTATION_PLAN.md`, `FIRST-REAL-RUN.md`, `CYCLE-FINDINGS-*`, `SPIKE_NOTES_*` | the design exchange and its findings, as they stood | HISTORICAL by design — never edit to match today |
 
 **The bridge folder** (`OneDrive\Claude\`) is transport, not storage. Documents sent

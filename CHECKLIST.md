@@ -77,7 +77,10 @@ just its own stated build steps, restated as a checklist.*
 - [ ] Blank the SOURCES column on `TPL_ABOUT_BODY` for all 37 rows that currently
       cite them. **Doing only the deletion is worse than doing neither** — the
       citations would survive pointing at IDs that no longer exist, and publish
-      reports them as unknown refs on every run.
+      reports them as unknown refs on every run. *Corroborated independently in
+      `archive/HANDOVER-Q4F26-DRAFTING.md` §6 (2026-08-10, two days earlier than
+      `SOURCE-CAPTURE-FORM.md`) — same defect, same 37-row count, named twice
+      before either doc knew about the other.*
 - [ ] Whether Copilot can open a SharePoint path handed to it — answerable at work
       in a minute. Determines whether a citation is a real trace (the model read
       it) or an attestation (a person read it and typed the ID). *Also in
