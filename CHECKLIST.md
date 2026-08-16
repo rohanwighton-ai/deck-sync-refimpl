@@ -137,6 +137,14 @@ just its own stated build steps, restated as a checklist.*
       or this decision was specific to the timeline device and doesn't
       generalise the way its own text claims. Either answer is fine; not
       deciding and building both is not.
+      **Constraint confirmed by Rohan, 2026-08-16, applies whichever way this
+      is resolved:** circle/shape SIZE must stay pre-drawn, never computed at
+      runtime. Matches the milestone device's own existing rule exactly — its
+      writers (`SetVisible`) only ever toggle which pre-drawn shape shows, they
+      never resize one. Whatever the K/S/P answer turns out to be, it must not
+      introduce runtime sizing to get there.
+      **Sent to chat for a second read, 2026-08-16** —
+      `code-to-chat-2026-08-16-template-architecture-question.md`, awaiting reply.
 
 ## Register/field items found in the 12 Aug cross-surface handover
 
