@@ -107,6 +107,23 @@
 > unaided close of Scenario 1 -- not yet achieved. `2. Draft and publish` and
 > `3. Put it on the slides` haven't been reached yet either.
 >
+> **RE-CONFIRMED at final handover, unchanged from the check above:** PowerPoint 0
+> presentations, Excel still has the same `register-wide.xlsx` open, `Saved=False`.
+> Left alone deliberately, both times.
+>
+> **ONE THREAD RAISED, NEVER RESOLVED THIS SESSION — SAY SO PLAINLY, DON'T GUESS AT
+> IT:** Rohan asked, referencing a screenshot, "why blocked on those fields? fix it
+> forever more" — some report or dialog showed one or more FIELDS with a "blocked"
+> status he wanted explained and permanently fixed. **No image ever actually reached
+> this session** — every screenshot attempt this entire session failed to attach
+> (confirmed repeatedly, not a one-off), so the specific fields and exact wording were
+> never learned. Do not assume this is the same "OneDrive\Claude" sighting above —
+> Rohan's replies suggest it might be, but he never confirmed that reading, and
+> "blocked" on FIELDS (plural) sounds more like a Readiness/sync report line (this
+> project's own established vocabulary — e.g. "Period: BLOCKED -- not set in the saved
+> file") than a Windows folder window. **First thing next session: ask what specific
+> fields and get the exact text, in words, before doing anything about it.**
+>
 > ## 16 AUG. **`CHECKLIST.md` IS NOW THE PRIMARY HANDOVER SURFACE. READ IT FIRST.**
 >
 > Compiled 2026-08-16 from a full pass of every CURRENT-status document
