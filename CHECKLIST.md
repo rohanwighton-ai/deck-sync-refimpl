@@ -675,6 +675,45 @@ already on this list belong under this heading rather than scattered:
 - [ ] Rohan to add what's actually slow or annoying day to day — this section
       exists to collect it.
 
+## Test-suite viewing aid — "Watch", 2026-08-16
+
+Rohan: "make key bits obvious to a human viewer while still obviously
+completing," then, once built, "use this viewing aid pause concept with me
+for the rest of our existence together." Standing practice now — see memory
+`feedback_viewing_aid_pauses_for_observable_effects`.
+
+- [x] `TestRunner.bas`'s `Watch(sld, label, [seconds])` helper: places a big
+      bold orange on-slide banner naming the effect, pauses ~1.2s
+      (`Timer`-based busy-wait — `Application.Wait` is Excel-only and does
+      not exist on `PowerPoint.Application`; that mismatch compiled-error
+      the whole project until fixed), removes the banner, resumes. Wired
+      into 2 shortlisted tests so far: `MilestoneDevice_DrawsFromDataAndCreatesNothing`
+      (ON/OFF/NOW visibility) and `InjectProgress_MeasuresAgainstTheTrackNotItself`
+      (bar resize). "Shape colour change" was NOT added — checked first:
+      nothing in production code writes `Fill.ForeColor` at runtime yet, so
+      there is no real effect to shortlist there.
+- [x] **Real lesson, not just a feature build:** the first two implementation
+      attempts tried to force the PowerPoint WINDOW to the OS foreground
+      (`AppActivate`, then `SendKeys`+`AppActivate`). Both failed for real,
+      live reasons — `AppActivate` alone only flashed the taskbar (Windows'
+      focus-stealing prevention), and adding `SendKeys` to work around that
+      HUNG the run for 2 minutes under this PowerShell→COM→VBA driver.
+      Capped at 2 attempts per standing practice, then stopped rather than
+      trying a third variant. **Rohan's own fix was simpler and correct:**
+      label the effect on the artifact itself, stop fighting window focus
+      entirely. `AppActivate` is kept as a harmless best-effort call but is
+      no longer load-bearing for "obvious."
+- [ ] **Found while checking this live, not yet cleaned up:** the reused
+      `deck_sync_test_run_presentation` fixture file has accumulated **133
+      slides**, mostly orphaned blanks — each filtered test run this session
+      adds throwaway slides via `NewBlankSlide()` and deletes them at the
+      end, but a run that gets cut off (like the `SendKeys` hang above)
+      never reaches its own cleanup, leaving slides behind permanently in a
+      file that persists across runs. Low urgency (throwaway test fixture,
+      not real content) but real — worth either deleting that file so a
+      fresh one gets created, or adding startup cleanup to
+      `run_vba_tests.ps1` for a stale/oversized fixture.
+
 ## Known open defects — not urgent, not forgotten
 
 *Source: `FIX-LIST.md`, live entries.*

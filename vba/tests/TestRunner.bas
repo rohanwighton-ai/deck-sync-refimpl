@@ -1826,6 +1826,102 @@ Private Function Assert(cond As Boolean, msg As String) As String
     End If
 End Function
 
+' ---------------------------------------------------------------------
+' THE CRITICAL-EFFECTS SHORTLIST -- Rohan, 2026-08-16: "make key bits
+' obvious to a human viewer while still obviously completing."
+'
+' PowerPoint is already run VISIBLE for this suite (run_vba_tests.ps1's own
+' comment: "visible on purpose for a first real run"), so a human CAN watch
+' -- the gap was speed: an automated test toggles a shape and moves on
+' inside a fraction of a second, too fast to register. Watch() pauses just
+' long enough to see it, only at the specific moments on this list, so the
+' other ~230 assertions stay exactly as fast as they are today.
+'
+' THE LIST ITSELF, kept here deliberately rather than scattered as ad-hoc
+' Sleep calls, so it stays a maintained, reviewable set rather than growing
+' by whoever last found a test they wanted to watch:
+'   1. Milestone slot ON/OFF/NOW visibility (MilestoneDevice.DrawMilestones/
+'      SetVisible) -- Test_MilestoneDevice_DrawsFromDataAndCreatesNothing
+'   2. Progress bar/track resize (InjectProgressVia) -- a real, visible
+'      geometric change -- Test_InjectProgress_MeasuresAgainstTheTrackNotItself
+'   NOT YET REAL: shape colour change. Checked before adding it here --
+'   nothing in production code writes Fill.ForeColor at runtime (colour is
+'   static, drawn once per K/S/P template, per today's architecture-fork
+'   resolution). Adding a colour-change entry to this list before the
+'   mechanism exists would be exactly the kind of item that looks like care
+'   taken while testing nothing real.
+' FORCES the PowerPoint window to the OS foreground before pausing --
+' deliberately, not just "leaves it visible". "Visible" and "in front of
+' whatever you are actually looking at" are different claims, and Rohan
+' caught the gap live: the first version paused correctly but he was
+' looking at this chat, not PowerPoint, and missed it entirely. Self-
+' contained on purpose per his own correction -- "needs to run without you"
+' -- so this cannot depend on Claude narrating "switch windows now" in chat
+' first; it has to work identically whether a Claude session is watching or
+' Rohan runs the suite himself later with nobody narrating anything.
+' AppActivate can raise if no matching window title exists (e.g. a truly
+' headless CI-style run with no window at all) -- guarded so a watch point
+' degrades to "just pauses" rather than failing the test that carries it.
+'
+' AppActivate ALONE ONLY FLASHED THE TASKBAR ICON -- checked live 2026-08-16,
+' not assumed: Windows' focus-stealing prevention blocks a background
+' automation process from stealing foreground focus outright, and
+' AppActivate is exactly that kind of call.
+'
+' TRIED AND REVERTED, same session: `SendKeys " "` before AppActivate is the
+' standard VBA workaround (a keystroke reads as "real user input just
+' happened", which relaxes the restriction for the next foreground request)
+' -- but it HUNG the run under this specific driver (PowerShell -> COM ->
+' VBA), 2 minutes, no error, nothing recovered. Two attempts is this
+' problem's stated cap.
+'
+' ROHAN'S FIX, and the right one: stop trying to force the WINDOW in front
+' of him and put the label ON THE SLIDE instead -- a big bold orange banner
+' naming what to look at. This sidesteps the whole foreground-stealing
+' problem: it does not matter whether PowerPoint has OS focus, because
+' whenever he DOES look (now or later, from a screenshot, from the taskbar
+' thumbnail), the banner says exactly what was being demonstrated. AppActivate
+' stays as a best-effort attempt (harmless, sometimes helps) but is no longer
+' load-bearing for "obvious".
+Private Sub Watch(sld As Object, label As String, Optional seconds As Double = 1.2)
+    On Error Resume Next
+
+    Dim banner As Object
+    Set banner = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 20, 15, 650, 45)
+    banner.Name = "WATCH_BANNER"
+    banner.TextFrame.TextRange.Text = "WATCHING: " & label
+    banner.TextFrame.TextRange.Font.Size = 24
+    banner.TextFrame.TextRange.Font.Bold = True
+    banner.TextFrame.TextRange.Font.Color.RGB = RGB(255, 140, 0)   ' orange
+    banner.Fill.Visible = msoFalse
+    banner.Line.Visible = msoFalse
+
+    AppActivate Application.Caption
+    DoEvents
+
+    ' Application.Wait is an EXCEL method, not PowerPoint's -- this module
+    ' compiles against PowerPoint.Application, so that call is a compile-time
+    ' "member not found", not a runtime one. Found for real 2026-08-16: it
+    ' blocked PowerPoint with its own compile-error dialog before a single
+    ' test could run. Timer is a plain VBA stdlib function, identical on
+    ' both hosts, so a busy-wait against it needs no Declare and no
+    ' host-specific branch. DoEvents inside the loop, not just before it, so
+    ' the screen actually repaints during the pause instead of once at the
+    ' start.
+    Dim stopAt As Double
+    stopAt = Timer + seconds
+    Do While Timer < stopAt
+        DoEvents
+    Loop
+
+    ' Removed after the pause -- it is a viewing aid, not part of what the
+    ' assertions below are checking, and leaving it would change the
+    ' shape/group counts the test itself asserts on.
+    banner.Delete
+
+    On Error GoTo 0
+End Sub
+
 ' Safe replacement for "Assert(Not actual Is Nothing And actual.SlideID =
 ' expected.SlideID, msg)". VBA's And is NOT short-circuit -- both operands
 ' always evaluate -- so that combined form raises "Object variable or With
@@ -11117,6 +11213,11 @@ Private Function Test_InjectProgress_MeasuresAgainstTheTrackNotItself() As Strin
 
     Dim r As InjectResult
     r = InjectPrimitive.InjectProgressField(sld, "ELAPSED", 0.75)
+
+    ' CRITICAL-EFFECTS SHORTLIST, item 2 -- see Watch's header. The done
+    ' shape resizes to 75% of the track's width, visibly, right here.
+    Watch sld, "progress bar resized to 75% after InjectProgressField"
+
     result = result & Assert(r.Written, "the bar is set [" & r.ErrorMessage & "]")
     result = result & Assert(Abs(done.Width - 300) < 1, _
         "75% of a 400pt track is 300pt, got " & done.Width)
@@ -11935,6 +12036,12 @@ Private Function Test_MilestoneDevice_DrawsFromDataAndCreatesNothing() As String
         SplitList("Kickoff||Design||Build"), _
         SplitList("Oct 2023||Mar 2024||Sep 2024"), _
         SplitList("Y||Y||N"))
+
+    ' CRITICAL-EFFECTS SHORTLIST, item 1 -- see Watch's header. Three slots
+    ' ON, one OFF, slot 2 the bolded NOW: a human watching the (visible)
+    ' PowerPoint window can actually see this happen here, not just trust
+    ' the assertions below it.
+    Watch sld, "milestone ON/OFF/NOW after DrawMilestones"
 
     result = result & Assert(r.ErrorMessage = "", "it draws [" & r.ErrorMessage & "]")
     result = result & Assert(r.Drawn = 3, "three milestones drawn, got " & r.Drawn)
