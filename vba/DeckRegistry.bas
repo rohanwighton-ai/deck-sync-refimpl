@@ -31,6 +31,29 @@ Private Const TYPE_PROPERTY_PREFIX As String = "DeckSyncType:"
 ' BuildTypeRegistration/ParseTypeRegistration rather than inventing a second
 ' format for the same fact.
 Private Const TEMPLATE_LETTER_PROPERTY_PREFIX As String = "DeckSyncTemplate:"
+' STORAGE MOVED OFF CustomDocumentProperties, 2026-08-16. On a cloud-hosted
+' deck, a session's FIRST write to a custom document property lands -- and
+' every write after that, to ANY of these properties, is permanently stuck
+' reporting the first value. Confirmed it is not per-property (a brand-new
+' property name written for the first time in a session that already has one
+' stuck also fails) and that the one documented community rescue (close the
+' file, reopen it, retry) does not free it, even with a 15s wait. Looks like
+' a real OneDrive Personal limit, not something a retry loop can fix -- see
+' FIX-LIST.md item P's 2026-08-16 update for the full evidence.
+'
+' Slide CONTENT has never shown this limit anywhere in this project's history
+' (FIX-LIST P's own scope note: "text and tags wrote fine to a cloud deck in
+' the same session"), so these values now live as plain text on a dedicated
+' HIDDEN slide instead, keyed by shape NAME (an attribute of the slide's own
+' XML, not a separate metadata part -- and shape names over invisible tags is
+' this project's own established preference, since a person can see and
+' repair them). ReadStringProperty falls back to the OLD
+' CustomDocumentProperties location when nothing is found on the registry
+' slide, so decks registered before this change keep reading correctly;
+' WriteStringProperty only ever writes to the new location, so a value
+' migrates to the new mechanism the next time anything legitimately updates
+' it -- no separate migration step needed.
+Private Const REGISTRY_SLIDE_NAME As String = "DeckSyncRegistry"
 ' A CLOUD-HOSTED SAVE LANDS A BEAT AFTER THE CALL RETURNS, so a verifier that reads
 ' once, immediately, can report a working plain Save as failed. The three
 ' verifiers below used to handle that by WAITING on a cloud-hosted deck rather
@@ -104,53 +127,108 @@ Public Function ParseTypeRegistration(raw As String, ByRef templateSlideId As Lo
 End Function
 
 ' ---------------------------------------------------------------------
-' CustomDocumentProperties access
+' Registry-slide storage (see the REGISTRY_SLIDE_NAME comment above for why)
 ' ---------------------------------------------------------------------
 
+' Nothing (never creates) -- callers that only want to READ must not cause a
+' hidden slide to spring into existence on a deck that has never registered
+' anything.
+Private Function FindRegistrySlide(pres As Object) As Object
+    Dim sld As Object
+    On Error Resume Next
+    For Each sld In pres.Slides
+        If sld.Name = REGISTRY_SLIDE_NAME Then
+            Set FindRegistrySlide = sld
+            Exit Function
+        End If
+    Next sld
+    On Error GoTo 0
+End Function
+
+' Appended at the END so it never disturbs the index of a real slide anything
+' else in this project addresses by position. Hidden so it never appears in
+' Slide Show or Slide Sorter; still perfectly normal slide content otherwise.
+Private Function FindOrCreateRegistrySlide(pres As Object) As Object
+    Dim existing As Object
+    Set existing = FindRegistrySlide(pres)
+    If Not existing Is Nothing Then
+        Set FindOrCreateRegistrySlide = existing
+        Exit Function
+    End If
+
+    Dim sld As Object
+    Set sld = pres.Slides.Add(pres.Slides.Count + 1, ppLayoutBlank)
+    sld.Name = REGISTRY_SLIDE_NAME
+    sld.SlideShowTransition.Hidden = msoTrue
+    Set FindOrCreateRegistrySlide = sld
+End Function
+
+' Nothing if `registrySlide` is Nothing (deck has no registry slide yet) or
+' the key was never written.
+Private Function FindRegistryShape(registrySlide As Object, key As String) As Object
+    If registrySlide Is Nothing Then Exit Function
+    Dim shp As Object
+    For Each shp In registrySlide.Shapes
+        If shp.Name = key Then
+            Set FindRegistryShape = shp
+            Exit Function
+        End If
+    Next shp
+End Function
+
+' Tries the registry slide first; falls back to the pre-2026-08-16
+' CustomDocumentProperties location so decks registered before this change
+' keep reading correctly until something next writes the value (at which
+' point WriteStringProperty moves it to the registry slide for good).
 Private Function ReadStringProperty(pres As Object, propertyName As String) As String
+    Dim shp As Object
+    Set shp = FindRegistryShape(FindRegistrySlide(pres), propertyName)
+    If Not shp Is Nothing Then
+        ReadStringProperty = shp.TextFrame.TextRange.Text
+        Exit Function
+    End If
+
+    ReadStringProperty = ReadOldCustomProperty(pres, propertyName)
+End Function
+
+' THE OLD MECHANISM. Read-only fallback now -- see REGISTRY_SLIDE_NAME's
+' comment for why nothing writes here any more. Kept, not deleted, because
+' every deck registered before 2026-08-16 has real values ONLY here, for
+' anything nothing has re-written since (the type registry especially: most
+' of a real deck's ~40 project types were registered once at onboarding and
+' may never be written again).
+Private Function ReadOldCustomProperty(pres As Object, propertyName As String) As String
     Dim prop As Object
     On Error Resume Next
     Set prop = pres.CustomDocumentProperties(propertyName)
     On Error GoTo 0
 
     If prop Is Nothing Then
-        ReadStringProperty = ""
+        ReadOldCustomProperty = ""
     Else
-        ReadStringProperty = CStr(prop.Value)
+        ReadOldCustomProperty = CStr(prop.Value)
     End If
 End Function
 
+' Writes ONLY to the registry slide -- CustomDocumentProperties is never
+' written to again (see REGISTRY_SLIDE_NAME's comment). Updates an existing
+' shape's text IN PLACE rather than delete-and-recreate: unlike
+' CustomDocumentProperties, this project has used shapes' TextFrame content
+' constantly, through InjectPrimitive and everywhere else, with no equivalent
+' "update reports success but the old value survives" defect ever observed --
+' still proven fresh for THIS specific case by a deliberate repeated-write
+' test on a real cloud deck before this shipped, not assumed by analogy.
 Private Sub WriteStringProperty(pres As Object, propertyName As String, value As String)
-    Dim prop As Object
-    On Error Resume Next
-    Set prop = pres.CustomDocumentProperties(propertyName)
-    On Error GoTo 0
+    Dim registrySld As Object
+    Set registrySld = FindOrCreateRegistrySlide(pres)
 
-    ' DELETE AND RE-ADD, never assign to an existing property.
-    '
-    ' Measured 2026-07-31 against real PowerPoint: `prop.Value = value` on an
-    ' EXISTING custom document property reports success, survives a read-back in
-    ' the same session, survives Save reporting success -- and the old value is
-    ' still on disk when the file is reopened. Adding a property that does not
-    ' yet exist persists correctly, which is why this went unnoticed: every
-    ' first write worked, and only updates were lost.
-    '
-    ' The failure is silent in the worst way. A deck rolled forward to a new
-    ' quarter kept the old one, every subsequent run read the old quarter from
-    ' the deck and believed it, and the tool would have synced last quarter's
-    ' content while reporting the new period back to whoever asked.
-    '
-    ' Affects every setting stored this way -- the workbook path and the deck id
-    ' as much as the period. Any deck ever re-pointed at a different workbook
-    ' was at risk of silently keeping the old path.
-    If Not prop Is Nothing Then
-        On Error Resume Next
-        pres.CustomDocumentProperties(propertyName).Delete
-        On Error GoTo 0
+    Dim shp As Object
+    Set shp = FindRegistryShape(registrySld, propertyName)
+    If shp Is Nothing Then
+        Set shp = registrySld.Shapes.AddTextbox(msoTextOrientationHorizontal, 0, 0, 300, 20)
+        shp.Name = propertyName
     End If
-
-    pres.CustomDocumentProperties.Add Name:=propertyName, _
-        LinkToContent:=False, Type:=msoPropertyTypeString, Value:=value
+    shp.TextFrame.TextRange.Text = value
 End Sub
 
 ' Reads DeckSyncId, generating and persisting one via Scriptlet.TypeLib's
@@ -430,20 +508,50 @@ End Sub
 
 ' Every registered type's name (the part after the "DeckSyncType:" prefix),
 ' for the New Period picker's type dropdown and any other "what types does
-' this deck know about" need. Order is whatever CustomDocumentProperties'
-' own iteration order is (insertion order in practice, but not a documented
-' guarantee) -- callers needing a stable display order should sort.
+' this deck know about" need. Reads BOTH locations and dedupes: the registry
+' slide (anything registered or re-registered since 2026-08-16) and the old
+' CustomDocumentProperties (everything registered before then that nothing
+' has re-registered since -- typically most of a real deck's types, each
+' normally registered once at onboarding and never again). Order is whatever
+' each source's own iteration order is -- callers needing a stable display
+' order should sort.
 Public Function ListRegisteredTypes(pres As Object) As String()
     Dim results() As String
     Dim n As Long
     n = 0
 
+    Dim seen As Object
+    Set seen = CreateObject("Scripting.Dictionary")
+
+    Dim registrySld As Object
+    Set registrySld = FindRegistrySlide(pres)
+    If Not registrySld Is Nothing Then
+        Dim shp As Object
+        For Each shp In registrySld.Shapes
+            If Left(shp.Name, Len(TYPE_PROPERTY_PREFIX)) = TYPE_PROPERTY_PREFIX Then
+                Dim typeName As String
+                typeName = Mid(shp.Name, Len(TYPE_PROPERTY_PREFIX) + 1)
+                If Not seen.Exists(typeName) Then
+                    seen.Add typeName, True
+                    n = n + 1
+                    ReDim Preserve results(1 To n)
+                    results(n) = typeName
+                End If
+            End If
+        Next shp
+    End If
+
     Dim prop As Object
     For Each prop In pres.CustomDocumentProperties
         If Left(prop.Name, Len(TYPE_PROPERTY_PREFIX)) = TYPE_PROPERTY_PREFIX Then
-            n = n + 1
-            ReDim Preserve results(1 To n)
-            results(n) = Mid(prop.Name, Len(TYPE_PROPERTY_PREFIX) + 1)
+            Dim oldTypeName As String
+            oldTypeName = Mid(prop.Name, Len(TYPE_PROPERTY_PREFIX) + 1)
+            If Not seen.Exists(oldTypeName) Then
+                seen.Add oldTypeName, True
+                n = n + 1
+                ReDim Preserve results(1 To n)
+                results(n) = oldTypeName
+            End If
         End If
     Next prop
 
@@ -832,6 +940,189 @@ Failed:
     On Error GoTo 0
 End Function
 
+' PropertyOnDisk's counterpart for the registry-slide mechanism: proves a
+' write actually reached the SAVED FILE by reading it back from raw bytes,
+' same technique (copy, open as zip, extract, read), different target --
+' scans EVERY ppt/slides/slideN.xml for a shape named `key`, rather than one
+' small docProps/custom.xml. Deliberately does NOT try to identify "the"
+' registry slide by number: PowerPoint renumbers slideNN.xml parts on every
+' save (this project's own established trap, hit for real 2026-08-16 on
+' Scenario 3 -- cross-checked via SlideID that day for exactly this reason),
+' so a filename guess would silently start reading the wrong slide the first
+' time the deck's slide order changes. Same three-state contract as
+' PropertyOnDisk: "" + readFailed=False means genuinely absent; "" +
+' readFailed=True means could not be read at all.
+Public Function RegistryValueOnDisk(ByVal deckPath As String, key As String, _
+                                    Optional ByRef trace As String, _
+                                    Optional ByRef readFailed As Boolean) As String
+    On Error GoTo Failed
+    readFailed = True
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    trace = "fso ok"
+
+    If LCase$(Left$(deckPath, 4)) = "http" Then
+        Dim mapped As String
+        mapped = LocalPathForUrl(deckPath, trace)
+        If mapped = "" Then
+            trace = trace & " | cloud deck, no local copy found: " & deckPath
+            Exit Function
+        End If
+        deckPath = mapped
+    End If
+    If Not fso.FileExists(deckPath) Then
+        trace = trace & " | file missing: " & deckPath
+        Exit Function
+    End If
+
+    Dim work As String
+    work = fso.BuildPath(fso.GetSpecialFolder(2).Path, "dsregverify_" & Format(Now, "hhnnss") & Int(Rnd * 10000))
+    fso.CreateFolder work
+    trace = trace & " | work=" & work
+
+    Dim zipPath As String, outDir As String
+    zipPath = fso.BuildPath(work, "deck.zip")
+    outDir = fso.BuildPath(work, "out")
+    fso.CreateFolder outDir
+    fso.CopyFile deckPath, zipPath
+    trace = trace & " | copied"
+
+    Dim sh As Object
+    Set sh = CreateObject("Shell.Application")
+
+    ' VARIANT, NOT STRING, for every sh.Namespace(...) call in this function --
+    ' same bug this project already fixed once in PropertyOnDisk (see its own
+    ' header comment): Shell.Application's Namespace takes a Variant, and a
+    ' String-typed VBA variable makes it return Nothing rather than raising.
+    ' Missed on THIS function's outDir the first time -- confirmed live
+    ' 2026-08-16 as the real cause of a bare "Object variable or With block
+    ' variable not set" (91) on `sh.Namespace(outDir).CopyHere`, isolated with
+    ' a parallel PowerShell probe that proved the navigation technique itself
+    ' was sound before suspecting this line specifically.
+    Dim zipVar As Variant, outVar As Variant
+    zipVar = zipPath
+    outVar = outDir
+    Dim zipNs As Object
+    Set zipNs = sh.Namespace(zipVar)
+    If zipNs Is Nothing Then
+        trace = trace & " | Namespace(zip) returned Nothing"
+        GoTo Cleanup
+    End If
+
+    readFailed = False   ' the zip opened -- everything below is a statement about its contents
+
+    Dim pptItem As Object
+    Set pptItem = zipNs.ParseName("ppt")
+    If pptItem Is Nothing Then
+        trace = trace & " | ppt NOT FOUND -- not a real pptx package"
+        GoTo Cleanup
+    End If
+
+    Dim pptVar As Variant
+    pptVar = pptItem.Path
+    Dim pptNs As Object
+    Set pptNs = sh.Namespace(pptVar)
+    If pptNs Is Nothing Then
+        trace = trace & " | Namespace(ppt) returned Nothing"
+        readFailed = True
+        GoTo Cleanup
+    End If
+
+    Dim slidesItem As Object
+    Set slidesItem = pptNs.ParseName("slides")
+    If slidesItem Is Nothing Then
+        trace = trace & " | ppt/slides NOT FOUND -- a deck with no slides declares nothing"
+        GoTo Cleanup
+    End If
+
+    Dim slidesVar As Variant
+    slidesVar = slidesItem.Path
+    Dim slidesNs As Object
+    Set slidesNs = sh.Namespace(slidesVar)
+    If slidesNs Is Nothing Then
+        trace = trace & " | Namespace(ppt/slides) returned Nothing"
+        readFailed = True
+        GoTo Cleanup
+    End If
+
+    Dim needle As String
+    needle = "name=" & Chr(34) & key & Chr(34)
+
+    Dim slideItem As Object
+    Dim scanned As Long
+    For Each slideItem In slidesNs.Items
+        ' TRUE filename from .Path, NEVER .Name. Confirmed live 2026-08-16:
+        ' with Windows' "hide extensions for known file types" ON (the
+        ' common default -- HideFileExt=1 in the registry), Shell.Application
+        ' FolderItem.Name reflects the EXPLORER DISPLAY name and silently
+        ' drops ".xml", so a filter on .Name matched zero slide parts on a
+        ' deck that genuinely had one -- caught by the suite, not assumed.
+        ' .Path keeps the real filename regardless of that display setting.
+        Dim trueName As String
+        trueName = FileNameOnly(slideItem.Path)
+
+        If LCase$(Right$(trueName, 4)) = ".xml" And Left$(LCase$(trueName), 5) = "slide" Then
+            scanned = scanned + 1
+
+            sh.Namespace(outVar).CopyHere slideItem, 16
+            Dim extracted As String
+            extracted = fso.BuildPath(outDir, trueName)
+
+            Dim waited As Long
+            waited = 0
+            Do While Not fso.FileExists(extracted) And waited < 100
+                WaitAMoment
+                waited = waited + 1
+            Loop
+            If Not fso.FileExists(extracted) Then GoTo NextSlide
+
+            Dim xml As String
+            xml = fso.OpenTextFile(extracted, 1).ReadAll
+            fso.DeleteFile extracted, True
+
+            Dim atName As Long
+            atName = InStr(1, xml, needle, vbBinaryCompare)
+            If atName > 0 Then
+                Dim openTag As Long, closeTag As Long
+                openTag = InStr(atName, xml, "<a:t>")
+                If openTag = 0 Then
+                    trace = trace & " | '" & key & "' shape found in " & trueName & " but no <a:t> value"
+                    readFailed = True
+                    GoTo Cleanup
+                End If
+                openTag = openTag + Len("<a:t>")
+                closeTag = InStr(openTag, xml, "</a:t>")
+                If closeTag = 0 Then
+                    trace = trace & " | '" & key & "' value never closed in " & trueName
+                    readFailed = True
+                    GoTo Cleanup
+                End If
+
+                RegistryValueOnDisk = Mid$(xml, openTag, closeTag - openTag)
+                trace = trace & " | found in " & trueName & " (scanned " & scanned & " slide part(s))"
+                GoTo Cleanup
+            End If
+        End If
+NextSlide:
+    Next slideItem
+
+    trace = trace & " | '" & key & "' not found across " & scanned & " slide part(s)"
+
+Cleanup:
+    On Error Resume Next
+    fso.DeleteFolder work, True
+    On Error GoTo 0
+    Exit Function
+
+Failed:
+    trace = trace & " | ERROR " & Err.Number & ": " & Err.Description
+    readFailed = True
+    On Error Resume Next
+    If Not fso Is Nothing Then fso.DeleteFolder work, True
+    On Error GoTo 0
+End Function
+
 ' Saves the deck and CONFIRMS the file changed, or says why not.
 '
 ' 2026-08-08, measured on the rig: Apply Approved reported "16 written, 0 failed",
@@ -961,10 +1252,12 @@ End Function
 
 
 ' The deck's period, from the saved file. Kept as its own name because it is the
-' one every caller asks for.
+' one every caller asks for. RegistryValueOnDisk, not PropertyOnDisk -- the
+' period lives on the registry slide now, not in CustomDocumentProperties;
+' see REGISTRY_SLIDE_NAME's comment.
 Public Function PeriodOnDisk(deckPath As String, Optional ByRef trace As String, _
                              Optional ByRef readFailed As Boolean) As String
-    PeriodOnDisk = PropertyOnDisk(deckPath, PROP_DECK_PERIOD, trace, readFailed)
+    PeriodOnDisk = RegistryValueOnDisk(deckPath, PROP_DECK_PERIOD, trace, readFailed)
 End Function
 
 ' Returns "" when the period is confirmed on disk, otherwise a message saying
@@ -1037,7 +1330,7 @@ End Function
 ' recorded", not "what would we open".
 Public Function WorkbookPathOnDisk(deckPath As String, Optional ByRef trace As String, _
                                    Optional ByRef readFailed As Boolean) As String
-    WorkbookPathOnDisk = PropertyOnDisk(deckPath, WORKBOOK_PATH_PROPERTY_NAME, trace, readFailed)
+    WorkbookPathOnDisk = RegistryValueOnDisk(deckPath, WORKBOOK_PATH_PROPERTY_NAME, trace, readFailed)
 End Function
 
 ' Returns "" when the pairing is confirmed in the saved file, otherwise a message
