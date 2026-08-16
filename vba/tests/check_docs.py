@@ -32,9 +32,16 @@ SKIP_DIRS = {'.git', '__pycache__', '.pytest_cache', 'node_modules'}
 # Historical by design: exchange rounds and dated snapshots are records of what
 # was believed at the time and must NOT be rewritten to match today's code.
 HISTORICAL = re.compile(
-    r'(^specs/)|(NEXT-SESSION-\d{4}-\d\d-\d\d\.md$)|(CYCLE-FINDINGS-)|'
+    r'(^archive/)|(^specs/)|(NEXT-SESSION-\d{4}-\d\d-\d\d\.md$)|(CYCLE-FINDINGS-)|'
     r'(FIRST-REAL-RUN\.md$)|(IMPLEMENTATION_PLAN\.md$)|(SPIKE_NOTES)|'
     r'(test-fixtures/)|(PROMPT_)|(AGENTS\.md$)')
+# ^archive/ added 2026-08-16 when specs/ and vba/SPIKE_NOTES_*.md moved under
+# archive/ during the documentation sweep -- ^specs/ alone stopped matching the
+# moment the directory changed. Everything under archive/ is historical by
+# construction now, so this also makes future archival additions exempt
+# automatically instead of needing a new pattern each time. The other patterns
+# above are unanchored (match by filename, not directory) and kept working
+# through the move without needing this fix.
 
 
 def read(p):
