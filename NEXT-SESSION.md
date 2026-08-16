@@ -1,23 +1,31 @@
 # NEXT SESSION — start here
 
-> ## 17 AUG, ~02:45 — READ THIS BLOCK FIRST. **STATUS: CURRENT.** Continuation of
-> the same session (16 Aug evening through past 2:30am 17 Aug), written while Rohan
-> was asleep/dozing under his own "run what you can" instruction.
+> ## 17 AUG, MORNING — READ THIS BLOCK FIRST. **STATUS: CURRENT.** Continuation of
+> the same very long session (16 Aug evening through 17 Aug morning).
 >
-> **Lobby Phase 3 built and tested, DELIBERATELY NOT DEPLOYED (`343748e`).**
-> `ReviewQueue.BuildQueue` now pre-ticks every item it creates; `PutItOnTheSlidesCore`'s
-> Yes/No/Cancel gate is gone, pending ticks go straight to `ApplyApprovedCore`. Full
-> suite 236/0, proven with a genuine fail-then-pass test on the pre-tick default. **Not
-> deployed on purpose**: this is the single most consequential change in the whole
-> design — it changes what counts as a human decision on content reaching a real slide,
-> the exact thing R13 exists to protect. The DESIGN was reviewed and agreed by Rohan at
-> length earlier the same night (LOBBY-DESIGN.md section 5); this specific
-> *implementation* has not been. No new `.ppam` was built with it in. **Needs: Rohan
-> reads the `RibbonUI.PutItOnTheSlidesCore`/`ReviewQueue.BuildQueue` diff, and only
-> then does someone build+deploy `addin119` with it in.** Judgement call made solo,
-> overnight, under a loose "push"/"run what you can" instruction that did not
-> specifically anticipate a change this consequential — flagging that plainly rather
-> than assuming the instruction covered it.
+> **Lobby Phases 0-3 all built, tested, and DEPLOYED (`addin119`).** Phase 3 (pre-ticked
+> queue + no-modal apply) was built and pushed overnight but deliberately held back from
+> deployment — the most consequential change in the design, changing what counts as a
+> human decision on content reaching a real slide. Rohan reviewed it this morning: asked
+> real questions about the layered no-overwrite mechanism (build-time diff filter,
+> apply-time hash revalidation, the injector's own no-op check) and about a proposed
+> "register as memory" shortcut to skip live shape reads (correctly rejected — it would
+> trust a remembered value over the live slide, the exact anti-pattern this project has
+> been burned by before), then approved: *"let's get it built properly."* `addin119`
+> built, moved to trusted, hash-verified, registered `AutoLoad=1`, `addin118` set to
+> `0`, confirmed loaded live via a fresh PowerPoint launch.
+>
+> **Phase 4 (sheet-merging) intentionally not started.** Explicitly gated on whether
+> Phases 0-3 already solve the tab-clutter complaint once used for real (they haven't
+> been yet), and structurally riskier than anything else this session — real surgery on
+> `Drafting.WriteDraftingSheet`'s fixed-row-position assumptions, the same function with
+> five prior real incidents including one that wiped 129 paragraphs, 43 ticks and 75
+> notes. Discussed and agreed with Rohan not to bundle it in.
+>
+> **`PutItOnTheSlidesCore`'s new no-modal path still has no automated test of its own**
+> (same gap `PublishAllDraftedFields` has — needs `Application.ActivePresentation`,
+> nothing in this codebase exercises that chain end-to-end). The next real "2. Put it
+> on the slides" press, live, is the actual first proof of Phase 3 in anger.
 >
 > **Lobby Phase 2 built, proven live, committed (`af74908`).** `DraftingUI.
 > PublishAllDraftedFields` now reads `DraftingLobby.ReadLobby`/`DistinctPinnedFields`
