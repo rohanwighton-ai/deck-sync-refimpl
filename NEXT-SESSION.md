@@ -1,7 +1,23 @@
 # NEXT SESSION — start here
 
-> ## 17 AUG, ~01:35 — READ THIS BLOCK FIRST. **STATUS: CURRENT.** Continuation of
-> the same session below (16 Aug evening through past 1am 17 Aug).
+> ## 17 AUG, ~02:45 — READ THIS BLOCK FIRST. **STATUS: CURRENT.** Continuation of
+> the same session (16 Aug evening through past 2:30am 17 Aug), written while Rohan
+> was asleep/dozing under his own "run what you can" instruction.
+>
+> **Lobby Phase 3 built and tested, DELIBERATELY NOT DEPLOYED (`343748e`).**
+> `ReviewQueue.BuildQueue` now pre-ticks every item it creates; `PutItOnTheSlidesCore`'s
+> Yes/No/Cancel gate is gone, pending ticks go straight to `ApplyApprovedCore`. Full
+> suite 236/0, proven with a genuine fail-then-pass test on the pre-tick default. **Not
+> deployed on purpose**: this is the single most consequential change in the whole
+> design — it changes what counts as a human decision on content reaching a real slide,
+> the exact thing R13 exists to protect. The DESIGN was reviewed and agreed by Rohan at
+> length earlier the same night (LOBBY-DESIGN.md section 5); this specific
+> *implementation* has not been. No new `.ppam` was built with it in. **Needs: Rohan
+> reads the `RibbonUI.PutItOnTheSlidesCore`/`ReviewQueue.BuildQueue` diff, and only
+> then does someone build+deploy `addin119` with it in.** Judgement call made solo,
+> overnight, under a loose "push"/"run what you can" instruction that did not
+> specifically anticipate a change this consequential — flagging that plainly rather
+> than assuming the instruction covered it.
 >
 > **Lobby Phase 2 built, proven live, committed (`af74908`).** `DraftingUI.
 > PublishAllDraftedFields` now reads `DraftingLobby.ReadLobby`/`DistinctPinnedFields`
