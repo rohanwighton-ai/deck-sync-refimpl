@@ -274,6 +274,24 @@ Public Function CodeLetterOf(instanceKey As String) As String
     CodeLetterOf = ch
 End Function
 
+' The guard CreateTemplateSlideCore enforces before making a new template:
+' one per type/letter pair, never a silent second one (Scenario 3 step 4).
+' Returns the BLOCKING template slide if one already exists for this exact
+' type+letter, or -- when letter is "" (CodeLetterOf's own "no opinion"
+' convention, for a deck with no letter axis at all, or a key like "1_2003"
+' with nothing to read) -- for the type overall, the same one-per-type check
+' this generalises. Returns Nothing when it is safe to proceed.
+Public Function ExistingTemplateForLetter(pres As Object, slideType As String, letter As String) As Object
+    If letter <> "" Then
+        Dim existing As Object
+        Dim ws As String
+        DeckRegistry.LookupTemplateLetter pres, slideType, letter, existing, ws
+        Set ExistingTemplateForLetter = existing
+    Else
+        Set ExistingTemplateForLetter = FindTemplateFor(slideType)
+    End If
+End Function
+
 Public Function FindTemplateFor(slideType As String) As Object
     Dim sld As Object
     For Each sld In Application.ActivePresentation.Slides

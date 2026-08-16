@@ -299,9 +299,45 @@ code 2026-08-16, not assumed.*
       dedicated tests (`RunSync_EndToEndCreatesSlidesFromFreshSheet`,
       `RunSync_CreateMissingRefusesWhileSlidesAreUnclassified`) still pass
       unchanged.
-- [ ] Step 4 — relax the one-per-type guards (`RibbonUI.bas:2375` and
-      `MakeTemplateFrom`) to one-per-type-**per-letter**, before step 5 or it's
-      refused outright.
+- [x] Step 4 — relax the one-per-type guard to one-per-type-**per-letter**.
+      **Done 2026-08-16.** `MakeTemplateFrom` itself never actually had a
+      one-per-type guard (checked before touching it) — it only refuses when
+      the SOURCE slide is already a template or the wrong type; the real
+      one-per-type block was entirely in `RibbonUI.CreateTemplateSlideCore`
+      (`FindTemplateFor(slideType)`, type-only). Found and fixed a real
+      design gap in the process: the source slide `Create Template Slide`
+      cloned from was picked via `DeckRegistry.LookupType`, which points at
+      the type's real onboarded slide **only until the first template is
+      made** — `RegisterType` always overwrites that single property, so a
+      SECOND letter could never find a representative real slide to clone
+      from. Fixed by having the human pick the real source slide directly
+      (new `PickTemplateSource` picker, lists real non-template instances by
+      key + derived letter) — the letter then comes from that slide's own
+      instance key via `CodeLetterOf`, no separate "which letter" prompt.
+      Guard and registration logic pulled OUT of the untestable MsgBox/
+      InputBox-driven Sub into two new testable functions:
+      `TemplateSlide.ExistingTemplateForLetter` (the guard) and
+      `DeckRegistry.RegisterNewTemplateLetter` (claims the letter's own slot,
+      and ALSO the type-level fallback but only if nothing already holds it
+      as a real template — so the FIRST letter made becomes what every
+      letter-less row still resolves through, and a SECOND letter can't
+      steal it). 4 new tests. Also found and fixed, in the same pass: 12
+      instances of `Assert(Not x Is Nothing And x.Foo = y)` across this
+      session's own tests — VBA's `And` isn't short-circuit, so that form
+      raises "Object variable not set" instead of failing cleanly the moment
+      `x` is genuinely `Nothing`. One had already gone live (caught by the
+      suite going 221 passed / 1 ERRORED); the other 11 were dormant
+      landmines never yet triggered. Added a shared `AssertSameSlide` helper
+      so the whole class can't recur. Suite 218→222/0.
+- [ ] `SCENARIOS.md`'s scenario 3 row still names `TemplateSlide.FindTemplateFor`
+      as the blocking mechanism. That was already slightly wrong when
+      written (see step 2's note) and is more wrong now — the real guard as
+      of step 4 is `TemplateSlide.ExistingTemplateForLetter` /
+      `DeckRegistry.RegisterNewTemplateLetter`, not a live scan. Needs a
+      rewrite, not a patch — folding in with step 5 rather than done here,
+      since step 5 (drawing the real K/S templates) is what will actually
+      exercise this path for the first time and is the natural point to
+      re-verify the row against real behaviour rather than reasoning about it.
 - [ ] Step 5 — the deck surgery: make the `K` and `S` templates from real slides,
       on a copy, never the live deck.
 

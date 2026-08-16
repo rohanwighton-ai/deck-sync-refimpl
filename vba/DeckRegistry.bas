@@ -479,6 +479,33 @@ Public Function LookupTemplateForLetter(pres As Object, slideType As String, let
     LookupTemplateForLetter = LookupType(pres, slideType, templateSld, worksheetName)
 End Function
 
+' The registration CreateTemplateSlideCore performs after a new template is
+' successfully made (Scenario 3 step 4). Always registers the letter-specific
+' slot when there is a letter. ALSO claims the type-level fallback (the plain
+' DeckSyncType: registration -- what every letter-less row, and every
+' letter-blind caller such as Audit Fields or FindTemplateFor's default path,
+' still resolves through) but ONLY when nothing has already claimed it as a
+' real template: the FIRST template made for a type is what becomes that
+' fallback, and a SECOND letter must not steal it out from under the first.
+' letter = "" (a deck with no letter axis) just registers the plain type,
+' same as always -- there is nothing to key a per-letter registration on.
+Public Sub RegisterNewTemplateLetter(pres As Object, slideType As String, letter As String, newSld As Object, worksheetName As String)
+    If letter = "" Then
+        RegisterType pres, slideType, newSld, worksheetName
+        Exit Sub
+    End If
+
+    RegisterTemplateLetter pres, slideType, letter, newSld, worksheetName
+
+    Dim fallbackSld As Object
+    Dim fallbackWs As String
+    If Not LookupType(pres, slideType, fallbackSld, fallbackWs) Then
+        RegisterType pres, slideType, newSld, worksheetName
+    ElseIf Not Resolve.IsTemplateSlide(fallbackSld) Then
+        RegisterType pres, slideType, newSld, worksheetName
+    End If
+End Sub
+
 ' Every registered type's name (the part after the "DeckSyncType:" prefix),
 ' for the New Period picker's type dropdown and any other "what types does
 ' this deck know about" need. Order is whatever CustomDocumentProperties'

@@ -314,6 +314,42 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("TemplateSlide_ExistingTemplateForLetterFindsTheRightOne", filterPattern) Then
+        r = Test_TemplateSlide_ExistingTemplateForLetterFindsTheRightOne()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "TemplateSlide_ExistingTemplateForLetterFindsTheRightOne", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("TemplateSlide_ExistingTemplateForLetterEmptyLetterUsesTypeWideCheck", filterPattern) Then
+        r = Test_TemplateSlide_ExistingTemplateForLetterEmptyLetterUsesTypeWideCheck()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "TemplateSlide_ExistingTemplateForLetterEmptyLetterUsesTypeWideCheck", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("DeckRegistry_RegisterNewTemplateLetterClaimsFallbackWhenNoneExists", filterPattern) Then
+        r = Test_DeckRegistry_RegisterNewTemplateLetterClaimsFallbackWhenNoneExists()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "DeckRegistry_RegisterNewTemplateLetterClaimsFallbackWhenNoneExists", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("DeckRegistry_RegisterNewTemplateLetterDoesNotStealAnExistingTemplateFallback", filterPattern) Then
+        r = Test_DeckRegistry_RegisterNewTemplateLetterDoesNotStealAnExistingTemplateFallback()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "DeckRegistry_RegisterNewTemplateLetterDoesNotStealAnExistingTemplateFallback", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("ReviewQueue_HashDistinguishesEveryField", filterPattern) Then
         r = Test_ReviewQueue_HashDistinguishesEveryField()
     Else
@@ -1733,6 +1769,22 @@ Private Function Assert(cond As Boolean, msg As String) As String
     End If
 End Function
 
+' Safe replacement for "Assert(Not actual Is Nothing And actual.SlideID =
+' expected.SlideID, msg)". VBA's And is NOT short-circuit -- both operands
+' always evaluate -- so that combined form raises "Object variable or With
+' block variable not set" the moment `actual` is genuinely Nothing, instead
+' of failing cleanly with the message. Found for real 2026-08-16, after the
+' unsafe form had already passed silently in several tests because `actual`
+' was never actually Nothing on their happy path -- a landmine, not yet a
+' failure. Every same-slide comparison in this file goes through here now.
+Private Function AssertSameSlide(actual As Object, expected As Object, msg As String) As String
+    If actual Is Nothing Then
+        AssertSameSlide = Assert(False, msg & " -- got Nothing")
+    Else
+        AssertSameSlide = Assert(actual.SlideID = expected.SlideID, msg & " -- got SlideID " & actual.SlideID & " want " & expected.SlideID)
+    End If
+End Function
+
 ' Shape.Select (used by ResolveFields' tests to simulate a real user click)
 ' requires the shape's slide to be the window's active view -- confirmed the
 ' hard way (2026-07-26 real-Office run): Slides.Add does not itself navigate
@@ -3033,6 +3085,130 @@ Private Function Test_TemplateSlide_ConfirmTextStatesTheConsequences() As String
     result = result & Assert(TemplateSlide.PlaceholderFor("Status") = "<<Status>>", "PlaceholderFor wraps the role name, got '" & TemplateSlide.PlaceholderFor("Status") & "'")
 
     Test_TemplateSlide_ConfirmTextStatesTheConsequences = result
+End Function
+
+Private Function Test_TemplateSlide_ExistingTemplateForLetterFindsTheRightOne() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim tmplK As Object, tmplS As Object
+    Set tmplK = NewBlankSlide()
+    tmplK.Tags.Add "slide_type", "existing-tmpl-type"
+    tmplK.Tags.Add "is_template", "1"
+    Set tmplS = NewBlankSlide()
+    tmplS.Tags.Add "slide_type", "existing-tmpl-type"
+    tmplS.Tags.Add "is_template", "1"
+
+    DeckRegistry.RegisterTemplateLetter pres, "existing-tmpl-type", "K", tmplK, "SheetK"
+    DeckRegistry.RegisterTemplateLetter pres, "existing-tmpl-type", "S", tmplS, "SheetS"
+
+    Dim foundK As Object
+    Set foundK = TemplateSlide.ExistingTemplateForLetter(pres, "existing-tmpl-type", "K")
+    result = result & AssertSameSlide(foundK, tmplK, "K letter finds the K template")
+
+    Dim foundS As Object
+    Set foundS = TemplateSlide.ExistingTemplateForLetter(pres, "existing-tmpl-type", "S")
+    result = result & AssertSameSlide(foundS, tmplS, "S letter finds the S template, not K's")
+
+    Dim foundP As Object
+    Set foundP = TemplateSlide.ExistingTemplateForLetter(pres, "existing-tmpl-type", "P")
+    Dim foundPDesc As String
+    If foundP Is Nothing Then foundPDesc = "Nothing" Else foundPDesc = "SlideIndex " & foundP.SlideIndex
+    result = result & Assert(foundP Is Nothing, "an unregistered letter (P) finds nothing -- it is safe to create one, got " & foundPDesc)
+
+    tmplK.Delete
+    tmplS.Delete
+    Test_TemplateSlide_ExistingTemplateForLetterFindsTheRightOne = result
+End Function
+
+Private Function Test_TemplateSlide_ExistingTemplateForLetterEmptyLetterUsesTypeWideCheck() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    ' No letter to key on -- must fall back to the ORIGINAL one-per-type
+    ' check (FindTemplateFor's live scan), not report "safe to proceed" just
+    ' because nothing was ever registered under an empty-string letter.
+    Dim tmpl As Object
+    Set tmpl = NewBlankSlide()
+    tmpl.Tags.Add "slide_type", "empty-letter-tmpl-type"
+    tmpl.Tags.Add "is_template", "1"
+
+    Dim found As Object
+    Set found = TemplateSlide.ExistingTemplateForLetter(pres, "empty-letter-tmpl-type", "")
+    result = result & AssertSameSlide(found, tmpl, "empty letter still finds the type's one template via the type-wide check")
+
+    tmpl.Delete
+    Test_TemplateSlide_ExistingTemplateForLetterEmptyLetterUsesTypeWideCheck = result
+End Function
+
+Private Function Test_DeckRegistry_RegisterNewTemplateLetterClaimsFallbackWhenNoneExists() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim tmplK As Object
+    Set tmplK = NewBlankSlide()
+    tmplK.Tags.Add "slide_type", "regnew-type-1"
+    tmplK.Tags.Add "is_template", "1"
+
+    DeckRegistry.RegisterNewTemplateLetter pres, "regnew-type-1", "K", tmplK, "SheetK"
+
+    Dim foundLetter As Object
+    Dim wsLetter As String
+    Dim okLetter As Boolean
+    okLetter = DeckRegistry.LookupTemplateLetter(pres, "regnew-type-1", "K", foundLetter, wsLetter)
+    result = result & Assert(okLetter, "the letter-specific lookup reports success")
+    result = result & AssertSameSlide(foundLetter, tmplK, "the letter-specific slot is registered")
+
+    Dim foundFallback As Object
+    Dim wsFallback As String
+    Dim okFallback As Boolean
+    okFallback = DeckRegistry.LookupType(pres, "regnew-type-1", foundFallback, wsFallback)
+    result = result & Assert(okFallback, "the type-level fallback lookup reports success")
+    result = result & AssertSameSlide(foundFallback, tmplK, _
+        "the FIRST template for a type also claims the type-level fallback, since nothing held it yet")
+
+    tmplK.Delete
+    Test_DeckRegistry_RegisterNewTemplateLetterClaimsFallbackWhenNoneExists = result
+End Function
+
+Private Function Test_DeckRegistry_RegisterNewTemplateLetterDoesNotStealAnExistingTemplateFallback() As String
+    Dim result As String
+    Dim pres As Object
+    Set pres = Application.ActivePresentation
+
+    Dim tmplK As Object, tmplS As Object
+    Set tmplK = NewBlankSlide()
+    tmplK.Tags.Add "slide_type", "regnew-type-2"
+    tmplK.Tags.Add "is_template", "1"
+    Set tmplS = NewBlankSlide()
+    tmplS.Tags.Add "slide_type", "regnew-type-2"
+    tmplS.Tags.Add "is_template", "1"
+
+    ' K registered first -- claims both its own slot AND the type-level
+    ' fallback, same as the previous test.
+    DeckRegistry.RegisterNewTemplateLetter pres, "regnew-type-2", "K", tmplK, "SheetK"
+
+    ' S registered second -- must get its OWN slot, but must NOT steal the
+    ' fallback out from under K.
+    DeckRegistry.RegisterNewTemplateLetter pres, "regnew-type-2", "S", tmplS, "SheetS"
+
+    Dim foundS As Object
+    Dim wsS As String
+    DeckRegistry.LookupTemplateLetter pres, "regnew-type-2", "S", foundS, wsS
+    result = result & AssertSameSlide(foundS, tmplS, "S's own letter slot is registered")
+
+    Dim foundFallback As Object
+    Dim wsFallback As String
+    DeckRegistry.LookupType pres, "regnew-type-2", foundFallback, wsFallback
+    result = result & AssertSameSlide(foundFallback, tmplK, _
+        "the type-level fallback still points at K, the FIRST template -- S did not steal it")
+
+    tmplK.Delete
+    tmplS.Delete
+    Test_DeckRegistry_RegisterNewTemplateLetterDoesNotStealAnExistingTemplateFallback = result
 End Function
 
 ' ---------------------------------------------------------------------
@@ -6457,8 +6633,8 @@ Private Function Test_DeckRegistry_TwoLettersOfSameTypeDoNotCollide() As String
     DeckRegistry.LookupTemplateLetter pres, "test-letter-type-collide", "K", foundK, wsK
     DeckRegistry.LookupTemplateLetter pres, "test-letter-type-collide", "S", foundS, wsS
 
-    result = result & Assert(Not foundK Is Nothing And foundK.SlideID = sldK.SlideID, "K resolves to the K slide")
-    result = result & Assert(Not foundS Is Nothing And foundS.SlideID = sldS.SlideID, "S resolves to the S slide")
+    result = result & AssertSameSlide(foundK, sldK, "K resolves to the K slide")
+    result = result & AssertSameSlide(foundS, sldS, "S resolves to the S slide")
     result = result & Assert(wsK = "SheetK", "K's worksheet name is 'SheetK', got '" & wsK & "'")
     result = result & Assert(wsS = "SheetS", "S's worksheet name is 'SheetS', got '" & wsS & "'")
 
@@ -6480,7 +6656,7 @@ Private Function Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterEmp
     ok = DeckRegistry.LookupTemplateForLetter(pres, "test-fallback-type-empty", "", foundSld, ws)
 
     result = result & Assert(ok, "an empty letter falls back to the plain type registration")
-    result = result & Assert(Not foundSld Is Nothing And foundSld.SlideID = unlettered.SlideID, "fallback returned the unlettered template")
+    result = result & AssertSameSlide(foundSld, unlettered, "fallback returned the unlettered template")
 
     Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterEmpty = result
 End Function
@@ -6502,7 +6678,7 @@ Private Function Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterUnr
     ok = DeckRegistry.LookupTemplateForLetter(pres, "test-fallback-type-unreg", "K", foundSld, ws)
 
     result = result & Assert(ok, "a letter with no per-letter registration falls back to the plain type")
-    result = result & Assert(Not foundSld Is Nothing And foundSld.SlideID = unlettered.SlideID, "fallback returned the unlettered template")
+    result = result & AssertSameSlide(foundSld, unlettered, "fallback returned the unlettered template")
 
     Test_DeckRegistry_LookupTemplateForLetterFallsBackWhenLetterUnregistered = result
 End Function
@@ -6524,7 +6700,7 @@ Private Function Test_DeckRegistry_LookupTemplateForLetterPrefersLetterOverUnlet
     ok = DeckRegistry.LookupTemplateForLetter(pres, "test-fallback-type-prefer", "K", foundSld, ws)
 
     result = result & Assert(ok, "lookup succeeds when both are registered")
-    result = result & Assert(Not foundSld Is Nothing And foundSld.SlideID = lettered.SlideID, "the per-letter template wins over the unlettered one, got SlideID " & IIf(foundSld Is Nothing, "Nothing", foundSld.SlideID) & " want " & lettered.SlideID)
+    result = result & AssertSameSlide(foundSld, lettered, "the per-letter template wins over the unlettered one")
     result = result & Assert(ws = "SheetK3", "worksheet name is the letter's, got '" & ws & "'")
 
     Test_DeckRegistry_LookupTemplateForLetterPrefersLetterOverUnlettered = result

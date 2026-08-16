@@ -2368,24 +2368,19 @@ Private Sub CreateTemplateSlideCore()
     slideType = PickType(types, "Create Template Slide -- Choose Type")
     If slideType = "" Then Exit Sub
 
-    ' Already has one: stop here rather than at MakeTemplateFrom's own guard,
-    ' so the message can name the existing template's slide number. Both
-    ' checks stay -- this one is for the human, that one is the invariant.
-    Dim existing As Object
-    Set existing = TemplateSlide.FindTemplateFor(slideType)
-    If Not existing Is Nothing Then
-        MsgBox "Type '" & slideType & "' already has a master template: slide " & existing.SlideIndex & "." & vbCrLf & vbCrLf & _
-               "A type must have exactly one. Nothing was changed.", vbInformation, "Create Template Slide"
-        Exit Sub
-    End If
-
-    Dim sourceSld As Object
+    ' THE SOURCE IS A REAL INSTANCE THE USER PICKS, not whatever the type's
+    ' plain registration happens to point at. That registration (DeckSyncType:)
+    ' gets overwritten to point at the FIRST template the moment one exists --
+    ' RegisterType always replaces the single property -- so once a K template
+    ' exists it can no longer supply "a representative real slide" for making
+    ' an S template. The picked instance's OWN key is also where the letter
+    ' comes from, below: no separate "which letter" prompt, because the letter
+    ' is a fact about the slide the user is looking at, not a fact to ask for
+    ' twice (Scenario 3, CHECKLIST.md).
     Dim wsName As String
-    If Not DeckRegistry.LookupType(pres, slideType, sourceSld, wsName) Then
-        MsgBox "Type '" & slideType & "' is registered but its slide no longer resolves (was it deleted?)." & vbCrLf & _
-               "Re-onboard the type before creating its template.", vbExclamation, "Create Template Slide"
-        Exit Sub
-    End If
+    Dim sourceSld As Object
+    Set sourceSld = PickTemplateSource(pres, slideType, wsName)
+    If sourceSld Is Nothing Then Exit Sub
 
     ' Label the source by its instance key where it has one, falling back to
     ' the slide number -- the key is what the human recognises from the Data
@@ -2395,6 +2390,29 @@ Private Sub CreateTemplateSlideCore()
     Dim sourceLabel As String
     sourceLabel = "slide " & sourceSld.SlideIndex
     If sourceInstance.HasInstanceKey Then sourceLabel = sourceInstance.InstanceKey & " (slide " & sourceSld.SlideIndex & ")"
+
+    Dim letter As String
+    letter = TemplateSlide.CodeLetterOf(sourceInstance.InstanceKey)
+
+    ' Already has one FOR THIS LETTER: stop here rather than at MakeTemplateFrom's
+    ' own guard, so the message can name the existing template's slide number.
+    ' Both checks stay -- this one is for the human, that one is the invariant.
+    ' TemplateSlide.ExistingTemplateForLetter is what actually generalised the
+    ' old one-per-TYPE check to one-per-type-PER-LETTER (Scenario 3 step 4) --
+    ' pulled out to its own testable function rather than inlined here,
+    ' because this Sub's MsgBox/InputBox calls make it unreachable from the
+    ' headless suite, and that logic is exactly the kind this project does not
+    ' ship untested.
+    Dim existing As Object
+    Set existing = TemplateSlide.ExistingTemplateForLetter(pres, slideType, letter)
+    If Not existing Is Nothing Then
+        Dim letterNote As String
+        letterNote = ""
+        If letter <> "" Then letterNote = " for letter '" & letter & "'"
+        MsgBox "Type '" & slideType & "'" & letterNote & " already has a master template: slide " & existing.SlideIndex & "." & vbCrLf & vbCrLf & _
+               "A type/letter pair must have exactly one. Nothing was changed.", vbInformation, "Create Template Slide"
+        Exit Sub
+    End If
 
     Dim sourceRoles() As String
     Dim sourceShapes() As Candidate
@@ -2426,9 +2444,12 @@ Private Sub CreateTemplateSlideCore()
     ' the template exists but nothing clones it, which is the quietest
     ' possible half-finished state. Done here rather than inside
     ' MakeTemplateFrom so that function stays testable with no registry.
-    DeckRegistry.RegisterType pres, slideType, mr.NewSlide, wsName
+    ' DeckRegistry.RegisterNewTemplateLetter carries the same "pulled out so
+    ' it's testable" reasoning as ExistingTemplateForLetter above.
+    DeckRegistry.RegisterNewTemplateLetter pres, slideType, letter, mr.NewSlide, wsName
 
-    report = "Master template created for '" & slideType & "'." & vbCrLf & vbCrLf & _
+    report = "Master template created for '" & slideType & "'" & _
+        IIf(letter <> "", " (letter '" & letter & "')", "") & "." & vbCrLf & vbCrLf & _
         "    slide " & mr.NewSlide.SlideIndex & ", hidden from the slideshow" & vbCrLf & _
         "    " & mr.FieldCount & " field(s) set to placeholders" & vbCrLf & _
         "    new records will now be cloned from it, not from " & sourceLabel & vbCrLf & vbCrLf & _
@@ -2438,6 +2459,90 @@ Private Sub CreateTemplateSlideCore()
         "(figures, chart data, notes, untagged text) that belonged to " & sourceLabel & "."
     ShowSyncResult "Create Template Slide", report
 End Sub
+
+' Real, non-template instances of `slideType` -- these are what a template
+' can actually be made FROM. Returns Nothing (having already told the human
+' why) if there are none: the type is registered but nothing of it has been
+' onboarded onto a real slide, or every real slide of it has already become
+' a template.
+'
+' ByRef wsName carries back the type's worksheet name via DeckRegistry.LookupType
+' regardless of what that lookup's SLIDE half currently resolves to (a real
+' slide, a template, or nothing at all if deleted) -- the worksheet name does
+' not change across a type's templates, only which slide is registered does,
+' so this is the one place still allowed to read it that way.
+Private Function PickTemplateSource(pres As Object, slideType As String, ByRef wsName As String) As Object
+    Dim ignoredSld As Object
+    wsName = ""
+    DeckRegistry.LookupType pres, slideType, ignoredSld, wsName
+
+    Dim instances() As Object
+    instances = RunSync.GatherInstances(slideType)
+    Dim lo As Long, hi As Long, hasAny As Boolean
+    On Error Resume Next
+    lo = LBound(instances): hi = UBound(instances): hasAny = (Err.Number = 0)
+    On Error GoTo 0
+
+    Dim candidates() As Object
+    Dim keys() As String
+    Dim n As Long
+    n = 0
+    If hasAny Then
+        Dim i As Long
+        For i = lo To hi
+            Dim inst As SlideInstance
+            inst = Resolve.ResolveSlideInstance(instances(i))
+            If inst.HasInstanceKey Then
+                n = n + 1
+                ReDim Preserve candidates(1 To n)
+                ReDim Preserve keys(1 To n)
+                Set candidates(n) = instances(i)
+                keys(n) = inst.InstanceKey
+            End If
+        Next i
+    End If
+
+    If n = 0 Then
+        MsgBox "No real, already-onboarded slide of type '" & slideType & "' exists to build a template from." & vbCrLf & vbCrLf & _
+               "Onboard at least one real project of this type first.", vbExclamation, "Create Template Slide"
+        Exit Function
+    End If
+
+    If n = 1 Then
+        Set PickTemplateSource = candidates(1)
+        Exit Function
+    End If
+
+    Dim prompt As String
+    prompt = "Choose the real slide to build the template from (enter the number or the instance key):" & vbCrLf
+    Dim j As Long
+    For j = 1 To n
+        Dim ltr As String
+        ltr = TemplateSlide.CodeLetterOf(keys(j))
+        prompt = prompt & j & ") " & keys(j) & IIf(ltr <> "", " (letter " & ltr & ")", "") & vbCrLf
+    Next j
+
+    Dim answer As String
+    answer = InputBox(prompt, "Create Template Slide -- Choose Source")
+    If Trim(answer) = "" Then Exit Function
+
+    If IsNumeric(answer) Then
+        Dim asNum As Long
+        asNum = CLng(answer)
+        If asNum >= 1 And asNum <= n Then
+            Set PickTemplateSource = candidates(asNum)
+            Exit Function
+        End If
+    End If
+    For j = 1 To n
+        If StrComp(Trim(answer), keys(j), vbTextCompare) = 0 Then
+            Set PickTemplateSource = candidates(j)
+            Exit Function
+        End If
+    Next j
+
+    MsgBox "'" & answer & "' did not match a number or an instance key. Nothing was changed.", vbExclamation, "Create Template Slide"
+End Function
 
 ' A QUESTION WITH ONE POSSIBLE ANSWER IS NOT A QUESTION.
 '
