@@ -1,5 +1,57 @@
 # NEXT SESSION — start here
 
+> ## 17 AUG, ~01:35 — READ THIS BLOCK FIRST. **STATUS: CURRENT.** Continuation of
+> the same session below (16 Aug evening through past 1am 17 Aug).
+>
+> **Lobby Phase 2 built, proven live, committed (`af74908`).** `DraftingUI.
+> PublishAllDraftedFields` now reads `DraftingLobby.ReadLobby`/`DistinctPinnedFields`
+> instead of crawling all 13 declared Prose fields — proven on
+> `PRESERVED-known-good-20260815-1050`: with 39 rows pinned across two fields
+> (`ABOUT_BODY` ×1, `PROGRESS_BODY` ×38), "2. Put it on the slides" ran Copy+Publish
+> for exactly those two, confirmed from the saved workbook's own `Drafting Lobby`
+> sheet. Safety valve: `RefreshDraftingSheets` ("1. Set up my quarter") now silently
+> repairs the Lobby every run, at no extra cost. `LOBBY-DESIGN.md` and `CHECKLIST.md`
+> updated in the same commit. **Phases 3-4 not started.**
+>
+> **Error 50290 (FIX-LIST item V) interrupted the live retest** — third occurrence
+> across three sessions, three different call sites, still no root cause. Rather than
+> chase it live at 1am, closed the actual diagnostic gap instead (`211f7c8`):
+> `ReviewQueue.ApplyApproved`'s per-item write now traps `Err.Number`/`Description`/
+> `Source` locally, logs `"CRASHED in dry probe/real write: ..."` to the Sync Log
+> BEFORE re-raising, and re-raises with the specific `EntityKey`/`FieldID` folded into
+> `Err.Source`. **Next occurrence will finally name which item was mid-write instead
+> of just "VBAProject".** Proven correct via a gated test-only hook
+> (`ReviewQueue.mTestForceInjectCrash`) since Office cannot be made to raise 50290 on
+> demand — the test genuinely failed against the unwrapped code first, then passed.
+> Root cause itself is STILL OPEN.
+>
+> **Byproduct: fixed a real gap in `check_vba_static.py`.** Its declaration-order
+> check only ever matched `Type`/`Const`/`Enum` — not a bare module-level variable —
+> and that exact blind spot let TWO real compile errors through "clean" in one night
+> (`DraftingLobby.mAppEvents` earlier, `ReviewQueue.mTestForceInjectCrash` while
+> building the 50290 fix itself). Added `VAR_DECL_RE`, proved it by deliberately
+> reintroducing the real defect and confirming the checker now catches it.
+>
+> **A real mistake this session, owned, not hidden:** closing Excel "without saving"
+> mid-session (checked the register file's timestamp, didn't check whether the
+> review sheet's tick marks had been persisted) discarded the in-progress review
+> ticks that would have let the 50290 retest resume exactly where it crashed.
+> Re-ticking the resulting fresh 183-item "project-progress" review by hand wasn't
+> attempted — not worth it at 1am for a diagnostic retest. Next real occurrence
+> (whenever Rohan is doing genuine review work) is now the actual test.
+>
+> **MACHINE STATE AT HANDOVER:** PowerPoint is open with a fresh `build_ppam.ps1`
+> run's modules imported (35 modules, includes tonight's `ReviewQueue.bas`/
+> `TestRunner.bas`/`DraftingUI.bas` changes), waiting on the manual **File > Save
+> As > PowerPoint Add-in (*.ppam)** step — name it `addin118.ppam` (mind the
+> spelling — `addin116` first landed as `adin116`, caught and fixed). Once saved,
+> the routine is now: copy into `AppData\Roaming\Microsoft\AddIns\`, hash-verify
+> against the `OneDrive\Claude\` copy, register a new
+> `HKCU\...\PowerPoint\AddIns\addin118` key with `Path`/`AutoLoad=1`, set the
+> previous one's `AutoLoad=0`. `addin117` is the last one actually loaded and
+> proven live. Excel is closed. Full suite 235/0, static/module-list/doc checks
+> all clean, everything pushed to `main` at `211f7c8`.
+
 > ## 17 AUG, LATE NIGHT (session started 16 Aug evening). **SESSION-END HANDOVER.
 > STATUS: CURRENT.** Very long single session — document control catch-up, the elapsed
 > bar built as a real new field, then a full architecture pivot (the Lobby) designed and
