@@ -120,6 +120,64 @@ just its own stated build steps, restated as a checklist.*
       `SCENARIOS.md`'s file-per-quarter section.*
 - [ ] Tests + one real keyboard run before the prune touches anything live.
 
+## ARCHITECTURE FORK — Rohan's decision needed before scenario 3 continues
+
+- [ ] **A ratified 12 Aug decision may conflict with the Scenario 3 plan below.**
+      *Source: `archive/NEXT-SESSION-2026-08-12.md`, "DECISION, 12 Aug evening —
+      pre-placed shapes + visibility, NOT computed sizing," found 2026-08-16.*
+      Verbatim: *"positions are pre-drawn and known; state is shown by hiding and
+      showing, never by resizing at run time... this generalises beyond the
+      timeline, and is why the deck should NOT split into three slide types...
+      one template, not three."* Scenario 3's plan (below) does the opposite —
+      builds SEPARATE K and S templates. The plan doesn't reference this
+      decision; it may have been written without seeing it. **Not resolved —
+      needs Rohan's call before step 2 of Scenario 3 starts:** either the
+      per-letter-template plan is wrong and should become "one template,
+      pre-placed K/S variant shapes, shown/hidden like the milestone circles,"
+      or this decision was specific to the timeline device and doesn't
+      generalise the way its own text claims. Either answer is fine; not
+      deciding and building both is not.
+
+## Register/field items found in the 12 Aug cross-surface handover
+
+*Source: `archive/NEXT-SESSION-2026-08-12.md`, all items checked against current
+code 2026-08-16, not assumed.*
+
+- [ ] **`TOTAL_VALUE` alarm — confirmed NOT built.** Block publication when
+      `TOTAL_VALUE <> INDUSTRY_CASH + SAAFE_CASH + TOTAL_INKIND`. Live slide was
+      out by $646 and shipped that way. Check first whether the register stores
+      rounded display values — exact equality against rounded inputs would fail
+      permanently, which is the always-firing warning that stops being read.
+- [ ] **Linkage-subset check — not built.** `STRATEGIC_ALIGNMENT_BODY` may cite a
+      subset of the codes in `STRATEGIC_LINKAGES`, never a code not declared
+      there. Extract from both, report the difference — Copilot can't self-check
+      this since the declared codes live on a different sheet.
+- [ ] **`Kind = Derived` — confirmed NOT built.** No `KIND_DERIVED` anywhere in
+      `FieldSpec.bas`. A fourth Kind value plus a `Derivation` column, for values
+      like elapsed-time-% and the current-milestone marker that must be computed
+      from other fields, never stored (a stored copy of a computed value is the
+      drift this project already designed out once). **Must land with a carve-out
+      in the same change**: `COLUMNS.md`'s bidirectional completeness check
+      (every register column has a Field Spec row and vice versa) would report
+      every Derived row as an orphan forever otherwise, and an always-firing
+      warning stops being read.
+- [ ] **The orphaned `cadence` parameter — status unclear, worth a real look.**
+      The handover said it lived in `Drafting.WriteDraftingSheet`, read a retired
+      `Quarter = ALL` sentinel, and fell through to "unknown" silently on every
+      field. It's gone from `Drafting.bas` entirely now (checked), but "cadence"
+      still appears in `ExcelOutput.bas`, `DraftingUI.bas`, `ReviewQueue.bas` —
+      could mean it was properly relocated, could mean something else. Not
+      confirmed either way.
+- [ ] **Chars columns must be written as live formulas, not static numbers.**
+      `TPL_` columns H and I (character counts) were static — H frozen at a past
+      value, I blank on every row of every sheet, so length-against-target has
+      never been checkable. `Drafting.WriteDraftingSheet` must write
+      `=LEN(C{row})`/`=LEN(F{row})`, never a computed literal, or the next
+      rebuild silently reintroduces the bug. Not verified against current code.
+- [ ] **`SRC_EXTRACTS` lookup formulas were hardcoded to a row count** and
+      hand-widened once. Anything that regenerates that sheet needs to match the
+      wider range, or it silently reverts. Not verified against current code.
+
 ## Scenario 3 — per-letter templates (blocked on a real defect, not reachability)
 
 - [x] Step 1 — `TemplateSlide.CodeLetterOf`, done and tested.
