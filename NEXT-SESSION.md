@@ -87,9 +87,20 @@
 > closing for real, the fix is removing `Shell.Application`/`CopyHere` from the
 > verification path entirely, not a better explanation of the current one.
 >
-> **Next action:** check current PowerPoint state fresh (don't assume anything
-> carried over is still true), confirm the test deck is genuinely closed/clean
-> before reopening, then retry `1. Set up my quarter` on the SAME local test copy —
+> **MACHINE STATE AT HANDOVER, checked directly, not assumed:** PowerPoint process
+> alive, ZERO presentations open (the deck really is gone). Excel process ALSO alive
+> (not seen in the first process check — appeared between checks) with the LOCAL test
+> `register-wide.xlsx` genuinely open (`PRESERVED-known-good-20260815-1050`), UNSAVED
+> (file on disk still shows the old 15 Aug timestamp). This is real signal: "Set up my
+> quarter" got far enough to open the paired workbook before something stopped it —
+> consistent with the deck's own window closing along the way, whether from the
+> OneDrive\Claude sighting or something else. Left exactly as found, both processes,
+> for next session to inspect fresh rather than guess from a discarded state.
+>
+> **Next action:** don't assume the state above is still true by the time you read
+> this — check both processes fresh first. If the Excel workbook is still open exactly
+> as described, that is useful forensic evidence, not something to discard casually.
+> Once state is understood, retry `1. Set up my quarter` on the SAME local test copy —
 > watch closely for what exactly triggers any OneDrive/Explorer-looking window, and
 > report it in detail rather than stopping again if it recurs (now that both file
 > checks above confirm it's not writing anywhere unsafe). This is still the FIRST
