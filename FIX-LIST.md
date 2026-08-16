@@ -244,17 +244,42 @@ reliably instead of failing 4/4 over 2 minutes) and it's real dead-code cleanup.
 it does NOT do: make a QUARTERLY period update land on an existing, already-synced
 cloud deck — which is the actual Scenario 1 use case.
 
-**Real fix candidate, not yet built, needs a decision**: move these four values off
-`CustomDocumentProperties` entirely, onto something already proven to sync reliably —
-regular SLIDE CONTENT. This project's own scope note above already established
-"slide CONTENT is unaffected — text and tags wrote fine to a cloud deck in the same
-session." A hidden shape/textbox on a hidden slide (or the deck's own notes) storing
-these four values as plain text would sidestep the limitation entirely, at the cost of
-touching every reader/writer of these four properties — `DeckRegistry.bas`'s
-`GetDeckPeriod`/`SetDeckPeriod`, `GetOrCreateDeckId`, `GetWorkbookPath`, the type/
-template-letter registration functions, and this file's own P/Q/R entries' assumptions
-about where this state lives. A real architecture change, not a quick patch — flagged
-for a decision rather than built unprompted.
+**FIXED FOR REAL, 2026-08-16 evening — proven on the real add-in, repeated writes,
+independently cross-checked.** Moved `DeckSyncPeriod`/`DeckSyncWorkbookPath`/
+`DeckSyncType:<type>`/`DeckSyncTemplate:<type>:<letter>`/`DeckSyncId` off
+`CustomDocumentProperties` entirely, onto a dedicated hidden slide (`DeckSyncRegistry`,
+found by `Slide.Name`), keyed by shape NAME (an attribute of the slide's own XML, not
+a separate metadata part — and shape names over invisible tags is this project's own
+established preference). `ReadStringProperty` falls back to the old
+`CustomDocumentProperties` location when nothing is found on the registry slide, so
+decks registered before this change keep reading correctly; `WriteStringProperty`
+only ever writes to the new location, so values migrate the next time anything
+legitimately updates them — no separate migration step. New `RegistryValueOnDisk`
+verifies from the saved file by scanning `ppt/slides/*.xml` for the shape, the same
+technique `PropertyOnDisk` always used for `docProps/custom.xml`, deliberately NOT by
+slide part number (PowerPoint renumbers those on save).
+
+**Two real bugs found and fixed while building this, both worth remembering as a
+class:**
+- `sh.Namespace()` needs a `Variant`, not a bare `String` — the exact defect this
+  file's own `PropertyOnDisk` already documents once, reintroduced on `outDir` in the
+  new function and caught by the test suite. Checked every `Namespace()` call in the
+  repo for the same mistake, not just the one that broke.
+- A genuine VBA `""` success return marshals as PowerShell `$null` through
+  `Application.Run`/`InvokeMember` — an 8/8-failure report turned out to be a false
+  negative from the *test script's* `-eq ""` check, not the fix. Caught only by
+  checking the saved file's actual bytes independently of the return value, exactly
+  the "the file is the evidence" discipline this project has learned before, now
+  applied to a test script's own output rather than to VBA code.
+
+**Proven, in order**: static checks clean, suite 230/0 (local, deterministic). Rebuilt
+`addin109`, re-ran `onedrive_write_probe.ps1` (the SAME probe that caught the original
+bug) against the real, unmodified `SetDeckPeriodVerified` — **8 for 8 landed**, each
+under a second, on ONE reused open cloud file across all 8 trials (the exact scenario
+that failed 0/8 against the old mechanism). Independently cross-checked via a
+separately-written .NET zip reader scanning `ppt/slides/*.xml` — agrees. This closes
+the OneDrive write-reliability gap that blocked Scenario 1 (updating the period on an
+existing, already-synced deck every quarter).
 
 ## Added 2026-08-15 (late morning) — four, all LIVE
 

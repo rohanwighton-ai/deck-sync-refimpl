@@ -66,9 +66,13 @@ try {
         $period = "PROBE-$i-$(Get-Random -Maximum 9999)"
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
         $result = $ppt.GetType().InvokeMember("Run", [System.Reflection.BindingFlags]::InvokeMethod, $null, $ppt,
-            @([string]"'$addinName'!DeckRegistry.SetDeckPeriodVerified", $pres, [string]$period, [long]4))
+            @([string]"'$addinName'!DeckRegistry.SetDeckPeriodVerified", $pres, [string]$period, [int]4))
         $sw.Stop()
-        $ok = ($result -eq "")
+        # A genuine VBA "" success return marshals as PowerShell $null through
+        # this exact Application.Run path -- confirmed 2026-08-16 by checking
+        # the SAVED FILE independently after a "failed" call and finding the
+        # write had actually landed. $null here means success, same as "".
+        $ok = ($result -eq "" -or $result -eq $null)
         $results += [PSCustomObject]@{
             Trial   = $i
             Period  = $period
@@ -79,25 +83,34 @@ try {
         Write-Output ("Trial {0}: {1} in {2}s -- {3}" -f $i, $(if ($ok) {"LANDED"} else {"FAILED"}), [math]::Round($sw.Elapsed.TotalSeconds,1), $status)
     }
 
-    # Independent cross-check, OUTSIDE VBA entirely -- read the LAST trial's value
-    # straight out of the saved package's docProps/custom.xml using .NET's own zip
-    # reader, not the code under test and not PowerPoint's object cache.
-    Start-Sleep -Seconds 2
+    $pres.Saved = -1
+    $pres.Close()
+
+    # Independent cross-check, OUTSIDE VBA entirely -- read the LAST trial's
+    # value straight out of the saved package using .NET's own zip reader, not
+    # the code under test and not PowerPoint's object cache. Storage moved off
+    # docProps/custom.xml onto slide content 2026-08-16 (FIX-LIST P) -- scans
+    # ppt/slides/*.xml for the shape's text the same way RegistryValueOnDisk
+    # does, independently reimplemented rather than calling into the code
+    # being tested.
+    Start-Sleep -Seconds 1
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [System.IO.Compression.ZipFile]::OpenRead($scratchFile)
-    $entry = $zip.Entries | Where-Object { $_.FullName -eq "docProps/custom.xml" }
-    $xmlText = ""
-    if ($entry) {
+    $lastPeriod = $results[-1].Period
+    $independentlyConfirmed = $false
+    foreach ($entry in ($zip.Entries | Where-Object { $_.FullName -like "ppt/slides/slide*.xml" })) {
         $reader = New-Object System.IO.StreamReader($entry.Open())
         $xmlText = $reader.ReadToEnd()
         $reader.Close()
+        if ($xmlText -match [regex]::Escape($lastPeriod)) {
+            $independentlyConfirmed = $true
+            break
+        }
     }
     $zip.Dispose()
 
-    $lastPeriod = $results[-1].Period
-    $independentlyConfirmed = $xmlText -match [regex]::Escape($lastPeriod)
     Write-Output ""
-    Write-Output "Independent .NET zip read of docProps/custom.xml (bypasses VBA and PowerPoint):"
+    Write-Output "Independent .NET zip read of ppt/slides/*.xml (bypasses VBA and PowerPoint):"
     Write-Output "Last trial's value ($lastPeriod) present in the raw file bytes: $independentlyConfirmed"
 
     Write-Output ""
@@ -105,9 +118,6 @@ try {
     $landedCount = ($results | Where-Object { $_.Landed }).Count
     Write-Output "$landedCount / $Trials trials confirmed on disk"
     $results | Format-Table -AutoSize
-
-    $pres.Saved = -1
-    $pres.Close()
 } catch {
     Write-Output "=== DRIVER ERROR ==="
     Write-Output $_.Exception.Message

@@ -391,34 +391,29 @@ bytes. Started because the K/S template build above was mechanism-tested
       in one place.
 - [ ] **#3:** Scenario 8 (portability) — bring up a genuinely fresh deck +
       register from nothing, unaided. Never attempted once.
-- [ ] **#4, 2026-08-16: PARTIALLY fixed, and rebuilding+re-proving surfaced a
-      deeper structural limit the fix does NOT reach — real work still
-      open.** First pass: the cloud branch's old "wait, never escalate"
-      design was based on a `SaveAs`-bricks-cloud-decks measurement taken
-      BEFORE the same day's `ByRef`→`ByVal` fix (`FIX-LIST` P) — before
-      that fix, the verifier's own read-back silently rewrote the SaveAs
-      target to the wrong local path, which is what actually bricked it.
-      Fixed `SaveDeckVerified`/`SetDeckPeriodVerified`/
-      `SetWorkbookPathVerified` in `DeckRegistry.bas` to escalate to
-      `SaveAs`-to-self on cloud decks, same as local; deleted the dead
-      wait-loop helpers. Rebuilt `addin108`, re-ran the SAME probe that
-      caught the original 4/4 failure: still **8/8 failed**, but instantly
-      now (~0.4s, not ~121s) — a different signature, so kept digging
-      rather than declaring victory on timing alone. Isolated with a
-      reused-single-file probe (unlike the earlier 5/5 success, which used
-      a fresh file per trial): **trial 1 lands, every later write in the
-      SAME session is permanently stuck** — confirmed it's not per-property
-      (a second, never-before-used property name also fails on ITS first
-      write in that session). Tried the one documented community rescue
-      (close + reopen the file, even with a deliberate 15s wait) — did not
-      help, 3 real attempts, capped and stopped. Looks like a genuine
-      OneDrive Personal limitation on updating `CustomDocumentProperties`
-      after a file's first cloud sync, not something a retry loop can fix.
-      **Real candidate fix, not yet built, needs a decision:** move
-      `DeckSyncPeriod`/`DeckSyncWorkbookPath`/`DeckSyncType`/`DeckSyncId`
-      off `CustomDocumentProperties` onto slide CONTENT instead (proven
-      throughout this investigation to sync reliably) — see `FIX-LIST` P's
-      full 2026-08-16 update for the reasoning and what it would touch.
+- [x] **#4, CLOSED 2026-08-16 evening.** The full arc: `SaveAs`-to-self fix
+      (source), rebuild+re-prove surfaced a deeper limit (only a session's
+      FIRST `CustomDocumentProperties` write ever lands on a cloud deck),
+      three rescue attempts failed (close+reopen, even with a 15s wait),
+      real fix built — moved `DeckSyncPeriod`/`DeckSyncWorkbookPath`/
+      `DeckSyncType`/`DeckSyncTemplate`/`DeckSyncId` off
+      `CustomDocumentProperties` onto a dedicated hidden slide, keyed by
+      shape name, with a read-fallback to the old location so existing
+      decks keep working. **Proven on the real add-in (`addin109`): 8 for 8
+      repeated writes landed on ONE reused open cloud file** — the exact
+      scenario that failed 0/8 before — independently cross-checked via a
+      separately-written .NET zip reader. Found and fixed a real `Variant`
+      vs `String` bug in the new code along the way (same class already
+      documented once in this file — checked every `Namespace()` call in
+      the repo, not just the one that broke). Also found and corrected a
+      false negative in the TEST SCRIPT itself: a genuine VBA `""` success
+      return marshals as PowerShell `$null` through `Application.Run`,
+      which an early "8/8 failed" report turned out to be — caught only by
+      checking the saved file's actual bytes, not the return value.
+      Static checks clean, suite 230/0. Full evidence: `FIX-LIST.md` item
+      P's final 2026-08-16 update. This was the last blocker on Scenario 1
+      (updating the period on an existing, already-synced deck every
+      quarter).
 - [ ] **#5:** `Tag fields on this slide` run fresh against `K900` and `S900`
       to get CURRENT field coverage ground truth, replacing the
       cross-referenced-from-tags inference in the Field Coverage Matrix

@@ -124,20 +124,20 @@ the real register. Use `AppData\Local\deck-sync-backups\
 PRESERVED-known-good-20260815-1050\` (deck and register together, local, re-pointed and
 proven), or re-point a fresh copy with the `Change which workbook this deck uses` button.
 
-**The OneDrive risk is PARTIALLY fixed and turned out deeper than first thought,
-2026-08-16.** The original bricking bug (`SaveAs`-to-self raising `0x80CD1001`) was a
-measurement artifact of the same day's `ByRef` bug and is genuinely fixed —
-`DeckRegistry.bas`'s three verifiers now escalate to `SaveAs`-to-self on cloud decks,
-proven on a rebuilt add-in. But re-proving it surfaced something the fix does not
-reach: on a cloud-hosted deck, **only the FIRST custom-document-property write a
-session ever lands — every write after that, to any of the four setup properties, is
-permanently stuck**, and the one documented community fix (close and reopen the file)
-does not rescue it. That's exactly the Scenario 1 use case (updating the period on an
-EXISTING, already-synced deck every quarter), so this is not closed. Full evidence and
-the proposed real fix (move these four values onto slide content instead, which is
-proven to sync reliably): `FIX-LIST.md` item P's 2026-08-16 update. Still work on a
-local copy for anything that matters until this has a real fix, not just the partial
-one.
+**The OneDrive write-reliability risk is CLOSED, 2026-08-16 evening — proven on the
+real add-in, repeated writes, independently cross-checked.** The original bricking bug
+was a measurement artifact of the `ByRef` fix; the deeper limit found while re-proving
+it (only a session's FIRST `CustomDocumentProperties` write ever lands on a cloud
+deck) was real, and no retry/reopen technique could route around it. The actual fix
+moved `DeckSyncPeriod`/`DeckSyncWorkbookPath`/`DeckSyncType`/`DeckSyncId` off
+`CustomDocumentProperties` onto a hidden slide's shape content instead, which this
+whole investigation had already shown syncs reliably. Rebuilt `addin109`, re-ran the
+same probe that caught the original failure against the real, unmodified
+`SetDeckPeriodVerified`: **8 for 8 repeated writes landed on one reused open cloud
+file** — the exact scenario that failed 0/8 before. Full evidence, including two real
+bugs found and fixed along the way (a `Variant`/`String` mistake and a test-script
+false negative from VBA's `""` marshaling as PowerShell `$null`): `FIX-LIST.md` item
+P's final update. This was the last blocker on Scenario 1.
 
 **Two defects found while closing 6, both still open (2026-08-15).**
 
