@@ -5,6 +5,51 @@
 > added and fixed 2026-08-16; T added 2026-08-16 (late evening).
 > Entries say whether they are still live; anything marked fixed names the build it was
 > fixed in. U added 2026-08-16 (night); V added and FIXED same night, addin111.
+> W added and FIXED 2026-08-17 morning. X added 2026-08-17 morning, still open.
+
+## Added 2026-08-17 morning — one FIXED (W), one LIVE and unexplained (X)
+
+**W. `ReviewQueue.AppendLogLine` RESCANNED THE ENTIRE SYNC LOG FROM ROW 2 ON EVERY
+SINGLE APPEND -- O(n^2) COM CALLS ACROSS A BIG APPLY RUN. FIXED.** Found live, at the
+worst possible moment to notice it: Rohan watching the first real-scale Phase 3 apply
+(221 items, deliberately built to stress-test the new pre-tick/no-modal path) grind for
+several minutes, asking "why is it soooo slow." `AppendLogLine`'s row-finding was
+`r = 2 : Do While Cells(r,1) <> "" : r = r + 1 : Loop` -- item 1 scans 1 row, item 221
+scans 221 rows, ~24,500 wasted reads total for one run, each one a cross-application COM
+call (PowerPoint calling into Excel). This wasn't new tonight -- it's always been there
+-- but nothing had ever pushed 221 real diffs through one apply before Phase 3 removed
+the friction (manually ticking 221 checkboxes) that was accidentally capping batch size.
+Small batches never felt it; this one did.
+
+Fixed by reusing `ExcelOutput.bas`'s own already-proven idiom: `Cells(Rows.Count,
+1).End(XL_UP).Row + 1`, a single native "find last used row" COM call instead of a VBA
+loop of up to n calls. `XL_UP` as a numeric literal (`-4162`), not the named constant
+`xlUp` -- same reason `ExcelOutput.bas`'s own `XL_UP` exists: the name only resolves
+inside Excel's own VBA project, and this module is PowerPoint-hosted.
+
+**Measured, not assumed**: isolated timing test (fresh throwaway workbook, no other
+Office state involved) -- old approach, 100 appends: 15.4s; 300 appends didn't finish in
+2 minutes. New approach, 300 appends: 1.67s. Extrapolated to tonight's real 221-item run,
+the old code was spending roughly 75 seconds just finding where to write in the log, on
+top of everything else. Full suite green (236/0) before and after.
+
+**X. STILL OPEN, NOT YET INVESTIGATED: Rohan reports the apply run appeared to STALL
+while PowerPoint was not the focused/active window, and progressed again once he
+clicked back onto it.** A real, first-hand, repeated observation ("I know it does
+this"), not a one-off guess -- and mechanically plausible: VBA is single-threaded and
+this add-in's macros run inside PowerPoint's own message pump, which Windows can
+deprioritize for a background window. If real, this would mean a long-running sync
+genuinely cannot be left to run unattended in the background while working in another
+window, which matters for real usage. **Not yet verified against real Office** (this
+project's own rule) -- the one attempt at a controlled test that night was
+inconclusive, because the run also needed the CPU time regardless, and a blocking
+MsgBox halts execution whether the window is focused or not (unrelated to this claim,
+but easy to mistake for confirming it). Next session: a clean test is a long-running
+loop with NO modal in it (so nothing but window focus could explain a stall), left
+alone with the window genuinely unfocused, watching whether CPU usage goes flat.
+Possible mitigation if confirmed: periodic `DoEvents` calls inside the long loops
+(`ApplyApproved`, `BuildQueue`) to yield to the message pump -- not attempted yet,
+because the phenomenon itself isn't confirmed.
 
 One place for what is known-broken and not yet fixed, so each new review stops
 re-deriving the same findings. Three reviews have now paid to rediscover items that

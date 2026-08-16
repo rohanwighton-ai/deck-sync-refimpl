@@ -195,6 +195,12 @@ Public Const KIND_STATIC As String = "Static"           ' individually, but rare
 ' by anything reachable from a button.
 Public mTestForceInjectCrash As Boolean
 
+' Numeric, not the named constant xlUp -- ExcelOutput.bas's own XL_UP already
+' established why: the name only resolves when a module runs inside Excel's
+' own VBA project. This module is PowerPoint-hosted, so the bare name would
+' be a compile error, not a runtime one. Used by AppendLogLine.
+Private Const XL_UP As Long = -4162
+
 ' ---------------------------------------------------------------------
 ' Sheet naming
 ' ---------------------------------------------------------------------
@@ -1524,11 +1530,19 @@ Public Sub AppendLogLine(logWs As Object, runStamp As String, item As ReviewItem
         logWs.Rows(1).Font.Bold = True
     End If
 
+    ' WAS an O(n^2) scan: "r = 2, Do While not blank, r = r + 1" re-walks the
+    ' log from row 2 on every single call, so item 221 of a big apply rescans
+    ' 221 rows just to find where to write -- roughly 24,500 wasted cross-app
+    ' COM reads (PowerPoint calling into Excel) across a 221-item run. Found
+    ' 2026-08-17 chasing exactly that: Rohan watching a real 221-item Phase 3
+    ' apply run and asking why it was so slow.
+    '
+    ' XL_UP as a numeric literal, not the named constant -- ExcelOutput.bas's
+    ' own XL_UP already established why: xlUp only resolves when a module
+    ' runs inside Excel's own VBA project. This one is PowerPoint-hosted, so
+    ' the bare name would be a compile error, not a runtime one.
     Dim r As Long
-    r = 2
-    Do While Trim(CStr(logWs.Cells(r, 1).Value)) <> ""
-        r = r + 1
-    Loop
+    r = logWs.Cells(logWs.Rows.Count, 1).End(XL_UP).Row + 1
 
     logWs.Cells(r, 1).Value = Format(Now, "yyyy-mm-dd hh:nn:ss")
     logWs.Cells(r, 2).Value = runStamp
