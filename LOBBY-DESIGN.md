@@ -1,7 +1,7 @@
 # The Lobby — architectural plan
 
-> **CURRENT — Phases 0 and 1 built and PROVEN LIVE 2026-08-16/17 (night); phases 2-4 not
-> started.** Written at Rohan's explicit request before any of this got built: *"please
+> **CURRENT — Phases 0, 1 and 2 built and PROVEN LIVE 2026-08-16/17 (night); phases 3-4
+> not started.** Written at Rohan's explicit request before any of this got built: *"please
 > do a full architectural plan for this before we start, large changes."* Supersedes the
 > shorter version of this design scattered across `CHECKLIST.md`'s "The Lobby" section —
 > that section now points here. Follow `SESSION-PROTOCOL.md`'s documentation discipline:
@@ -45,12 +45,41 @@
 >   `.Type` property directly settled it). Fixed by CRLF-normalising `.cls` files
 >   specifically during staging, in all four scripts that import one.
 >
-> **Not yet built:** phase 2 (wiring `PublishAllDraftedFields` to read the Lobby instead
-> of crawling), phase 3 (pre-ticked queue items + removing the Yes/No/Cancel apply gate),
-> phase 4 (sheet-merging, only if still needed after 2-3). The Lobby now populates itself
-> automatically and correctly — but nothing downstream reads it yet, so the 13-sheet
-> crawl this design exists to remove is still the live behaviour on every "Put it on the
-> slides" press today.
+> **Phase 2 status: built AND proven live.** `DraftingUI.PublishAllDraftedFields` now
+> reads `DraftingLobby.ReadLobby`/`DistinctPinnedFields` instead of `ProseFields(wb)` —
+> a field with nothing pinned is never opened, copied, or published. Field selection was
+> pulled into `DistinctPinnedFields`, a pure function, specifically because the chain
+> itself needs `Application.ActivePresentation` (via `Resolve`) and nothing in this
+> codebase exercises that end-to-end yet (same gap `ChainBlockHeader`'s test already
+> names) — the part that actually changed has a real test even though the chain around
+> it does not. That test was made to fail on purpose first: the dedupe guard was
+> deliberately removed, the test caught the resulting duplicate-field double-publish by
+> name, then the real guard was restored and the suite re-run green (234/0).
+>
+> **Proven live 2026-08-17, not just by the test suite**, on
+> `PRESERVED-known-good-20260815-1050`: with 39 rows pinned across two fields
+> (`ABOUT_BODY` ×1, `PROGRESS_BODY` ×38) after a cold-start rebuild, "2. Put it on the
+> slides" ran Copy+Publish for exactly those two fields — confirmed by reading the saved
+> workbook's own `Drafting Lobby` sheet afterward, not by trusting the dialog. None of
+> the other 11 declared Prose fields were touched.
+>
+> **The safety valve for the at-work hand-edit gap (§4) is `RefreshDraftingSheets`
+> ("1. Set up my quarter"), not a new button.** It already reads every row of every
+> drafting sheet's APPROVE column, every time it runs, for reasons that have nothing to
+> do with the Lobby — so calling `DraftingLobby.BuildLobbyFromScratch` once at the end,
+> right after `EnableEvents` is restored, costs one more pass of work the person is
+> already waiting on, not a new wait of its own. Folded into the same Run Log entry as
+> the rest of that chain's report, not a new dialog. Resolves open decision #10's
+> question of where the cold-start/repair path lives.
+>
+> **A pre-existing, already-tracked bug (`Error 50290`, see below) interrupted the live
+> proof one stage later**, in `PutItOnTheSlidesCore`'s review-queue apply step — after
+> Phase 2's own read-the-Lobby step had already completed and saved correctly. Not a
+> Phase 2 regression: this is the third occurrence across three sessions and three
+> different call sites, still not root-caused (see `FIX-LIST.md` item V).
+>
+> **Not yet built:** phase 3 (pre-ticked queue items + removing the Yes/No/Cancel apply
+> gate), phase 4 (sheet-merging, only if still needed after 2-3).
 
 ---
 

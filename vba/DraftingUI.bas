@@ -311,14 +311,71 @@ End Function
 '
 ' AskForField survives for the standalone buttons, where choosing really is the
 ' point and the answer is not "all of them".
+' PURE, so this is testable without a live presentation -- same reasoning as
+' ChainBlockHeader below, for the same problem: PublishAllDraftedFields needs
+' Application.ActivePresentation (via Resolve) and nothing in this codebase
+' currently exercises that chain end-to-end (see
+' Test_DraftingUI_ChainBlockHeaderLabelsTheField's own note, still true).
+' Splitting the field-selection logic out means the part that actually
+' changed here -- which fields run, and in what order -- has a real test
+' even though the chain around it does not yet.
+'
+' DISTINCT FIELDS, FIRST-PINNED ORDER, comma-joined to match the ProseFields()
+' convention every caller here already expects. Copy+Publish runs once per
+' FIELD -- it publishes every ticked row on that field's sheet in one pass
+' (Drafting.PublishDrafts) -- not once per pinned row, so two pinned rows on
+' the same field must not run the chain twice.
+'
+' Same (1 To 0)-throws-at-runtime guard used throughout this codebase
+' (AGENTS.md): DraftingLobby.ReadLobby leaves its array unallocated when
+' nothing is pinned, and LBound/UBound on that raises rather than returning 0.
+Public Function DistinctPinnedFields(entries() As DraftingLobby.LobbyEntry) As String
+    On Error Resume Next
+    Dim lo As Long, hi As Long
+    lo = LBound(entries)
+    hi = UBound(entries)
+    If Err.Number <> 0 Then Exit Function
+    On Error GoTo 0
+
+    Dim seen As Object
+    Set seen = CreateObject("Scripting.Dictionary")
+
+    Dim i As Long
+    For i = lo To hi
+        Dim fid As String
+        fid = entries(i).FieldId
+        If fid <> "" Then
+            If Not seen.Exists(fid) Then
+                seen(fid) = True
+                If DistinctPinnedFields <> "" Then DistinctPinnedFields = DistinctPinnedFields & ","
+                DistinctPinnedFields = DistinctPinnedFields & fid
+            End If
+        End If
+    Next i
+End Function
+
+' READS THE LOBBY, NOT THE 13 DRAFTING SHEETS. LOBBY-DESIGN.md phase 2 -- this
+' used to call ProseFields(wb) and run EVERY declared field through
+' Copy+Publish, ticked or not, which is the crawl the Lobby exists to remove.
+' The Lobby already knows exactly which (sheet, field, entity) rows are
+' pinned APPROVE=Y -- kept current live by AppEvents on every tick
+' (LOBBY-DESIGN.md section 4), and repaired for free inside
+' RefreshDraftingSheets ("1. Set up my quarter", which already reads every
+' row of every drafting sheet for reasons of its own -- see the comment
+' there). A field with nothing pinned is never opened, never crawled, never
+' saved.
 Public Sub PublishAllDraftedFields(caption As String)
     Dim pres As Object, wb As Object, regWs As Object
     If Not Resolve(caption, pres, wb, regWs) Then Exit Sub
 
+    Dim entries() As DraftingLobby.LobbyEntry
+    entries = DraftingLobby.ReadLobby(wb)
+
     Dim list As String
-    list = ProseFields(wb)
+    list = DistinctPinnedFields(entries)
     If Trim(list) = "" Then
-        Say "There are no Prose fields on the Field Spec sheet, so there is nothing to publish.", _
+        Say "Nothing is pinned in the Drafting Lobby, so there is nothing to publish." & vbCrLf & vbCrLf & _
+            "Tick " & Chr$(64 + Drafting.COL_D_APPROVED) & " (APPROVE) on a drafting sheet to pin it here.", _
             vbInformation, caption
         Exit Sub
     End If
@@ -721,6 +778,20 @@ Public Sub RefreshDraftingSheets()
 
     wb.Application.EnableEvents = True
 
+    ' REPAIRS THE LOBBY FOR FREE, RIGHT HERE. LOBBY-DESIGN.md section 10 left
+    ' open how a person forces a resync after a hand-edit at work -- no
+    ' Claude, no Python, no macro running, so no pin ever fires (section 4's
+    ' at-work gap). Answered by NOT adding a third button: this chain already
+    ' reads every row of every drafting sheet, every time it runs, for
+    ' reasons that have nothing to do with the Lobby -- so re-deriving it from
+    ' the sheets' actual APPROVE column here costs one more pass of work the
+    ' person is already waiting on, not a new wait of its own.
+    ' "2. Put it on the slides" -- the button pressed many times a session --
+    ' never pays this; "1. Set up my quarter" -- pressed once at the start --
+    ' always does.
+    Dim lobbyNote As String
+    lobbyNote = DraftingLobby.BuildLobbyFromScratch(wb)
+
     WorkbookBridge.ArrangeTabs wb, draftOrder
     WorkbookBridge.WriteWorkbookIndex wb
     WorkbookBridge.FormatRegisterSheet regWs
@@ -753,7 +824,7 @@ Public Sub RefreshDraftingSheets()
     ' to say the less of it survived.
     WorkbookBridge.WriteRunLog wb, _
         "Drafting sheets rebuilt for " & period, _
-        report & vbCrLf & valNote & vbCrLf & srcValidation
+        report & vbCrLf & valNote & vbCrLf & srcValidation & vbCrLf & lobbyNote
 
     ' THE REFUSAL GOES FIRST SO TRUNCATION EATS THE GUIDANCE, NOT THE WARNING.
     ' MsgBox caps near 1024 characters and truncates silently, so ordering is the

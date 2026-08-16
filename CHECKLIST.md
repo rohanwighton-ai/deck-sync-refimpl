@@ -777,7 +777,7 @@ without the sheet-merge's risk. See "The Lobby" section, and "Milestone-sheet-me
 superseded" immediately under it, for the full reasoning and why sheet-merging was ruled
 out as the primary fix.
 
-## The Lobby — full design in `LOBBY-DESIGN.md`, PRIORITY, phase 0 done
+## The Lobby — full design in `LOBBY-DESIGN.md`, PRIORITY, phases 0-2 done
 
 **Full architecture, reasoning, and the pre-ticked/opt-out approval rule now live in
 `LOBBY-DESIGN.md`** — read that, not this, for the design. This entry is just the
@@ -795,8 +795,17 @@ a machine-knowable fact lives once).
       `PinToLobby` calls in the test — a real cell write via COM caused a real,
       correct pin. Two more real bugs found and fixed, both logged as classes in
       `AGENTS.md` — see `LOBBY-DESIGN.md`'s status banner for detail.
-- [ ] Phase 2 — wire `PublishAllDraftedFields` to read the Lobby instead of crawling
-      the 13 sheets directly.
+- [x] **Phase 2 — `PublishAllDraftedFields` now reads the Lobby instead of crawling
+      the 13 sheets directly.** `DraftingUI.DistinctPinnedFields` (pure, tested --
+      proven to catch a deliberately-broken dedupe before the real fix was restored).
+      Proven LIVE 2026-08-17 on `PRESERVED-known-good-20260815-1050`: with 39 rows
+      pinned across two fields (`ABOUT_BODY` x1, `PROGRESS_BODY` x38), "2. Put it on
+      the slides" ran Copy+Publish for exactly those two fields and nothing else --
+      confirmed from the saved workbook's own `Drafting Lobby` sheet, not just the
+      dialog. Full suite green (234/0). Safety valve: `RefreshDraftingSheets`
+      ("1. Set up my quarter") now silently repairs the Lobby from ground truth every
+      run, at no extra cost (it already reads every row of every sheet) -- closes the
+      at-work hand-edit gap without a third button.
 - [ ] Phase 3 — pre-ticked queue items + remove the Yes/No/Cancel apply gate (see
       `LOBBY-DESIGN.md` section 5 for the approval-default rule).
 - [ ] Phase 4 — revisit sheet-merging, only if the Lobby alone doesn't fully address

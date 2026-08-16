@@ -1826,6 +1826,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     AppendResult report, "DraftingLobby_PinTwiceUpdatesInPlaceNotDuplicate", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("DraftingUI_DistinctPinnedFieldsReadsOnlyTheLobby", filterPattern) Then
+        r = Test_DraftingUI_DistinctPinnedFieldsReadsOnlyTheLobby()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "DraftingUI_DistinctPinnedFieldsReadsOnlyTheLobby", r
+    On Error GoTo 0
+
     RunAllTests = report
 End Function
 
@@ -12780,4 +12789,50 @@ Private Function Test_DraftingLobby_PinTwiceUpdatesInPlaceNotDuplicate() As Stri
     xl.Quit
 
     Test_DraftingLobby_PinTwiceUpdatesInPlaceNotDuplicate = result
+End Function
+
+' LOBBY-DESIGN.md phase 2: PublishAllDraftedFields now runs only the fields
+' the Lobby has pinned, instead of every declared Prose field. The chain
+' itself needs a live presentation (Application.ActivePresentation, via
+' Resolve) that this harness does not build, so this proves the part that
+' actually changed -- DraftingUI.DistinctPinnedFields, the pure function the
+' chain now delegates the field-selection decision to -- directly, without
+' one.
+Private Function Test_DraftingUI_DistinctPinnedFieldsReadsOnlyTheLobby() As String
+    Dim result As String
+
+    ' NOTHING PINNED -> "". An unallocated array, not a (1 To 0) one -- the
+    ' same shape DraftingLobby.ReadLobby actually returns when the Lobby sheet
+    ' does not exist yet, proven here rather than assumed.
+    Dim noPins() As DraftingLobby.LobbyEntry
+    result = result & Assert(DraftingUI.DistinctPinnedFields(noPins) = "", _
+        "an unallocated (nothing pinned) array publishes nothing, got '" & DraftingUI.DistinctPinnedFields(noPins) & "'")
+
+    ' THE CASE THAT MATTERS: two entities pinned to the SAME field must not
+    ' run that field's Copy+Publish chain twice -- Drafting.PublishDrafts
+    ' already publishes every ticked row on the sheet in one pass, so a
+    ' second pass would be redundant work, not a second field.
+    Dim two(1 To 2) As DraftingLobby.LobbyEntry
+    two(1).FieldId = "ABOUT_BODY": two(1).EntityKey = "P001"
+    two(2).FieldId = "ABOUT_BODY": two(2).EntityKey = "P002"
+    Dim gotTwo As String
+    gotTwo = DraftingUI.DistinctPinnedFields(two)
+    result = result & Assert(gotTwo = "ABOUT_BODY", _
+        "two entities pinned to one field publish that field once, got '" & gotTwo & "'")
+
+    ' TWO DISTINCT FIELDS, FIRST-PINNED ORDER -- and a field NOT in the Lobby
+    ' at all (KEY_EVENTS_BODY, never pinned) must never appear, which is the
+    ' whole fix for the crawl: an untouched field's sheet is never opened.
+    Dim three(1 To 3) As DraftingLobby.LobbyEntry
+    three(1).FieldId = "PROGRESS_BODY": three(1).EntityKey = "P001"
+    three(2).FieldId = "ABOUT_BODY": three(2).EntityKey = "P001"
+    three(3).FieldId = "PROGRESS_BODY": three(3).EntityKey = "P002"
+    Dim gotThree As String
+    gotThree = DraftingUI.DistinctPinnedFields(three)
+    result = result & Assert(gotThree = "PROGRESS_BODY,ABOUT_BODY", _
+        "distinct fields in first-pinned order, got '" & gotThree & "'")
+    result = result & Assert(InStr(1, gotThree, "KEY_EVENTS_BODY", vbTextCompare) = 0, _
+        "a field never pinned in the Lobby must never appear -- this is the crawl fix")
+
+    Test_DraftingUI_DistinctPinnedFieldsReadsOnlyTheLobby = result
 End Function

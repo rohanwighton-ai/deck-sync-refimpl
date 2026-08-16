@@ -71,6 +71,23 @@ the point it's actually raised (not just the top-level chain handler), and watch
 whether it clusters around long sessions / many consecutive Office automation calls
 rather than any specific code path.
 
+**THIRD OCCURRENCE, next session, 2026-08-17 ~00:56, a different call site again.**
+During the live Phase 2 proof (LOBBY-DESIGN.md) on `PRESERVED-known-good-20260815-1050`:
+"1. Set up my quarter" and "2. Put it on the slides"' Copy/Publish half both completed
+cleanly (Lobby correctly held only `ABOUT_BODY`/`PROGRESS_BODY`, register saved) — the
+fault fired one stage later, in `PutItOnTheSlidesCore` (the review-queue apply step,
+`RibbonUI.bas`), reported as `"Put it on the slides stopped early... Error 50290...
+Reported by: VBAProject"`. Three occurrences across three sessions, three different call
+sites (milestone-apply, `PublishDrafts`, now `ApplyApproved`'s chain) rules out a
+single-function cause — this reads as a genuine intermittent COM/automation fault, not a
+logic bug in any one of them. Still no `Err.Description` captured (same gap named above,
+still not closed). Workbook was left `Saved=False` after the fault; not resaved or
+investigated further that session per the dialog's own warning ("this run may have
+already changed your deck or its Data sheet before it stopped — check both before
+running it again"). Next session: check the register and slide state against what was
+last known-good BEFORE retrying, then finally add the `Err.Description` capture this
+entry has asked for twice now.
+
 **SEPARATE, STILL OPEN: `TIMELINE_ELAPSED` (the elapsed bar) still fails "changed since
 you approved it" even after rounding `CurrentValue` to 2dp (`InjectPrimitive.bas`,
 `InjectProgressField`).** Verified the rounding fix is genuinely active (`Current` in the
