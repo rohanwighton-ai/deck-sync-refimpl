@@ -275,33 +275,49 @@ Scripting past it would also defeat the point: this step is what proves the
 human-facing flow works, not just the code behind it.
 
 - [x] `addin104` predates steps 2-4 entirely. Rebuilt 2026-08-16 12:14 — 34
-      modules imported clean, PowerPoint left open at the Save As point.
-      **Still needed from Rohan:** File > Save As > PowerPoint Add-in, name
-      it `addin105`, tick it, untick `addin104`, restart PowerPoint.
+      modules imported clean. Superseded by `addin105` (below), then by
+      `addin106` (below) — this line is only about clearing addin104.
 - [x] A fresh, dedicated copy made for this operation — never the live deck,
       and not reusing `PRESERVED-known-good-20260815-1050` in place (other
       scenarios may depend on that one staying as it is). Copied to:
       `AppData\Local\deck-sync-backups\scenario3-template-surgery-20260816\`
       (the Project Progress deck + `register-wide.xlsx`).
-- [ ] **THE COPY'S WORKBOOK PAIRING IS CURRENTLY WRONG, not just unverified.**
-      Checked the saved bytes directly: `DeckSyncWorkbookPath` still reads
-      `...\PRESERVED-known-good-20260815-1050\register-wide.xlsx` — the OLD
-      folder. `GetWorkbookPath`'s sibling-fallback never fires because that
-      stale path still resolves (the old file is still there), so writes
-      made on this copy would silently land in the OLD reference copy's
-      register, not this one's. **Must fix before touching templates:**
-      press "Change which workbook this deck uses" and type
-      `C:\Users\rohan\AppData\Local\deck-sync-backups\scenario3-template-surgery-20260816\register-wide.xlsx`
-      exactly. It's verified against saved bytes by the tool itself
-      (`SetWorkbookPathVerified`) — trust its own report, not a re-open.
-- [ ] **Then, in order, on the copy only:**
-      1. Press "Create Template Slide". Type auto-picks (only one type
+- [x] **THE COPY'S WORKBOOK PAIRING WAS ACTUALLY WRONG, confirmed live, not
+      just from bytes.** Rohan opened the copy, pressed "Change which
+      workbook this deck uses", and the dialog itself showed the pairing
+      still pointing at `...\PRESERVED-known-good-20260815-1050\`, matching
+      what the saved bytes said before anyone touched anything. Retyped to
+      `...\scenario3-template-surgery-20260816\register-wide.xlsx` and the
+      tool reported back **"Confirmed in the saved file, and this deck's
+      slide type still finds its sheet there"** — verified against disk, not
+      a cache read-back, per `SetWorkbookPathVerified`'s own design. Fixed.
+- [x] **`addin105` built with steps 2-4 but "Create Template Slide" had no
+      button at all — a second real defect, found live, not by inspection.**
+      Rohan pressed it and "nothing happened" because there was nothing to
+      press: `CreateTemplateSlide` was reachable only as a one-time MsgBox
+      at the end of Bulk Onboard Type, an assumption (one template per type,
+      made once) Scenario 3 breaks on purpose. This is the SAME bug class
+      `CommandBarUI.bas`'s own header already names once — *"Readiness
+      offered 'Create Template Slide' as a remedy for a button the toolbar
+      has never carried"* — recurring in a different module. Fixed: added
+      `CAP_CREATE_TEMPLATE`, wired a real repeatable toolbar button, flipped
+      the two reachability tests that had asserted its absence (they were
+      right when written, in 2026-08-01), pointed every dialog title in
+      `CreateTemplateSlideCore`/`PickTemplateSource` at the new constant
+      instead of a hardcoded literal. Suite 222/0 both before and after.
+      Add-in rebuilt as `addin106` (superseding the button-less `addin105`,
+      which should not be ticked). **Still needed from Rohan:** File > Save
+      As > PowerPoint Add-in, name it `addin106`, tick it, untick whichever
+      of `addin104`/`addin105` is currently ticked, restart PowerPoint.
+- [ ] **Then, in order, on the copy (pairing already fixed above):**
+      1. Press **"Create template slide"** (now a real button — bottom
+         right of the Add-in ribbon group). Type auto-picks (only one type
          registered: `project-progress`).
-      2. The new source picker lists every real onboarded instance by key +
+      2. The source picker lists every real onboarded instance by key +
          derived letter. **Pick a K-lettered instance** (15 exist). Confirm
          the summary dialog.
-      3. Press "Create Template Slide" again. **Pick an S-lettered instance**
-         this time (17 exist). Confirm.
+      3. Press **"Create template slide"** again. **Pick an S-lettered
+         instance** this time (17 exist). Confirm.
       4. Do **not** pick a P-lettered instance in either pass — see the known
          gap noted below.
 - [ ] **Known gap, accepted rather than fixed here:** the existing green `P`

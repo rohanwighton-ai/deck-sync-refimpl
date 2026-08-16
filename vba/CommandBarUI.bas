@@ -85,6 +85,19 @@ Public Const CAP_RETIRE_SLIDES As String = "Retire slides with no row"
 Public Const CAP_DISCOVER_FIELDS As String = "Tag fields on this slide"
 Public Const CAP_REPOINT_WORKBOOK As String = "Change which workbook this deck uses"
 
+' MISSING ENTIRELY UNTIL 2026-08-16, and this is the SAME bug this file's own
+' header describes fixing once already: "Readiness offered 'Create Template
+' Slide' as a remedy for a button the toolbar has never carried." It had been
+' reachable only as a one-time MsgBox prompt at the end of Bulk Onboard Type
+' (BatchOnboardFlow.bas), on the assumption a type only ever gets ONE
+' template, made once, right after its first onboarding -- true until
+' Scenario 3 (per-letter colour templates) needed a SECOND and THIRD
+' template added to a type that has been running for weeks. Rohan asked for
+' this button directly, live, after being sent to press one that did not
+' exist. The Bulk Onboard prompt stays -- this is an additional, repeatable
+' entry point, not a replacement.
+Public Const CAP_CREATE_TEMPLATE As String = "Create template slide"
+
 Public Const STAGE_REVIEW_CHANGES As String = "Review Changes"
 Public Const STAGE_APPLY_APPROVED As String = "Apply Approved"
 
@@ -294,6 +307,8 @@ Public Sub ShowToolbar()
     ' ---------------------------------------------------------------------
     AddButton bar, CAP_REPOINT_WORKBOOK, "RibbonUI.ChangePairedWorkbook", 23, _
         "Use to see which workbook this deck is paired with, and point it at a different one. Needed whenever a deck and its register are separated -- a copy, a moved file, a new machine. Changes the pairing only; it writes nothing to a slide."
+    AddButton bar, CAP_CREATE_TEMPLATE, "RibbonUI.CreateTemplateSlide", 942, _
+        "Use to turn a real, already-onboarded slide into a hidden master template: you pick which one, it strips the fields to placeholders and hides it from the slideshow. Repeatable -- one per type per colour letter."
 
     ' "REBUILD MY SHEETS" IS GONE, 2026-08-14, and it is not coming back as a
     ' button. Its tooltip said "use this when a drafting sheet looks wrong" --

@@ -7140,7 +7140,8 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
                        "|" & CommandBarUI.CAP_ADD_SLIDES & _
                        "|" & CommandBarUI.CAP_RETIRE_SLIDES & _
                        "|" & CommandBarUI.CAP_REPOINT_WORKBOOK & _
-                       "|" & CommandBarUI.CAP_DISCOVER_FIELDS & "|"
+                       "|" & CommandBarUI.CAP_DISCOVER_FIELDS & _
+                       "|" & CommandBarUI.CAP_CREATE_TEMPLATE & "|"
 
     Dim expectedCount As Long
     expectedCount = UBound(Split(expectedCaptions, "|")) - 1
@@ -7207,7 +7208,7 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     ' pass. Tightened 2026-07-30 while adding SyncNow, whose name contains
     ' another entry's prefix.
     Dim expectedActions As String
-    expectedActions = "|SyncNowChain|PutItOnTheSlides|ReviewChanges|AddMissingSlides|RetireSlides|ChangePairedWorkbook|DiscoverFieldsOnSlide|"
+    expectedActions = "|SyncNowChain|PutItOnTheSlides|ReviewChanges|AddMissingSlides|RetireSlides|ChangePairedWorkbook|DiscoverFieldsOnSlide|CreateTemplateSlide|"
 
     Dim i As Long
     Dim eachBar As Variant
@@ -7252,13 +7253,17 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     ' build on a genuine orphan. It caught exactly this regression when the
     ' chains were calling private Cores and nine capabilities went dark.
     result = result & Assert(seenSyncNow, "Sync Now is ON the toolbar -- the chain, and the only route to a slide write")
-    ' Create Template Slide is deliberately NOT a button as of 2026-08-01 -- it
-    ' is offered at the end of Bulk Onboard, where it belongs: it cannot run
-    ' before onboarding and is a once-per-slide-type action. This assertion used
-    ' to require the button and is kept, inverted, so the decision is visible
-    ' rather than looking like an omission.
-    result = result & Assert(Not seenCreateTemplate, _
-        "Create Template Slide is NOT a toolbar button -- it is offered at the end of Bulk Onboard instead")
+    ' Create Template Slide was deliberately NOT a button from 2026-08-01 to
+    ' 2026-08-16 -- reached only via a one-time MsgBox at the end of Bulk
+    ' Onboard, on the assumption a type gets exactly one template, made once.
+    ' Scenario 3 (per-letter colour templates) broke that assumption: a
+    ' SECOND and THIRD template need adding to a type onboarded weeks ago,
+    ' with no re-onboarding in sight. Reversed 2026-08-16 after Rohan was
+    ' sent to press a button that did not exist -- this assertion flips with
+    ' it, inverted AGAIN so the decision stays visible rather than looking
+    ' like a regression.
+    result = result & Assert(seenCreateTemplate, _
+        "Create Template Slide IS a toolbar button -- adding a second/third letter to an already-onboarded type needs a repeatable entry point, not a one-time prompt")
 
     CommandBarUI.HideToolbar
     Test_CommandBarUI_ShowToolbarCreatesWiredButtons = result
@@ -7288,7 +7293,8 @@ Private Function Test_CommandBarUI_ShowToolbarIsIdempotent() As String
                              "|" & CommandBarUI.CAP_ADD_SLIDES & _
                              "|" & CommandBarUI.CAP_RETIRE_SLIDES & _
                              "|" & CommandBarUI.CAP_REPOINT_WORKBOOK & _
-                             "|" & CommandBarUI.CAP_DISCOVER_FIELDS & "|", "|")) - 1
+                             "|" & CommandBarUI.CAP_DISCOVER_FIELDS & _
+                             "|" & CommandBarUI.CAP_CREATE_TEMPLATE & "|", "|")) - 1
     result = result & Assert(total2 = wantAfter, _
         "a second ShowToolbar leaves one button per declared caption -- expected " & wantAfter & ", got " & total2)
 

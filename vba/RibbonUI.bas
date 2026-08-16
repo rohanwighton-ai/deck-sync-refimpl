@@ -2344,7 +2344,7 @@ Public Sub CreateTemplateSlide()
     CreateTemplateSlideCore
     Exit Sub
 Failed:
-    RibbonUI.ShowSyncResult "Create Template Slide", RibbonUI.UnexpectedErrorText("Create Template Slide", Err.Number, Err.Description, Err.Source)
+    RibbonUI.ShowSyncResult CommandBarUI.CAP_CREATE_TEMPLATE, RibbonUI.UnexpectedErrorText(CommandBarUI.CAP_CREATE_TEMPLATE, Err.Number, Err.Description, Err.Source)
 End Sub
 
 Private Sub CreateTemplateSlideCore()
@@ -2360,12 +2360,12 @@ Private Sub CreateTemplateSlideCore()
     On Error GoTo 0
 
     If Not hasTypes Then
-        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", vbExclamation, "Create Template Slide"
+        MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", vbExclamation, CommandBarUI.CAP_CREATE_TEMPLATE
         Exit Sub
     End If
 
     Dim slideType As String
-    slideType = PickType(types, "Create Template Slide -- Choose Type")
+    slideType = PickType(types, CommandBarUI.CAP_CREATE_TEMPLATE & " -- Choose Type")
     If slideType = "" Then Exit Sub
 
     ' THE SOURCE IS A REAL INSTANCE THE USER PICKS, not whatever the type's
@@ -2410,7 +2410,7 @@ Private Sub CreateTemplateSlideCore()
         letterNote = ""
         If letter <> "" Then letterNote = " for letter '" & letter & "'"
         MsgBox "Type '" & slideType & "'" & letterNote & " already has a master template: slide " & existing.SlideIndex & "." & vbCrLf & vbCrLf & _
-               "A type/letter pair must have exactly one. Nothing was changed.", vbInformation, "Create Template Slide"
+               "A type/letter pair must have exactly one. Nothing was changed.", vbInformation, CommandBarUI.CAP_CREATE_TEMPLATE
         Exit Sub
     End If
 
@@ -2426,7 +2426,7 @@ Private Sub CreateTemplateSlideCore()
     If hasFields Then fieldCount = fHi - fLo + 1
 
     If MsgBox(TemplateSlide.ConfirmTemplateText(slideType, sourceLabel, fieldCount), _
-              vbYesNo + vbQuestion, "Create Template Slide") <> vbYes Then
+              vbYesNo + vbQuestion, CommandBarUI.CAP_CREATE_TEMPLATE) <> vbYes Then
         Exit Sub
     End If
 
@@ -2436,7 +2436,7 @@ Private Sub CreateTemplateSlideCore()
     Dim report As String
     If Not mr.Ok Then
         report = "FAILED to create a template for '" & slideType & "': " & mr.Reason
-        ShowSyncResult "Create Template Slide", report
+        ShowSyncResult CommandBarUI.CAP_CREATE_TEMPLATE, report
         Exit Sub
     End If
 
@@ -2457,7 +2457,7 @@ Private Sub CreateTemplateSlideCore()
         "is not a record, so it is neither counted nor corrected." & vbCrLf & vbCrLf & _
         "Worth doing now: open it and clear anything the sync does not manage" & vbCrLf & _
         "(figures, chart data, notes, untagged text) that belonged to " & sourceLabel & "."
-    ShowSyncResult "Create Template Slide", report
+    ShowSyncResult CommandBarUI.CAP_CREATE_TEMPLATE, report
 End Sub
 
 ' Real, non-template instances of `slideType` -- these are what a template
@@ -2504,7 +2504,7 @@ Private Function PickTemplateSource(pres As Object, slideType As String, ByRef w
 
     If n = 0 Then
         MsgBox "No real, already-onboarded slide of type '" & slideType & "' exists to build a template from." & vbCrLf & vbCrLf & _
-               "Onboard at least one real project of this type first.", vbExclamation, "Create Template Slide"
+               "Onboard at least one real project of this type first.", vbExclamation, CommandBarUI.CAP_CREATE_TEMPLATE
         Exit Function
     End If
 
@@ -2523,7 +2523,7 @@ Private Function PickTemplateSource(pres As Object, slideType As String, ByRef w
     Next j
 
     Dim answer As String
-    answer = InputBox(prompt, "Create Template Slide -- Choose Source")
+    answer = InputBox(prompt, CommandBarUI.CAP_CREATE_TEMPLATE & " -- Choose Source")
     If Trim(answer) = "" Then Exit Function
 
     If IsNumeric(answer) Then
@@ -2541,7 +2541,7 @@ Private Function PickTemplateSource(pres As Object, slideType As String, ByRef w
         End If
     Next j
 
-    MsgBox "'" & answer & "' did not match a number or an instance key. Nothing was changed.", vbExclamation, "Create Template Slide"
+    MsgBox "'" & answer & "' did not match a number or an instance key. Nothing was changed.", vbExclamation, CommandBarUI.CAP_CREATE_TEMPLATE
 End Function
 
 ' A QUESTION WITH ONE POSSIBLE ANSWER IS NOT A QUESTION.
