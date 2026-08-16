@@ -777,83 +777,25 @@ without the sheet-merge's risk. See "The Lobby" section, and "Milestone-sheet-me
 superseded" immediately under it, for the full reasoning and why sheet-merging was ruled
 out as the primary fix.
 
-## The Lobby — Rohan's design, replaces the milestone-sheet-merge idea below, PRIORITY for next session
+## The Lobby — full design in `LOBBY-DESIGN.md`, PRIORITY, phase 0 done
 
-**The real fix for the crawl AND the two-loop problem, worked out live 2026-08-16
-(night), Rohan's own model, not a redesign of it:** a "pin, not scan" architecture. The
-13-sheet Excel crawl (item U) and the two-press "build then apply" pattern (dialog-count
-item below) are the same root problem from two angles — every check re-visits every
-drafting sheet from scratch because nothing summarises what's actually pending anywhere.
+**Full architecture, reasoning, and the pre-ticked/opt-out approval rule now live in
+`LOBBY-DESIGN.md`** — read that, not this, for the design. This entry is just the
+tickable build status so it isn't duplicated in two places (this project's own rule:
+a machine-knowable fact lives once).
 
-**The model, in Rohan's own words:** *"it's more like the work being pinned on a board
-by the author, and the crawler just looking at the board, not every author's desk...
-authorship pins on board next to other authors' notes for the period... it's pinned as
-part of authoring."*
-
-**Concretely:**
-- A new "Drafting Lobby" sheet — one shared board, not per-field.
-- The pin fires on the **APPROVE tick itself** — the existing, already-deliberate "this
-  is ready" signal (`Type Y in column H` — already Step 5 of every drafting sheet's own
-  instructions), not a listener on every keystroke. Narrow surface, rare event.
-- Mechanism: `Worksheet_Change` (or `Application.SheetChange`) watching only the APPROVE
-  column across the 13 sheets, writing an entry to the Lobby the moment a tick lands.
-- Publish and the review-queue build then read **only the Lobby**, never the 13 sheets
-  directly, for "what's pending" — the crawl a person watches and waits through
-  disappears entirely, not just gets faster.
-- **Does not touch `Drafting.WriteDraftingSheet`'s row-addressing at all** — sidesteps
-  the five-real-incidents risk that ruled out merging the sheets themselves (see the
-  parked idea below, which this replaces as the recommended fix).
-
-**The trade being made, deliberately, not accidentally:** every other safety mechanism
-in this project (R13, the drift-hash on every approved change, the register-vs-slide
-re-read on every sync) exists because it refuses to trust a maintained record and
-re-checks reality instead — that discipline has caught real bugs repeatedly tonight
-alone. A Lobby that is *written to* rather than recomputed is the first place in the
-tool where something would be trusted without re-verifying against the sheets
-themselves. Narrowed by firing only on the tick (bulk rebuilds never touch an existing
-tick, so a refresh can't flood false pins) — but the one honest residual gap: a person
-hand-editing the workbook directly, no macro running (the explicit at-work,
-no-Claude-no-Python case this project already designs for), pins nothing, and the Lobby
-would silently miss it. Worth deciding on purpose before building, not discovering
-after.
-
-**Not attempted tonight** — deliberately, per Rohan's own call to stop and think rather
-than keep live-debugging. Next session: design the Lobby's exact shape (columns,
-one-row-per-pending-change), decide how the residual hand-edit gap gets closed or
-accepted, then build.
-
-### The Lobby's approval default: PRE-TICKED, opt-OUT — Rohan's explicit call, no exception list
-
-Worked out the same night, directly contradicts what an earlier draft of this section
-would have recommended (an exception list for fields with no drafting-sheet gate, e.g.
-`PROJECT_STATUS`) — **superseded, not layered on top of.** Rohan's reasoning, twice,
-considered both times: *"I don't want to approve it twice, sync once... the lobby can be
-automatic and pretick Y's and then if I don't want elements like budget I take the ticks
-off them... all fields will be scanned by the author, particularly if on less
-worksheets for small devices etc."* Consolidating small/device-style fields onto fewer
-sheets (see the milestone-merge reasoning below, and the general "fewer worksheets"
-direction) means the author sees all of them as a natural part of authoring, not buried
-in a wide register — a genuinely different visibility story than the one that produced
-the original R13 incident.
-
-**The rule: every field in the queue arrives pre-ticked `Y`. Working the queue is
-removing ticks from what you don't want synced this round, not adding them to what you
-do.** No exception for fields with no drafting-sheet approval step — `PROJECT_STATUS`
-included.
-
-**Residual risk, on record on purpose, not a blocker:** the original incident happened
-because visibility was assumed and never actually checked. Any implicit-visibility
-design (structural consolidation included) carries the same shape of risk if it
-recurs — something changes in a consolidated sheet while attention is on a different
-section of it, unnoticed. Accepted deliberately, Rohan's call, given the structural
-change (fewer, denser sheets) genuinely differs from the register-scale visibility
-problem that caused the original incident.
-
-**What survives from R13 unchanged:** the diff-only filtering (`R13.3` — unchanged
-carried-forward content still never enters the queue at all, pre-tick or not) and the
-drift-hash re-check at apply time (still refuses to write anything that changed between
-tick and apply). Pre-ticking changes who has to act to prevent a write, not whether the
-write is re-verified against live reality before it happens.
+- [x] **Phase 0 — cold-start crawl + core mechanics.** `vba/DraftingLobby.bas`
+      (`PinToLobby`, `ReadLobby`, `ClearLobbyEntry`, `LobbyCount`,
+      `BuildLobbyFromScratch`). Three real tests, full suite green (233/0). Built and
+      tested 2026-08-16 (night). Two real bugs found and fixed building it — see
+      `LOBBY-DESIGN.md`'s status banner and `AGENTS.md`'s Known Patterns.
+- [ ] Phase 1 — the `Application.SheetChange` pin-on-tick event mechanism.
+- [ ] Phase 2 — wire `PublishAllDraftedFields` to read the Lobby instead of crawling
+      the 13 sheets directly.
+- [ ] Phase 3 — pre-ticked queue items + remove the Yes/No/Cancel apply gate (see
+      `LOBBY-DESIGN.md` section 5 for the approval-default rule).
+- [ ] Phase 4 — revisit sheet-merging, only if the Lobby alone doesn't fully address
+      the sheet-count/tab-clutter complaint once 0-3 are proven live.
 
 ## Milestone-sheet-merge — superseded by the Lobby above, kept for the reasoning only
 

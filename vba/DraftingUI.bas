@@ -513,7 +513,14 @@ End Sub
 ' Static and Controlled fields have known values, not written ones -- generating
 ' a drafting sheet per field would produce forty tabs, thirty-five of which
 ' would be a surface for work nobody should do there.
-Private Function ProseFields(wb As Object) As String
+' PUBLIC since 2026-08-16, for DraftingLobby.BuildLobbyFromScratch -- the cold-
+' start crawl needs the exact same list of Prose fields this module already
+' enumerates. Shared rather than copied, same reasoning as
+' InjectPrimitive.DeviceRoleTagsOnSlide going public for Harvest.bas: a second
+' copy of "how to enumerate the Prose fields" is a second place this project's
+' own rule (COLUMNS.md, DOCUMENT-MAP.md) says a machine-knowable fact must
+' never live.
+Public Function ProseFields(wb As Object) As String
     If Not WorkbookBridge.WorksheetExists(wb, FieldSpec.SPEC_SHEET_NAME) Then Exit Function
 
     Dim ws As Object

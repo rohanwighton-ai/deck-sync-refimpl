@@ -1,0 +1,261 @@
+Attribute VB_Name = "DraftingLobby"
+Option Explicit
+
+' -----------------------------------------------------------------------
+' THE DRAFTING LOBBY -- see LOBBY-DESIGN.md for the full design and why.
+' -----------------------------------------------------------------------
+'
+' Rohan, 2026-08-16: "it's more like the work being pinned on a board by the
+' author, and the crawler just looking at the board, not every author's
+' desk... authorship pins on board next to other authors' notes for the
+' period... it's pinned as part of authoring."
+'
+' ONE SHARED SHEET, NOT PER-FIELD. Every drafting sheet's APPROVE tick pins
+' one row here. Publish reads ONLY this sheet -- never the 13 (or however
+' many) drafting sheets directly -- which is the whole fix for the crawl
+' (FIX-LIST item U) and, combined with pre-ticking the register-to-slide
+' queue (LOBBY-DESIGN.md section 5), the two-press pattern.
+'
+' A FRESH RECOMPUTE PATH EXISTS AND IS NOT OPTIONAL (BuildLobbyFromScratch,
+' below). The pin-on-tick mechanism (AppEvents.bas) is the fast path, not the
+' only path -- a person hand-editing the workbook at work, with no Claude, no
+' Python and no macro running, pins nothing, and this project already designs
+' for that machine. The cold-start crawl is the same full read
+' PublishAllDraftedFields already did before this module existed; it is not
+' new cost, just no longer the ONLY path.
+
+Public Const LOBBY_SHEET_NAME As String = "Drafting Lobby"
+
+Private Const COL_L_SHEET As Long = 1
+Private Const COL_L_ROW As Long = 2
+Private Const COL_L_FIELDID As Long = 3
+Private Const COL_L_ENTITY As Long = 4
+Private Const COL_L_TIMESTAMP As Long = 5
+
+Private Const LOBBY_HEADER_ROW As Long = 1
+Private Const LOBBY_FIRST_ROW As Long = 2
+
+Public Type LobbyEntry
+    SheetName As String
+    Row As Long
+    FieldId As String
+    EntityKey As String
+End Type
+
+Private Function EnsureLobbySheet(wb As Object) As Object
+    Dim ws As Object
+    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, LOBBY_SHEET_NAME)
+
+    If Trim(CStr(ws.Cells(LOBBY_HEADER_ROW, COL_L_SHEET).Value)) = "" Then
+        ws.Cells(LOBBY_HEADER_ROW, COL_L_SHEET).Value = "SheetName"
+        ws.Cells(LOBBY_HEADER_ROW, COL_L_ROW).Value = "Row"
+        ws.Cells(LOBBY_HEADER_ROW, COL_L_FIELDID).Value = "FieldID"
+        ws.Cells(LOBBY_HEADER_ROW, COL_L_ENTITY).Value = "EntityCode"
+        ws.Cells(LOBBY_HEADER_ROW, COL_L_TIMESTAMP).Value = "Pinned"
+        ws.Rows(LOBBY_HEADER_ROW).Font.Bold = True
+    End If
+
+    Set EnsureLobbySheet = ws
+End Function
+
+Private Function LastLobbyRow(ws As Object) As Long
+    Dim r As Long
+    r = LOBBY_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(r, COL_L_FIELDID).Value)) <> ""
+        r = r + 1
+    Loop
+    LastLobbyRow = r - 1
+End Function
+
+' Finds an existing pin for this exact (sheet, field, entity), or 0.
+'
+' KEYED ON SHEET+FIELD+ENTITY, NOT ON ROW NUMBER. A row number is where the
+' field happens to sit today; the identity of "this field, for this project"
+' is what a second tick on the same row should update in place rather than
+' duplicate.
+Private Function FindLobbyRow(ws As Object, sheetName As String, fieldId As String, _
+                              entityKey As String) As Long
+    Dim last As Long
+    last = LastLobbyRow(ws)
+
+    Dim r As Long
+    For r = LOBBY_FIRST_ROW To last
+        If StrComp(CStr(ws.Cells(r, COL_L_SHEET).Value), sheetName, vbTextCompare) = 0 And _
+           StrComp(CStr(ws.Cells(r, COL_L_FIELDID).Value), fieldId, vbTextCompare) = 0 And _
+           StrComp(CStr(ws.Cells(r, COL_L_ENTITY).Value), entityKey, vbTextCompare) = 0 Then
+            FindLobbyRow = r
+            Exit Function
+        End If
+    Next r
+End Function
+
+' THE PIN. Called from two places: AppEvents' tick-watcher (the fast path,
+' one row at a time, as it happens) and BuildLobbyFromScratch (the cold-start
+' path, all at once). Idempotent -- pinning the same (sheet, field, entity)
+' twice updates the timestamp in place rather than growing the sheet.
+Public Sub PinToLobby(wb As Object, sheetName As String, r As Long, fieldId As String, _
+                      entityKey As String)
+    Dim ws As Object
+    Set ws = EnsureLobbySheet(wb)
+
+    Dim existing As Long
+    existing = FindLobbyRow(ws, sheetName, fieldId, entityKey)
+
+    Dim targetRow As Long
+    If existing > 0 Then
+        targetRow = existing
+    Else
+        targetRow = LastLobbyRow(ws) + 1
+        If targetRow < LOBBY_FIRST_ROW Then targetRow = LOBBY_FIRST_ROW
+    End If
+
+    ws.Cells(targetRow, COL_L_SHEET).Value = sheetName
+    ws.Cells(targetRow, COL_L_ROW).Value = r
+    ws.Cells(targetRow, COL_L_FIELDID).Value = fieldId
+    ws.Cells(targetRow, COL_L_ENTITY).Value = entityKey
+    ws.Cells(targetRow, COL_L_TIMESTAMP).Value = Now
+End Sub
+
+' Removes one entry after PublishDraftsForField has actually published it.
+' Not found is not an error -- a person may have already cleared it, or the
+' Lobby may have been rebuilt from scratch since the pin landed.
+Public Sub ClearLobbyEntry(wb As Object, sheetName As String, fieldId As String, _
+                           entityKey As String)
+    If Not WorkbookBridge.WorksheetExists(wb, LOBBY_SHEET_NAME) Then Exit Sub
+    Dim ws As Object
+    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, LOBBY_SHEET_NAME)
+
+    Dim r As Long
+    r = FindLobbyRow(ws, sheetName, fieldId, entityKey)
+    If r > 0 Then ws.Rows(r).Delete
+End Sub
+
+' Everything currently pinned. Publish reads this and ONLY this -- never the
+' drafting sheets directly -- which is the fix for the crawl.
+'
+' AN ARRAY OF THE UDT, NOT A Collection OR Dictionary OF IT. Both of those
+' are late-bound/Variant-based internally and cannot hold a VBA Type --
+' compile error, not a runtime one (AGENTS.md, hit four times now). Same
+' shape as SyncAction()/ReviewItem() elsewhere in this codebase.
+'
+' EmptyLobbyEntries() is the (1 To 0) convention every other array-returning
+' function here uses for "genuinely nothing" -- ReDim-ing straight to
+' (1 To 0) throws at runtime (AGENTS.md), so an empty result is built by
+' never entering the loop rather than by asking for a zero-length array.
+Public Function ReadLobby(wb As Object) As LobbyEntry()
+    Dim out() As LobbyEntry
+    Dim n As Long
+    n = 0
+
+    If Not WorkbookBridge.WorksheetExists(wb, LOBBY_SHEET_NAME) Then
+        ReadLobby = out
+        Exit Function
+    End If
+    Dim ws As Object
+    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, LOBBY_SHEET_NAME)
+
+    Dim last As Long
+    last = LastLobbyRow(ws)
+
+    Dim r As Long
+    For r = LOBBY_FIRST_ROW To last
+        n = n + 1
+        ReDim Preserve out(1 To n)
+        out(n).SheetName = CStr(ws.Cells(r, COL_L_SHEET).Value)
+        out(n).Row = CLng(ws.Cells(r, COL_L_ROW).Value)
+        out(n).FieldId = CStr(ws.Cells(r, COL_L_FIELDID).Value)
+        out(n).EntityKey = CStr(ws.Cells(r, COL_L_ENTITY).Value)
+    Next r
+
+    ReadLobby = out
+End Function
+
+' Count of pending entries without building the array -- for callers (the
+' pending-approvals check in RibbonUI) that only need "is there anything
+' pending", not the entries themselves.
+Public Function LobbyCount(wb As Object) As Long
+    If Not WorkbookBridge.WorksheetExists(wb, LOBBY_SHEET_NAME) Then Exit Function
+    Dim ws As Object
+    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, LOBBY_SHEET_NAME)
+    LobbyCount = LastLobbyRow(ws) - LOBBY_FIRST_ROW + 1
+    If LobbyCount < 0 Then LobbyCount = 0
+End Function
+
+' THE COLD-START / REPAIR PATH. The one full crawl this design still needs --
+' proven safe to run because it is exactly the read PublishAllDraftedFields
+' already did every single press, before this module existed. Not slower than
+' today's tool; the fix is that it no longer has to run on every press, only
+' here, on demand.
+'
+' Rebuilds the Lobby from the ACTUAL state of every drafting sheet's APPROVE
+' column -- the source of truth is always the sheets, never the Lobby itself.
+' Safe to run at any time: a person can call this to repair the Lobby after a
+' hand-edit at work, or any time there is doubt about whether a pin was missed.
+Public Function BuildLobbyFromScratch(wb As Object) As String
+    Dim fields As String
+    fields = DraftingUI.ProseFields(wb)
+    If Trim(fields) = "" Then
+        BuildLobbyFromScratch = "No Prose fields on the Field Spec sheet -- nothing to scan."
+        Exit Function
+    End If
+
+    ' Fresh sheet each time -- this is a REBUILD from reality, not an
+    ' incremental merge. Any pin the sheets no longer support (approve tick
+    ' since removed) must not survive a rebuild, the same "never trust a
+    ' maintained record over reality" rule that governs the review queue.
+    If WorkbookBridge.WorksheetExists(wb, LOBBY_SHEET_NAME) Then
+        ' wb.Application, NOT the bare `Application`. This VBA project is
+        ' hosted in PowerPoint (COM-add-in-first, per DECISIONS.md); a bare
+        ' `Application` reference resolves to PowerPoint.Application, not the
+        ' Excel instance that actually owns `wb`. Every other place in this
+        ' codebase that needs the workbook's own Application already knows
+        ' this (DraftingUI.bas's wb.Application.Visible/.InputBox/.Caption
+        ' calls) -- found live 2026-08-16 when this exact line silently
+        ' suppressed the WRONG app's alerts, the sheet-delete confirmation
+        ' fired on the real (correct) Excel instance regardless, and a
+        ' rebuild left a stale pin behind. Caught by the test that proves a
+        ' rebuild does not trust its own past content -- see
+        ' Test_DraftingLobby_BuildFromScratchFindsOnlyApprovedRows.
+        wb.Application.DisplayAlerts = False
+        wb.Worksheets(LOBBY_SHEET_NAME).Delete
+        wb.Application.DisplayAlerts = True
+    End If
+    Dim ws As Object
+    Set ws = EnsureLobbySheet(wb)
+
+    Dim parts() As String
+    parts = Split(fields, ",")
+
+    Dim pinned As Long, scanned As Long
+    Dim i As Long
+    For i = LBound(parts) To UBound(parts)
+        Dim fieldId As String
+        fieldId = Trim(parts(i))
+        If fieldId <> "" Then
+            Dim sheetName As String
+            sheetName = Drafting.DraftSheetNameFor(fieldId)
+            If WorkbookBridge.WorksheetExists(wb, sheetName) Then
+                Dim dws As Object
+                Set dws = WorkbookBridge.GetOrAddWorksheet(wb, sheetName)
+
+                Dim r As Long
+                r = Drafting.DRAFT_FIRST_ROW
+                Do While Trim(CStr(dws.Cells(r, Drafting.COL_D_ENTITY).Value)) <> ""
+                    scanned = scanned + 1
+                    Dim mark As String
+                    mark = CStr(dws.Cells(r, Drafting.COL_D_APPROVED).Value)
+                    If ReviewQueue.IsApprovalMark(mark) Then
+                        Dim entityKey As String
+                        entityKey = Trim(CStr(dws.Cells(r, Drafting.COL_D_ENTITY).Value))
+                        PinToLobby wb, sheetName, r, fieldId, entityKey
+                        pinned = pinned + 1
+                    End If
+                    r = r + 1
+                Loop
+            End If
+        End If
+    Next i
+
+    BuildLobbyFromScratch = "Lobby rebuilt: " & pinned & " approved row(s) pinned, " & _
+        scanned & " row(s) scanned across " & (UBound(parts) - LBound(parts) + 1) & " field(s)."
+End Function

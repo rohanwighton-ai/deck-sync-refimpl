@@ -52,6 +52,21 @@ guidance.
   `otherSlideCandCount()`) instead of a Dictionary -- see
   `SPIKE_NOTES_BatchOnboardFlow.md`.
 
+  **Hit a fourth time, 2026-08-16, via `Collection` rather than
+  `Dictionary`** -- same restriction, different container: a `Collection`
+  is also late-bound/`Variant`-based internally, so `coll.Add someUDT`
+  fails at compile time with "Only user-defined types defined in public
+  object modules can be coerced to or from a variant or passed to
+  late-bound functions" (`DraftingLobby.ReadLobby`, caught by the compile
+  gate in `run_vba_tests.ps1` before it ever reached a real test). Same
+  fix as always: an array of the UDT (`LobbyEntry()`), not a `Collection`
+  or `Dictionary` of it -- matching how `SyncAction()`/`ReviewItem()`
+  already do this throughout the codebase. **The existing "check this
+  file before writing new Dictionary-caching code" takeaway above should
+  read `Dictionary` **or** `Collection`** -- this file was not checked
+  first this time either, and would have caught it before the compile
+  gate did.
+
 - **ONE WRITER ON THE RIG AT A TIME. Delegating an Office task means not doing
   it yourself.** 2026-08-01: a Fable agent was put on the property-persistence
   bug, and the main agent then ran the same experiments concurrently -- same

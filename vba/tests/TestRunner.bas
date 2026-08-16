@@ -1799,6 +1799,33 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     AppendResult report, "BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("DraftingLobby_PinReadClearRoundTrip", filterPattern) Then
+        r = Test_DraftingLobby_PinReadClearRoundTrip()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "DraftingLobby_PinReadClearRoundTrip", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("DraftingLobby_BuildFromScratchFindsOnlyApprovedRows", filterPattern) Then
+        r = Test_DraftingLobby_BuildFromScratchFindsOnlyApprovedRows()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "DraftingLobby_BuildFromScratchFindsOnlyApprovedRows", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("DraftingLobby_PinTwiceUpdatesInPlaceNotDuplicate", filterPattern) Then
+        r = Test_DraftingLobby_PinTwiceUpdatesInPlaceNotDuplicate()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "DraftingLobby_PinTwiceUpdatesInPlaceNotDuplicate", r
+    On Error GoTo 0
+
     RunAllTests = report
 End Function
 
@@ -12603,4 +12630,154 @@ Private Function IgnoringTrailingBreaksForTest(text As String) As String
         End If
     Loop
     IgnoringTrailingBreaksForTest = t
+End Function
+
+' -----------------------------------------------------------------------
+' DraftingLobby -- see LOBBY-DESIGN.md.
+' -----------------------------------------------------------------------
+
+' Same (1 To 0)-throws-at-runtime guard used throughout the production code
+' (AGENTS.md) -- an array-returning function that found nothing leaves its
+' array unallocated, and LBound/UBound on that raises rather than returning 0.
+Private Function ArrayCountForTest(arr() As DraftingLobby.LobbyEntry) As Long
+    On Error Resume Next
+    Dim lo As Long, hi As Long
+    lo = LBound(arr)
+    hi = UBound(arr)
+    If Err.Number <> 0 Then
+        ArrayCountForTest = 0
+    Else
+        ArrayCountForTest = hi - lo + 1
+    End If
+    On Error GoTo 0
+End Function
+
+Private Function MakeLobbyFixture(xl As Object) As Object
+    Dim wb As Object
+    Set wb = xl.Workbooks.Add
+
+    Dim spec As Object
+    Set spec = wb.Worksheets(1)
+    spec.Name = FieldSpec.SPEC_SHEET_NAME
+    spec.Cells(1, FieldSpec.COL_S_FIELDID).Value = "FieldID"
+    spec.Cells(1, FieldSpec.COL_S_KIND).Value = "Kind"
+    spec.Cells(2, FieldSpec.COL_S_FIELDID).Value = "TEST_FIELD"
+    spec.Cells(2, FieldSpec.COL_S_KIND).Value = "Prose"
+
+    Dim draft As Object
+    Set draft = wb.Worksheets.Add
+    draft.Name = Drafting.DraftSheetNameFor("TEST_FIELD")
+    ' Two rows: one approved, one not -- BuildFromScratch must find only the
+    ' first. DRAFT_FIRST_ROW and the two columns actually read are the only
+    ' cells that matter for this fixture.
+    draft.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_ENTITY).Value = "P001"
+    draft.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value = "Y"
+    draft.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_ENTITY).Value = "P002"
+    draft.Cells(Drafting.DRAFT_FIRST_ROW + 1, Drafting.COL_D_APPROVED).Value = ""
+
+    Set MakeLobbyFixture = wb
+End Function
+
+Private Function Test_DraftingLobby_PinReadClearRoundTrip() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = MakeLobbyFixture(xl)
+
+    DraftingLobby.PinToLobby wb, "TPL_TEST_FIELD", 10, "TEST_FIELD", "P001"
+
+    Dim entries() As DraftingLobby.LobbyEntry
+    Dim n As Long
+    entries = DraftingLobby.ReadLobby(wb)
+    n = ArrayCountForTest(entries)
+    result = result & Assert(n = 1, "one pin lands as one entry, got " & n)
+
+    If n = 1 Then
+        result = result & Assert(entries(1).SheetName = "TPL_TEST_FIELD", "sheet name round-trips, got '" & entries(1).SheetName & "'")
+        result = result & Assert(entries(1).FieldId = "TEST_FIELD", "field id round-trips, got '" & entries(1).FieldId & "'")
+        result = result & Assert(entries(1).EntityKey = "P001", "entity key round-trips, got '" & entries(1).EntityKey & "'")
+        result = result & Assert(entries(1).Row = 10, "row round-trips, got " & entries(1).Row)
+    End If
+
+    DraftingLobby.ClearLobbyEntry wb, "TPL_TEST_FIELD", "TEST_FIELD", "P001"
+    entries = DraftingLobby.ReadLobby(wb)
+    n = ArrayCountForTest(entries)
+    result = result & Assert(n = 0, "cleared entry leaves the Lobby empty, got " & n)
+
+    wb.Saved = True
+    wb.Close
+    xl.Quit
+
+    Test_DraftingLobby_PinReadClearRoundTrip = result
+End Function
+
+Private Function Test_DraftingLobby_BuildFromScratchFindsOnlyApprovedRows() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = MakeLobbyFixture(xl)
+
+    Dim report As String
+    report = DraftingLobby.BuildLobbyFromScratch(wb)
+    result = result & Assert(InStr(report, "1 approved") > 0, _
+        "reports exactly one approved row found, got '" & report & "'")
+
+    Dim entries() As DraftingLobby.LobbyEntry
+    Dim n As Long
+    entries = DraftingLobby.ReadLobby(wb)
+    n = ArrayCountForTest(entries)
+    result = result & Assert(n = 1, _
+        "only the ticked row (P001) is pinned, the untucked one (P002) is not, got " & n)
+
+    If n = 1 Then
+        result = result & Assert(entries(1).EntityKey = "P001", _
+            "the pinned entry is the approved row, got '" & entries(1).EntityKey & "'")
+    End If
+
+    ' REBUILT FROM REALITY, NOT MERGED. Untick the row, rebuild, confirm the
+    ' stale pin does not survive -- the Lobby must never trust its own past
+    ' content over what the drafting sheet says now.
+    Dim draft As Object
+    Set draft = wb.Worksheets(Drafting.DraftSheetNameFor("TEST_FIELD"))
+    draft.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value = ""
+    DraftingLobby.BuildLobbyFromScratch wb
+    entries = DraftingLobby.ReadLobby(wb)
+    n = ArrayCountForTest(entries)
+    result = result & Assert(n = 0, _
+        "an un-ticked row does not survive a rebuild as a stale pin, got " & n)
+
+    wb.Saved = True
+    wb.Close
+    xl.Quit
+
+    Test_DraftingLobby_BuildFromScratchFindsOnlyApprovedRows = result
+End Function
+
+Private Function Test_DraftingLobby_PinTwiceUpdatesInPlaceNotDuplicate() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = MakeLobbyFixture(xl)
+
+    DraftingLobby.PinToLobby wb, "TPL_TEST_FIELD", 10, "TEST_FIELD", "P001"
+    DraftingLobby.PinToLobby wb, "TPL_TEST_FIELD", 10, "TEST_FIELD", "P001"
+
+    Dim entries() As DraftingLobby.LobbyEntry
+    Dim n As Long
+    entries = DraftingLobby.ReadLobby(wb)
+    n = ArrayCountForTest(entries)
+    result = result & Assert(n = 1, _
+        "pinning the same (sheet, field, entity) twice updates in place, does not duplicate -- got " & n)
+
+    wb.Saved = True
+    wb.Close
+    xl.Quit
+
+    Test_DraftingLobby_PinTwiceUpdatesInPlaceNotDuplicate = result
 End Function

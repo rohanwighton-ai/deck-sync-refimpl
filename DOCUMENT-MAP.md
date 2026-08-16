@@ -108,6 +108,7 @@ the record.
 | document | authoritative for | status |
 |---|---|---|
 | `SESSION-PROTOCOL.md` | **the mandated session-start workflow.** Read before `NEXT-SESSION.md`, every session, no exceptions. | CURRENT — added 2026-08-16 |
+| `LOBBY-DESIGN.md` | the Drafting Lobby's full architecture — the crawl/two-loop fix, the pin mechanism, the pre-ticked approval default, rollout order. Phase 0 (`DraftingLobby.bas`) built and tested 2026-08-16 night; the event mechanism (phase 1) is not built yet. | CURRENT — added 2026-08-16 (night) |
 | `NEXT-SESSION.md` | **where the project actually is.** Read first among the narrative docs, always. | CURRENT — rewritten each session |
 | `CHECKLIST.md` | **what's actually left, flat and tickable.** The primary handover surface as of 2026-08-16. | CURRENT — ticked together, in session |
 | `SYSTEM-OVERVIEW.md` | what this system is, for a reader with zero context | CURRENT — added 2026-08-16, migrated from `archive/HANDOVER-Q4F26-DRAFTING.md` with provenance |
