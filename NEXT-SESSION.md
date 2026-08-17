@@ -1,5 +1,90 @@
 # NEXT SESSION — start here
 
+> ## 17 AUG, LATE NIGHT (~21:45) — item AT fixed in full (3 rounds), `addin133`
+> deployed and confirmed live. P1 also confirmed built and deployed
+> (`addin131`/`132`/`133` all carry it) — the earlier "not yet built" note below
+> is stale. `purpose-hound` agent commissioned and run once.
+> **STATUS: CURRENT, supersedes every block below.**
+>
+> **What happened, in order:** Rohan asked to check item X's real freeze
+> ("nothing anywhere, looks frozen" — a genuinely different symptom from P1's
+> "dialog behind the window," confirmed via a direct question rather than
+> assumed to be the same bug). A fable-run `waste-hound` traced it to
+> `ReviewChangesCore` -> `BuildQueue` -> `PlanRoutineSync` -> the injector
+> family, landing on `ShapeAddressBook.Lookup` — the cache built earlier that
+> same night to fix item AR turned out to contain items W and AB's own defect
+> shape, twice over, plus a borrowed justification that didn't transfer. Full
+> detail, all three rounds, and the measurement-methodology trap found and
+> corrected mid-investigation (cross-project `Application.Run` adds real
+> overhead beyond trivial dispatch — confirmed via an isolated floor probe):
+> **FIX-LIST.md, item AT.**
+>
+> **Numbers: 508.5ms/call (unfixed, cross-project baseline) -> 346.3ms
+> in-process (true apples-to-apples baseline) -> 222.1ms after rounds 1-2
+> (resolve-once caching) -> proven FLAT regardless of miss volume after round
+> 3** (in-memory negative cache — a direct probe recorded 300 distinct misses
+> then re-read the sheet's row extent fresh from the file: 17 rows before, 17
+> after). At the project's own estimated ~5,000+ Lookup calls per "Put it on
+> the slides" press, this was ~42 minutes worst-case; it is now structurally
+> bounded by real hit count alone, not by how many absent fields exist.
+>
+> **Round 3 came from Rohan's own question, not code review**: "but why is it
+> caching misses?" — the negative cache had copied the positive cache's
+> "worth surviving a reopen" justification without re-deriving whether it
+> actually transferred to the majority (miss) case. It didn't. This is now
+> the canonical example `purpose-hound` (see below) is calibrated against.
+>
+> **A real hang, found and cleared, unrelated to the fix:** the full 242-test
+> suite hung 5+ minutes once during verification, leaving 4 orphaned Excel
+> processes. Bisected by calling each of the 3 `ShapeAddressBook` tests
+> individually via the real `TestRunner.RunAllTests` entry point (not TestRunner
+> as a black box) — all three pass clean in isolation. A clean re-run afterward
+> completed normally, 242/242 twice. Root cause judged environmental
+> (accumulated Office automation state from a very long session), not a defect
+> in the fix — worth re-checking if it recurs, not chased further tonight.
+>
+> **Deploy hygiene finding, worth remembering:** `File > Save As` twice this
+> session defaulted somewhere OTHER than the AddIns folder without warning —
+> once to `OneDrive` root, once to `OneDrive\Claude\`. Neither failed loudly;
+> both looked like a normal successful save. **Always verify the actual saved
+> path after a Save-As**, don't assume the dialog remembered the AddIns
+> folder. Separately: `addin131` and `addin132` were BOTH still set
+> `AutoLoad=True` when `addin133` was registered — three versions of the same
+> add-in auto-loading at once, a real duplicate-module-collision risk that
+> nothing would have surfaced until something broke mysteriously. Now cleaned
+> up (only `addin133` auto-loads); **check for this after every deploy from
+> now on**, not just after ones where something looked wrong.
+>
+> **New agent commissioned: `purpose-hound`** (`~/claude-brain/agents/
+> purpose-hound.md`, symlinked into `~/.claude/agents`, `model: sonnet`).
+> Cold, read-only auditor for borrowed/copied reasoning — for each function
+> whose comment argues for its own design ("same reason as X," "worth
+> persisting," etc.), asks four questions: what's the role, what greater good
+> is claimed, does that greater good actually apply HERE (checked against
+> BOTH the sibling function it was borrowed from AND the project's own
+> strategic intent — personal tool, not org-wide; "a boundary earns its place
+> only where a person decides"), and if it applies, has it actually been
+> tested per this repo's own bar (a named test or a "proven live" note), not
+> just reasoned into confidence. Calibrated against the AT/RecordAbsent defect
+> above. **First real run, same night, on this repo:** mostly clean — the
+> codebase's habit of narrating and self-correcting its own past transplant
+> errors in comments is real and held up. One live finding: `DeckRegistry.
+> SetWorkbookPathVerified` borrowed its retry/escalation design from
+> `SetDeckPeriodVerified` (whose fix has a named "8/8 proven live" note) but
+> has never had its OWN live proof — plausibly inherits the same underlying
+> fix, never independently confirmed. Cheap to close (a live retest, and
+> Scenario 8 exercises this path anyway). Not urgent, not yet done.
+>
+> **Not yet done:** the actual live retest against item X's real stall this
+> was diagnosed from — press "1. Set up my quarter" then "2. Put it on the
+> slides" for real, read the Timing sheet, confirm the freeze is actually
+> gone (or much shorter) on the real deck, not just proven in isolation.
+> **This is next session's first action.** Everything else below this block
+> (Scenario 1's unaided close, the P1 dialog-visibility fix, the earlier
+> OneDrive write-reliability work) is unchanged and still the larger context —
+> read down from here for it, but the immediate next step is the item X
+> retest.
+
 > ## 17 AUG, LATE — P1's code fix written (background session), NOT yet
 > built/deployed/live-tested.
 > **STATUS: CURRENT, supersedes the block below. The plan in that block was

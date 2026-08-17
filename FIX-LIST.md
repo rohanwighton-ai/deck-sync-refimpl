@@ -77,7 +77,18 @@
 > `PublishAllDraftedFields (total)`: 362.2s for 4 fields, 90.6 sec/field, worse
 > than AF's own estimate. This is AF + AL + AN all stacking on the same real
 > path. Clears the standing condition for fixing AF next -- the number came
-> back large, on the real button.**
+> back large, on the real button.** AS added and FIXED 2026-08-17/18 night --
+`Drafting.PruneParked`'s `.Delete` had no `DisplayAlerts` guard, same defect as
+`DraftingLobby.bas`'s (fixed 2026-08-16), never propagated to this second call
+site. AT added and FIXED 2026-08-17/18 late night -- `ShapeAddressBook`'s own
+cache (built to fix AR) contained items W and AB's defect shape TWICE over
+(resolve-from-scratch every call, then a redundant row-scan underneath the
+fix), plus a borrowed justification that didn't transfer (persisting misses
+to a sheet that never needed to survive a reopen). 508.5ms/call -> flat
+regardless of miss volume, proven live (sheet stayed at 17 rows after 300
+distinct misses). DEPLOYED `addin133`, confirmed loaded live; two stale
+auto-loading predecessors (`addin131`/`addin132`) found and disabled during
+deploy.
 
 ## Added 2026-08-17 afternoon — AA, STILL OPEN — long delay BEFORE the period dialog
 even appears, in code the new Timing instrumentation does not cover
@@ -591,6 +602,108 @@ baseline with the dialog suppressed, the modal was the driver and this is
 done. If costs stay high, the scan/Copy/Delete's own Excel-internal cost
 is real after all, and the caching direction becomes the actual priority.
 Not yet retested live as of this writing.
+
+## Added and FIXED 2026-08-17 late night — AT, the cache built to fix item AR
+## turned out to contain items W and AB's own defect shape
+
+**AT. `ShapeAddressBook`'s LOOKUP/RECORD/RECORDABSENT RE-RESOLVED THE SHEET
+FROM SCRATCH ON EVERY CALL, THEN A SECOND REDUNDANT SCAN INSIDE
+`FindBookRow`, THEN PERSISTED THE MAJORITY-CASE ANSWER (MISSES) TO A SHEET
+THAT NEVER NEEDED TO SURVIVE A REOPEN.** Found via a fable-run `waste-hound`
+diagnosis of item X's live freeze (Rohan: "nothing anywhere, looks frozen" --
+which turned out to be a different symptom from P1's "dialog behind the
+window," not the same bug). The audit traced the freeze to `ReviewChangesCore`
+-> `BuildQueue` -> `SyncOperations.PlanRoutineSync` -> `InjectPrimitive`'s
+injector family, landing on `ShapeAddressBook.Lookup` itself -- the cache
+BUILT to fix item AR contained the exact defect shape items W and AB already
+fixed elsewhere in this codebase, inside the module written hours earlier
+that same night to fix a different instance of it.
+
+**Round 1 -- resolve-once caching (`mSheet`/`mNextRow`).** Every single
+`Lookup`/`Record`/`RecordAbsent` call re-resolved the "Shape Address Book"
+sheet via `WorkbookBridge.WorksheetExists` and/or `GetOrAddWorksheet`, each a
+`For Each ws In wb.Worksheets` scan of the WHOLE WORKBOOK (~54 sheets on the
+real register) -- independent of how big the address book itself is.
+**Measured live against the real register (17-row book), cross-project via
+`Application.Run`: 508.5ms/call.** Fixed by caching the resolved worksheet
+object once per workbook (invalidated only when a genuinely different
+workbook is wired in via `SetActiveWorkbook`).
+
+**A measurement-methodology trap found and corrected mid-investigation:**
+cross-project `Application.Run` (needed to drive an already-loaded add-in
+from outside) adds real overhead on top of substantive COM work, not just
+trivial dispatch -- confirmed by an isolated "floor" probe (a guaranteed
+early-exit call, ~0ms) that ruled out dispatch cost as the explanation for a
+smaller-than-expected improvement. Re-measured the RIGHT way: same-project,
+in-process, one cross-project hop total instead of one per call, with a
+clean git-stash-based before/after on the SAME real register.
+**True apples-to-apples: 346.3ms -> 222.1ms/call after round 1 alone --
+real, but far short of what eliminating a ~54-sheet scan should produce.**
+
+**Round 2 -- `FindBookRow` still called `LastBookRow` (its own full
+row-by-row scan) on EVERY invocation**, even with the sheet itself cached --
+the identical "second redundant scan underneath the fix" shape item AB found
+in `PinToLobby`. Fixed by having `FindBookRow` use the already-tracked
+`mNextRow - 1` instead of recomputing it.
+
+**Round 3 -- Rohan's own question, not a code review, found the real
+remaining cost: "but why is it caching misses?"** The negative cache
+(`RecordAbsent`, added for item AR) borrowed the POSITIVE cache's
+justification wholesale -- "the template fixes this answer forever, worth
+surviving a reopen" -- without re-deriving whether it actually transferred.
+It doesn't: a HIT is rare and worth persisting; a MISS is the MAJORITY case
+(most fields aren't on most slide types, and each gets recorded per suffix
+variant -- base/`.1`/`.track`/`.rest`) and only needs to survive the REST OF
+THE CURRENT BUTTON PRESS, not a reopen -- every other row of the same slide
+type hits it within the same session regardless of whether it ever touches
+disk. Persisting misses anyway is exactly what grew the sheet `FindBookRow`
+has to scan. Fixed by moving `RecordAbsent` to an in-memory
+`Scripting.Dictionary` (`mNegativeCache`, keyed `slideType|fieldId`,
+`vbTextCompare`) -- zero sheet growth, zero Excel COM calls for a cached
+miss. The positive cache (`Record`) is unchanged; for hits the original
+"worth surviving a reopen" reasoning genuinely holds.
+
+**Proven, not assumed -- the architectural claim directly demonstrated:**
+a probe recorded 300 DISTINCT misses via `RecordAbsent`, then re-read the
+sheet's actual row extent FRESH FROM THE FILE (not an in-memory counter):
+**17 rows before, 17 rows after 300 misses.** The sheet cannot grow from
+misses anymore, structurally, not just currently-small-so-not-yet-visible.
+100 lookups timed immediately after: 81.6ms/call, same range as round 1+2's
+number, confirming no degradation under real-shaped load.
+
+**Combined result: 508.5ms/call (unfixed) -> ~120-220ms/call after rounds
+1-2 -> flat regardless of miss volume after round 3**, at the project's own
+estimated ~5,000+ Lookup calls per "Put it on the slides" press
+(item AF/AR) -- was ~42 minutes worst-case, now structurally bounded by hit
+count alone (a dozen-ish rows), not by how many absent fields the register
+carries.
+
+**A real hang found and cleared during verification, unrelated to the fix
+itself:** the full 242-test suite hung for 5+ minutes once, leaving four
+orphaned Excel processes with zero workbooks open. Bisected by calling each
+of the three `ShapeAddressBook`-related tests individually via the real
+`TestRunner.RunAllTests` entry point (not a guess) -- all three pass cleanly
+in isolation, meaning the hang was test-sequencing/environmental (likely
+accumulated Office automation state from a very long session), not a defect
+in this fix. A clean re-run afterward completed normally, 242/242.
+
+**Swept for the same class**, per this project's own "a defect found is a
+class, not an instance" rule: `Record` (the positive-cache write path) still
+calls `EnsureSheet`-equivalent (`ResolveSheetForWrite`) which is now cached
+the same way as the read path -- no third instance found.
+
+**Full suite 242/242 (twice, clean both times).** `check_vba_static.py`
+clean across 38 modules. **DEPLOYED `addin133`, confirmed loaded live.**
+Cleanup found and fixed during deployment: `addin131` and `addin132` were
+BOTH still set `AutoLoad=True` alongside the new build (from earlier same-
+night deploys never having their predecessor unregistered) -- three
+versions of the same add-in auto-loading simultaneously, a real risk of
+duplicate-module collisions. `addin131`/`addin132` explicitly unloaded and
+`AutoLoad` cleared; only `addin133` remains active.
+
+**Not yet re-tested against the real Scenario 1 stall this was diagnosed
+from** (item X) -- the actual live "Put it on the slides" retest, with
+Timing sheet numbers, is still the next real proof and hasn't happened yet.
 
 ## Added 2026-08-17 afternoon — FIXED (Z) — no way to interrupt a long apply run
 

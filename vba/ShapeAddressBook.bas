@@ -90,15 +90,98 @@ Private Const ADDRESS_BOOK_FIRST_ROW As Long = 2
 ' reused for as long as this add-in session runs.
 Private mWb As Object
 
+' FIX-LIST item AT, 2026-08-17 late. mSheet/mNextRow are the SAME "resolve
+' once, reuse" fix as items W and AB, applied to the cache's own storage
+' layer -- found because the cache built to fix item AR turned out to
+' contain items W and AB's exact defect shape itself. Before this fix,
+' every single Lookup/Record/RecordAbsent call re-resolved the sheet via
+' WorkbookBridge.WorksheetExists and/or GetOrAddWorksheet, each a `For Each
+' ws In wb.Worksheets` scan of the WHOLE WORKBOOK (~54 sheets on the real
+' register) -- independent of how big the address book itself is. Measured
+' live against the real register (17-row book): 508.5ms/call. At this
+' project's own measured ~5,000+ Lookup calls per "Put it on the slides"
+' press (FIX-LIST item AF/AR), that is ~42 minutes -- worse than the
+' 14.5-minute run that got killed, and it explains why the process reads as
+' frozen rather than slow: steady CPU work, zero visible output.
+' mNextRow closes the matching gap in Record/RecordAbsent -- both called
+' LastBookRow (its own O(book length) scan) a second time on every append,
+' the identical pattern item AB fixed in BuildLobbyFromScratch/PinToLobby.
+Private mSheet As Object
+Private mNextRow As Long ' 0 = not yet resolved for the current mSheet
+
+' FIX-LIST item AT, continued same night -- Rohan's own question ("why is
+' it caching misses?") found the real remaining cost after the mSheet fix
+' above only cut it 508.5ms -> 222.1ms/call (measured in-process, apples-
+' to-apples). The negative cache borrowed the POSITIVE cache's
+' justification -- "the template fixes this answer forever, worth
+' surviving a reopen" -- but that justification does not actually
+' transfer. A HIT is rare and worth persisting. A MISS is the MAJORITY
+' case (most fields aren't on most slide types) and only needs to survive
+' the rest of the CURRENT button press -- every other row of the same
+' slide type hits it within the same session regardless of whether it
+' ever touches disk. Persisting it anyway is what grew the sheet
+' FindBookRow has to scan (roughly one row per absent field per suffix
+' variant -- base/.1/.track/.rest -- per slide type; fable's audit
+' estimated hundreds of rows once a few types are in real use).
+' mNegativeCache is a plain in-memory Scripting.Dictionary instead:
+' zero sheet growth, zero Excel COM calls for a cached miss, and the only
+' cost is one extra walk per (slide type, field) the first time each
+' session -- the walk that was always going to happen anyway. The
+' positive cache (mSheet/Record) is UNCHANGED -- hits still persist,
+' because for hits the original "worth surviving a reopen" reasoning
+' actually holds. Reset on the same workbook-change trigger as mSheet:
+' a miss recorded for one workbook's template is not evidence about a
+' different workbook's template.
+Private mNegativeCache As Object ' Scripting.Dictionary, key "slideType|fieldId"
+
 ' Wired from WorkbookBridge.OpenOrGetWorkbook, the one place every path
 ' through this add-in already goes through to reach the register workbook --
 ' same hook point DraftingLobby.EnsureWatching uses, for the same reason.
-' Idempotent and cheap to call every resolve.
+' Idempotent and cheap to call every resolve -- cheaper still now: re-wiring
+' the SAME workbook object (the common case) no longer invalidates the
+' sheet/row cache at all.
 Public Sub SetActiveWorkbook(wb As Object)
+    If Not (mWb Is wb) Then
+        Set mSheet = Nothing
+        mNextRow = 0
+        Set mNegativeCache = Nothing
+    End If
     Set mWb = wb
 End Sub
 
-Private Function EnsureSheet() As Object
+Private Function NegativeCache() As Object
+    If mNegativeCache Is Nothing Then
+        Set mNegativeCache = CreateObject("Scripting.Dictionary")
+        mNegativeCache.CompareMode = vbTextCompare
+    End If
+    Set NegativeCache = mNegativeCache
+End Function
+
+' READ PATH. Deliberately does NOT create the sheet -- Lookup's "nothing
+' cached yet" contract for a never-yet-written book depends on that. Caches
+' mSheet only once the sheet is confirmed to exist, same invalidation as
+' SetActiveWorkbook.
+Private Function ResolveSheetForRead() As Object
+    If Not (mSheet Is Nothing) Then
+        Set ResolveSheetForRead = mSheet
+        Exit Function
+    End If
+    If mWb Is Nothing Then Exit Function
+    If Not WorkbookBridge.WorksheetExists(mWb, ADDRESS_BOOK_SHEET_NAME) Then Exit Function
+
+    Set mSheet = WorkbookBridge.GetOrAddWorksheet(mWb, ADDRESS_BOOK_SHEET_NAME)
+    mNextRow = LastBookRow(mSheet) + 1
+    Set ResolveSheetForRead = mSheet
+End Function
+
+' WRITE PATH. Creates the sheet (and seeds its header) on first use, same
+' as the old EnsureSheet -- just cached afterward instead of re-resolved.
+Private Function ResolveSheetForWrite() As Object
+    If Not (mSheet Is Nothing) Then
+        Set ResolveSheetForWrite = mSheet
+        Exit Function
+    End If
+
     Dim ws As Object
     Set ws = WorkbookBridge.GetOrAddWorksheet(mWb, ADDRESS_BOOK_SHEET_NAME)
 
@@ -109,7 +192,9 @@ Private Function EnsureSheet() As Object
         ws.Rows(ADDRESS_BOOK_HEADER_ROW).Font.Bold = True
     End If
 
-    Set EnsureSheet = ws
+    Set mSheet = ws
+    mNextRow = LastBookRow(ws) + 1
+    Set ResolveSheetForWrite = mSheet
 End Function
 
 Private Function LastBookRow(ws As Object) As Long
@@ -121,9 +206,16 @@ Private Function LastBookRow(ws As Object) As Long
     LastBookRow = r - 1
 End Function
 
+' Takes the book's own known extent (mNextRow - 1) instead of recomputing it
+' via LastBookRow's own scan -- FindBookRow used to call LastBookRow on
+' EVERY invocation, which meant the mSheet/mNextRow caching above still left
+' this exact same class of redundant rescan running underneath it, on every
+' single Lookup call. Found by comparing a live measured number against
+' what the fix should have produced and not accepting the gap unexplained
+' (FIX-LIST item AT).
 Private Function FindBookRow(ws As Object, slideType As String, fieldId As String) As Long
     Dim last As Long
-    last = LastBookRow(ws)
+    last = mNextRow - 1
 
     Dim r As Long
     For r = ADDRESS_BOOK_FIRST_ROW To last
@@ -141,11 +233,17 @@ End Function
 ' before any workbook is open, same defensive shape DraftingLobby's
 ' functions already use).
 Public Function Lookup(slideType As String, fieldId As String) As String
-    If mWb Is Nothing Then Exit Function
-    If Not WorkbookBridge.WorksheetExists(mWb, ADDRESS_BOOK_SHEET_NAME) Then Exit Function
+    ' Negative cache first -- zero Excel COM calls for the majority-case
+    ' answer (see RecordAbsent's header for why misses live in memory, not
+    ' on the sheet).
+    If NegativeCache().Exists(slideType & "|" & fieldId) Then
+        Lookup = NO_SHAPE_MARKER
+        Exit Function
+    End If
 
     Dim ws As Object
-    Set ws = WorkbookBridge.GetOrAddWorksheet(mWb, ADDRESS_BOOK_SHEET_NAME)
+    Set ws = ResolveSheetForRead()
+    If ws Is Nothing Then Exit Function
 
     Dim r As Long
     r = FindBookRow(ws, slideType, fieldId)
@@ -163,7 +261,7 @@ Public Sub Record(slideType As String, fieldId As String, shapeName As String)
     If slideType = "" Or fieldId = "" Or shapeName = "" Then Exit Sub
 
     Dim ws As Object
-    Set ws = EnsureSheet()
+    Set ws = ResolveSheetForWrite()
 
     Dim existing As Long
     existing = FindBookRow(ws, slideType, fieldId)
@@ -172,8 +270,9 @@ Public Sub Record(slideType As String, fieldId As String, shapeName As String)
     If existing > 0 Then
         targetRow = existing
     Else
-        targetRow = LastBookRow(ws) + 1
+        targetRow = mNextRow
         If targetRow < ADDRESS_BOOK_FIRST_ROW Then targetRow = ADDRESS_BOOK_FIRST_ROW
+        mNextRow = targetRow + 1
     End If
 
     ws.Cells(targetRow, COL_B_TYPE).Value = slideType
@@ -184,30 +283,19 @@ End Sub
 ' THE NEGATIVE TWIN OF Record. Called by FindShapeByRoleTag only when its
 ' full walk finds ZERO matches -- deliberately NOT when it finds two or
 ' more (an ambiguous, exceptional state; caching that as "absent" would be
-' actively wrong, and re-walking a rare ambiguous case costs nothing). Same
-' idempotent update-in-place behaviour as Record. A genuinely later-added
-' template shape would need this book cleared by hand to be seen -- no
-' automatic invalidation exists for either cache direction today, and none
-' is added here on the strength of a case that has not happened.
+' actively wrong, and re-walking a rare ambiguous case costs nothing).
+' IN-MEMORY ONLY, not written to the sheet -- see mNegativeCache's header
+' for why a miss doesn't need to survive a reopen the way a hit does.
+' Idempotent same as before (Dictionary keys are naturally update-in-
+' place). A genuinely later-added template shape would need this cleared
+' (restart the add-in, or the next session, whichever comes first -- an
+' in-memory cache invalidates itself for free on every reopen, which a
+' persistent one never did) -- no automatic invalidation exists within one
+' session for either cache direction today, and none is added here on the
+' strength of a case that has not happened.
 Public Sub RecordAbsent(slideType As String, fieldId As String)
     If mWb Is Nothing Then Exit Sub
     If slideType = "" Or fieldId = "" Then Exit Sub
 
-    Dim ws As Object
-    Set ws = EnsureSheet()
-
-    Dim existing As Long
-    existing = FindBookRow(ws, slideType, fieldId)
-
-    Dim targetRow As Long
-    If existing > 0 Then
-        targetRow = existing
-    Else
-        targetRow = LastBookRow(ws) + 1
-        If targetRow < ADDRESS_BOOK_FIRST_ROW Then targetRow = ADDRESS_BOOK_FIRST_ROW
-    End If
-
-    ws.Cells(targetRow, COL_B_TYPE).Value = slideType
-    ws.Cells(targetRow, COL_B_FIELDID).Value = fieldId
-    ws.Cells(targetRow, COL_B_SHAPENAME).Value = NO_SHAPE_MARKER
+    NegativeCache()(slideType & "|" & fieldId) = True
 End Sub
