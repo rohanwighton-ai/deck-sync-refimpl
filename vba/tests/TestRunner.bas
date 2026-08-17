@@ -7484,13 +7484,11 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
     ' shipped in addin40 and found on 2026-08-08. Every other assertion in this
     ' test passed against it. Without this line the suite calls that a pass.
 
-    Dim seenPreview As Boolean
     Dim seenSyncNow As Boolean
     Dim seenReview As Boolean
     Dim seenApply As Boolean
     Dim seenCreateTemplate As Boolean
     Dim seenAuditFields As Boolean
-    seenPreview = False
     seenSyncNow = False
     seenReview = False
     seenApply = False
@@ -7539,7 +7537,6 @@ Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
             "button '" & ctrl.Caption & "' tooltip is within Office's 255-char cap, got " & Len(ctrl.TooltipText))
         result = result & Assert(Left$(ctrl.TooltipText, 7) = "Use to ", _
             "button '" & ctrl.Caption & "' tooltip opens with 'Use to ', got '" & Left$(ctrl.TooltipText, 20) & "'")
-        If subName = "WhereAmI" Then seenPreview = True
         If subName = "SyncNowChain" Then seenSyncNow = True
         If subName = "ReviewChanges" Then seenReview = True
         If subName = "ApplyApprovedChanges" Then seenApply = True

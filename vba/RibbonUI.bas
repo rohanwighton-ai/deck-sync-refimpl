@@ -88,75 +88,18 @@ Public Const REPORT_CAP As Long = 900
 ' Approved. This is a different REVIEW SURFACE for changes that fit one, not a
 ' different write path -- there is still exactly one place that writes a field
 ' to a slide (F7).
-' WHERE AM I -- rebuilds the readiness sheet and shows it.
-'
-' REBUILDS, never merely activates. A readiness surface that can be revisited
-' without recomputation is the same defect as a verifier that reads a cache: it
-' answers about a moment that has passed, and it is the surface a person would
-' consult INSTEAD of checking. See Readiness.bas's header for the four rules.
-' NO LONGER A BUTTON TARGET. The chain is the entry point; this stays as the
-' error-handling wrapper its Core still needs. Private so the reachability
-' check reports genuine orphans rather than adapters.
-Private Sub WhereAmI()
-    On Error GoTo Failed
-    Dim ignored As String
-    ignored = WhereAmICore(False)
-    Exit Sub
-Failed:
-    RibbonUI.ShowSyncResult "Where am I", RibbonUI.UnexpectedErrorText("Where am I", Err.Number, Err.Description, Err.Source)
-End Sub
-
-' `quiet` rebuilds the sheet and RETURNS the headline instead of announcing it.
-'
-' Rohan, 2026-08-10: "do we need this msgbox then?" No. It opened every single
-' chain run with a dialog that announces state and asks nothing -- the category
-' he had already named as the problem -- and it was redundant twice over: the
-' marking offer one dialog later names the actual blocker in detail, and the
-' rest was identical boilerplate on every press. Its only real job is rebuilding
-' the sheet, which needs no dialog.
-'
-' The chain's own rule is stop only at decisions, and this broke it on step one.
-Private Function WhereAmICore(Optional quiet As Boolean = False) As String
-    Dim pres As Object
-    Set pres = Application.ActivePresentation
-
-    Dim workbookPath As String
-    workbookPath = DeckRegistry.GetWorkbookPath(pres)
-    If workbookPath = "" Then
-        WhereAmICore = "No paired workbook, so there is nothing to report on."
-        If quiet Then Exit Function
-        MsgBox "This deck has no paired workbook yet, so there is nothing to report " & _
-               "on." & vbCrLf & vbCrLf & "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", _
-               vbExclamation, "Where am I"
-        Exit Function
-    End If
-
-    Dim wb As Object
-    Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
-    If wb Is Nothing Then
-        WhereAmICore = "Could not open the paired workbook at: " & workbookPath
-        If quiet Then Exit Function
-        MsgBox "Could not open the paired workbook at: " & workbookPath, vbCritical, "Where am I"
-        Exit Function
-    End If
-
-    Dim r As ReadyReport
-    r = Readiness.Build(pres, wb)
-    Readiness.WriteSheet wb, pres, r
-
-    ' The sheet is the answer; the dialog only carries the headline and points at
-    ' it. Everything else would be truncated -- CapReport exists because MsgBox
-    ' silently cuts near 1024 characters, and this report is longer than that.
-    WhereAmICore = Readiness.Headline(r)
-    If quiet Then Exit Function
-
-    Readiness.ShowSheet wb
-    MsgBox Readiness.Headline(r) & vbCrLf & vbCrLf & _
-           "The full picture is on the '" & Readiness.READY_SHEET_NAME & _
-           "' sheet, first tab of the workbook." & vbCrLf & vbCrLf & _
-           "Nothing is disabled by what it says -- it reports, it does not gate.", _
-           vbInformation, "Where am I"
-End Function
+' "WHERE AM I" DELETED ENTIRELY, 2026-08-17 evening (Rohan: "delete the whole
+' thing, keep anything useful but otherwise get rid of it"). It rebuilt a
+' readiness sheet by re-verifying the deck's period and workbook path from
+' the SAVED FILE'S OWN BYTES (two full copies of the deck plus slow
+' Shell.Application ZIP extraction) and running a full ReviewQueue.BuildQueue
+' diff per registered slide type -- all of it redundant with checks the real
+' operations already make, cheaply, at the point they actually matter (see
+' e.g. RunSync.bas's own "REFUSED: this slide type has no template slide
+' registered"). Nothing here was worth relocating: every check traced back to
+' something already caught elsewhere with its own clear message. `Readiness.
+' bas` is deleted along with this. FIX-LIST/NEXT-SESSION carry the full
+' reasoning for anyone looking for it later.
 
 ' NO LONGER A BUTTON TARGET. The chain is the entry point; this stays as the
 ' error-handling wrapper its Core still needs. Private so the reachability
@@ -1627,13 +1570,25 @@ Private Sub SyncNowChainCore()
         Exit Sub
     End If
 
-    ' WHERE YOU ARE, WITHOUT A BUTTON FOR IT. Folded in per Rohan 2026-08-09.
-    ' Rebuilt first so the sheet reflects the state this run is about to act on,
-    ' and so a person who cancels at the plan below still gets the picture.
-    Dim readyHeadline As String
-    On Error Resume Next
-    readyHeadline = WhereAmICore(True)
-    On Error GoTo 0
+    ' "WHERE YOU ARE" REMOVED ENTIRELY, 2026-08-17 evening -- was folded in
+    ' here per Rohan 2026-08-09, deleted per Rohan the same night this
+    ' comment was rewritten. Every check it ran (deck period set, workbook
+    ' paired, template slide present, partial-period leftover rows) is
+    ' independently caught, cheaply, by the real operations below the
+    ' moment they actually run and refuse with their own clear message --
+    ' see RunSync.bas's own "REFUSED: this slide type has no template slide
+    ' registered" for one concrete example. What it was NOT redundant with
+    ' (a period reported-as-set but never actually saved) is already
+    ' verified at the point of WRITING, by SetDeckPeriodVerified inside
+    ' StartQuarter, called moments later in this same chain -- re-deriving
+    ' it again from disk here was checking something already proven true.
+    ' It paid for that redundancy at real cost: TWO full copies of the
+    ' entire deck file plus slow Shell.Application ZIP extraction, and a
+    ' full ReviewQueue.BuildQueue diff per registered slide type, on EVERY
+    ' single press of this chain's own button -- all to produce one line of
+    ' throwaway status text. Rohan: "just because it can be done doesn't
+    ' mean it should be." `Readiness.bas` and `RibbonUI.WhereAmI`/
+    ' `WhereAmICore` are deleted along with this call.
 
     ' THE REPAIR, OFFERED ONLY WHEN IT IS THE ANSWER. Repoint sets the workbook
     ' path; it does NOT rebuild the slide-type link, so it is offered when the
@@ -1721,14 +1676,6 @@ Private Sub SyncNowChainCore()
 
     Dim staged As String
     staged = DraftingUI.EndCollecting()
-
-    ' The readiness headline appears HERE, once, with everything else -- not as
-    ' a dialog before anything has happened. See WhereAmICore's header.
-    If readyHeadline <> "" Then
-        staged = "Where you were when this started: " & readyHeadline & vbCrLf & _
-                 "(full picture on the '" & Readiness.READY_SHEET_NAME & "' sheet)" & _
-                 vbCrLf & vbCrLf & staged
-    End If
 
     If staged <> "" Then
         MsgBox CapReport(staged, "Your sheets are ready. Write your wording, then press '" & _

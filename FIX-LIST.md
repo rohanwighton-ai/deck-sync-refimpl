@@ -27,7 +27,23 @@
 > Calculation=Manual) only covered the drafting-field loop, so BuildLobbyFromScratch
 > (already fixed, item AB) still cost 168.6s live against an isolated 2.67s, and
 > the tab/index/format cluster cost 53.7s for simple sheet operations. Widened to
-> cover both. NOT YET DEPLOYED.
+> cover both. NOT YET DEPLOYED. AF added 2026-08-17 evening, still open --
+> `PublishAllDraftedFields` redoes press-level work 13x, once per field (~4 min
+> redundant register re-reads, ~2-3.5 min redundant saves, no fast-mode wrapper).
+> AG added 2026-08-17 evening, still open -- `OfferMarkingForUnwiredFields` costs a
+> full register read + full deck shape-walk per press, output destroyed before
+> anyone sees it. AH added 2026-08-17 evening, still open -- harvest dry-run reads
+> the register up to 3x in one press of button 1. AI added 2026-08-17 evening,
+> still open -- `ScanPendingApprovals` computes dead detail for a gate deleted this
+> morning, double-reads the review sheet. AJ added 2026-08-17 evening, still open
+> -- `SyncNow`/`SyncNowCore` is fully dead code containing the worst call pattern
+> found tonight (4x `BuildQueue` per type); recommend deletion, matching the
+> bulk-approve precedent. AF-AJ full detail in `HOT-PATH-AUDIT.md`. AK added and
+> FIXED 2026-08-17 evening -- `Readiness.bas`/`WhereAmI`/`WhereAmICore` deleted
+> entirely (Rohan: "delete the whole thing"); every check it made was independently
+> redundant with what the real operations already catch and explain when actually
+> run, at a cost of two full deck-file copies plus a full BuildQueue diff per type,
+> on every single press of the tool's most-used button.
 
 ## Added 2026-08-17 afternoon — AA, STILL OPEN — long delay BEFORE the period dialog
 even appears, in code the new Timing instrumentation does not cover
@@ -197,6 +213,120 @@ risk from that specific quirk.
 
 Full suite green (240/240). **NOT YET DEPLOYED** -- next addin build plus a
 live re-run is the actual proof, not the passing suite alone.
+
+## Added and FIXED 2026-08-17 evening — AK — `Readiness.bas`/`WhereAmI` deleted
+entirely
+
+**AK. THE "WHERE AM I" STATUS CHECK, RUN QUIETLY ON EVERY SINGLE PRESS OF
+THE TOOL'S MOST-USED BUTTON, DID TWO FULL COPIES OF THE ENTIRE ~49MB DECK
+FILE PLUS SLOW SHELL.APPLICATION ZIP EXTRACTION, PLUS A FULL
+`ReviewQueue.BuildQueue` DIFF PER REGISTERED SLIDE TYPE -- TO PRODUCE ONE
+LINE OF THROWAWAY STATUS TEXT. DELETED.**
+
+Found live while chasing item AA: the "Start a Quarter" period dialog took
+~17s to appear once, then ~5+ minutes the very next run with no code
+difference between the two -- meaning whatever's slow ISN'T the dialog
+logic itself. Traced the real chain (`SyncNowChainCore` -> `WhereAmICore`
+-> `Readiness.Build`, called BEFORE `StartQuarter`'s dialog, not inside
+`Resolve()` as originally assumed -- that earlier theory, documented in
+item AA below, was wrong). `Readiness.Build` calls `DeckRegistry.
+PropertyOnDisk` (period) and `WorkbookPathOnDisk` -> `RegistryValueOnDisk`
+(workbook path) -- EACH does its own `fso.CopyFile` of the entire deck to a
+temp folder, then `Shell.Application` Namespace/CopyHere ZIP extraction
+with an async polling wait, to re-verify state from the SAVED FILE BYTES.
+Plus, per registered type, a full `ReviewQueue.BuildQueue` diff just to
+print a row/slide count.
+
+**Traced through and found almost none of it was novel information.**
+`RefreshDraftingSheets`/`ApplyApprovedCore` already independently check for
+a missing period or workbook pairing and refuse with a clear message the
+moment the real button is pressed. `RollForwardPeriod` already refuses on
+its own when a partial/leftover period would collide.
+`ReviewQueue.BuildQueue`'s row/slide counts get recomputed by the real sync
+moments later anyway. `RunSync.bas` already refuses clearly on a missing
+template ("REFUSED: this slide type has no template slide registered").
+The one thing that WAS genuinely distinct -- catching a period reported-
+as-set but never actually saved, the 2026-08-08 defect class -- is ALSO
+already verified at the moment of WRITING, via `DeckRegistry.
+SetDeckPeriodVerified` inside `DraftingUI.StartQuarter`, called earlier in
+the same chain. Re-verifying it again from disk, moments later in the same
+session, was checking something already proven true.
+
+Rohan, on hearing the diagnosis: **"Please get rid of stupid stuff,"** then,
+after confirming nothing else independently relies on the mechanism:
+**"delete the whole thing, keep anything useful but otherwise get rid of
+it."** Nothing was worth relocating -- every check traced back to something
+already caught elsewhere with its own message, confirmed by grep before
+deleting (e.g. `RunSync.bas`'s own template-slide refusal).
+
+**Fix:** `Readiness.bas` deleted entirely. `RibbonUI.WhereAmI`/
+`WhereAmICore` deleted (the quiet chain call, and the dialog version, which
+was itself already "NO LONGER A BUTTON TARGET" per its own prior comment --
+its only remaining caller was the chain call just removed).
+`WorkbookBridge.ArrangeTabs`'s tab-order list no longer references the now-
+nonexistent "READY" sheet. `DeckRegistry.bas`'s underlying disk-read
+functions (`PropertyOnDisk`, `RegistryValueOnDisk`, `WorkbookPathOnDisk`,
+`PeriodOnDisk`) are UNTOUCHED -- confirmed by checking every caller first --
+they're genuinely load-bearing elsewhere (`SetWorkbookPathVerified`,
+`BatchOnboardFlow`'s onboarding verification), this deletion only removes
+`Readiness.Build`'s redundant calls INTO them.
+
+A dead `seenPreview` test variable (declared, set, never asserted) was
+found and removed from `TestRunner.bas` in the same pass -- caught a real
+self-inflicted compile error from removing its declaration but missing one
+usage line; fixed and re-verified before trusting the suite.
+
+Full suite green (240/240). **NOT YET DEPLOYED** -- next addin build is the
+real proof.
+
+## Added 2026-08-17 evening — AF-AJ, STILL OPEN — hot-path audit, same shape
+as AK found five more times
+
+Commissioned after AK: does the same "machinery that outlived the dialog it
+fed" defect exist elsewhere in the two most-pressed chains? Full diagnosis,
+evidence, and proposed fix direction for each in `HOT-PATH-AUDIT.md` --
+summarized here, not duplicated in full:
+
+- **AF.** `PublishAllDraftedFields` ("2. Put it on the slides", the most-
+  pressed button) redoes press-level work 13x, once per field: 2 resolves,
+  2 full register reads, 2 verified saves, 2 Run Log writes (each erasing
+  the last -- all 26 unobservable) per field, and NO fast-mode wrapper on
+  the loop at all. Rough bound: several minutes off every full publish.
+- **AG.** `OfferMarkingForUnwiredFields` (runs on every "1. Set up my
+  quarter" press) costs a full register read + full deck shape-walk --
+  its own output gets destroyed by `RefreshDraftingSheets`'s `WriteRunLog`
+  later in the SAME press. All cost, zero observable output.
+- **AH.** The harvest dry-run gate reads the register up to 3x in one press
+  of button 1 (~28s where 9s would do) -- legitimate work, needs sharing
+  across sub-steps, not deleting.
+- **AI.** `ScanPendingApprovals` computes `sheetNames`/`stamp` detail for
+  the Yes/No/Cancel gate deleted this morning (Lobby Phase 3) -- never
+  used by its only caller -- and double-reads the review sheet right
+  before `ApplyApproved` reads it again anyway.
+- **AJ.** `RibbonUI.SyncNow`/`SyncNowCore` is fully dead, unreachable code
+  (the toolbar targets `SyncNowChain` only) containing the single worst
+  call pattern found tonight -- `ReviewQueue.BuildQueue` FOUR times per
+  type in one run. Not a live cost today since nothing can reach it, but
+  recommend deletion matching this project's own precedent (the
+  bulk-approve removal), not a fix -- nothing needs its pattern repaired
+  if it doesn't exist.
+
+**The cross-cutting finding, worth more than any single item:** four of
+these six (counting AK) share one shape -- a mechanism built to feed a
+human-facing surface survived the deletion of that surface, across TWO
+separate dialog-deletion campaigns (2026-08-14's consent-dialog removal,
+this morning's Lobby Phase 3 gate removal). Cheap sweep for the class: for
+each `MsgBox`/prompt deleted since 2026-08-14, grep for what computed its
+inputs and check whether anything else still consumes them.
+
+**Not yet fixed, and not obviously the right thing to fix next.** A
+separate needs-vs-build comparison run the same evening found that tonight's
+entire session went to sync-speed work while the project's own manual-
+baseline memory says that's not the dominant cost of a quarter, and the
+stated finish line (a real quarter reviewed, approved and published
+UNAIDED) hasn't moved. AF-AJ are real, cheap, low-risk fixes -- but doing
+them is still choosing to extend tonight's pattern, not correct it. Full
+reasoning in `HOT-PATH-AUDIT.md`'s closing section.
 
 ## Added 2026-08-17 afternoon — FIXED (Z) — no way to interrupt a long apply run
 

@@ -185,21 +185,70 @@
 > risk). Full suite green (240/240). **NOT YET DEPLOYED** — `addin124` and one
 > more live retest are the real proof.
 >
-> **Next session's actual priority, in order: (1) build and deploy `addin124`,
-> re-run the retest, see the real effect of item AE** — the isolated AB win was
-> 188x; whether the LIVE number now approaches that once fast-mode actually covers
-> it is the open question. **(2) Build `WriteDraftingSheetBulk` per
-> `DRAFTING-SPEED-STRATEGY.md`'s Phase A** (bulk read/write, alongside the legacy
-> function, behind a flag) — write the new multi-row/orphan-row/numeric-text
-> preservation test and the parity harness FIRST, prove each fails on purpose,
-> then build. Deliberately NOT started this session — real surgery on the
-> function with 5 prior data-loss incidents deserves a fresh run, not the tail end
-> of an already marathon one. **(3) Phase B** (cosmetic-skip stamp). **(4)
-> Instrument `Resolve()`'s own period-detection path** the same way other stages
-> were, so item AA's real (now twice-confirmed) cost is distinguishable from a
-> hang. **(5)** Build a trimmed or fresh test fixture — this session's register is
-> ~2x a real deck's sheet count from accumulated test archives, and has been
-> silently inflating every number measured tonight.
+> **UPDATE, same evening: item AA's own theory was WRONG, corrected.** Retesting
+> `addin124` (the AE fix), Rohan pushed back on why the period dialog appeared in
+> ~17s once and ~5 minutes the next run with no code difference — a fair
+> challenge that AA's original diagnosis ("lives inside `Resolve()`") couldn't
+> answer, because it doesn't live there. Traced the REAL chain: "1. Set up my
+> quarter" runs `SyncNowChainCore`, which calls `WhereAmICore` (a full deck/
+> register status scan) BEFORE `StartQuarter`'s dialog, and `Resolve()` doesn't
+> run until `RefreshDraftingSheets`, the LAST thing in the chain. `WhereAmICore`
+> -> `Readiness.Build` -> two full copies of the ~49MB deck file plus slow
+> `Shell.Application` ZIP extraction (re-verifying period/workbook-path from disk)
+> plus a full `ReviewQueue.BuildQueue` diff per registered type — on EVERY press,
+> to produce one line of status text.
+>
+> **UPDATE, same evening: `Readiness.bas`/`WhereAmI` DELETED ENTIRELY (item AK,
+> FIXED).** Traced through and found almost nothing it checked was novel — the
+> real operations (`RefreshDraftingSheets`, `ApplyApprovedCore`,
+> `RollForwardPeriod`, `RunSync`) already independently catch and explain every
+> failure mode it pre-checked, the moment they actually run. The one distinct
+> check (period reported-but-not-saved) is already verified at write time by
+> `SetDeckPeriodVerified` inside `StartQuarter`, earlier in the same chain.
+> Rohan: "Please get rid of stupid stuff" → "delete the whole thing, keep
+> anything useful but otherwise get rid of it." Nothing was worth keeping — full
+> reasoning and every redundancy traced in `FIX-LIST.md` item AK. Full suite
+> green (240/240). **NOT YET DEPLOYED.**
+>
+> **UPDATE, same evening: hot-path audit (fable) found the same shape 5 more
+> times** — `HOT-PATH-AUDIT.md`, FIX-LIST items AF-AJ. Headline: `PublishAllDraftedFields`
+> ("2. Put it on the slides", the most-pressed button) redoes press-level work
+> 13x, once per field — ~4 min of redundant register re-reads, ~2-3.5 min of
+> redundant saves, no fast-mode wrapper on the loop at all (item AF). Four more
+> in the same "fed a since-deleted dialog" shape (AG-AJ). None fixed yet.
+>
+> **UPDATE, same evening: needs-vs-build comparison (separate fork) raised a real
+> "are we on track" question, and Rohan gave the real answer.** The comparison
+> found tonight's whole session went to sync-speed work while the project's own
+> manual-baseline memory says speed isn't the dominant cost of a quarter, and the
+> stated finish line (a real quarter reviewed/approved/published UNAIDED) hasn't
+> moved. **Rohan's correction, worth recording verbatim: "the performance was
+> killing the testing, I wasn't able to use it."** The speed work wasn't a
+> distraction from the real goal — multi-minute stalls and unclear hang-vs-working
+> states were making the tool's OWN testing/verification loop unusable, which is
+> a genuine precondition for reaching the finish line, not orthogonal to it. Both
+> things are true: the finish line still hasn't moved, AND tonight's fixes were
+> plausibly necessary before it safely could. Worth an honest PM-style check next
+> session with BOTH facts on the table, not just one.
+>
+> **Next session's actual priority, in order: (1) build and deploy `addin125`
+> with AK's deletion + AE's fix, and actually attempt Scenario 1 for real** —
+> review real drafted content, tick approve, publish, unaided if possible — now
+> that the tool should be fast enough to make that attempt without a multi-minute
+> stall in the way. This is the actual test of Rohan's "performance was blocking
+> testing" claim: if it's still too slow to use, that's real evidence AF-AJ (or
+> AD's Phase A) need to happen before content work; if it's usable now, the
+> recipe/content work becomes the honest next priority per the needs-vs-build
+> finding. **(2)** Depending on (1)'s outcome: either AF-AJ (hot-path audit fixes,
+> cheap and low-risk) or a real recipe-writing pass on the three thin panels
+> (Strategic Alignment, Problem, Project Progress). **(3)** `WriteDraftingSheetBulk`
+> per `DRAFTING-SPEED-STRATEGY.md`'s Phase A — deliberately still not started,
+> real surgery on a function with 5 prior data-loss incidents deserves a fresh
+> run. **(4)** Instrument `Resolve()`'s own period-detection path — corrected:
+> the actual target is `WhereAmICore`'s old call site and `SyncNowChainCore`'s
+> other pre-dialog steps (AG/AH), not `Resolve()`, which doesn't run until last.
+> **(5)** Build a trimmed or fresh test fixture — this session's register is ~2x
+> a real deck's sheet count from accumulated test archives.
 >
 > ## 17 AUG, MIDDAY — Lobby fixes W/Y deployed as `addin120`. **STATUS: SUPERSEDED by
 > the block above**, kept for the detail. Continuation of the

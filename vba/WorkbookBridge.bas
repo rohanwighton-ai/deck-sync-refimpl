@@ -978,9 +978,11 @@ Public Sub ArrangeTabs(wb As Object, draftOrder As String)
     ' current order" along with the diagnostics -- so the single most important
     ' sheet in the workbook sat wherever it happened to land. That is the defect
     ' this ordering fixes, more than any cosmetic gain.
+    ' Readiness.READY_SHEET_NAME no longer leads this list -- the "Where am
+    ' I" mechanism that owned that sheet was deleted 2026-08-17 (Readiness.bas
+    ' removed entirely). No sheet by that name is ever created any more.
     Dim wanted As String
-    wanted = Readiness.READY_SHEET_NAME & vbLf & _
-             FieldSpec.SPEC_SHEET_NAME & vbLf & _
+    wanted = FieldSpec.SPEC_SHEET_NAME & vbLf & _
              Sources.SOURCES_SHEET_NAME
 
     ' Source sheets, by prefix -- there is no constant per SRC_ sheet.
