@@ -431,7 +431,19 @@ Private Sub PruneParked(wb As Object, fieldId As String)
         For i = 2 To names.Count
             If names(i) < oldest Then oldest = names(i)
         Next i
+        ' FIX-LIST item AS, 2026-08-17/18 night. Same defect, same fix, as
+        ' DraftingLobby.bas's own Lobby-sheet rebuild (see that file's
+        ' comment on this exact pattern, 2026-08-16): a plain .Delete here
+        ' raises Excel's native "permanently delete this sheet?" alert,
+        ' unsuppressed, once per field on every period-change rollover --
+        ' confirmed live by screenshot. wb.Application, NOT the bare
+        ' Application -- this VBA project is hosted in PowerPoint, so a bare
+        ' Application reference resolves to PowerPoint.Application, not the
+        ' Excel instance that actually owns wb (the same trap
+        ' DraftingLobby.bas already documents having hit once).
+        wb.Application.DisplayAlerts = False
         wb.Sheets(oldest).Delete
+        wb.Application.DisplayAlerts = True
         Dim j As Long
         For j = 1 To names.Count
             If names(j) = oldest Then

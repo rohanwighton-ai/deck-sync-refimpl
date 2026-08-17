@@ -523,6 +523,75 @@ quarter" FIRST (rebuilds the Lobby), then "2. Put it on the slides" -- that
 retest now finally proves both AF and AR for real, on a register in the
 state the button actually expects.
 
+## Added and FIXED 2026-08-17/18 night — AS, live during the real Scenario 1 attempt
+
+**AS. `Drafting.PruneParked`'S `.Delete` CALL HAD NO `DisplayAlerts` GUARD --
+SAME DEFECT AS `DraftingLobby.bas`'s LOBBY-SHEET DELETE, FIXED 2026-08-16,
+NEVER PROPAGATED TO THIS SECOND CALL SITE.** Found live, mid-attempt, during
+this project's first-ever real Scenario 1 close: pressing "1. Set up my
+quarter" after a period rollover, `WriteDraftingSheet`'s per-field cost
+measured 82.0s, 103.4s, 110.5s across the first three fields -- increasing,
+not flat, and roughly 12x the entire 13-field total (23.7s) this same run
+shape measured earlier the SAME evening (`addin123` retest). A raw,
+unsuppressed Excel "permanently delete this sheet?" alert also fired and
+had to be clicked through by hand -- confirmed by screenshot, and matching
+a previously-unconfirmed defect noted in `SCENARIOS.md`'s 15 Aug run.
+
+**Root cause, confirmed by a second opinion (waste-hound) before fixing --
+my own first theory (the sheet-scan itself getting slower) was wrong.**
+`WriteDraftingSheet` calls `ParkSheetCopy` on every period-change rollover
+(every field, this run), which calls `PruneParked` to cap old backups at
+`keepNewest = 2` per field. `PruneParked` does `For Each sh In wb.Sheets`
+-- a real, but bounded (well under a second even at real scale) scan --
+then `wb.Sheets(oldest).Delete` with only `On Error Resume Next` around it,
+which suppresses runtime errors, not Excel's native delete-confirmation
+(a wholly separate mechanism gated by `Application.DisplayAlerts`). The
+decisive evidence against the scan-cost theory: this exact code path,
+same workbook, same session, measured 1.8s/field a few hours earlier --
+a scan over a sheet count that grew only modestly since cannot explain a
+150x per-field jump. The real driver: most fields had already reached
+`keepNewest`'s steady state from repeated past rollovers, so THIS run was
+the one where nearly every field's park crossed the threshold and
+triggered a genuine delete+alert, blocking on a human click, once per
+field -- and that wait time, invisible to `Timing`'s own instrumentation
+(no `LogWait` wraps a native OS dialog), got silently counted as
+computation.
+
+**Fix, narrow and precedent-matched, not a redesign:** `wb.Application.
+DisplayAlerts = False` / `= True` wrapped around the one `.Delete` call,
+copying `DraftingLobby.bas:304-306`'s own already-proven pattern verbatim
+-- including `wb.Application`, not bare `Application` (a real trap that
+codebase's own comment documents having hit once: bare `Application` in
+this PowerPoint-hosted VBA project resolves to PowerPoint, not the Excel
+instance that actually owns `wb`, so it would silently suppress the wrong
+app's alerts while Excel's own dialog still fired).
+
+**Explicitly NOT done, on the second opinion's advice:** no run-scoped
+cache for `PruneParked`'s scan. The whole park/prune mechanism is already
+slated for deletion once file-per-quarter lands (`SCENARIOS.md`'s "GAP 4
+-- THE BIG ONE") -- hardening a scan that isn't the real bottleneck, inside
+code that's going away, would be effort spent on the wrong asset.
+
+**Swept for a third instance**, per this project's own "a defect found is
+a class, not an instance" rule: grepped every `.Delete` call across
+production `vba/*.bas`/`.cls`. Only two sheet/worksheet deletes exist in
+the whole codebase -- `DraftingLobby.bas`'s (already fixed) and this one.
+Every other `.Delete` call found (data validation, PowerPoint slides,
+shape tags, command bars, a custom document property) is a different
+object type with no relationship to this specific native alert. Clean.
+
+**Full suite 242/242.** No new automated test written for this fix
+specifically -- the thing it prevents is a native OS/Excel modal dialog,
+which this project's VBA test harness has no way to observe appearing or
+not appearing; the fix is a direct, verbatim copy of an already-tested
+pattern from a sibling call site, not new logic. **The real verification
+is the live retest**, per the second opinion's own proposed discriminating
+check: if `WriteDraftingSheet` costs collapse back toward the ~1.8s/field
+baseline with the dialog suppressed, the modal was the driver and this is
+done. If costs stay high, the scan/Copy/Delete's own Excel-internal cost
+is real after all, and the caching direction becomes the actual priority.
+Not yet retested live as of this writing.
+
 ## Added 2026-08-17 afternoon — FIXED (Z) — no way to interrupt a long apply run
 
 **Z. A LONG-RUNNING `ApplyApproved` HAD NO WAY TO STOP IT SHORT OF FORCE-CLOSING
