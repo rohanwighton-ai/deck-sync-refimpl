@@ -129,6 +129,60 @@ Public Function ColumnFor(i As Long, part As String) As String
     ColumnFor = SLOT_PREFIX & i & part
 End Function
 
+' IS THIS REGISTER COLUMN OWNED BY THIS DEVICE, NOT AN ORDINARY FIELD?
+'
+' The device's columns (MS1_LABEL, MS1_DATE, MS1_DONE, MS2_LABEL, ...) are
+' never individually role-tagged on a slide -- they are addressed by SHAPE
+' NAME inside a group tagged with the device's own identity (InjectField's
+' device route), exactly like Discovery already recognises the GROUP as one
+' candidate instead of walking into its parts (Discovery.bas:165,
+' `MilestoneDevice.SlotCount(shp) > 0`). FieldWiring.ScanFieldWiring asks
+' "does any slide's role-tag set carry this exact field name" -- a question
+' these columns can never answer yes to, because they were never meant to be
+' answered that way. Reported as "21 fields on the register that no slide
+' carries" on every run before this existed; not a false alarm about a real
+' gap, a wrong question asked of columns it doesn't apply to.
+'
+' Recognised by SHAPE, matching `IsMilestoneInternalShape` below, not by a
+' separate parallel pattern -- see that function's own header for why.
+Public Function IsColumnForThisDevice(colName As String) As Boolean
+    Dim c As String
+    c = UCase(Trim(colName))
+    If Left$(c, Len(SLOT_PREFIX)) <> SLOT_PREFIX Then Exit Function
+
+    Dim rest As String
+    rest = Mid$(c, Len(SLOT_PREFIX) + 1)
+
+    Dim part As String
+    If EndsWith(rest, COL_LABEL) Then
+        part = COL_LABEL
+    ElseIf EndsWith(rest, COL_DATE) Then
+        part = COL_DATE
+    ElseIf EndsWith(rest, COL_DONE) Then
+        part = COL_DONE
+    Else
+        Exit Function
+    End If
+
+    Dim slotDigits As String
+    slotDigits = Left$(rest, Len(rest) - Len(part))
+    IsColumnForThisDevice = (slotDigits <> "" And IsAllDigits(slotDigits))
+End Function
+
+Private Function EndsWith(s As String, suffix As String) As Boolean
+    EndsWith = (Len(s) >= Len(suffix)) And _
+        (StrComp(Right$(s, Len(suffix)), suffix, vbTextCompare) = 0)
+End Function
+
+Private Function IsAllDigits(s As String) As Boolean
+    Dim i As Long
+    If s = "" Then Exit Function
+    For i = 1 To Len(s)
+        If Mid$(s, i, 1) < "0" Or Mid$(s, i, 1) > "9" Then Exit Function
+    Next i
+    IsAllDigits = True
+End Function
+
 ' Tolerant of how a person writes "yes" in a spreadsheet. Blank means NOT done:
 ' a milestone nobody has marked achieved has not been achieved.
 Public Function IsDoneWord(v As String) As Boolean

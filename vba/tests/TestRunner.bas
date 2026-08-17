@@ -1632,6 +1632,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "FieldWiring_NamesTheFieldsNothingCarries", r
+    If TestMatches("FieldWiring_DeviceOwnedColumnsAreNotUnmarkedFields", filterPattern) Then
+        r = Test_FieldWiring_DeviceOwnedColumnsAreNotUnmarkedFields()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FieldWiring_DeviceOwnedColumnsAreNotUnmarkedFields", r
     If TestMatches("FieldWiring_TemplateIsCheckedSeparatelyFromInstances", filterPattern) Then
         r = Test_FieldWiring_TemplateIsCheckedSeparatelyFromInstances()
     Else
@@ -11787,6 +11793,49 @@ Private Function Test_FieldWiring_NamesTheFieldsNothingCarries() As String
 
     sld.Delete
     Test_FieldWiring_NamesTheFieldsNothingCarries = result
+End Function
+
+' DEVICE-OWNED COLUMNS ARE NOT "FIELDS NOTHING CARRIES". Before this fix,
+' every one of a device's register columns (MS1_LABEL, MS1_DATE, MS1_DONE,
+' MS2_LABEL, ...) reported here as unmarked -- 21 of them on the real
+' register -- because they are addressed by SHAPE NAME inside a tagged
+' group, never by an individual role tag, so "does any slide's role-tag set
+' carry this exact name" can never say yes for them. Proves BOTH halves:
+' device columns are excluded from Unmarked and counted separately, AND a
+' genuinely unwired ORDINARY field alongside them still gets caught -- the
+' fix discriminates, it does not blanket-suppress.
+Private Function Test_FieldWiring_DeviceOwnedColumnsAreNotUnmarkedFields() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewTaggedSlide("device-wiring-probe", "dwp-1")
+    Dim tb As Object
+    Set tb = sld.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    tb.TextFrame.TextRange.Text = "about"
+    tb.Tags.Add "role", "ABOUT_BODY"
+    ' Deliberately NO shape tagged MS1_LABEL etc. -- that is the point. A
+    ' real milestone device's slots are found by SlotCount on the group, not
+    ' by individual role tags, so this slide is a faithful stand-in for one
+    ' even without building an actual device group.
+
+    Dim r As FieldWiringResult
+    r = FieldWiring.ScanFieldWiring("device-wiring-probe", _
+        FieldsCollection("ABOUT_BODY", "MS1_LABEL", "MS1_DATE", "MS1_DONE", _
+                          "MS2_LABEL", "PROGRESS_BODY"), Nothing)
+
+    result = result & Assert(r.Scanned, "the scan ran")
+    result = result & Assert(r.Wired = 1, "ABOUT_BODY is wired, got " & r.Wired)
+    result = result & Assert(r.DeviceOwnedCount = 4, _
+        "4 device columns counted separately, got " & r.DeviceOwnedCount)
+    result = result & Assert(r.UnmarkedCount = 1, _
+        "only the genuinely unwired ordinary field is unmarked, got " & r.UnmarkedCount)
+    result = result & Assert(InStr(r.Unmarked, "PROGRESS_BODY") > 0, _
+        "and it is named, got '" & r.Unmarked & "'")
+    result = result & Assert(InStr(r.Unmarked, "MS1_LABEL") = 0, _
+        "device columns must NOT appear in Unmarked, got '" & r.Unmarked & "'")
+
+    sld.Delete
+    Test_FieldWiring_DeviceOwnedColumnsAreNotUnmarkedFields = result
 End Function
 
 ' THE ONE THAT MATTERS FOR NEW SLIDES. GatherInstances excludes the template by

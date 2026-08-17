@@ -1,5 +1,36 @@
 # NEXT SESSION — start here
 
+> ## 17 AUG, LATE NIGHT (~22:10) — the Device Registry (P3) turned out to be
+> one small fix, not a new module — three of the four suspected consumers
+> were already fine. Full suite 243/243. NOT yet built into an addin.
+> **STATUS: CURRENT, supersedes the block below.**
+>
+> Re-checked the "A DEVICE REGISTRY" design (below in this same file) against
+> the actual current code before writing anything, per this project's own
+> "read the file, don't produce a theory" rule — the picture had moved since
+> that doc was written. **Discovery is already fixed** (`SlotCount`-based
+> recognition). **Marking is already handled reasonably** (asks before
+> opening a device up). **Template Audit is already clean, confirmed by
+> tracing**: it shares Discovery's candidate list, and separately its
+> `ShapeText` helper silently returns `""` for a group shape (no
+> `TextFrame`), so a device candidate never becomes an audit row either way.
+> **Only `FieldWiring` still had zero device awareness** — full detail in
+> `FIX-LIST.md`, item P3.
+>
+> Fix: `MilestoneDevice.IsColumnForThisDevice`, plus a new `DeviceOwnedCount`
+> on `FieldWiringResult` that `ScanFieldWiring`'s per-field loop routes
+> device columns into instead of the ordinary carrier/unmarked machinery.
+> Matches the pattern the codebase already chose twice (direct
+> `MilestoneDevice` calls, no registry indirection) rather than building a
+> plugin table for a population of one device.
+>
+> New test made to fail first, harder than usual: with the fix stashed, it
+> doesn't even COMPILE (references a result field that doesn't exist without
+> the fix). Full suite 243/243 with it restored. **Not yet built into an
+> addin or measured live** — next session, build the next addin (whatever
+> follows `addin133`) and confirm the run report/START HERE sheet no longer
+> lists the 21 `MS*` columns.
+
 > ## 17 AUG, LATE NIGHT (~21:45) — item AT fixed in full (3 rounds), `addin133`
 > deployed and confirmed live. P1 also confirmed built and deployed
 > (`addin131`/`132`/`133` all carry it) — the earlier "not yet built" note below

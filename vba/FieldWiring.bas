@@ -91,6 +91,12 @@ Public Type FieldWiringResult
     Coverage As String          ' "FIELD on X of Y", only when X < Y
     PartialCount As Long
     Wired As Long               ' register fields that resolve on some slide
+    DeviceOwnedCount As Long    ' register fields owned by a device (e.g.
+                                 ' MilestoneDevice's MS1_LABEL..MSn_DONE) --
+                                 ' never individually role-tagged by design, so
+                                 ' asking "does any slide carry this exact
+                                 ' field name" is the wrong question for them.
+                                 ' Counted here instead of Unmarked/Wired.
     SlidesScanned As Long
     Scanned As Boolean          ' False = could not look; never report a pass
     TemplateScanned As Boolean  ' False = no template found to look at
@@ -316,6 +322,18 @@ Public Function ScanFieldWiring(slideType As String, fields As Collection, _
             Dim fieldName As String
             fieldName = UCase(Trim(CStr(f)))
             If fieldName <> "" Then
+                ' DEVICE-OWNED COLUMNS ARE NOT AN ORDINARY FIELD QUESTION.
+                ' Skip the whole carrier/unmarked/case-mismatch machinery for
+                ' them -- see MilestoneDevice.IsColumnForThisDevice's header
+                ' for why "does a slide role-tag carry this exact name" is the
+                ' wrong question to ask of MS1_LABEL..MSn_DONE. This is what
+                ' used to report as "21 fields on the register that no slide
+                ' carries" every single run.
+                If MilestoneDevice.IsColumnForThisDevice(fieldName) Then
+                    result.DeviceOwnedCount = result.DeviceOwnedCount + 1
+                    GoTo NextField
+                End If
+
                 Dim carriers As Long
                 carriers = 0
 
@@ -376,6 +394,7 @@ Public Function ScanFieldWiring(slideType As String, fields As Collection, _
                     End If
                 End If
             End If
+NextField:
         Next f
     End If
 

@@ -2287,15 +2287,43 @@ honest limit as AS.
 
 ### P3. The 21 `MS*` "fields with nothing to write into" warning is a FALSE POSITIVE
 
-Fires on **every single run**, and the answer is always No. `FieldWiring.ScanFieldWiring`
-compares register columns against individually tagged fields and has no concept of a
-device consuming a column set, so every device-driven column reads as orphaned.
+**FIXED 2026-08-17 late night — three of four suspected consumers were already fine, the
+"device registry" needed was one function, not a new module.** The design doc
+(`NEXT-SESSION.md`, "A DEVICE REGISTRY") described four broken consumers; re-checked
+against the actual current code before building anything (per this project's own "read
+the file, don't produce a theory" rule), and the picture had changed since that doc was
+written:
 
-Answering Yes would walk the person through tagging 21 timeline internals as ordinary
-fields — destroying the device.
+- **Discovery** — already fixed (`Discovery.bas:165`, `MilestoneDevice.SlotCount(shp) > 0`
+  recognises the whole group as ONE candidate, never descends into its parts).
+- **Marking** — already handled reasonably (`BatchOnboardFlow.bas:1503` — asks "tag the
+  whole group as ONE field?" before offering to open it up; not a strict refusal, but
+  informed, not blind).
+- **Template Audit** — traced, not assumed: it builds its candidate list via
+  `Discovery.DiscoverSlideWithShapes`, the SAME function Discovery's fix lives in, so it
+  never sees the 21 internals as separate candidates either. Confirmed the remaining path
+  too — `ShapeText` (`TemplateAudit.bas:150`) wraps `.TextFrame.TextRange.Text` in `On
+  Error Resume Next`, and a group shape has no `TextFrame`, so the device candidate
+  silently returns `""` and never becomes an audit row, tagged or not. No code change
+  needed.
+- **`FieldWiring`** — the one real gap, confirmed unchanged: `ScanFieldWiring` still asked
+  "does any slide's role-tag set carry this exact column name," a question `MS1_LABEL`
+  etc. can never answer yes to by design (they're addressed by shape name inside a tagged
+  group, not by individual role tag).
 
-**Fix is the device registry.** See NEXT-SESSION.md, "A DEVICE REGISTRY". Do not special-
-case this one call site.
+**Fix, narrow, matching the pattern the codebase already chose twice** (Discovery and
+Marking both call `MilestoneDevice.SlotCount` directly — no registry indirection): added
+`MilestoneDevice.IsColumnForThisDevice(colName)`, and `ScanFieldWiring`'s per-field loop
+now skips device-owned columns into a new `DeviceOwnedCount` instead of running them
+through the carrier/unmarked/case-mismatch checks that don't apply to them. Building a
+separate `DeviceRegistry` module would have been inventing an abstraction the codebase had
+already independently avoided for a population of one device.
+
+New test `Test_FieldWiring_DeviceOwnedColumnsAreNotUnmarkedFields` — proves BOTH halves
+(device columns excluded AND a genuinely unwired ordinary field alongside them still
+caught, so the fix discriminates rather than blanket-suppressing). Made to fail first: with
+the fix stashed, the test doesn't even COMPILE (references a result field that doesn't
+exist yet) — as strong a "make it fail" proof as this gets. `check_vba_static.py` clean.
 
 ### P4. The 17-column prompt is ALL-OR-NOTHING across a mixed set
 
