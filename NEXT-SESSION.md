@@ -63,11 +63,22 @@
 >
 > **DISCUSSION NOTE, not a task — Rohan explicitly flagged this as "note to
 > discuss," not implement**: "I'd like to make the drafting sheets very
-> simple and color block stylistic." No design done. Raised again mid-session
-> tonight without further detail (asked what "simple/color-block" means —
-> visual decluttering vs. status-color-coding per field — answer still
-> pending). Park it here until that's answered and it gets its own scoping
-> pass; do not start implementing from this note alone.
+> simple and color block stylistic." No design done yet; do not start
+> implementing from this note alone. Rohan's answer when asked what "simple/
+> color-block" means (2026-08-17/18): **status-color-coding, not just visual
+> decluttering.** A cell's state — AI-generated vs. draft vs. final, etc. —
+> should be "immediately recognisable by their existence" — the colour block
+> itself is the signal, not a label someone has to read. Style cue given
+> explicitly: solid colour block (e.g. hot pink), bold white lowercase text
+> in the block (his example: bottom-left of the square). "Colour important…
+> simple blocking allows for clearer UI indicators too" — i.e. this isn't
+> pure aesthetics, it's meant to make cell state legible at a glance where
+> it currently isn't. Still needs: the actual state→colour mapping (how many
+> states, which colours), and where in the codebase cell formatting is set
+> (`Drafting.bas`'s `WriteDraftingSheet` is the likely site, ~600 COM calls
+> per field already, so this should probably ride along with `DRAFTING-
+> SPEED-STRATEGY.md`'s Phase A bulk-write work rather than be a separate
+> pass over the same cells). Scope this properly before touching code.
 
 > ## 17 AUG, AFTERNOON — Timing instrumentation + running-long checkpoint,
 > `addin121` deployed. **STATUS: SUPERSEDED by the block above.** Continuation
