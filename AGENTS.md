@@ -359,6 +359,18 @@ guidance.
   that looked like a complete one. Capture the full log to a file and
   grep it.
 
+- **`build_ppam.ps1`'s manual `File > Save As > PowerPoint Add-in` step does
+  NOT default to the AddIns folder.** Confirmed twice in one night
+  (`addin133`, `addin134`), both times landing in `C:\Users\rohan\OneDrive\
+  Claude\` instead -- that is where PowerPoint's Save-As dialog now actually
+  defaults on this machine, not a one-off mistake. After every Save-As,
+  check `OneDrive\Claude\` FIRST before searching the whole profile; move
+  the file to `AppData\Roaming\Microsoft\AddIns\` and register it
+  (`AddIns.Add`, `.Loaded = -1`, `.AutoLoad = -1`) from there. Also disable
+  `AutoLoad` on every OTHER add-in when registering a new one -- found live
+  the same night: `addin131` and `addin132` were both still auto-loading
+  alongside a fresh build, three versions racing to load simultaneously.
+
 - **The cross-application trap runs BOTH ways, and it is not only constants:
   `Application` itself is a different object in each host.** Already recorded
   below for Excel's `xlToLeft`/`xlUp` failing in a PowerPoint-driven module;
