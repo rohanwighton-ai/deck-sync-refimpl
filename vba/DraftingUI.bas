@@ -53,6 +53,13 @@ Private mCollecting As Boolean
 ' reason the buffer is: a chain that died halfway must not answer for the next.
 Private mChainField As String
 
+' Numeric, not the named constants xlCalculationManual/xlCalculationAutomatic
+' -- same reason as every other XL_* numeric literal in this codebase
+' (AGENTS.md): the named forms only resolve inside Excel's own VBA project,
+' and this module is PowerPoint-hosted.
+Private Const XL_CALCULATION_MANUAL As Long = -4135
+Private Const XL_CALCULATION_AUTOMATIC As Long = -4105
+
 Public Sub BeginCollecting()
     mReport = ""
     mChainField = ""
@@ -368,6 +375,8 @@ Public Sub PublishAllDraftedFields(caption As String)
     Dim pres As Object, wb As Object, regWs As Object
     If Not Resolve(caption, pres, wb, regWs) Then Exit Sub
 
+    Timing.LogClick wb, caption
+
     Dim entries() As DraftingLobby.LobbyEntry
     entries = DraftingLobby.ReadLobby(wb)
 
@@ -379,6 +388,9 @@ Public Sub PublishAllDraftedFields(caption As String)
             vbInformation, caption
         Exit Sub
     End If
+
+    Dim tPublish As Double
+    tPublish = Timing.StartClock()
 
     Dim parts() As String, i As Long
     parts = Split(list, ",")
@@ -395,6 +407,9 @@ Public Sub PublishAllDraftedFields(caption As String)
             PublishDraftsForField
         End If
     Next i
+
+    Timing.LogTiming wb, "PublishAllDraftedFields (total)", tPublish, _
+        (UBound(parts) - LBound(parts) + 1), "field(s) published", list
 
     mChainField = ""
 End Sub
@@ -617,6 +632,12 @@ Public Sub RefreshDraftingSheets()
     Dim pres As Object, wb As Object, regWs As Object
     If Not Resolve(CAP, pres, wb, regWs) Then Exit Sub
 
+    Timing.LogClick wb, CommandBarUI.CAP_SET_UP_QUARTER
+    Dim tRefresh As Double
+    tRefresh = Timing.StartClock()
+    Dim waitedRefresh As Double
+    waitedRefresh = 0
+
     Dim specWs As Object
     Set specWs = WorkbookBridge.GetOrAddWorksheet(wb, FieldSpec.SPEC_SHEET_NAME)
     FieldSpec.WriteSpecSheet specWs
@@ -648,7 +669,10 @@ Public Sub RefreshDraftingSheets()
     If missingCols <> "" Then
         Dim colCount As Long
         colCount = UBound(Split(missingCols, ",")) - LBound(Split(missingCols, ",")) + 1
-        If MsgBox( _
+        Dim tWaitCols As Double
+        tWaitCols = Timing.StartClock()
+        Dim addColsAnswer As VbMsgBoxResult
+        addColsAnswer = MsgBox( _
             colCount & " field(s) on the Field Spec have no column in the register, " & _
             "so there is nowhere to enter them:" & vbCrLf & vbCrLf & _
             "    " & Replace(missingCols, ",", ", ") & vbCrLf & vbCrLf & _
@@ -657,7 +681,9 @@ Public Sub RefreshDraftingSheets()
             "No  -- leave them; they stay unenterable until they have a column." & vbCrLf & vbCrLf & _
             "Derived fields are deliberately not listed -- they are computed, " & _
             "never stored.", _
-            vbYesNo + vbQuestion, CAP) = vbYes Then
+            vbYesNo + vbQuestion, CAP)
+        waitedRefresh = waitedRefresh + Timing.LogWait(wb, "add missing register columns?", tWaitCols)
+        If addColsAnswer = vbYes Then
             Dim addedCols As String
             addedCols = ExcelOutput.AddRegisterColumns(regWs, missingCols)
             If addedCols = "" Then
@@ -734,6 +760,33 @@ Public Sub RefreshDraftingSheets()
     ' the rest of the session.
     wb.Application.EnableEvents = False
 
+    ' CLASSIC EXCEL SPEED TRICKS, applied for the first time anywhere in this
+    ' codebase (checked 2026-08-17: zero uses of ScreenUpdating or Calculation
+    ' mode anywhere in vba/*.bas, despite 97 individual .Cells( calls in
+    ' Drafting.bas alone -- every write in this loop has always paid full
+    ' screen redraw and full dependent-formula recalculation, every single
+    ' time). Rohan, 2026-08-17: "look at classic xl speed tricks." Both are
+    ' saved and restored explicitly -- including in the Failed: handler below
+    ' -- never just set and forgotten, same discipline EnableEvents already
+    ' uses here for exactly the same reason (an error mid-loop must not leave
+    ' the workbook silently un-redrawing or un-recalculating for the rest of
+    ' the session).
+    ' screenSettingsCaptured guards the restore in Failed: below. Without it,
+    ' an error BEFORE this point (Resolve succeeded, but something in
+    ' FieldSpec.WriteSpecSheet/Sources.WriteSourcesSheet/etc. upstream of
+    ' here threw) would hit the restore with origScreenUpdating/
+    ' origCalculation still at their Dim defaults (False / 0) -- and
+    ' "restoring" to False would SET ScreenUpdating off in a session that
+    ' never touched it, the opposite of a safe failure direction.
+    Dim screenSettingsCaptured As Boolean
+    Dim origScreenUpdating As Boolean
+    Dim origCalculation As Long
+    origScreenUpdating = wb.Application.ScreenUpdating
+    wb.Application.ScreenUpdating = False
+    origCalculation = wb.Application.Calculation
+    wb.Application.Calculation = XL_CALCULATION_MANUAL
+    screenSettingsCaptured = True
+
     Dim i As Long
     Dim draftOrder As String
     Dim seedIndex As Long
@@ -762,8 +815,15 @@ Public Sub RefreshDraftingSheets()
         ' the compile died with "ByRef argument type mismatch". The comment was
         ' read instead of the code, and it was wrong in the one way that mattered:
         ' it described the argument BY NAME for a call that passes POSITIONALLY.
+        ' SUB-TIMED per field -- Rohan, 2026-08-17: "include sub-timings if
+        ' you are trying to understand particular parts of a process." One
+        ' aggregate number for all 13 fields would hide a single slow field
+        ' inside 12 fast ones; this makes that visible in the log itself.
+        Dim tField As Double
+        tField = Timing.StartClock()
         Dim fieldReport As String
         fieldReport = Drafting.WriteDraftingSheet(ws, reg, fid, specWs, period, srcWs, seedIndex)
+        Timing.LogTiming wb, "WriteDraftingSheet", tField, 1, "field", fid
         ' Matched on the prefix WriteDraftingSheet returns, which is its contract
         ' for "nothing was changed" -- not on the prose after it, which is written
         ' for a person and will be reworded.
@@ -777,6 +837,8 @@ Public Sub RefreshDraftingSheets()
     Next i
 
     wb.Application.EnableEvents = True
+    wb.Application.ScreenUpdating = origScreenUpdating
+    wb.Application.Calculation = origCalculation
 
     ' REPAIRS THE LOBBY FOR FREE, RIGHT HERE. LOBBY-DESIGN.md section 10 left
     ' open how a person forces a resync after a hand-edit at work -- no
@@ -789,8 +851,12 @@ Public Sub RefreshDraftingSheets()
     ' "2. Put it on the slides" -- the button pressed many times a session --
     ' never pays this; "1. Set up my quarter" -- pressed once at the start --
     ' always does.
+    Dim tLobby As Double
+    tLobby = Timing.StartClock()
     Dim lobbyNote As String
     lobbyNote = DraftingLobby.BuildLobbyFromScratch(wb)
+    Timing.LogTiming wb, "BuildLobbyFromScratch", tLobby, _
+        (UBound(parts) - LBound(parts) + 1), "field(s) scanned", lobbyNote
 
     WorkbookBridge.ArrangeTabs wb, draftOrder
     WorkbookBridge.WriteWorkbookIndex wb
@@ -822,6 +888,10 @@ Public Sub RefreshDraftingSheets()
     ' was the problem. A modal cannot be scrolled, kept, or returned to, and
     ' MsgBox silently truncates past ~1024 characters, so the more the report had
     ' to say the less of it survived.
+    Timing.LogTiming wb, "RefreshDraftingSheets (total)", tRefresh, _
+        (UBound(parts) - LBound(parts) + 1), "field(s) written", _
+        excludeSeconds:=waitedRefresh
+
     WorkbookBridge.WriteRunLog wb, _
         "Drafting sheets rebuilt for " & period, _
         report & vbCrLf & valNote & vbCrLf & srcValidation & vbCrLf & lobbyNote
@@ -881,12 +951,24 @@ Failed:
     origErrNum = Err.Number
     origErrDesc = Err.Description
 
-    ' RESTORE EVENTS EVEN ON A MID-LOOP ERROR. `wb` may not be set yet if
-    ' Resolve itself failed -- guarded rather than assumed, since an error
-    ' inside error-handling would leave events off with no further chance to
-    ' fix it this session.
+    ' RESTORE EVENTS -- AND SCREEN UPDATING, AND CALCULATION MODE -- EVEN ON
+    ' A MID-LOOP ERROR. `wb` may not be set yet if Resolve itself failed --
+    ' guarded rather than assumed, since an error inside error-handling
+    ' would leave the workbook silently un-redrawing or un-recalculating
+    ' with no further chance to fix it this session. origScreenUpdating/
+    ' origCalculation may themselves be unset if the error happened before
+    ' they were captured -- On Error Resume Next covers that too, at the
+    ' small cost of possibly restoring to Excel's own default (True /
+    ' automatic) rather than whatever the person had explicitly set, which
+    ' is the safe direction to fail in either way.
     On Error Resume Next
-    If Not wb Is Nothing Then wb.Application.EnableEvents = True
+    If Not wb Is Nothing Then
+        wb.Application.EnableEvents = True
+        If screenSettingsCaptured Then
+            wb.Application.ScreenUpdating = origScreenUpdating
+            wb.Application.Calculation = origCalculation
+        End If
+    End If
     On Error GoTo 0
 
     Say "Could not refresh the drafting sheets." & vbCrLf & vbCrLf & _

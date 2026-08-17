@@ -6,7 +6,52 @@
 > Entries say whether they are still live; anything marked fixed names the build it was
 > fixed in. U added 2026-08-16 (night); V added and FIXED same night, addin111.
 > W added and FIXED 2026-08-17 morning. X added 2026-08-17 morning, still open.
-> Y added and FIXED 2026-08-17 midday (`ShapeAddressBook.bas`).
+> Y added and FIXED 2026-08-17 midday (`ShapeAddressBook.bas`), deployed `addin120`.
+> Z added and FIXED 2026-08-17 afternoon (`Timing.bas`, running-long checkpoint in
+> `ApplyApproved`), deployed `addin121`.
+
+## Added 2026-08-17 afternoon — FIXED (Z) — no way to interrupt a long apply run
+
+**Z. A LONG-RUNNING `ApplyApproved` HAD NO WAY TO STOP IT SHORT OF FORCE-CLOSING
+BOTH OFFICE APPS.** Directly follows item X's own live demo incident -- the ~2 minute
+stall was eventually resolved by killing both processes, losing whatever partial
+progress existed. Rohan, right after: "include some cancel lines if target exceeded
+at a reasonable point."
+
+**Fix:** `Timing.CheckBudgetAndMaybeCancel`, checked every 10 items inside
+`ApplyApproved`'s loop. Silent whenever elapsed time is still inside budget (`items
+done * 2 sec/item`, floored at 15s so the ratio isn't noise on a handful of items) --
+a normal-speed run never sees a dialog, same "don't reintroduce a modal on the fast
+path" discipline as Phase 3's own pre-ticked queue. Only once a run has genuinely
+blown past budget does it offer a Yes/No to stop. On stop: the loop exits cleanly,
+remaining items are logged to the Sync Log as `"cancelled: user stopped the run
+early (running long)"` so nothing has to be guessed at afterward, and -- caught
+before shipping, not after -- `MarkConsumed` is skipped on a cancelled run, since it
+stamps the WHOLE review sheet consumed and `PendingApprovals` treats a consumed
+sheet as nothing-left-to-do; consuming it on a partial run would have silently
+discarded the still-approved remaining items on the very run meant to protect them.
+
+**Does NOT fix item X itself.** A between-items check can only ever run between
+items -- it cannot interrupt something already blocked inside a single synchronous
+COM call, which is exactly what item X's own `Ctrl+Break` test showed was happening.
+Item X's root cause remains open.
+
+**While building this, also caught and fixed:**
+- `ApplyApproved` had no top-level error handler, so a re-raised item crash (Error
+  50290, or the deliberate test fault) skipped the `Timing`-motivated
+  `ScreenUpdating`/`Calculation` restore entirely and would have left Excel's screen
+  updating off and calculation on manual for the rest of the session. Restore now
+  happens immediately before each of the two `Err.Raise itemErrNum` sites.
+- `PublishAllDraftedFields`'s final `Timing.LogTiming` call was passing a String
+  (the comma-joined field list) into a `Long` parameter position -- a real
+  compile-breaking type mismatch that would have broken every "2. Put it on the
+  slides" press, not a cosmetic issue. Found re-reading the call site.
+
+Two new tests, one deliberately broken and confirmed to fail with the exact wrong
+number before being fixed and confirmed green. Full suite: 240/240. **DEPLOYED,
+`addin121`, confirmed loaded live** via `Application.AddIns("addin121").Loaded` AND
+by actually calling `Timing.StartClock()` inside the running add-in via
+`Application.Run` and getting a real value back.
 
 ## Added 2026-08-17 morning — one FIXED (W), one LIVE and unexplained (X)
 
@@ -116,10 +161,10 @@ do with the cache. Corrected to use a realistic drift (shape deleted and replace
 this was understood, then proven to fail against deliberately-broken code before being
 trusted.
 
-Full suite green (238/0), static/module-list/doc checks clean. **NOT YET DEPLOYED** --
-built and tested the same session as Phase 3 review/approval and the AppendLogLine fix
-(item W), during a live demo; holding for a deliberate build+deploy pass rather than
-rushing one in mid-meeting.
+Full suite green (238/0), static/module-list/doc checks clean. **DEPLOYED same day,
+`addin120`, confirmed loaded live** -- built and tested during a live demo alongside
+the AppendLogLine fix (item W), then both shipped together in a deliberate
+build+deploy pass right after, rather than rushed mid-meeting.
 
 ## Added 2026-08-16 (night) — one, FIXED same night in addin111 — R's discovery fix had no matching write fix
 

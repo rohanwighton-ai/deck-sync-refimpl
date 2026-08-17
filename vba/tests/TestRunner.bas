@@ -1749,6 +1749,18 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "ShapeAddressBook_SelfHealsAndPersistsTheCorrection", r
+    If TestMatches("Timing_LogDurationWritesQuantifiablePerUnitRate", filterPattern) Then
+        r = Test_Timing_LogDurationWritesQuantifiablePerUnitRate()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "Timing_LogDurationWritesQuantifiablePerUnitRate", r
+    If TestMatches("Timing_CheckBudgetAndMaybeCancelSilentWhenUnderBudgetOrFloor", filterPattern) Then
+        r = Test_Timing_CheckBudgetAndMaybeCancelSilentWhenUnderBudgetOrFloor()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "Timing_CheckBudgetAndMaybeCancelSilentWhenUnderBudgetOrFloor", r
     If TestMatches("InjectField_RepeatingBarsOneCellManyMilestones", filterPattern) Then
         r = Test_InjectField_RepeatingBarsOneCellManyMilestones()
     Else
@@ -12950,6 +12962,90 @@ Private Function Test_ShapeAddressBook_SelfHealsAndPersistsTheCorrection() As St
     ShapeAddressBook.SetActiveWorkbook Nothing
 
     Test_ShapeAddressBook_SelfHealsAndPersistsTheCorrection = result
+End Function
+
+' Proves the actual redesign Rohan asked for, 2026-08-17: "make sure the
+' variables are quantifiable for the job it does so we understand per unit
+' of whatever" -- a raw duration next to a unit count is not the same claim
+' as a computed rate, and this is cheap and deterministic to check directly
+' (LogDuration takes a known seconds value, not a live Timer read, so there
+' is no wall-clock flakiness to work around).
+Private Function Test_Timing_LogDurationWritesQuantifiablePerUnitRate() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+
+    Timing.LogDuration wb, "TestStage", 10#, 4, "widget(s)", "detail-marker"
+
+    Dim ws As Object
+    Set ws = wb.Sheets(Timing.TIMING_SHEET_NAME)
+
+    result = result & Assert(ws.Cells(2, 2).Value = "TestStage", "stage name in column B")
+    result = result & Assert(CDbl(ws.Cells(2, 3).Value) = 10#, _
+        "raw seconds is the duration passed in, not re-derived from Timer -- got " & ws.Cells(2, 3).Value)
+    result = result & Assert(ws.Cells(2, 4).Value = 4, "unit count in column D")
+    result = result & Assert(ws.Cells(2, 5).Value = "widget(s)", "unit label in column E")
+    result = result & Assert(CDbl(ws.Cells(2, 6).Value) = 2.5, _
+        "sec/unit is COMPUTED (10 seconds / 4 units = 2.5), not left for a human to divide -- got " & ws.Cells(2, 6).Value)
+    result = result & Assert(ws.Cells(2, 7).Value = "detail-marker", "detail text in column G")
+
+    ' A SECOND row must not clobber or rescan from the header -- same discipline
+    ' as AppendLogLine's own fix (item W): End(XL_UP) finds the next free row
+    ' without a rescan, and this is the one place that logic could regress
+    ' silently (a hardcoded row 2 would still pass the assertions above).
+    Timing.LogDuration wb, "SecondStage", 3#, 0, "", ""
+    result = result & Assert(ws.Cells(3, 2).Value = "SecondStage", "second call lands on row 3, not overwriting row 2")
+    result = result & Assert(ws.Cells(3, 4).Value = "", _
+        "unitCount=0 leaves Units/Unit/Sec-per-Unit blank rather than a divide-by-zero -- got '" & ws.Cells(3, 4).Value & "'")
+
+    wb.Close False
+    xl.Quit
+
+    Test_Timing_LogDurationWritesQuantifiablePerUnitRate = result
+End Function
+
+' Proves the checkpoint is SILENT (no MsgBox, which would hang this headless
+' run waiting for a human that is not there) on both paths that must not
+' interrupt a normal-speed run: still inside budget, and too early to trust
+' the ratio (minElapsedFloor). The THIRD path -- genuinely over budget, past
+' the floor -- necessarily pops a real MsgBox and is NOT covered here; that
+' is a real, named gap (same shape as Phase 3's own apply path: "no
+' automated test yet for the no-modal path", NEXT-SESSION.md), not a
+' silent one.
+Private Function Test_Timing_CheckBudgetAndMaybeCancelSilentWhenUnderBudgetOrFloor() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+
+    Dim waited As Double
+    waited = 0
+
+    ' Elapsed (5s) is well under budget (10 items * 2 sec/item = 20s) --
+    ' must return False without ever reaching MsgBox.
+    Dim cancelled As Boolean
+    cancelled = Timing.CheckBudgetAndMaybeCancel(wb, "TestStage", 10, 100, 5#, 2#, 15#, waited)
+    result = result & Assert(Not cancelled, "under budget: no cancel, no dialog")
+    result = result & Assert(waited = 0, "under budget: waitedSeconds untouched")
+
+    ' Elapsed (16s) exceeds the pure ratio budget (2 items * 2 sec/item = 4s)
+    ' but is still under minElapsedFloor (15s is meant to guard against
+    ' noise on a HANDFUL of items -- 16 > 15, so this specific case is
+    ' actually past the floor too; use a real under-floor case instead).
+    cancelled = Timing.CheckBudgetAndMaybeCancel(wb, "TestStage", 1, 100, 10#, 1#, 15#, waited)
+    result = result & Assert(Not cancelled, _
+        "ratio exceeded (10s vs 1 item*1 sec/item budget) but under the 15s floor: still no dialog")
+    result = result & Assert(waited = 0, "under floor: waitedSeconds untouched")
+
+    wb.Close False
+    xl.Quit
+
+    Test_Timing_CheckBudgetAndMaybeCancelSilentWhenUnderBudgetOrFloor = result
 End Function
 
 ' Local copy of the trailing-break normalisation, for comparing what a textbox

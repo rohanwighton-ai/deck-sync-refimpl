@@ -201,6 +201,11 @@ Public mTestForceInjectCrash As Boolean
 ' be a compile error, not a runtime one. Used by AppendLogLine.
 Private Const XL_UP As Long = -4162
 
+' Numeric, not the named constant xlCalculationManual -- same reason as
+' XL_UP directly above: this module is PowerPoint-hosted, and Excel's own
+' enum names only resolve inside Excel's own VBA project.
+Private Const XL_CALCULATION_MANUAL As Long = -4135
+
 ' ---------------------------------------------------------------------
 ' Sheet naming
 ' ---------------------------------------------------------------------
@@ -1243,6 +1248,20 @@ End Function
 ' of exactly what landed. Pass Nothing to skip logging.
 Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object, _
                               logWs As Object) As String
+    ' Timing.bas's own module, wired via ws.Parent (ws is the review sheet,
+    ' its Parent is the register workbook) rather than a new parameter --
+    ' same reasoning as ShapeAddressBook.bas's SetActiveWorkbook: no new
+    ' parameter threaded through a function this many call sites already
+    ' depend on for something instrumentation alone does not justify.
+    Dim wb As Object
+    On Error Resume Next
+    Set wb = ws.Parent
+    On Error GoTo 0
+
+    Timing.LogClick wb, "Apply Approved: " & slideType
+    Dim tApply As Double
+    tApply = Timing.StartClock()
+
     Dim q As ReviewQueueSet
     q = ReadQueueSheet(ws)
 
@@ -1285,9 +1304,12 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
     End If
 
     ' Backup BEFORE the first write, not after the plan looks good.
+    Dim tBackup As Double
+    tBackup = Timing.StartClock()
     Dim backupPath As String
     Dim backupNote As String
     backupNote = BackupBeforeWrite(Application.ActivePresentation, backupPath)
+    Timing.LogTiming wb, "BackupBeforeWrite", tBackup
     report = report & backupNote & vbCrLf & vbCrLf
 
     ' A FAILED BACKUP ABORTS THE RUN.
@@ -1320,6 +1342,8 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
     End If
 
     ' key -> live slide, the same resolve-and-index walk ResequenceByRowOrder does.
+    Dim tGather As Double
+    tGather = Timing.StartClock()
     Dim instances() As Object
     instances = RunSync.GatherInstances(slideType)
 
@@ -1340,8 +1364,43 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
             If resolved.HasInstanceKey Then Set byKey(resolved.InstanceKey) = instances(i)
         Next i
     End If
+    Timing.LogTiming wb, "GatherInstances+Resolve", tGather, _
+        IIf(hasAny, hi - lo + 1, 0), "slide(s) of this type"
 
     Dim writtenCount As Long, skippedCount As Long, staleCount As Long, failedCount As Long
+
+    ' CLASSIC EXCEL SPEED TRICKS on the loop's Excel-side cost (AppendLogLine
+    ' writes) -- checked 2026-08-17, applied nowhere in this codebase before
+    ' tonight. NOT expected to touch the loop's DOMINANT cost, which is
+    ' PowerPoint shape reads/writes -- PowerPoint has no ScreenUpdating
+    ' property at all (confirmed live building item Y) and no equivalent
+    ' calculation-mode switch, so there is no lever on that side to pull.
+    ' This is the cheap, safe part of the win, not the whole of it.
+    Dim origScreenUpdating As Boolean
+    Dim origCalculation As Long
+    Dim screenSettingsCaptured As Boolean
+    If Not wb Is Nothing Then
+        origScreenUpdating = wb.Application.ScreenUpdating
+        wb.Application.ScreenUpdating = False
+        origCalculation = wb.Application.Calculation
+        wb.Application.Calculation = XL_CALCULATION_MANUAL
+        screenSettingsCaptured = True
+    End If
+
+    ' PER-ITEM SUB-TIMING, ACCUMULATED RATHER THAN LOGGED PER ITEM. Rohan,
+    ' 2026-08-17: "include sub-timings if you are trying to understand
+    ' particular parts of a process" -- but logging a Timing row for every
+    ' one of potentially hundreds of items would itself add real cost
+    ' (mirrors exactly the mistake item W fixed in AppendLogLine, just
+    ' skinnier since Timing's own writer already uses the safe End(XL_UP)
+    ' pattern). Instead each category's total is accumulated across the
+    ' whole loop and logged ONCE at the end, as its own rate -- this is what
+    ' actually answers "which part of an item's cost is the shape search
+    ' versus the write versus the log line."
+    Dim probeSeconds As Double, writeSeconds As Double, logSeconds As Double
+    Dim probeCount As Long, writeAttemptCount As Long
+    Dim cancelWaitSeconds As Double
+    Dim cancelledAtItem As Long
 
     Dim n As Long
     For n = 1 To q.Count
@@ -1434,6 +1493,15 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                 Dim itemErrNum As Long, itemErrDesc As String, itemErrSrc As String
 
                 ' Dry inject reads the slide's current text without touching it.
+                ' SUB-TIMED: this call, and the real write below, are exactly
+                ' the two calls item Y's shape-address cache targets --
+                ' accumulated across the whole loop and logged once at the
+                ' end (probeCount/writeAttemptCount give the divisor), not
+                ' per item, for the same reason AppendLogLine's own fix
+                ' matters: a Timing row per item would itself add cost at
+                ' this scale.
+                Dim tProbe As Double
+                tProbe = Timing.StartClock()
                 On Error Resume Next
                 Err.Clear
                 Dim probe As InjectResult
@@ -1444,9 +1512,22 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                 End If
                 itemErrNum = Err.Number: itemErrDesc = Err.Description: itemErrSrc = Err.Source
                 On Error GoTo 0
+                probeSeconds = probeSeconds + (Timer - tProbe)
+                probeCount = probeCount + 1
                 If itemErrNum <> 0 Then
                     AppendLogLine logWs, q.RunStamp, q.Items(n), _
                         "CRASHED in dry probe: " & itemErrNum & " " & itemErrDesc & " [" & itemErrSrc & "]"
+                    ' Restore BEFORE re-raising -- this function has no top-level
+                    ' On Error handler of its own (the only On Error pairs above are
+                    ' the per-item Resume Next/GoTo 0 traps), so a re-raise here exits
+                    ' straight past the restore block after Next n. Without this,
+                    ' a real item crash (Error 50290, or the deliberate test fault)
+                    ' leaves ScreenUpdating=False and Calculation=manual stuck for the
+                    ' rest of the Excel session.
+                    If screenSettingsCaptured And Not wb Is Nothing Then
+                        wb.Application.ScreenUpdating = origScreenUpdating
+                        wb.Application.Calculation = origCalculation
+                    End If
                     Err.Raise itemErrNum, _
                         "ReviewQueue.ApplyApproved: dry probe of " & q.Items(n).EntityKey & "/" & q.Items(n).FieldID & _
                         " (originally from " & itemErrSrc & ")", itemErrDesc
@@ -1467,15 +1548,26 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                         " -- " & probe.ErrorMessage & vbCrLf
                     AppendLogLine logWs, q.RunStamp, q.Items(n), "failed: " & probe.ErrorMessage
                 Else
+                    Dim tWrite As Double
+                    tWrite = Timing.StartClock()
                     On Error Resume Next
                     Err.Clear
                     Dim wrote As InjectResult
                     wrote = InjectPrimitive.InjectField(sld, q.Items(n).FieldID, proposed, False, srcWs, rowValues)
                     itemErrNum = Err.Number: itemErrDesc = Err.Description: itemErrSrc = Err.Source
                     On Error GoTo 0
+                    writeSeconds = writeSeconds + (Timer - tWrite)
+                    writeAttemptCount = writeAttemptCount + 1
                     If itemErrNum <> 0 Then
                         AppendLogLine logWs, q.RunStamp, q.Items(n), _
                             "CRASHED in real write: " & itemErrNum & " " & itemErrDesc & " [" & itemErrSrc & "]"
+                        ' Same reasoning as the dry-probe crash path above: restore
+                        ' before re-raising, or ScreenUpdating/Calculation stay
+                        ' stuck off for the rest of the session.
+                        If screenSettingsCaptured And Not wb Is Nothing Then
+                            wb.Application.ScreenUpdating = origScreenUpdating
+                            wb.Application.Calculation = origCalculation
+                        End If
                         Err.Raise itemErrNum, _
                             "ReviewQueue.ApplyApproved: writing " & q.Items(n).EntityKey & "/" & q.Items(n).FieldID & _
                             " (originally from " & itemErrSrc & ")", itemErrDesc
@@ -1494,13 +1586,74 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                 End If
             End If
         End If
+
+        ' RUNNING-LONG CHECKPOINT. Rohan, 2026-08-17: "include some cancel
+        ' lines if target exceeded at a reasonable point" -- checked every
+        ' CANCEL_CHECK_INTERVAL_ITEMS, not every item, so this is silent on
+        ' a normal-speed run (see Timing.bas's CANCEL BUDGET comment for
+        ' what this does and does not catch -- a genuine single-call hang,
+        ' like tonight's demo stall, is a different problem, FIX-LIST item
+        ' X). Checked between items only, never mid-write.
+        If (n Mod Timing.CANCEL_CHECK_INTERVAL_ITEMS) = 0 Then
+            If Timing.CheckBudgetAndMaybeCancel(wb, "ApplyApproved", n, q.Count, _
+                    Timer - tApply, Timing.CANCEL_CHECK_SEC_PER_ITEM_BUDGET, _
+                    Timing.CANCEL_CHECK_MIN_ELAPSED_SEC, cancelWaitSeconds) Then
+                cancelledAtItem = n
+                Exit For
+            End If
+        End If
     Next n
 
-    MarkConsumed ws
+    If screenSettingsCaptured And Not wb Is Nothing Then
+        wb.Application.ScreenUpdating = origScreenUpdating
+        wb.Application.Calculation = origCalculation
+    End If
+
+    ' THE TWO NUMBERS ITEM Y'S FIX IS ACTUALLY JUDGED AGAINST -- Timing.bas's
+    ' own header states the target (under 0.05 sec/item on a cache hit; an
+    ' occasional item near the OLD ~4-5 sec/item is expected on a genuine
+    ' cache miss, so it is the AVERAGE that should have moved). probeCount/
+    ' writeAttemptCount can differ (an item that fails the dry probe or goes
+    ' stale never reaches the real write), so each gets its own rate against
+    ' its own count, not a shared one.
+    If probeCount > 0 Then Timing.LogDuration wb, "ApplyApproved: dry probes (sum)", probeSeconds, probeCount, "probe(s)"
+    If writeAttemptCount > 0 Then Timing.LogDuration wb, "ApplyApproved: real writes (sum)", writeSeconds, writeAttemptCount, "write(s)"
+
+    ' Items past cancelledAtItem were never attempted -- logged so the Sync
+    ' Log names what happened instead of leaving a gap someone has to guess
+    ' at, same reasoning as AppendLogLine's own "log before you might crash".
+    Dim cancelledCount As Long
+    If cancelledAtItem > 0 Then
+        Dim m As Long
+        For m = cancelledAtItem + 1 To q.Count
+            If q.Items(m).Approved And byKey.Exists(q.Items(m).EntityKey) Then
+                cancelledCount = cancelledCount + 1
+                AppendLogLine logWs, q.RunStamp, q.Items(m), "cancelled: user stopped the run early (running long)"
+            End If
+        Next m
+    End If
+
+    ' MarkConsumed stamps the WHOLE sheet -- PendingApprovals treats a
+    ' consumed sheet as "nothing left to do" (its own comment, above). A
+    ' cancelled run genuinely left ticked items unwritten, so consuming the
+    ' sheet here would make them invisible to the next check -- the same
+    ' "reports success without confirming the effect" shape this codebase
+    ' has hit before. Only a run that reached the end of the queue consumes.
+    If cancelledAtItem = 0 Then MarkConsumed ws
+
+    Timing.LogTiming wb, "ApplyApproved (total)", tApply, q.Count, "item(s) in queue", _
+        writtenCount & " written, " & skippedCount & " skipped, " & staleCount & " stale, " & _
+        failedCount & " failed" & IIf(cancelledAtItem > 0, ", " & cancelledCount & " cancelled by user", ""), _
+        excludeSeconds:=cancelWaitSeconds
 
     report = report & vbCrLf & "Summary: " & writtenCount & " written, " & _
         skippedCount & " not approved, " & staleCount & " dropped as stale, " & _
         failedCount & " failed" & vbCrLf
+
+    If cancelledAtItem > 0 Then
+        report = report & vbCrLf & "STOPPED EARLY: you cancelled after " & cancelledAtItem & " of " & q.Count & _
+            " item(s) -- " & cancelledCount & " remaining item(s) were not attempted and are still approved for next time." & vbCrLf
+    End If
 
     If staleCount > 0 Then
         report = report & vbCrLf & "Dropped changes were NOT written. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "'" & vbCrLf & _

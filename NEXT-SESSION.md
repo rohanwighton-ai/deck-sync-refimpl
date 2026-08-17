@@ -1,6 +1,90 @@
 # NEXT SESSION — start here
 
-> ## 17 AUG, MIDDAY — READ THIS BLOCK FIRST. **STATUS: CURRENT.** Continuation of the
+> ## 17 AUG, AFTERNOON — Timing instrumentation + running-long checkpoint,
+> `addin121` deployed. **STATUS: CURRENT.** Continuation of the same very long
+> session (16 Aug evening through 17 Aug afternoon).
+>
+> **Built `Timing.bas`** (new module), Rohan mid-demo-debrief: "can you please set
+> timing machinery in the code... within an order of magnitude regarding what you
+> expect." Per-stage duration AND a real per-unit rate (Sec/Unit as its own column,
+> not buried in text — "make sure the variables are quantifiable... per unit of
+> whatever") written to a `Timing` sheet in the register, documented targets stated
+> in the same units. Wired into the two real hot paths (`DraftingUI.
+> RefreshDraftingSheets`/`PublishAllDraftedFields`, `ReviewQueue.ApplyApproved`) with
+> sub-timing (dry probe vs. real write, accumulated not logged per-item — same
+> "don't add the cost you're trying to measure" reasoning as item W's own fix), a
+> click-log (`Timing.LogClick` — "have a register of what I clicked when so you can
+> diagnose it") so a hang can be read from its own log instead of guessed at, and a
+> human-wait exclusion (`LogWait`/`excludeSeconds`) so a MsgBox someone is sitting on
+> doesn't inflate the processing rate logged next to it.
+>
+> **Classic Excel VBA speed tricks researched and applied**, not asserted from
+> memory: `ScreenUpdating`/`Calculation = xlCalculationManual` — confirmed used
+> NOWHERE before tonight, now wrapped around both hot loops (restored in
+> `DraftingUI`'s `Failed:` handler too, guarded by `screenSettingsCaptured` so an
+> error before either was ever touched can't wrongly "restore" them to their
+> uninitialized defaults). `.Copy`/`PasteSpecial` and `.Select`/`.Activate` checked
+> and ruled out. Bulk array read/write (the single most-cited win, one cited case
+> 886s→<1s) NOT done — `Drafting.bas` alone has 97 individual `.Cells(` calls, a real
+> future opportunity, correctly too large to fold into tonight.
+>
+> **Real bug caught before shipping: `ApplyApproved` has no top-level error handler**,
+> so a re-raised item crash (Error 50290, or the deliberate test fault) skipped the
+> new ScreenUpdating/Calculation restore entirely and would have left Excel's screen
+> updating off and calculation on manual for the rest of the session. Fixed by
+> restoring immediately before each of the two `Err.Raise itemErrNum` sites, not just
+> once after the loop.
+>
+> **Added a running-long checkpoint** — Rohan, right after the demo's ~2 minute
+> stall: "include some cancel lines if target exceeded at a reasonable point."
+> `Timing.CheckBudgetAndMaybeCancel`, checked every 10 items in `ApplyApproved`'s
+> loop, silent whenever elapsed stays under budget (`items * 2 sec/item`, floored at
+> 15s so the ratio isn't noise on a handful of items) — only pops a Yes/No once a run
+> has genuinely blown past it. Does **NOT** rescue a genuine single-call hang like the
+> demo's own (still open, FIX-LIST item X) — a between-items check cannot interrupt
+> something already blocked inside one COM call. Cancelling stops the loop cleanly:
+> remaining items are logged as "cancelled: user stopped the run early," and — caught
+> before shipping — `MarkConsumed` is now **skipped** on a cancelled run, because it
+> stamps the whole review sheet consumed and `PendingApprovals` treats a consumed
+> sheet as nothing-left-to-do; consuming it on a partial run would have silently
+> discarded the still-ticked remaining items.
+>
+> **Also fixed while touching this: `PublishAllDraftedFields`'s final Timing call was
+> passing a String (`list`, the comma-joined field names) into a `Long` parameter
+> position** — a real compile-breaking type mismatch, not cosmetic, that would have
+> broken every "2. Put it on the slides" press. Caught by re-reading the call site,
+> not by the test suite (nothing exercised that exact line).
+>
+> **Two new tests, one deliberately proven to fail first**
+> (`Test_Timing_LogDurationWritesQuantifiablePerUnitRate`,
+> `Test_Timing_CheckBudgetAndMaybeCancelSilentWhenUnderBudgetOrFloor`) — the first
+> broken on purpose (`elapsed * unitCount` instead of `/`), confirmed it failed with
+> the exact wrong number (40 instead of 2.5), reverted, confirmed green. The
+> cancel-dialog's ACTUAL cancel branch (ratio exceeded past the floor) is **not**
+> covered — it necessarily pops a real MsgBox, which would hang a headless run; a
+> named gap, same shape as Phase 3's own untested no-modal apply path.
+>
+> **Full suite: 240/240 passed** (238 pre-existing + 2 new). Static checks,
+> module-list consistency, and doc-control checks all clean.
+>
+> **`addin121` built, moved to trusted
+> (`...\AppData\Roaming\Microsoft\AddIns\`), registered `AutoLoad=1`, `addin120` set
+> to `0`, confirmed loaded live** — two ways: `Application.AddIns("addin121").
+> Loaded = True` from a fresh PowerPoint launch, AND `Application.Run
+> ("addin121.ppam!Timing.StartClock")` actually executed and returned a real Timer
+> value — stronger evidence than the AddIns flag alone, since it proves the specific
+> new code is genuinely compiled and callable, not just that a correctly-named file
+> is sitting in the folder. (Minor snag along the way: PowerPoint's Save As landed
+> the file in `OneDrive\Claude\`, not the trusted `AddIns` folder addin120 lives in —
+> copied across before registering, same as every prior build.)
+>
+> **Not yet done: no real "2. Put it on the slides" retest against `addin121`.** The
+> whole point of tonight's build is to see what the Timing sheet says about a real
+> run — next session should press it for real and read the sheet, not synthesize the
+> answer.
+>
+> ## 17 AUG, MIDDAY — Lobby fixes W/Y deployed as `addin120`. **STATUS: SUPERSEDED by
+> the block above**, kept for the detail. Continuation of the
 > same very long session (16 Aug evening through 17 Aug midday, including a live demo
 > to Rohan's manager on this same machine, using `addin119` as-deployed).
 >
