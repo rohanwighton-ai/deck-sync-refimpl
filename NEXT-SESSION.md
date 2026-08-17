@@ -78,10 +78,38 @@
 > the file in `OneDrive\Claude\`, not the trusted `AddIns` folder addin120 lives in —
 > copied across before registering, same as every prior build.)
 >
-> **Not yet done: no real "2. Put it on the slides" retest against `addin121`.** The
-> whole point of tonight's build is to see what the Timing sheet says about a real
-> run — next session should press it for real and read the sheet, not synthesize the
-> answer.
+> **UPDATE, same afternoon: the retest happened, and the Timing sheet answered its
+> own question.** Deck deliberately reverted to an older `.bak` snapshot first (per
+> Rohan's choice) so "1. Set up my quarter" would have real work to do. Real numbers,
+> read straight off the `Timing` sheet: 13× `WriteDraftingSheet` ~40s total (2.5-4.6s
+> each), **`BuildLobbyFromScratch` 503.4s (559 rows scanned, 115 pinned) — 75% of the
+> entire 665.4s run.** First-ever measurement of this stage (NEXT-SESSION and
+> FIX-LIST had both only inferred it before), and it dwarfs everything items W/Y/Z
+> touched combined — now FIX-LIST item AB, still open, not yet diagnosed against the
+> actual source. Two more real findings from watching this run live: (1) a genuine
+> long, currently-unmeasured delay happens INSIDE `Resolve()`, before its own
+> period-rollover confirmation dialog even appears — looks exactly like a hang from
+> outside (flat CPU, `Responding=True`, no visible dialog checked mid-delay) but
+> isn't; FIX-LIST item AA. (2) `RefreshDraftingSheets`'s "(total)" Timing row fires
+> BEFORE `WriteRunLog`/`SaveWorkbookVerified` actually run — caught because Rohan
+> reported the real completion dialog arrived ~30s after that row appeared; folded
+> into item AB. **Also found and worth remembering: `WriteRunLog` doesn't clear
+> trailing rows from a longer previous run** — this run's real content ended at row
+> 30, rows 31-86 were untouched leftovers from the prior (86-row) run, a minor but
+> real bug, not yet its own FIX-LIST item.
+>
+> **Both AA and AB have a live confound not yet ruled out**: this run followed a
+> deliberate deck-swap for the retest, so the register had more than usual to
+> reconcile. One clean baseline run against an already-synced deck, untouched, is
+> needed before treating 503s as typical rather than worst-case.
+>
+> **Next session's actual priority, in order: (1) read `DraftingLobby.
+> BuildFromScratch`'s source and diagnose AB — it is now the single largest lever in
+> the whole codebase.** (2) Instrument `Resolve()`'s own period-detection path the
+> same way tonight's other stages were, so a real stall there is distinguishable from
+> this same kind of legitimate-but-slow wait (item AA). (3) Move or duplicate the
+> "(total)" Timing log to after the save, or add a stage for the WriteRunLog+Save
+> tail specifically.
 >
 > ## 17 AUG, MIDDAY — Lobby fixes W/Y deployed as `addin120`. **STATUS: SUPERSEDED by
 > the block above**, kept for the detail. Continuation of the

@@ -9,6 +9,95 @@
 > Y added and FIXED 2026-08-17 midday (`ShapeAddressBook.bas`), deployed `addin120`.
 > Z added and FIXED 2026-08-17 afternoon (`Timing.bas`, running-long checkpoint in
 > `ApplyApproved`), deployed `addin121`.
+> AA added 2026-08-17 afternoon, still open -- long unmeasured delay before Resolve()'s
+> period-rollover dialog even appears. AB added 2026-08-17 afternoon, still open --
+> BuildLobbyFromScratch is 75% of a real run's cost, and RefreshDraftingSheets'
+> "(total)" Timing row fires before the real end of the function.
+
+## Added 2026-08-17 afternoon — AA, STILL OPEN — long delay BEFORE the period dialog
+even appears, in code the new Timing instrumentation does not cover
+
+**AA. PRESSING "1. SET UP MY QUARTER" TOOK A VERY LONG TIME TO EVEN SHOW THE
+"is this the new period, Q1F27?" CONFIRMATION DIALOG.** Found live during the
+first real retest of `addin121` (immediately after the deck-swap prep for that
+retest -- see below for why that matters). Rohan, watching it: "it took a
+LOOOOOOOOOOOOONG time for that dialogue to arrive" -- explicitly the delay
+BEFORE the dialog appeared, not how long he took to answer it once it showed.
+
+**Live evidence, not assumption:** ~2+ minutes of polling (`Get-Process`
+`TotalProcessorTime`, matching item X's own method) showed CPU essentially
+flat throughout, `Responding=True` the whole time, no dialog visible on
+screen when checked -- looked exactly like a hang. It was not: the dialog
+was genuinely still coming, just very slowly. **This is a real gap in
+tonight's own instrumentation**: `Timing.LogClick` is the very first line
+inside `RefreshDraftingSheets`'s body, called right after `Resolve()`
+succeeds -- but the period-rollover check and its confirmation prompt live
+INSIDE `Resolve()` (or whatever precedes it), before that line is ever
+reached. The `Timing` sheet showed zero rows for this run the entire time
+it was stuck, which is exactly correct given where the delay actually is,
+but looks indistinguishable from a genuine hang without knowing that.
+
+**Confound not yet ruled out:** this happened right after swapping the live
+deck for an older `.bak` snapshot (see this session's retest prep) so the
+register and the reverted deck had more to reconcile than usual -- possible
+the slow part is specifically period/pairing detection working harder
+against a genuinely bigger mismatch, not a general cost that happens on
+every normal "Set up my quarter" press. Not yet isolated from a normal run
+against an already-synced deck.
+
+**Not fixed, not measured.** Next session: instrument `Resolve()`'s own
+period-detection path the same way tonight's `RefreshDraftingSheets`/
+`ApplyApproved` work was, including a `Timing.LogClick`-equivalent BEFORE
+whatever does the slow part, so a real stall there is distinguishable from
+this same kind of legitimate-but-slow wait next time.
+
+## Added 2026-08-17 afternoon — AB, STILL OPEN — the real cost is
+`BuildLobbyFromScratch`, and the "(total)" Timing row fires before the function
+actually ends
+
+**AB. FIRST REAL MEASUREMENT OF `RefreshDraftingSheets` EVER TAKEN: 665
+SECONDS TOTAL, 503 OF THEM (75%) IN `BuildLobbyFromScratch` ALONE.** From the
+same `addin121` retest as item AA, read straight off the `Timing` sheet:
+
+```
+13x WriteDraftingSheet     ~40s total  (2.5-4.6s each)
+BuildLobbyFromScratch      503.4s      (559 rows scanned, 115 pinned, across 13 fields)
+RefreshDraftingSheets (total) 665.4s   (51.2 sec/field average, dominated by the above)
+```
+
+~0.9 sec/row scanned in `BuildLobbyFromScratch` is far too slow for what
+should be reading register cells -- the same shape of suspicion as item W's
+own `AppendLogLine` (an O(n^2) rescan-from-start pattern, or several COM
+calls where one bulk read would do). **Not yet confirmed against the actual
+source** -- this is a measurement, not a diagnosis; `DraftingLobby.
+BuildFromScratch` needs to actually be read before assuming the cause.
+This is now the single largest lever in the whole codebase, ahead of
+everything items W/Y/Z touched combined -- NEXT-SESSION.md's own note that
+"the register-vs-slide diff scan inside BuildQueue/PlanRoutineSync... has
+never been measured on its own, only inferred" is finally answered, and the
+answer is worse than the AppendLogLine cost it sits next to.
+
+**Confound not yet ruled out**, same as item AA: this run followed a
+deliberate deck-swap for the retest (register genuinely had more to
+reconcile than a normal already-synced press). Worth one clean baseline run
+against an untouched, already-synced deck before treating 503s as the
+typical cost rather than a worst case.
+
+**AB also covers a smaller, related instrumentation gap**: `DraftingUI.
+RefreshDraftingSheets`'s `Timing.LogTiming ..., "RefreshDraftingSheets
+(total)", ...` call fires BEFORE `WorkbookBridge.WriteRunLog` and
+`WorkbookBridge.SaveWorkbookVerified` (the actual save-to-disk, verified) --
+only after both of those does the completion `MsgBox` appear. Found live:
+Rohan reported the completion dialog arrived "about 30 seconds" after the
+Timing sheet's own "(total)" row appeared, which is exactly consistent with
+watching the wrong signal -- the "(total)" row is not the true end of the
+function. Neither `WriteRunLog` nor `SaveWorkbookVerified` has ANY timing on
+it right now. Fix (next session): move the "(total)" log call to after the
+save, or add its own stage for the WriteRunLog+Save tail specifically.
+
+Not fixed tonight -- found at the very end of an already very long session,
+correctly left for a dedicated look next time rather than a rushed live
+patch.
 
 ## Added 2026-08-17 afternoon — FIXED (Z) — no way to interrupt a long apply run
 
