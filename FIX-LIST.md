@@ -440,6 +440,89 @@ this; `addin126` needs to be built and deployed, then "2. Put it on the
 slides" pressed for real, before the post-fix number replaces the 362.2s/
 4-field pre-fix measurement above.
 
+**UPDATE, same night — the retest attempt was invalid, and found something
+bigger instead.** `addin135` was built and deployed with this exact fix and
+pressed for real. It ran 14.5+ minutes and was killed. Live diagnosis
+(mine, in the moment) drew two wrong inferences from correct observations
+("settings back to normal ⇒ the loop finished", "file mtime changed ⇒ the
+loop's own save ran") — a cold second opinion (fable, full transcript in
+this session) read the saved file's actual bytes and found the real story:
+**the publish exited in seconds**, because the register being tested was a
+reverted baseline with no `Drafting Lobby` sheet at all — "Nothing is
+pinned" fired almost immediately. The 14.5 minutes were spent entirely in
+the NEXT stage the button chain falls through to when nothing is pending
+approval -- `RibbonUI.ReviewChangesCore` -> `ReviewQueue.BuildQueue` ->
+`SyncOperations.PlanRoutineSync` -- a completely different, pre-existing
+path with no relationship to AF/AL, never fast-mode-wrapped, never
+Timing-instrumented, and therefore invisible until tonight. **AF itself is
+not proven regressed — it has still never been genuinely retested live**
+(needs "1. Set up my quarter" pressed first, to rebuild the Lobby, before
+"2. Put it on the slides" means anything). Fable's math on `WriteRunLog`
+also cleared AF of the hypothesis I raised live: the new single-body write
+(~150-200 lines) is *cheaper* than the old path's 26 destructive
+replace-writes (~1300 cell writes total) -- AF reduced Run Log cost, it
+did not add to it.
+
+## Added and FIXED 2026-08-17/18 night — AR, the real dominant cost
+
+**AR. `InjectorFor` CALLS `FindShapeByRoleTag` UP TO FOUR TIMES PER FIELD
+(base tag, ".1", ".track", ".rest"), AND A GENUINE MISS WAS NEVER CACHED --
+ONLY A HIT WAS.** `ShapeAddressBook.bas` (built earlier tonight, see its own
+header) already fixed the common case of a shape that EXISTS: cache its
+name, verify-on-read, fall back to a full walk only on drift. But a field
+with NO matching shape on a given slide type -- the majority case once a
+register carries more populated columns than any one slide type has fields
+for (roll-forward/publish work over the last two days inflated exactly this)
+-- got no caching at all. Every one of `InjectorFor`'s up-to-four calls
+re-walked the whole slide from scratch, every time, for every such field.
+Diagnosed cold by fable (full evidence trail: the saved register's own
+bytes, `InjectPrimitive.bas:408-465`'s call pattern, `ShapeAddressBook.bas`'s
+existing `Record` contract) after my own live diagnosis chased the wrong
+function entirely (see AF+AL's update above) -- this is the actual dominant
+unmeasured cost in the tool tonight, unrelated to AF/AL, and it gets worse
+every time more register columns get filled in.
+
+**Fix:** `ShapeAddressBook.NO_SHAPE_MARKER` + `RecordAbsent(slideType,
+fieldId)` -- the negative twin of the existing `Record`/`Lookup`. Same
+invariant the positive cache already relies on: `Slide.Duplicate` copies
+the template's shapes unchanged, nothing in this codebase adds or renames
+one afterward, so "confirmed absent" is exactly as stable as "confirmed
+present" -- IF that invariant holds. `InjectPrimitive.FindShapeByRoleTag`
+checks the marker first and skips the walk entirely on a confirmed miss;
+records one on a genuine zero-match walk, but deliberately NEVER on an
+ambiguous 2+ match (caching ambiguity as "absent" would hide a real
+problem instead of surfacing it on every call the way it does today).
+Fixing the one choke point (`FindShapeByRoleTag`) collapses all four of
+`InjectorFor`'s calls automatically -- no change needed to `InjectorFor`
+itself.
+
+**Honest limit, stated plainly, not glossed over** (Rohan asked directly
+whether this is infallible under strict rule-following -- it is not, and
+not for the same reason the positive cache isn't): the positive cache has
+a cheap verify-on-read (the tag check) as a real safety net against
+PowerPoint's own ordinal-based name resolution silently pointing a cached
+name at a different shape. The negative cache has **no verify-on-read at
+all** -- checking "is it really still gone?" costs the same full walk this
+fix exists to avoid. It is trusted, not verified. If a template shape is
+ever added to an individual slide instance by hand outside this tool (never
+observed, not prevented by any code), this cache would be silently wrong
+with no self-heal, only a manual clear of the `Shape Address Book` sheet.
+Not fixed, because no automatic invalidation exists for either cache
+direction today, and none was added here on the strength of a case that
+has not happened.
+
+**Proven with the "make it fail once" discipline**: new test
+`Test_InjectPrimitive_NegativeCacheSkipsTheWalk` deliberately disabled
+(`If False And ...`), confirmed it fails with the exact expected message
+("still Nothing despite a real matching shape now existing"), reverted.
+Also proves ambiguity is never cached as absent. Full suite 242/242.
+
+**Not yet built into an addin or measured live.** `addin135` predates this;
+next session (or later tonight): build, deploy, then press "1. Set up my
+quarter" FIRST (rebuilds the Lobby), then "2. Put it on the slides" -- that
+retest now finally proves both AF and AR for real, on a register in the
+state the button actually expects.
+
 ## Added 2026-08-17 afternoon — FIXED (Z) — no way to interrupt a long apply run
 
 **Z. A LONG-RUNNING `ApplyApproved` HAD NO WAY TO STOP IT SHORT OF FORCE-CLOSING

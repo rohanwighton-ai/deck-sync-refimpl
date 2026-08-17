@@ -56,6 +56,25 @@ Option Explicit
 ' cache through this module instead of carrying a workbook reference itself.
 Public Const ADDRESS_BOOK_SHEET_NAME As String = "Shape Address Book"
 
+' FIX-LIST item AR, 2026-08-17/18 night. This book only ever remembered a
+' POSITIVE match -- a genuine miss (no shape on this slide type for this
+' field) recorded nothing, so InjectorFor's up-to-four FindShapeByRoleTag
+' calls per identity tag (base, ".1", ".track", ".rest") each re-walked the
+' whole slide from scratch, every time, for every field with no matching
+' shape -- the majority case once a register carries more populated columns
+' than any one slide type has fields for (measured: ~4-5s/item on a real
+' apply run, diagnosed by a cold audit as the actual dominant unmeasured
+' cost in the tool, nothing to do with tonight's earlier AF/AL work).
+' RecordAbsent below closes that gap using the SAME invariant the positive
+' cache already relies on (Slide.Duplicate copies the template's shapes
+' unchanged; nothing in this codebase adds or renames one afterwards) -- if
+' a slide type's template has no shape for a field, no instance of that
+' type ever will either, so "confirmed absent" is exactly as stable as
+' "confirmed present". This sentinel is a normal string, not an empty one,
+' specifically so it is not rejected by Record's own empty-shapeName guard
+' and is distinguishable from Lookup's "" ("nothing cached yet") result.
+Public Const NO_SHAPE_MARKER As String = "(no shape)"
+
 Private Const COL_B_TYPE As Long = 1
 Private Const COL_B_FIELDID As Long = 2
 Private Const COL_B_SHAPENAME As Long = 3
@@ -160,4 +179,35 @@ Public Sub Record(slideType As String, fieldId As String, shapeName As String)
     ws.Cells(targetRow, COL_B_TYPE).Value = slideType
     ws.Cells(targetRow, COL_B_FIELDID).Value = fieldId
     ws.Cells(targetRow, COL_B_SHAPENAME).Value = shapeName
+End Sub
+
+' THE NEGATIVE TWIN OF Record. Called by FindShapeByRoleTag only when its
+' full walk finds ZERO matches -- deliberately NOT when it finds two or
+' more (an ambiguous, exceptional state; caching that as "absent" would be
+' actively wrong, and re-walking a rare ambiguous case costs nothing). Same
+' idempotent update-in-place behaviour as Record. A genuinely later-added
+' template shape would need this book cleared by hand to be seen -- no
+' automatic invalidation exists for either cache direction today, and none
+' is added here on the strength of a case that has not happened.
+Public Sub RecordAbsent(slideType As String, fieldId As String)
+    If mWb Is Nothing Then Exit Sub
+    If slideType = "" Or fieldId = "" Then Exit Sub
+
+    Dim ws As Object
+    Set ws = EnsureSheet()
+
+    Dim existing As Long
+    existing = FindBookRow(ws, slideType, fieldId)
+
+    Dim targetRow As Long
+    If existing > 0 Then
+        targetRow = existing
+    Else
+        targetRow = LastBookRow(ws) + 1
+        If targetRow < ADDRESS_BOOK_FIRST_ROW Then targetRow = ADDRESS_BOOK_FIRST_ROW
+    End If
+
+    ws.Cells(targetRow, COL_B_TYPE).Value = slideType
+    ws.Cells(targetRow, COL_B_FIELDID).Value = fieldId
+    ws.Cells(targetRow, COL_B_SHAPENAME).Value = NO_SHAPE_MARKER
 End Sub

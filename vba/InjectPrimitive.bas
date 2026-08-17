@@ -174,6 +174,21 @@ Public Function FindShapeByRoleTag(sld As Object, identityTag As String) As Obje
         slideType = resolved.TypeTag
         Dim cachedName As String
         cachedName = ShapeAddressBook.Lookup(slideType, identityTag)
+
+        ' FIX-LIST item AR. CONFIRMED ABSENT is exactly as trustworthy as a
+        ' confirmed name (ShapeAddressBook.bas's own header has the
+        ' invariant this relies on) -- so a recorded miss skips the walk
+        ' too, not just a recorded hit. This is what actually collapses
+        ' InjectorFor's up-to-four calls per identity tag (base, ".1",
+        ' ".track", ".rest") down to four cheap Lookups instead of four
+        ' full slide walks, for every field with no matching shape on this
+        ' slide type -- the majority case, and the dominant real cost a
+        ' cold audit found tonight.
+        If cachedName = ShapeAddressBook.NO_SHAPE_MARKER Then
+            Set FindShapeByRoleTag = Nothing
+            Exit Function
+        End If
+
         If cachedName <> "" Then
             Dim candidate As Object
             On Error Resume Next
@@ -208,6 +223,13 @@ Public Function FindShapeByRoleTag(sld As Object, identityTag As String) As Obje
         If slideType <> "" Then ShapeAddressBook.Record slideType, identityTag, match.Name
     Else
         Set FindShapeByRoleTag = Nothing
+        ' Only a GENUINE zero-match miss is cached as absent. matchCount = 2+
+        ' is the ambiguous, exceptional case FindShapeByRoleTag has always
+        ' collapsed to Nothing too -- but caching THAT as "confirmed absent"
+        ' would hide a real problem (two shapes claiming one tag) behind a
+        ' fast path instead of surfacing it on every call the way it does
+        ' today. Ambiguity is rare; re-walking it costs nothing.
+        If slideType <> "" And matchCount = 0 Then ShapeAddressBook.RecordAbsent slideType, identityTag
     End If
 End Function
 

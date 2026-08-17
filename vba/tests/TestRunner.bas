@@ -1752,6 +1752,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "InjectPrimitive_FastPathActuallyFires", r
+    If TestMatches("InjectPrimitive_NegativeCacheSkipsTheWalk", filterPattern) Then
+        r = Test_InjectPrimitive_NegativeCacheSkipsTheWalk()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectPrimitive_NegativeCacheSkipsTheWalk", r
     If TestMatches("ShapeAddressBook_SelfHealsAndPersistsTheCorrection", filterPattern) Then
         r = Test_ShapeAddressBook_SelfHealsAndPersistsTheCorrection()
     Else
@@ -12953,6 +12959,86 @@ Private Function Test_InjectPrimitive_FastPathActuallyFires() As String
     ShapeAddressBook.SetActiveWorkbook Nothing
 
     Test_InjectPrimitive_FastPathActuallyFires = result
+End Function
+
+' FIX-LIST item AR. A cold audit (fable, 2026-08-17/18 night) found the real
+' dominant unmeasured cost in the tool: FindShapeByRoleTag only ever cached a
+' HIT. Every genuine MISS -- the majority case once a register carries more
+' populated columns than any one slide type has fields for -- re-walked the
+' whole slide from scratch, every time, and InjectorFor calls this up to four
+' times per identity tag (base, ".1", ".track", ".rest"). ShapeAddressBook.
+' RecordAbsent/NO_SHAPE_MARKER closes that gap.
+'
+' Same proof shape as Test_InjectPrimitive_FastPathActuallyFires: create a
+' condition the SLOW path could not produce this answer under, then show the
+' fast path produces it anyway. Here: cache a miss for a tag, THEN add a real
+' shape carrying that exact tag. A slow-path re-walk would find it and return
+' it. The negative fast path does not verify (ShapeAddressBook.bas's own
+' header says why: it costs a full walk to disprove a cached absence, which
+' defeats the point), so it must still return Nothing. Getting Nothing here
+' despite a real matching shape existing is proof the fast path fired, not
+' that the feature quietly does nothing.
+Private Function Test_InjectPrimitive_NegativeCacheSkipsTheWalk() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    ShapeAddressBook.SetActiveWorkbook wb
+
+    Dim sld As Object
+    Set sld = NewTaggedSlide("negcache-probe", "NC001")
+
+    ' First call: genuinely nothing on the slide carries this tag. Slow path
+    ' walks, finds zero matches, must record the absence.
+    Dim first As Object
+    Set first = InjectPrimitive.FindShapeByRoleTag(sld, "NC_FIELD")
+    result = result & Assert(first Is Nothing, "first call (cold cache, no shape) returns Nothing")
+    result = result & Assert(ShapeAddressBook.Lookup("negcache-probe", "NC_FIELD") = ShapeAddressBook.NO_SHAPE_MARKER, _
+        "the miss is recorded as the confirmed-absent marker, not left blank")
+
+    ' NOW ADD A REAL, CORRECTLY-TAGGED SHAPE. If the fast path is live, it
+    ' trusts the cached absence and never looks -- still Nothing. If this
+    ' fix regressed to a re-walk every time, this would find shpA and return
+    ' it, which is the wrong answer for THIS test even though it would be
+    ' the right answer with an empty cache.
+    Dim shpA As Object
+    Set shpA = sld.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    shpA.TextFrame.TextRange.Text = "arrived after the miss was cached"
+    shpA.Tags.Add "role", "NC_FIELD"
+
+    Dim second As Object
+    Set second = InjectPrimitive.FindShapeByRoleTag(sld, "NC_FIELD")
+    result = result & Assert(second Is Nothing, _
+        "still Nothing despite a real matching shape now existing -- proves the negative fast path fired " & _
+        "(a re-walk would have found shpA and returned it instead)")
+
+    ' AMBIGUITY IS NEVER CACHED AS ABSENT. Two shapes sharing a tag must
+    ' still refuse (Nothing) via the ordinary matchCount check on every
+    ' call, not have that ambiguity hidden by a stale "confirmed absent"
+    ' entry from an earlier, different slide/tag combination.
+    Dim sld2 As Object
+    Set sld2 = NewTaggedSlide("negcache-ambig", "NC002")
+    Dim shpB As Object, shpC As Object
+    Set shpB = sld2.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    shpB.Tags.Add "role", "AMBIG_FIELD"
+    Set shpC = sld2.Shapes.AddTextbox(1, 200, 40, 300, 40)
+    shpC.Tags.Add "role", "AMBIG_FIELD"
+
+    Dim ambigResult As Object
+    Set ambigResult = InjectPrimitive.FindShapeByRoleTag(sld2, "AMBIG_FIELD")
+    result = result & Assert(ambigResult Is Nothing, "two shapes sharing a tag still refuse, as before")
+    result = result & Assert(ShapeAddressBook.Lookup("negcache-ambig", "AMBIG_FIELD") = "", _
+        "an ambiguous (2+) result is NOT cached as absent -- re-walked every time, on purpose")
+
+    sld.Delete
+    sld2.Delete
+    wb.Close False
+    xl.Quit
+    ShapeAddressBook.SetActiveWorkbook Nothing
+
+    Test_InjectPrimitive_NegativeCacheSkipsTheWalk = result
 End Function
 
 ' Proves the SELF-HEALING half. NOT via renaming a shape -- probed live
