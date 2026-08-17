@@ -152,21 +152,30 @@
 > as the 2026-08-14 incident; comment corrected to state reality, behavior NOT
 > changed (that's a separate decision).
 >
-> **Next session's actual priority, in order: (1) close the measurement gap first
-> (~30 min)** — add `Timing.LogTiming` to `WriteSpecSheet`/`WriteSourcesSheet`/
-> validations/tab-arranging/workbook-index/register-formatting, all currently
-> inside `RefreshDraftingSheets`'s `tRefresh` with zero timing of their own; ~120s
-> of the 665.4s original run is still unattributed to any named stage. **(2) Build
+> **UPDATE, same evening: step 0 (measurement gap) and item AC both DONE.** Every
+> previously-unattributed stage inside `RefreshDraftingSheets` now has its own
+> `Timing.LogTiming` line (spec+sources write, missing-columns check, period
+> validation, register read, tab/index/format, the three FieldSpec validations,
+> WriteRunLog+Save), and the "(total)" row moved to after the actual save -- the
+> true end of the function. Full suite green (240/240). **NOT YET DEPLOYED** — no
+> addin build since. The next real "1. Set up my quarter" press on a build that
+> includes this is what actually answers where the missing ~120s lives; not
+> guessed at further before that.
+>
+> **Next session's actual priority, in order: (1) build and deploy `addin123`,
+> re-run the retest, read the newly-complete Timing sheet** — this is the real
+> next data point, not another round of instrumentation. **(2) Build
 > `WriteDraftingSheetBulk` per `DRAFTING-SPEED-STRATEGY.md`'s Phase A** (bulk
 > read/write, alongside the legacy function, behind a flag) — write the new
 > multi-row/orphan-row/numeric-text preservation test and the parity harness FIRST,
-> prove each fails on purpose, then build. **(3) Phase B** (cosmetic-skip stamp).
-> **(4) Instrument `Resolve()`'s own period-detection path** the same way other
-> stages were, so item AA's real (now twice-confirmed) cost is distinguishable from
-> a hang. **(5)** Move/duplicate the "(total)" Timing log to after the save (item
-> AC). **(6)** Build a trimmed or fresh test fixture — this session's register is
-> ~2x a real deck's sheet count from accumulated test archives, and has been
-> silently inflating every number measured tonight.
+> prove each fails on purpose, then build. Deliberately NOT started this session —
+> real surgery on the function with 5 prior data-loss incidents deserves a fresh
+> run, not the tail end of an already marathon one. **(3) Phase B** (cosmetic-skip
+> stamp). **(4) Instrument `Resolve()`'s own period-detection path** the same way
+> other stages were, so item AA's real (now twice-confirmed) cost is
+> distinguishable from a hang. **(5)** Build a trimmed or fresh test fixture —
+> this session's register is ~2x a real deck's sheet count from accumulated test
+> archives, and has been silently inflating every number measured tonight.
 >
 > ## 17 AUG, MIDDAY — Lobby fixes W/Y deployed as `addin120`. **STATUS: SUPERSEDED by
 > the block above**, kept for the detail. Continuation of the

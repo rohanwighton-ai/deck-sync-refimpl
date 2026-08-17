@@ -13,11 +13,15 @@
 > period-rollover dialog even appears. AB added and FIXED same afternoon --
 > BuildLobbyFromScratch's O(n^2) pin-scanning was 75% of a real run's cost. DEPLOYED
 > `addin122`, confirmed loaded live, and independently re-measured isolated (no
-> confounds): 503.4s -> 2.67s, identical output, ~188x. AC added 2026-08-17
-> afternoon, still open -- RefreshDraftingSheets' "(total)" Timing row fires before
-> the real end of the function. AD added 2026-08-17 evening, still open --
-> `WriteDraftingSheet` is ~600 COM calls per field; strategy in
-> `DRAFTING-SPEED-STRATEGY.md`, fix in progress.
+> confounds): 503.4s -> 2.67s, identical output, ~188x. AC added and FIXED
+> 2026-08-17 evening -- RefreshDraftingSheets' "(total)" Timing row now fires after
+> WriteRunLog+SaveWorkbookVerified, the true end of the function, and every
+> previously-unattributed stage (spec/sources write, missing-columns check,
+> validation, register read, tab/index/format, the three FieldSpec validations,
+> WriteRunLog+Save) now has its own Timing line -- NOT YET DEPLOYED. AD added
+> 2026-08-17 evening, still open -- `WriteDraftingSheet` is ~600 COM calls per
+> field; strategy in `DRAFTING-SPEED-STRATEGY.md`, Phase A (bulk read/write) not
+> yet started.
 
 ## Added 2026-08-17 afternoon — AA, STILL OPEN — long delay BEFORE the period dialog
 even appears, in code the new Timing instrumentation does not cover
@@ -113,24 +117,37 @@ apply to this measurement -- BuildLobbyFromScratch reads only the
 drafting sheets and their APPROVE columns, never the deck, so the retest
 deck's state is irrelevant to this specific number.
 
-## Added 2026-08-17 afternoon — AC, STILL OPEN — the "(total)" Timing row
-fires before `RefreshDraftingSheets` actually ends
+## Added 2026-08-17 afternoon, FIXED same evening — AC — the "(total)" Timing row
+fired before `RefreshDraftingSheets` actually ended, and ~120s of the same run
+was entirely unmeasured
 
 **AC. `DraftingUI.RefreshDraftingSheets`'s `Timing.LogTiming ...,
-"RefreshDraftingSheets (total)", ...` call fires BEFORE
+"RefreshDraftingSheets (total)", ...` call fired BEFORE
 `WorkbookBridge.WriteRunLog` and `WorkbookBridge.SaveWorkbookVerified` (the
-actual save-to-disk, verified) -- only after both of those does the
-completion `MsgBox` appear.** Found live: Rohan reported the completion
-dialog arrived "about 30 seconds" after the Timing sheet's own "(total)"
-row appeared, exactly consistent with watching the wrong signal -- the
-"(total)" row is not the true end of the function. Neither `WriteRunLog`
-nor `SaveWorkbookVerified` has ANY timing on it right now. Fix (next
-session): move the "(total)" log call to after the save, or add its own
-stage for the WriteRunLog+Save tail specifically.
+actual save-to-disk, verified) -- only after both of those did the
+completion `MsgBox` appear. FIXED.** Found live: Rohan reported the
+completion dialog arrived "about 30 seconds" after the Timing sheet's own
+"(total)" row appeared, exactly consistent with watching the wrong signal.
 
-Not fixed tonight -- found at the very end of an already very long session,
-correctly left for a dedicated look next time rather than a rushed live
-patch.
+**Fix, folded together with closing item AD's own measurement gap** (its
+step 0 -- 665.4s total measured, 503.4s Lobby (now fixed), ~40s drafting
+sheets, ~120s entirely unattributed to anything named): every previously
+untimed stage inside `RefreshDraftingSheets` now has its own
+`Timing.LogTiming` line -- `WriteSpecSheet+WriteSourcesSheet`,
+`MissingRegisterColumns check+add` (excluding the dialog wait, same
+discipline as the rest of this module), `ApplyPeriodValidation`,
+`ReadSheetForDeckPeriod` (with a real row count -- guarded so it does not
+crash on the one early-failure path where `Sheet.Rows` is never
+initialized, found reading the source before trusting `.Count` on it),
+`ArrangeTabs+WriteWorkbookIndex+FormatRegisterSheet`,
+`ControlledValidation+BehaviourValidation+RendersValidation`, and
+`WriteRunLog+SaveWorkbookVerified`. The "(total)" log itself moved to
+after the save -- the true end of the function, matching what a person
+watching the screen actually experiences as "done".
+
+Full suite green (240/240). **NOT YET DEPLOYED** -- no addin build since
+this fix; the next real "1. Set up my quarter" press, on a build that
+includes it, is what actually answers where the missing ~120s lives.
 
 ## Added 2026-08-17 afternoon — FIXED (Z) — no way to interrupt a long apply run
 

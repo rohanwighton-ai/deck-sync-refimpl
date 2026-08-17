@@ -638,6 +638,13 @@ Public Sub RefreshDraftingSheets()
     Dim waitedRefresh As Double
     waitedRefresh = 0
 
+    ' FIX-LIST item AD's own step 0: every stage below used to be untimed,
+    ' inside tRefresh with no Timing row of its own -- 665.4s measured total,
+    ' 503.4s Lobby, ~40s drafting sheets, leaving ~120s attributed to nothing
+    ' named. These lines settle whether WriteDraftingSheet really is the #2
+    ' cost or just the largest one anyone had actually measured.
+    Dim tSpecSrc As Double
+    tSpecSrc = Timing.StartClock()
     Dim specWs As Object
     Set specWs = WorkbookBridge.GetOrAddWorksheet(wb, FieldSpec.SPEC_SHEET_NAME)
     FieldSpec.WriteSpecSheet specWs
@@ -645,6 +652,7 @@ Public Sub RefreshDraftingSheets()
     Dim srcWs As Object
     Set srcWs = WorkbookBridge.GetOrAddWorksheet(wb, Sources.SOURCES_SHEET_NAME)
     Sources.WriteSourcesSheet srcWs
+    Timing.LogTiming wb, "WriteSpecSheet+WriteSourcesSheet", tSpecSrc
 
     ' The period gets PICKED on the Sources sheet, from the periods the register
     ' actually holds. Called here because this runs on every drafting build, so
@@ -664,6 +672,8 @@ Public Sub RefreshDraftingSheets()
     ' OFFERS, NEVER SILENTLY ADDS. Columns are cheap but not free: a mistyped
     ' FieldID would appear as a real column and look authoritative. Naming them
     ' first is what makes a typo visible while it is still one keystroke to fix.
+    Dim tMissingCols As Double
+    tMissingCols = Timing.StartClock()
     Dim missingCols As String
     missingCols = ExcelOutput.MissingRegisterColumns(specWs, regWs)
     If missingCols <> "" Then
@@ -694,9 +704,14 @@ Public Sub RefreshDraftingSheets()
             End If
         End If
     End If
+    Timing.LogTiming wb, "MissingRegisterColumns check+add", tMissingCols, _
+        excludeSeconds:=waitedRefresh
 
+    Dim tSrcValidation As Double
+    tSrcValidation = Timing.StartClock()
     Dim srcValidation As String
     srcValidation = Sources.ApplyPeriodValidation(srcWs, regWs)
+    Timing.LogTiming wb, "ApplyPeriodValidation", tSrcValidation
 
     Dim fields As String
     fields = ProseFields(wb)
@@ -727,9 +742,23 @@ Public Sub RefreshDraftingSheets()
     ' every type in one table. Worth noting what that argument had become -- it
     ' was the literal "q", the rig's old type name, renamed to "project-status"
     ' in 80fe9af. Every row would have been rejected as the wrong type.
+    Dim tReadReg As Double
+    tReadReg = Timing.StartClock()
     Dim problem As String
     Dim reg As Sheet
     reg = ExcelOutput.ReadSheetForDeckPeriod(regWs, period, problem)
+    ' unitCount only when problem = "" -- one of ReadSheetForDeckPeriod's own
+    ' early-failure paths (worksheet never set up, A1 empty) returns before
+    ' its Rows dictionary is ever created, so reg.Rows.Count would raise
+    ' Object-variable-not-set on exactly the path this function exists to
+    ' fail gracefully on. Caught reading the source before trusting it, not
+    ' found by a crash.
+    If problem = "" Then
+        Timing.LogTiming wb, "ReadSheetForDeckPeriod", tReadReg, _
+            reg.Rows.Count, "register row(s) read"
+    Else
+        Timing.LogTiming wb, "ReadSheetForDeckPeriod", tReadReg
+    End If
     If problem <> "" Then
         Say "Cannot build drafting sheets from this register." & vbCrLf & vbCrLf & problem & _
                vbCrLf & vbCrLf & "Nothing was written.", vbExclamation, CAP
@@ -858,12 +887,17 @@ Public Sub RefreshDraftingSheets()
     Timing.LogTiming wb, "BuildLobbyFromScratch", tLobby, _
         (UBound(parts) - LBound(parts) + 1), "field(s) scanned", lobbyNote
 
+    Dim tTabsIndexFormat As Double
+    tTabsIndexFormat = Timing.StartClock()
     WorkbookBridge.ArrangeTabs wb, draftOrder
     WorkbookBridge.WriteWorkbookIndex wb
     WorkbookBridge.FormatRegisterSheet regWs
+    Timing.LogTiming wb, "ArrangeTabs+WriteWorkbookIndex+FormatRegisterSheet", tTabsIndexFormat
 
     ' Dropdowns on the controlled fields, and a report of anything already in
     ' the register that the vocabulary does not allow.
+    Dim tValidation As Double
+    tValidation = Timing.StartClock()
     Dim valNote As String
     Dim outOfVocab As Long
     valNote = FieldSpec.ApplyControlledValidation(regWs, specWs, outOfVocab)
@@ -878,6 +912,7 @@ Public Sub RefreshDraftingSheets()
     ' rebuilds the Field Spec sheet.
     valNote = valNote & vbCrLf & FieldSpec.ApplyBehaviourValidation(specWs)
     valNote = valNote & vbCrLf & FieldSpec.ApplyRendersValidation(specWs)
+    Timing.LogTiming wb, "ControlledValidation+BehaviourValidation+RendersValidation", tValidation
 
     ShowSheet wb, firstSheet
 
@@ -888,10 +923,15 @@ Public Sub RefreshDraftingSheets()
     ' was the problem. A modal cannot be scrolled, kept, or returned to, and
     ' MsgBox silently truncates past ~1024 characters, so the more the report had
     ' to say the less of it survived.
-    Timing.LogTiming wb, "RefreshDraftingSheets (total)", tRefresh, _
-        (UBound(parts) - LBound(parts) + 1), "field(s) written", _
-        excludeSeconds:=waitedRefresh
 
+    ' FIX-LIST item AC: this "(total)" log used to fire HERE, before
+    ' WriteRunLog and the save that actually finishes the function -- Rohan
+    ' reported the real completion dialog arrived "about 30 seconds" after
+    ' this row appeared on the Timing sheet, because it was never the true
+    ' end. Moved below the save, and WriteRunLog+the save now get their own
+    ' named stage instead of running inside an unmeasured tail.
+    Dim tRunLogSave As Double
+    tRunLogSave = Timing.StartClock()
     WorkbookBridge.WriteRunLog wb, _
         "Drafting sheets rebuilt for " & period, _
         report & vbCrLf & valNote & vbCrLf & srcValidation & vbCrLf & lobbyNote
@@ -928,6 +968,15 @@ Public Sub RefreshDraftingSheets()
     ' never ran: Excel holds the new layout, the file holds the old.
     Dim saveProblem As String
     saveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
+    Timing.LogTiming wb, "WriteRunLog+SaveWorkbookVerified", tRunLogSave
+
+    ' NOW the true end of the function -- everything above this line has
+    ' actually run, including the save. This is the number that should match
+    ' what a person watching the screen experiences as "how long did that
+    ' take", not an earlier stage's own subtotal.
+    Timing.LogTiming wb, "RefreshDraftingSheets (total)", tRefresh, _
+        (UBound(parts) - LBound(parts) + 1), "field(s) written", _
+        excludeSeconds:=waitedRefresh
 
     msg = msg & vbCrLf & vbCrLf & "Full detail is on the '" & _
           WorkbookBridge.RUN_LOG_SHEET_NAME & "' sheet."
