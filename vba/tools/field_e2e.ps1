@@ -59,7 +59,7 @@ $modules = @(
     "TagMigration.bas","FieldWiring.bas","MilestoneDevice.bas","Readiness.bas","Register.bas","RegisterSeed.bas","PlaceholderCheck.bas","RunSync.bas","ReviewQueue.bas","Drafting.bas","FieldSpec.bas","Sources.bas","Timeline.bas",
     "DeckAdoption.bas","ResolveFields.bas","DeckRegistry.bas","WorkbookBridge.bas","Harvest.bas",
     "OnboardFlow.bas","RibbonUI.bas","AdoptFlow.bas","BatchOnboardFlow.bas","CommandBarUI.bas","DraftingUI.bas","DiscoverUI.bas",
-    "DraftingLobby.bas","AppEvents.cls"
+    "DraftingLobby.bas","AppEvents.cls","ShapeAddressBook.bas"
 )
 foreach ($m in $modules) {
     $srcPath = Join-Path $vbaSourceDir $m

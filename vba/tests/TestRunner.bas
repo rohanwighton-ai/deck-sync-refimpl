@@ -1737,6 +1737,18 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "InjectPrimitive_ExplicitTagStillWinsOverDeviceName", r
+    If TestMatches("InjectPrimitive_FastPathActuallyFires", filterPattern) Then
+        r = Test_InjectPrimitive_FastPathActuallyFires()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectPrimitive_FastPathActuallyFires", r
+    If TestMatches("ShapeAddressBook_SelfHealsAndPersistsTheCorrection", filterPattern) Then
+        r = Test_ShapeAddressBook_SelfHealsAndPersistsTheCorrection()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "ShapeAddressBook_SelfHealsAndPersistsTheCorrection", r
     If TestMatches("InjectField_RepeatingBarsOneCellManyMilestones", filterPattern) Then
         r = Test_InjectField_RepeatingBarsOneCellManyMilestones()
     Else
@@ -12795,6 +12807,149 @@ Private Function Test_InjectPrimitive_ExplicitTagStillWinsOverDeviceName() As St
 
     sld.Delete
     Test_InjectPrimitive_ExplicitTagStillWinsOverDeviceName = result
+End Function
+
+' Measured live 2026-08-17: FindShapeByRoleTag's full walk cost ~4-5s per
+' item on a real 221-item apply run (ScreenUpdating and window focus both
+' ruled out first, live). ShapeAddressBook.bas is the fix -- see its own
+' header for the full design. This test PROVES the fast path actually
+' fires, not just that the function still returns the right answer either
+' way: it creates a genuine ambiguity (two shapes sharing one tag) that the
+' SLOW path's own matchCount check would refuse (return Nothing for). If
+' the fast path is live, the cached shape is returned anyway, because the
+' fast path verifies only the ONE cached candidate, not global uniqueness.
+' Getting a shape back here, instead of Nothing, is the proof.
+Private Function Test_InjectPrimitive_FastPathActuallyFires() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    ShapeAddressBook.SetActiveWorkbook wb
+
+    Dim sld As Object
+    Set sld = NewTaggedSlide("fastpath-probe", "FP001")
+    Dim shpA As Object
+    Set shpA = sld.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    shpA.TextFrame.TextRange.Text = "first"
+    shpA.Tags.Add "role", "FP_FIELD"
+
+    ' First call: cache is empty, must take the slow path, and must record
+    ' shpA's real name afterwards.
+    Dim first As Object
+    Set first = InjectPrimitive.FindShapeByRoleTag(sld, "FP_FIELD")
+    result = result & Assert(Not first Is Nothing, "first call (cold cache) finds the shape")
+    Dim cachedName As String
+    cachedName = ShapeAddressBook.Lookup("fastpath-probe", "FP_FIELD")
+    result = result & Assert(cachedName = shpA.Name, _
+        "the walk records the real shape name, got '" & cachedName & "' vs '" & shpA.Name & "'")
+
+    ' NOW CREATE A GENUINE AMBIGUITY. A slow-path re-walk MUST refuse this
+    ' (matchCount = 2, FindShapeByRoleTag returns Nothing) -- that is
+    ' existing, unchanged, load-bearing behaviour (R13-adjacent: never guess
+    ' between two candidates). The fast path, by design, does not re-scan
+    ' for a second match -- it only verifies the ONE cached candidate.
+    Dim shpB As Object
+    Set shpB = sld.Shapes.AddTextbox(1, 200, 40, 300, 40)
+    shpB.TextFrame.TextRange.Text = "second"
+    shpB.Tags.Add "role", "FP_FIELD"
+
+    Dim second As Object
+    Set second = InjectPrimitive.FindShapeByRoleTag(sld, "FP_FIELD")
+    result = result & Assert(Not second Is Nothing, _
+        "the cached candidate is still returned despite a NEW ambiguity -- proves the fast path fired, " & _
+        "not a re-walk (a re-walk would see matchCount=2 and refuse with Nothing)")
+    If Not second Is Nothing Then
+        result = result & Assert(second.Id = shpA.Id, "and it is specifically the cached shape, shpA")
+    End If
+
+    sld.Delete
+    wb.Close False
+    xl.Quit
+    ShapeAddressBook.SetActiveWorkbook Nothing
+
+    Test_InjectPrimitive_FastPathActuallyFires = result
+End Function
+
+' Proves the SELF-HEALING half. NOT via renaming a shape -- probed live
+' first (2026-08-17) and renaming turned out to be the wrong drift
+' mechanism entirely: PowerPoint's auto-generated names ("TextBox 1")
+' resolve by TYPE+ORDINAL, a fallback that SURVIVES a rename (confirmed
+' live, including across a real SaveAs/Close/Reopen cycle -- it is a
+' genuine file-format behaviour, not a live-session artifact). Only an
+' explicit custom name invalidates cleanly on rename, and nothing in this
+' codebase ever sets a custom name -- every real shape here keeps
+' PowerPoint's own auto-generated name. So the first version of this test,
+' built around renaming, could not fail even against genuinely broken code:
+' the old name kept resolving to the right shape anyway, for reasons that
+' had nothing to do with ShapeAddressBook.
+'
+' The REALISTIC drift for this codebase is a shape being deleted and
+' replaced -- someone reformats a slide, the field's shape is gone, a
+' DIFFERENT shape now occupies whatever name/position used to answer to the
+' cached lookup. That is exactly what the tag-verification step exists to
+' catch: the fast path's cached name may still resolve to *something*, but
+' that something either won't exist or won't carry the right tag, and
+' either way the slow-path fallback fires and the cache heals.
+Private Function Test_ShapeAddressBook_SelfHealsAndPersistsTheCorrection() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    ShapeAddressBook.SetActiveWorkbook wb
+
+    Dim sld As Object
+    Set sld = NewTaggedSlide("heal-probe", "HP001")
+    Dim shpA As Object
+    Set shpA = sld.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    shpA.TextFrame.TextRange.Text = "before"
+    shpA.Tags.Add "role", "HP_FIELD"
+
+    Dim first As Object
+    Set first = InjectPrimitive.FindShapeByRoleTag(sld, "HP_FIELD")
+    Dim cachedName As String
+    cachedName = ShapeAddressBook.Lookup("heal-probe", "HP_FIELD")
+    result = result & Assert(cachedName = shpA.Name, "cache holds shpA's name after first use")
+
+    ' REALISTIC DRIFT: the tagged shape is gone. A different, UNTAGGED shape
+    ' now exists (may or may not reuse the same auto-generated name slot --
+    ' does not matter which; the point is the cache's name no longer points
+    ' at a shape carrying HP_FIELD). A third shape, elsewhere, now carries
+    ' the tag instead -- the field moved, a real scenario (reformatting a
+    ' slide, replacing a placeholder).
+    shpA.Delete
+    Dim shpB As Object
+    Set shpB = sld.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    shpB.TextFrame.TextRange.Text = "untagged decoy"
+    Dim shpC As Object
+    Set shpC = sld.Shapes.AddTextbox(1, 200, 200, 300, 40)
+    shpC.TextFrame.TextRange.Text = "the field moved here"
+    shpC.Tags.Add "role", "HP_FIELD"
+
+    Dim second As Object
+    Set second = InjectPrimitive.FindShapeByRoleTag(sld, "HP_FIELD")
+    result = result & Assert(Not second Is Nothing, _
+        "a stale cached entry does not break the lookup -- falls back and finds the field's new shape")
+    If Not second Is Nothing Then
+        result = result & Assert(second.Id = shpC.Id, _
+            "and it is specifically shpC (the correctly-tagged shape), not shpB (the untagged decoy the stale name may have resolved to)")
+    End If
+
+    Dim healedName As String
+    healedName = ShapeAddressBook.Lookup("heal-probe", "HP_FIELD")
+    result = result & Assert(healedName = shpC.Name, _
+        "the correction PERSISTS in the address book, not just for this one call -- got '" & healedName & _
+        "', shpC is '" & shpC.Name & "'")
+
+    sld.Delete
+    wb.Close False
+    xl.Quit
+    ShapeAddressBook.SetActiveWorkbook Nothing
+
+    Test_ShapeAddressBook_SelfHealsAndPersistsTheCorrection = result
 End Function
 
 ' Local copy of the trailing-break normalisation, for comparing what a textbox

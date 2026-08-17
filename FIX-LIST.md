@@ -6,6 +6,7 @@
 > Entries say whether they are still live; anything marked fixed names the build it was
 > fixed in. U added 2026-08-16 (night); V added and FIXED same night, addin111.
 > W added and FIXED 2026-08-17 morning. X added 2026-08-17 morning, still open.
+> Y added and FIXED 2026-08-17 midday (`ShapeAddressBook.bas`).
 
 ## Added 2026-08-17 morning — one FIXED (W), one LIVE and unexplained (X)
 
@@ -51,11 +52,74 @@ Possible mitigation if confirmed: periodic `DoEvents` calls inside the long loop
 (`ApplyApproved`, `BuildQueue`) to yield to the message pump -- not attempted yet,
 because the phenomenon itself isn't confirmed.
 
+**UPDATE, same day, live during a real demo:** a genuine ~2+ minute stall was observed
+and measured properly this time (a background monitor polling Sync Log row count and
+CPU every 20s, not manual glances) -- PowerPoint's own CPU went essentially flat while
+Excel's crept up slightly, with `Responding=True` throughout and no visible dialog
+(confirmed by Rohan looking directly at the screen). **`Ctrl+Break` sent to PowerPoint
+did not interrupt it** -- no VBE break, no change in behaviour. That is itself a real
+data point, not a dead end: `Ctrl+Break` interrupts actively-executing VBA statements,
+not a VBA thread genuinely blocked inside a synchronous cross-process COM call waiting
+for Excel to return. This is consistent with the stall being on the EXCEL side of a
+big register scan (likely `ReviewChangesCore`/`BuildQueue` comparing the whole
+register against the deck for the `project-progress` type), not a PowerPoint-side
+hang and not the window-focus theory this entry originally chased. Closed by killing
+both processes (test deck, zero real risk) rather than waiting further. Root cause of
+*why* that scan is so slow is still open -- worth a real look with `ShapeAddressBook`'s
+speed fix (item Y) actually deployed first, since that may explain a meaningful share
+of it on its own.
+
 One place for what is known-broken and not yet fixed, so each new review stops
 re-deriving the same findings. Three reviews have now paid to rediscover items that
 were already known — that cost is what this file exists to stop.
 
 Ranked by how much real work is destroyed, or wasted, before anyone notices.
+
+## Added 2026-08-17 midday — one FIXED (Y), the real cause behind item X's slowness
+
+**Y. `InjectPrimitive.FindShapeByRoleTag` WALKED EVERY SHAPE ON THE SLIDE (RECURSING
+INTO EVERY GROUP) ON EVERY CALL, TWICE PER QUEUED ITEM. FIXED.** Measured live during
+tonight's Phase 3 stress test: roughly 4-5 seconds per item on a real 221-item apply
+run. Ruled out `Application.ScreenUpdating` first (does not exist on
+`PowerPoint.Application` -- confirmed by actually trying it, not assumed from Excel's
+API) and window focus second (measured with a controlled isolated test, no stall). The
+same operation on a one-shape test slide took under 1ms -- roughly a 5000x gap,
+pointing at real slide complexity (many shapes, nested groups) as the actual cost, not
+COM overhead in general.
+
+**Fix:** `ShapeAddressBook.bas` (new module) -- a persistent, self-healing cache of
+"which shape, by name, answers to this role tag on this slide type." `Slide.Duplicate`
+(how every instance is created) copies shape names from the template, and nothing in
+this codebase ever renames a shape afterwards, so the same name answers the same
+question on every instance of a type, indefinitely. `FindShapeByRoleTag` now tries the
+cached name first (`Shapes.Item(name)` -- confirmed against Microsoft's own guidance to
+be a genuine fast path, not a marginal one), verifies the candidate's role tag before
+trusting it, and only falls back to the full walk on a miss or a mismatch. Every full
+walk records what it found, so a cache miss self-heals for next time -- no separate
+"discovery" pass anywhere (Rohan, 2026-08-17: "to avoid discovery").
+
+Wired via the same pattern as `DraftingLobby.bas`'s `EnsureWatching`:
+`ShapeAddressBook.SetActiveWorkbook` is called from `WorkbookBridge.OpenOrGetWorkbook`,
+the one place every path through this add-in already reaches the register workbook --
+avoids threading a new `wb` parameter through the whole injector family
+(`InjectField`/`InjectProgressVia`/`InjectPictureVia`/`InjectDeviceVia` and every one of
+their callers).
+
+**A real, load-bearing PowerPoint quirk found building this, now in `AGENTS.md`:**
+auto-generated shape names ("TextBox 1") keep resolving via a type+ordinal fallback
+even after the shape is renamed -- confirmed live, and confirmed it survives a real
+SaveAs/Close/Reopen, not just a live session. Only an explicit custom name invalidates
+cleanly on rename. The first version of this fix's self-healing test used rename as
+the drift trigger and could not have failed against genuinely broken code, because the
+stale name kept resolving to the right shape anyway, for reasons that had nothing to
+do with the cache. Corrected to use a realistic drift (shape deleted and replaced) once
+this was understood, then proven to fail against deliberately-broken code before being
+trusted.
+
+Full suite green (238/0), static/module-list/doc checks clean. **NOT YET DEPLOYED** --
+built and tested the same session as Phase 3 review/approval and the AppendLogLine fix
+(item W), during a live demo; holding for a deliberate build+deploy pass rather than
+rushing one in mid-meeting.
 
 ## Added 2026-08-16 (night) — one, FIXED same night in addin111 — R's discovery fix had no matching write fix
 

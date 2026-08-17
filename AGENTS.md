@@ -399,6 +399,30 @@ guidance.
   and this one) were found this way after other diagnostic techniques
   stalled.
 
+- **PowerPoint's auto-generated shape names ("TextBox 1", "Oval 2") keep
+  resolving via a TYPE+ORDINAL fallback even after the shape is renamed --
+  an explicit CUSTOM name does not.** Found 2026-08-17 building
+  `ShapeAddressBook.bas`'s self-healing cache: `sld.Shapes.Item("TextBox
+  1")` returned the correct shape *after* it had been renamed to
+  "RenamedForTest", with no error -- both with one shape on the slide and
+  with two, and confirmed to survive a real `SaveAs`/`Close`/reopen in a
+  fresh instance, not just a live-session artifact. A genuinely never-used
+  name (`"ZZZ_NEVER_REAL"`) correctly raised "Item ... not found". The
+  distinguishing probe: give a shape an explicit custom name first
+  (`shp.Name = "MyCustomOriginal"`), rename it, then query the old custom
+  name -- that correctly raises "not found". So the auto-generated
+  `"ShapeType N"` pattern is not a strict name match; it falls back to
+  something positional/type-based that a real rename does not defeat.
+  **Practical consequence**: a test (or any code) that uses *renaming* to
+  simulate a stale/invalid shape reference will not exercise the failure
+  path it thinks it is testing, on a shape that still carries its
+  PowerPoint-default name -- which is every shape in this codebase, since
+  nothing here ever sets a custom `.Name`. The first version of
+  `ShapeAddressBook`'s self-healing test did exactly this and could not
+  have failed against genuinely broken code. Use a REALISTIC drift instead
+  (the shape deleted and a different one taking its place) to actually
+  invalidate a cached reference.
+
 ## Testing
 
 - **A real, headless test harness now exists and has actually run against

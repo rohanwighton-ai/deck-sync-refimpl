@@ -69,7 +69,7 @@ $productionModules = @(
     # The drafting half. Present in the repo since 2026-07-31 and never shipped
     # in the add-in at all -- reachable only from the PowerShell test harness.
     "Drafting.bas", "FieldSpec.bas", "Sources.bas",  "DraftingUI.bas", "DiscoverUI.bas",
-    "DraftingLobby.bas", "AppEvents.cls"
+    "DraftingLobby.bas", "AppEvents.cls", "ShapeAddressBook.bas"
 )
 
 function Request-GracefulQuit {

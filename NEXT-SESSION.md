@@ -1,7 +1,41 @@
 # NEXT SESSION — start here
 
-> ## 17 AUG, MORNING — READ THIS BLOCK FIRST. **STATUS: CURRENT.** Continuation of
-> the same very long session (16 Aug evening through 17 Aug morning).
+> ## 17 AUG, MIDDAY — READ THIS BLOCK FIRST. **STATUS: CURRENT.** Continuation of the
+> same very long session (16 Aug evening through 17 Aug midday, including a live demo
+> to Rohan's manager on this same machine, using `addin119` as-deployed).
+>
+> **Two real fixes are BUILT, TESTED, and PUSHED but NOT YET DEPLOYED — `addin119`
+> still lacks both.** Discovered this precisely because the live demo used `addin119`
+> unmodified and hit exactly the slowness both fixes address:
+>
+> 1. **FIX-LIST item W** — `ReviewQueue.AppendLogLine`'s O(n²) Sync Log rescan.
+> 2. **FIX-LIST item Y** — `InjectPrimitive.FindShapeByRoleTag` walking every shape on
+>    the slide, twice per item, every time. New module `ShapeAddressBook.bas`: a
+>    persistent, self-healing cache of "which shape answers to this field on this
+>    slide type," wired the same way `DraftingLobby.bas` is (a module-level workbook
+>    reference set from `WorkbookBridge.OpenOrGetWorkbook`, no new parameters threaded
+>    through the injector family). Found a real, load-bearing PowerPoint quirk
+>    building it — auto-generated shape names resolve via type+ordinal even after a
+>    rename, confirmed to survive a real save/close/reopen — now in `AGENTS.md`.
+>
+> **Live evidence during the demo, not just theory:** pressed "2. Put it on the
+> slides" on `addin119`, watched it grind for several minutes with the same content
+> already mostly synced from earlier. A background monitor (polling Sync Log row
+> count + CPU every 20s) confirmed a genuine ~2 minute stall — CPU nearly flat, no
+> dialog (Rohan checked the screen directly), `Ctrl+Break` sent to PowerPoint did NOT
+> interrupt it. That last point is itself real evidence: consistent with the stall
+> being inside a blocked synchronous COM call into Excel (a big register scan), not
+> a PowerPoint-side hang — logged as an update to FIX-LIST item X. Closed by killing
+> both processes (test deck, zero real risk), not chased further live.
+>
+> **Next real action: build `addin120` with both fixes in and deploy it**, then
+> re-run the same "2. Put it on the slides" scenario to see whether the stall is
+> gone or just smaller — that comparison is the actual proof, not a synthetic test.
+> Neither fix has been rebuilt into an add-in yet — both are source-only as of this
+> block.
+>
+> ## 17 AUG, MORNING — Lobby phases 0-3 deployed, demo prep. **STATUS: SUPERSEDED by
+> the block above**, kept for the detail.
 >
 > **Lobby Phases 0-3 all built, tested, and DEPLOYED (`addin119`).** Phase 3 (pre-ticked
 > queue + no-modal apply) was built and pushed overnight but deliberately held back from

@@ -159,6 +159,39 @@ End Sub
 ' it returns Nothing on TWO matches as well as none, so an ambiguous tag can
 ' never be silently resolved to whichever shape came first.
 Public Function FindShapeByRoleTag(sld As Object, identityTag As String) As Object
+    ' THE FAST PATH. ShapeAddressBook.bas's own header has the full story --
+    ' compressed here: a shape's name and location never change between
+    ' runs (Slide.Duplicate copies both from the template, and nothing in
+    ' this codebase renames a shape afterwards), so a name once discovered
+    ' by the full walk below is remembered and tried FIRST next time,
+    ' verified by the same tag check the walk itself uses, never trusted
+    ' blindly. Costs one cheap Lookup and, on a hit, one native
+    ' Shapes(name) access instead of walking the whole slide.
+    Dim slideType As String
+    Dim resolved As SlideInstance
+    resolved = Resolve.ResolveSlideInstance(sld)
+    If resolved.HasTypeTag Then
+        slideType = resolved.TypeTag
+        Dim cachedName As String
+        cachedName = ShapeAddressBook.Lookup(slideType, identityTag)
+        If cachedName <> "" Then
+            Dim candidate As Object
+            On Error Resume Next
+            Set candidate = sld.Shapes(cachedName)
+            On Error GoTo 0
+            If Not candidate Is Nothing Then
+                If ShapeHasRoleTag(candidate, identityTag) Then
+                    Set FindShapeByRoleTag = candidate
+                    Exit Function
+                End If
+            End If
+        End If
+    End If
+
+    ' THE SLOW PATH, UNCHANGED. Cache miss (nothing recorded yet) or a stale
+    ' entry (candidate gone, or its tag no longer matches) both land here --
+    ' same full, ambiguity-checked walk this function has always done, no
+    ' correctness change of any kind.
     Dim match As Object
     Dim matchCount As Long
     matchCount = 0
@@ -167,6 +200,12 @@ Public Function FindShapeByRoleTag(sld As Object, identityTag As String) As Obje
 
     If matchCount = 1 Then
         Set FindShapeByRoleTag = match
+        ' SELF-HEALS HERE. Whatever the walk just found -- for the first
+        ' time, or correcting a stale entry -- is recorded so the NEXT call
+        ' for this (slide type, field) takes the fast path instead. No
+        ' separate discovery pass anywhere; this is the only place the book
+        ' is ever written.
+        If slideType <> "" Then ShapeAddressBook.Record slideType, identityTag, match.Name
     Else
         Set FindShapeByRoleTag = Nothing
     End If
