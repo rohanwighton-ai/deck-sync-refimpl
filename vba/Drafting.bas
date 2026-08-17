@@ -711,21 +711,31 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' lesson of 2026-08-14 is that the copy is the risk. It also double-counted
     ' the rollover, which the row loop's ferry now owns outright.
 
-    ' PARK BEFORE EVERY CLEAR, NOT JUST ON A LAYOUT MISMATCH.
+    ' PARKING IS STILL CONDITIONAL, NOT UNCONDITIONAL -- CORRECTED 2026-08-17.
     '
-    ' The park above is gated on `strandedRows > 0`, which is only ever counted
-    ' inside `If Not layoutMatches`. So the ORDINARY case -- same layout, same
-    ' period -- took no copy at all, while the comment above it claimed "Both are
-    ' now preserved rather than merely announced". It was true of one case.
+    ' This comment used to claim parking ran "unconditional on 'there was a
+    ' sheet here'". It doesn't: parking below is gated on `Not layoutMatches`,
+    ' on `layoutMatches And sheetLayout <> DRAFT_LAYOUT_VERSION`, and on
+    ' `periodChanged` -- three real conditions, all further down this
+    ' function. The ORDINARY case -- same layout, same period, the path every
+    ' routine "1. Set up my quarter" press actually takes -- has NO backup
+    ' taken before it writes, same as when this comment was first written.
     '
     ' Cost, 2026-08-14: a rebuild left TPL_KEY_EVENTS_BODY with 23 of 43 rows and
     ' TPL_PROGRESS_BODY with 37 of 43, losing 27 drafted paragraphs, and there was
     ' no archive to recover them from -- the layout matched, so nothing parked.
     ' Recovered only because a whole-file backup happened to exist.
     '
-    ' Unconditional on "there was a sheet here", because the cases that lose work
-    ' are not knowable before the write: the 2026-08-14 loss was a mid-function
-    ' failure, which no pre-flight test predicts. PruneParked caps the clutter.
+    ' The in-place rewrite (this comment's own neighbour, "THE CLEAR IS A
+    ' MIGRATION TOOL") already shrank the blast radius for this exact case --
+    ' a mid-write failure now leaves unreached rows untouched rather than
+    ' destroyed, which is a real, different mitigation for the same scenario.
+    ' Whether the ordinary path should ALSO get a cheap pre-write backup is
+    ' still open -- not decided here, not implemented here. Found stale while
+    ' reading this function for FIX-LIST item AD's speed work
+    ' (DRAFTING-SPEED-STRATEGY.md); fixing what the comment claims, not what
+    ' the code does, matches this project's "a description of a machine fact
+    ' goes stale, so don't leave a wrong one in place" rule.
     ' ============================================================
     ' THE CLEAR IS A MIGRATION TOOL. IT IS NOT THE NORMAL PATH.
     ' ============================================================

@@ -114,17 +114,59 @@
 > `PinToLobby` at all — it tracks its own `nextRow` and writes directly, since it's
 > the only writer of a sheet it just wiped. `PinToLobby` itself untouched. Full
 > suite green (240/240), including both Lobby correctness tests — proves the
-> rewrite gives identical results, not just faster ones. **Not yet built into an
-> addin, not yet re-measured live** — `addin122` and a repeat of the same retest
-> scenario are the real next proof, not the passing test suite alone.
+> rewrite gives identical results, not just faster ones.
 >
-> **Next session's actual priority, in order: (1) build `addin122`, deploy, and
-> re-run the same retest scenario to get the real before/after number for AB.**
-> (2) Instrument `Resolve()`'s own period-detection path the same way this
-> afternoon's other stages were, so a real stall there is distinguishable from this
-> same kind of legitimate-but-slow wait (item AA). (3) Move or duplicate the
-> "(total)" Timing log to after the save, or add a stage for the WriteRunLog+Save
-> tail specifically (item AC).
+> **UPDATE, same evening: `addin122` built, deployed, confirmed loaded live, AB
+> re-measured in isolation — 503.4s -> 2.67s, ~188x, identical output.** Measured
+> by calling `DraftingLobby.BuildLobbyFromScratch` directly via `Application.Run`
+> against the same register workbook, bypassing `Resolve()` and the whole
+> `RefreshDraftingSheets` chain entirely — deliberate, not a shortcut: item AA's
+> own delay was still live in the same chain during this retest attempt (it hit
+> again, ~5+ minutes of real CPU burn this time, no dialog needed since the
+> register was already on the rolled-over period — so AA is a real, repeatable
+> cost, not a one-off), and isolating AB from a known-slow unrelated neighbour is
+> what makes 2.67s trustworthy. The deck-swap confound noted above does NOT apply
+> to this number — `BuildLobbyFromScratch` never reads the deck.
+>
+> **Also found live, mid-wait on AA: the register workbook itself is a bad test
+> fixture.** 54 sheets, of which 26 (48%) are `SAVED ...` archive tabs accumulated
+> over a week of repeated test cycles, only 15 are genuine working content. Tonight's
+> numbers (including AA's delay) were measured against a workbook roughly 2x the
+> size a real single-quarter register would be. Not yet acted on — a trimmed or
+> fresh test fixture is a real follow-up, separate from anything below.
+>
+> **UPDATE, same evening: FIX-LIST item AD opened — `Drafting.WriteDraftingSheet`
+> diagnosed, strategy written, not yet built.** Full diagnosis and plan in
+> `DRAFTING-SPEED-STRATEGY.md` (fresh research pass, fable model, read-only). Real
+> shape found in the actual source: ~600 COM calls per field, of which ~240 are
+> CONSTANT overhead (cosmetics/formatting) paid on every rebuild regardless of
+> whether anything changed — meaning bulk-array reads/writes alone only buy ~2-3x;
+> hitting the requested 10x needs a cosmetic-skip-when-unchanged stamp as well.
+> Expected: 2.5-4.6s/field -> ~0.15-0.35s/field. Evaluated (and recommended AGAINST
+> bundling) merging the 13 per-field drafting sheets into one-per-type — real
+> option, but not on the speed critical path, and it means operating again on the
+> function with 5 prior data-loss incidents before Lobby Phase 3's own "does this
+> still need fixing" gate has even been tested. Also found and fixed in passing: a
+> stale comment in `Drafting.bas` claiming parking is unconditional when it isn't —
+> the ordinary same-layout-same-period path still has no pre-write backup, same gap
+> as the 2026-08-14 incident; comment corrected to state reality, behavior NOT
+> changed (that's a separate decision).
+>
+> **Next session's actual priority, in order: (1) close the measurement gap first
+> (~30 min)** — add `Timing.LogTiming` to `WriteSpecSheet`/`WriteSourcesSheet`/
+> validations/tab-arranging/workbook-index/register-formatting, all currently
+> inside `RefreshDraftingSheets`'s `tRefresh` with zero timing of their own; ~120s
+> of the 665.4s original run is still unattributed to any named stage. **(2) Build
+> `WriteDraftingSheetBulk` per `DRAFTING-SPEED-STRATEGY.md`'s Phase A** (bulk
+> read/write, alongside the legacy function, behind a flag) — write the new
+> multi-row/orphan-row/numeric-text preservation test and the parity harness FIRST,
+> prove each fails on purpose, then build. **(3) Phase B** (cosmetic-skip stamp).
+> **(4) Instrument `Resolve()`'s own period-detection path** the same way other
+> stages were, so item AA's real (now twice-confirmed) cost is distinguishable from
+> a hang. **(5)** Move/duplicate the "(total)" Timing log to after the save (item
+> AC). **(6)** Build a trimmed or fresh test fixture — this session's register is
+> ~2x a real deck's sheet count from accumulated test archives, and has been
+> silently inflating every number measured tonight.
 >
 > ## 17 AUG, MIDDAY — Lobby fixes W/Y deployed as `addin120`. **STATUS: SUPERSEDED by
 > the block above**, kept for the detail. Continuation of the

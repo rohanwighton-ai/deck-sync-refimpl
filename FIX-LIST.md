@@ -11,10 +11,13 @@
 > `ApplyApproved`), deployed `addin121`.
 > AA added 2026-08-17 afternoon, still open -- long unmeasured delay before Resolve()'s
 > period-rollover dialog even appears. AB added and FIXED same afternoon --
-> BuildLobbyFromScratch's O(n^2) pin-scanning was 75% of a real run's cost. NOT YET
-> DEPLOYED (no addin build since). AC added 2026-08-17 afternoon, still open --
-> RefreshDraftingSheets' "(total)" Timing row fires before the real end of the
-> function.
+> BuildLobbyFromScratch's O(n^2) pin-scanning was 75% of a real run's cost. DEPLOYED
+> `addin122`, confirmed loaded live, and independently re-measured isolated (no
+> confounds): 503.4s -> 2.67s, identical output, ~188x. AC added 2026-08-17
+> afternoon, still open -- RefreshDraftingSheets' "(total)" Timing row fires before
+> the real end of the function. AD added 2026-08-17 evening, still open --
+> `WriteDraftingSheet` is ~600 COM calls per field; strategy in
+> `DRAFTING-SPEED-STRATEGY.md`, fix in progress.
 
 ## Added 2026-08-17 afternoon — AA, STILL OPEN — long delay BEFORE the period dialog
 even appears, in code the new Timing instrumentation does not cover
@@ -92,16 +95,23 @@ summing to roughly 33,000 wasted COM calls across the run.
 Full suite green (240/240), including
 `DraftingLobby_BuildFromScratchFindsOnlyApprovedRows` and
 `DraftingLobby_PinTwiceUpdatesInPlaceNotDuplicate` -- the rewrite produces
-identical results to the old code, not just faster ones. **NOT YET
-DEPLOYED** -- no addin build since this fix; needs `addin122` before the
-next live run benefits from it. **Not yet re-measured live either** -- the
-240/240 pass proves correctness, not the actual new number; a repeat of the
-same retest scenario is the real proof.
+identical results to the old code, not just faster ones.
 
-**Confound not ruled out**: this run followed a deliberate deck-swap for
-the retest (register genuinely had more to reconcile than a normal
-already-synced press). Worth one clean baseline run against an untouched,
-already-synced deck to see the typical cost, not just this worst case.
+**DEPLOYED (`addin122`), confirmed loaded live, and re-measured in
+isolation -- 503.4s -> 2.67s, ~188x, IDENTICAL output** ("115 approved
+row(s) pinned, 559 row(s) scanned across 13 field(s)", byte-for-byte the
+same string). Measured by calling `DraftingLobby.BuildLobbyFromScratch`
+directly via `Application.Run` against the same register workbook, bypassing
+`Resolve()` and the whole `RefreshDraftingSheets` chain entirely -- this
+was deliberate, not a shortcut: item AA's own unrelated delay was still
+live in the same chain, and isolating the ONE thing under test from a
+known-slow, unrelated neighbor is what makes 2.67s a real number rather
+than a number contaminated by something else already known to be broken.
+
+**Confound now ruled out** (was open above): the deck-swap concern doesn't
+apply to this measurement -- BuildLobbyFromScratch reads only the
+drafting sheets and their APPROVE columns, never the deck, so the retest
+deck's state is irrelevant to this specific number.
 
 ## Added 2026-08-17 afternoon — AC, STILL OPEN — the "(total)" Timing row
 fires before `RefreshDraftingSheets` actually ends
