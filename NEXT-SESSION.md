@@ -1,7 +1,183 @@
 # NEXT SESSION — start here
 
+> ## 17 AUG, EVENING — First-ever real Scenario 1 ATTEMPT, killed twice,
+> AS fixed (a real bug found live), P1 diagnosed but NOT YET FIXED.
+> **STATUS: CURRENT, supersedes the block below. READ THIS FIRST — there is
+> an unfinished fix (P1) with a precise plan already written out below;
+> pick that up before anything else.**
+>
+> **What actually happened, in order:** with `addin126` deployed (AF/AL/AJ/AR
+> all live), Rohan attempted the real thing for the first time this
+> project's whole history — open the real deck, "1. Set up my quarter",
+> review, tick, "2. Put it on the slides", unaided. Two real defects were
+> found live doing this, both fixed and pushed; a third (P1) was found,
+> diagnosed precisely, and NOT yet fixed when the session ended.
+>
+> **AS, FIXED, PUSHED (`36f9947`).** `Drafting.PruneParked`'s `.Delete`
+> call (line ~434) had no `DisplayAlerts` guard — a raw, unsuppressed
+> Excel "permanently delete this sheet?" alert fired once per field during
+> the drafting-sheet rebuild, confirmed live by screenshot. My first theory
+> (the sheet-scan itself getting slower) was WRONG — a second opinion
+> (waste-hound) caught it before I fixed the wrong thing: this exact code
+> path measured 1.8s/field a few hours earlier the same session, so a scan
+> over a modestly-larger sheet count cannot explain the observed 82s/103s/
+> 110s per field. The real driver: most fields had reached `PruneParked`'s
+> `keepNewest=2` threshold, so nearly every field's park this run triggered
+> a genuine delete+alert that blocked on a human click — invisible to
+> `Timing`'s own instrumentation, silently counted as computation. Fix
+> copies `DraftingLobby.bas:304-306`'s own already-proven pattern verbatim
+> (`wb.Application.DisplayAlerts`, not bare `Application`). Swept the whole
+> codebase for a third sheet-delete site — none exists. Full suite 242/242.
+> **Deployed as `addin130`, confirmed loaded live.**
+>
+> **P1, DIAGNOSED PRECISELY, FIX NOT YET WRITTEN.** Retesting with
+> `addin130` (AS fix in place) hit a THIRD recurrence of an old, known,
+> never-actually-fixed defect: FIX-LIST's own P1 ("A dialog opens BEHIND
+> the PowerPoint window, and reads as nothing happened"), documented
+> 2026-08-13 with a proposed fix that was **never implemented for this
+> chain**. Confirmed live via window-title enumeration: hidden windows
+> titled "Start a Quarter", "Roll Forward", "1. Set up my quarter", and
+> "PopupHost" appeared in sequence across two separate presses, each one
+> genuinely a legitimate dialog the tool is supposed to show, just buried
+> behind whatever window had focus.
+>
+> **Root cause, read from the actual source, not assumed:** exactly ONE
+> call site in the whole codebase does the right thing —
+> `DraftingUI.RollForwardUI` calls `BringExcelToFront wb` (`DraftingUI.
+> bas:1648`) before its own Excel range-picker `InputBox`, because that
+> specific dialog is genuinely Excel-owned (`wb.Application.InputBox`,
+> `Type:=8`) and needs Excel visible to click a cell in. Every OTHER prompt
+> in the "1. Set up my quarter" chain — the period-confirm `MsgBox` at
+> `RibbonUI.bas:1199` included — is a bare, unguarded `MsgBox`/`InputBox`
+> call, owned by POWERPOINT's own VBA process (since that's where this
+> code runs), with **nothing anywhere bringing PowerPoint's window
+> forward** before showing it. Grepped every `.Activate`/`AppActivate`
+> call in production `vba/*.bas` to confirm: `BringExcelToFront` is the
+> ONLY foreground-bringing helper that exists, and it exists only for
+> Excel. There is no PowerPoint-side equivalent anywhere.
+>
+> **Worse than a missing call — an actively self-defeating one.**
+> `RollForwardUI` correctly and deliberately brings EXCEL to the front for
+> its own picker. But nothing brings PowerPoint back afterward, so the
+> VERY NEXT prompt in the chain (`RefreshDraftingSheets`, called right
+> after `RollForwardUI` in `SyncNowChainCore`, `RibbonUI.bas:1356-1358`)
+> is now hidden behind the Excel window Roll Forward JUST correctly
+> raised. This precisely explains the sequence of different hidden window
+> titles observed across two live presses tonight.
+>
+> **THE PLAN, not yet built — do this first:**
+> 1. Write `BringPowerPointToFront()` in `DraftingUI.bas`, right beside the
+>    existing `BringExcelToFront` (`DraftingUI.bas:747-760`) — same proven
+>    technique (set `Application.Caption` to a marker string, `AppActivate`
+>    on that marker since it matches on title PREFIX and PowerPoint's
+>    default caption doesn't start with a fixed string either, restore the
+>    caption after), but for bare `Application` (correctly PowerPoint here,
+>    since this code runs IN PowerPoint's VBA project — this is NOT the
+>    bare-`Application` trap `DraftingLobby.bas` hit, that trap was
+>    specifically about Excel-hosted code needing `wb.Application`; here
+>    bare `Application` is already correct).
+> 2. Call it at the very top of `SyncNowChainCore` (`RibbonUI.bas:1176`),
+>    before `Set pres = Application.ActivePresentation` — covers the
+>    period-confirm `MsgBox` and everything else early in the chain.
+> 3. Call it again immediately after `DraftingUI.RollForwardUI` returns,
+>    before `DraftingUI.RefreshDraftingSheets` runs (`RibbonUI.bas:1357-
+>    1358`) — covers everything from the drafting-sheet rebuild onward,
+>    undoing Roll Forward's deliberate (and correct, for ITS purpose)
+>    Excel-activation.
+> 4. Best-effort only, matching `BringExcelToFront`'s own documented
+>    stance — `On Error Resume Next` around it, a failed activation still
+>    leaves every dialog fully functional, just possibly behind something,
+>    same as today. Do not add waits/sleeps to "help" this — same
+>    "Do NOT fix by adding waits" rule this project already wrote down once
+>    for the identical class of defect (FIX-LIST P1's own text).
+> 5. Test, full suite, build the next addin, redeploy, THEN retry the real
+>    Scenario 1 attempt from scratch — "1. Set up my quarter" is idempotent
+>    and safe to re-run; nothing was lost by killing the process either
+>    time tonight (nothing had reached the final Save both times).
+>
+> **Current live state at handover:** PowerPoint and Excel both killed
+> (force-closed, safe both times — nothing had been saved to disk past
+> what `addin130`'s partial run + AutoSave already preserved). `addin130`
+> is the currently-registered/loaded addin (has AS, does NOT have the P1
+> fix). A safety copy of the mid-incident Excel state was saved earlier to
+> `OneDrive\Claude\register-wide.INCIDENT-BACKUP-20260817-183751.xlsx` —
+> not needed for recovery (the live register-wide.xlsx itself is fine,
+> nothing was lost), kept only as a paranoia artifact, safe to delete
+> whenever.
+>
+> **Also still queued, not started, not forgotten:** the "workaround
+> hound" agent idea (Rohan's, rhymes with waste-hound — hunts band-aids
+> left in instead of real fixes) — explicitly judged NOT necessary
+> tonight, stays queued. `CopyAiDraftsToSubmit`/`PublishDraftsForField`
+> (old pre-AF dead Subs) still confirmed dead, still deliberately left in
+> place. AN, AD Phase A/B, AG-AJ, AM-AQ (minus AR/AS, now fixed) all still
+> open per FIX-LIST.md. The drafting-sheet "simple, color-block" styling
+> note is captured and still just a discussion note, not scoped.
+>
+> **The actual finish line has still not moved.** Tonight got closer than
+> any prior session — a real attempt was made, twice, on the real deck,
+> unaided except for live debugging — but both attempts were killed before
+> reaching a tick/approve/publish cycle. Next session's very first action
+> should be finishing the P1 fix above, then trying again. Don't start
+> anything else first.
+
+> ## 17/18 AUG, LATE NIGHT — AR fixed (the real dominant cost), the AF live
+> retest turned out invalid, `SyncNow`/`SyncNowCore` (AJ) deleted.
+> **STATUS: SUPERSEDED by the block above.**
+>
+> **The AF retest (block below) was invalid — read this before trusting
+> anything it says about AF being slow.** `addin135` was built and pressed
+> for real; it ran 14.5+ minutes and got killed. Live diagnosis in the
+> moment drew two wrong inferences from correct observations. A cold
+> second opinion (fable, full transcript this session) read the saved
+> file's actual bytes and found the truth: the register under test was a
+> reverted baseline missing the `Drafting Lobby` sheet entirely, so
+> `PublishAllDraftedFields` exited in SECONDS ("Nothing is pinned"). The
+> 14.5 minutes were the button chain's NEXT stage —
+> `ReviewChangesCore` → `BuildQueue` → `PlanRoutineSync` — a pre-existing
+> path with no relationship to AF/AL, never fast-mode-wrapped or
+> Timing-instrumented, hence invisible until now. **AF has still never
+> been genuinely retested live.** Next real action: press "1. Set up my
+> quarter" FIRST (rebuilds the Lobby), THEN "2. Put it on the slides" —
+> only that sequence tests AF for real.
+>
+> **AR fixed same night — the actual dominant cost fable found.**
+> `InjectorFor` calls `FindShapeByRoleTag` up to 4x per field (base, ".1",
+> ".track", ".rest"); a genuine miss (no shape for a field on this slide
+> type — the majority case now that the register carries more populated
+> columns than most slide types have fields) was never cached, only a hit
+> was. Fixed via `ShapeAddressBook.RecordAbsent`/`NO_SHAPE_MARKER`, the
+> negative twin of the existing positive cache, same invariant. Explicit,
+> honest limit stated in the code and in FIX-LIST.md: no verify-on-read for
+> negatives (would cost the walk it avoids), so this is trusted, not
+> verified — safe only as long as nothing hand-adds a shape to an instance
+> outside this tool, which has never happened but isn't prevented either.
+> Proven via deliberate-break-first. Full suite 242/242. Committed
+> (`e416dd2`), pushed. **Not yet built into an addin or measured live.**
+>
+> **AJ deleted same night** — `RibbonUI.SyncNow`/`SyncNowCore`, confirmed
+> dead via grep (nothing calls either except each other), 329 lines gone.
+> Committed (`2fa16b6`), pushed.
+>
+> **Next session, in order:** build the next addin (staging via
+> `build_ppam.ps1`, your manual Save-As, then the trusted-folder-copy +
+> registry swap + verify cycle) → press "1. Set up my quarter" → press
+> "2. Put it on the slides" for real → read the Timing sheet. That single
+> retest is now the actual proof for BOTH AF and AR at once, on a register
+> in the state the button expects. Do not trust any number from a run that
+> skips the "Set up my quarter" step first.
+>
+> **Also queued, not started:** "workaround hound" agent idea (Rohan's,
+> rhymes with waste-hound — hunts band-aids left in instead of real fixes,
+> same read-only diagnose-only pattern). `CopyAiDraftsToSubmit`/
+> `PublishDraftsForField` (the old pre-AF per-field Subs) are confirmed
+> dead-as-buttons but deliberately left in place — safe next-session
+> deletion once AF is proven live. AN, AD Phase A/B, AM/AG-AJ/AO-AQ all
+> still open per FIX-LIST.md.
+
 > ## 17 AUG, NIGHT — AF + AL fixed properly (not band-aided), a real bug found
-> and fixed inside the proof, `waste-hound` agent built. **STATUS: CURRENT.**
+> and fixed inside the proof, `waste-hound` agent built. **STATUS: SUPERSEDED
+> by the block above, except where noted.**
 > Continuation of the same very long session (16 Aug evening through past
 > midnight 17/18 Aug).
 >

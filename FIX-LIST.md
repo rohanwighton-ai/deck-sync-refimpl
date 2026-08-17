@@ -2097,7 +2097,18 @@ Ranked by how much of an evening they cost.
 
 ### P1. A dialog opens BEHIND the PowerPoint window, and reads as "nothing happened"
 
-**Three times in one session.** Rohan pressed a button, nothing appeared, and the run
+**STILL NOT FIXED — reconfirmed live 2026-08-17 evening, during this project's
+first-ever real Scenario 1 attempt.** The fix proposed below (activate the
+window before showing a prompt) was never actually implemented for the
+"1. Set up my quarter" chain. Hit a third time, four different hidden
+window titles across two presses ("Start a Quarter", "Roll Forward",
+"1. Set up my quarter", "PopupHost") — root cause now diagnosed precisely
+(exactly one call site, `RollForwardUI`, does this correctly, and it
+actively LEAVES Excel frontmost afterward, burying the very next prompt
+in the chain) with a full concrete plan written out in `NEXT-SESSION.md`'s
+top block. Start there next session — do not rediscover this from scratch.
+
+**Three times in one session** (2026-08-13, the original finding). Rohan pressed a button, nothing appeared, and the run
 looked dead. Each time a VBA modal was sitting behind another window — twice behind
 Excel, once behind PowerPoint itself. It cost two separate diagnostic detours before a
 reliable test was found.
