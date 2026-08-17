@@ -759,6 +759,44 @@ Private Sub BringExcelToFront(wb As Object)
     On Error GoTo 0
 End Sub
 
+' PUT POWERPOINT'S WINDOW IN FRONT, not merely visible. FIX-LIST P1.
+'
+' Seen live 2026-08-17, third recurrence of the same defect: hidden windows
+' titled "Start a Quarter", "Roll Forward", "1. Set up my quarter" and
+' "PopupHost" appeared in sequence during a real Scenario 1 attempt, each one
+' a legitimate dialog buried behind whatever window had focus. Root cause --
+' BringExcelToFront above correctly raises Excel for its own range picker
+' (RollForwardUI), but nothing ever raises PowerPoint back, so every dialog
+' after that in the same chain (including the plain MsgBox/InputBox calls
+' that own process is PowerPoint's, since this code runs IN PowerPoint's VBA
+' project) opens behind whichever window Excel just took focus from.
+'
+' Same technique as BringExcelToFront, same reason: AppActivate matches on
+' the START of a window title, and PowerPoint's default caption does not
+' begin with a fixed string either, so a marker caption is set, matched, and
+' restored. Bare Application here is already correct -- this is NOT the
+' bare-Application trap DraftingLobby.bas hit; that one was Excel-hosted code
+' needing wb.Application, and this code genuinely runs inside PowerPoint.
+'
+' Entirely best-effort, same stance as BringExcelToFront: a failed activation
+' still leaves the dialog fully functional, just possibly behind something,
+' same as today. Do NOT add waits/sleeps here -- FIX-LIST P1's own text
+' already ruled that out for this exact class of defect.
+Public Sub BringPowerPointToFront()
+    Const MARKER As String = "Deck Sync"
+
+    On Error Resume Next
+    Application.Visible = True
+    If Application.WindowState = 2 Then Application.WindowState = 1  ' ppWindowMinimized -> ppWindowNormal
+
+    Dim previous As String
+    previous = Application.Caption
+    Application.Caption = MARKER
+    AppActivate MARKER
+    Application.Caption = previous
+    On Error GoTo 0
+End Sub
+
 ' Every field on the Field Spec sheet whose Kind is Prose, comma-separated.
 '
 ' PROSE ONLY, and that restriction is what makes automatic generation safe.

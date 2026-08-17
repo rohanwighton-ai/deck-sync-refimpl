@@ -2097,16 +2097,27 @@ Ranked by how much of an evening they cost.
 
 ### P1. A dialog opens BEHIND the PowerPoint window, and reads as "nothing happened"
 
-**STILL NOT FIXED — reconfirmed live 2026-08-17 evening, during this project's
-first-ever real Scenario 1 attempt.** The fix proposed below (activate the
-window before showing a prompt) was never actually implemented for the
-"1. Set up my quarter" chain. Hit a third time, four different hidden
-window titles across two presses ("Start a Quarter", "Roll Forward",
-"1. Set up my quarter", "PopupHost") — root cause now diagnosed precisely
-(exactly one call site, `RollForwardUI`, does this correctly, and it
-actively LEAVES Excel frontmost afterward, burying the very next prompt
-in the chain) with a full concrete plan written out in `NEXT-SESSION.md`'s
-top block. Start there next session — do not rediscover this from scratch.
+**CODE FIX WRITTEN, NOT YET BUILT/DEPLOYED/LIVE-VERIFIED (2026-08-17,
+background session).** `DraftingUI.BringPowerPointToFront` added right
+beside `BringExcelToFront`, same marker-caption/`AppActivate` technique,
+`Public` so `RibbonUI.SyncNowChainCore` can call it. Wired in at both
+points `NEXT-SESSION.md`'s plan named: the very top of
+`SyncNowChainCore` (covers the period-confirm `MsgBox` and everything
+early in the chain) and immediately after `DraftingUI.RollForwardUI`
+returns, before `RefreshDraftingSheets` (undoes Roll Forward's own
+correct Excel-activation). `check_vba_static.py` clean across 38
+modules; the Python `pytest` suite could not be run in this sandbox (no
+`pip`/network here) but nothing Python-side was touched. **Still needed:
+build the next addin, deploy, and retry the real Scenario 1 attempt from
+scratch on Rohan's machine — this has not been proven live.**
+
+Prior state, for context: reconfirmed live 2026-08-17 evening, during
+this project's first-ever real Scenario 1 attempt. Hit a third time,
+four different hidden window titles across two presses ("Start a
+Quarter", "Roll Forward", "1. Set up my quarter", "PopupHost") — root
+cause diagnosed precisely (exactly one call site, `RollForwardUI`, does
+this correctly, and it actively LEAVES Excel frontmost afterward,
+burying the very next prompt in the chain).
 
 **Three times in one session** (2026-08-13, the original finding). Rohan pressed a button, nothing appeared, and the run
 looked dead. Each time a VBA modal was sitting behind another window — twice behind

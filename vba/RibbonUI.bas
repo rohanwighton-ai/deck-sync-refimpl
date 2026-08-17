@@ -1181,6 +1181,14 @@ Private Sub SyncNowChainCore()
     Dim TITLE As String
     TITLE = CommandBarUI.CAP_SET_UP_QUARTER
 
+    ' FIX-LIST P1. Every dialog below this point is a bare MsgBox/InputBox
+    ' owned by PowerPoint's own process, and nothing else in this chain raises
+    ' PowerPoint's window -- see DraftingUI.BringPowerPointToFront for the
+    ' full incident. Called again below, after RollForwardUI, because that
+    ' call deliberately (and correctly, for its own picker) raises Excel and
+    ' undoes this.
+    DraftingUI.BringPowerPointToFront
+
     Dim pres As Object
     Set pres = Application.ActivePresentation
 
@@ -1355,6 +1363,9 @@ Private Sub SyncNowChainCore()
     DraftingUI.BeginCollecting
     DraftingUI.StartQuarter
     DraftingUI.RollForwardUI
+    ' RollForwardUI just raised Excel for its own range picker -- undo that
+    ' before the next dialog in the chain, which is PowerPoint's. FIX-LIST P1.
+    DraftingUI.BringPowerPointToFront
     DraftingUI.RefreshDraftingSheets
 
     Dim staged As String

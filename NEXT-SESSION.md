@@ -1,5 +1,29 @@
 # NEXT SESSION — start here
 
+> ## 17 AUG, LATE — P1's code fix written (background session), NOT yet
+> built/deployed/live-tested.
+> **STATUS: CURRENT, supersedes the block below. The plan in that block was
+> followed exactly; what's left is steps 5 onward — build the next addin,
+> deploy, and retry Scenario 1 for real.**
+>
+> `DraftingUI.BringPowerPointToFront` written (same marker-caption/
+> `AppActivate` technique as `BringExcelToFront`, right beside it,
+> `DraftingUI.bas`), wired into `RibbonUI.SyncNowChainCore` at both points
+> the plan below specified: the top of the sub (before `Set pres =
+> Application.ActivePresentation`) and immediately after `RollForwardUI`
+> returns (before `RefreshDraftingSheets`). `check_vba_static.py` clean
+> across 38 modules. **The Python `pytest` suite could NOT be run** — this
+> was done in a Linux sandbox with no `pip`/network and no Office/COM
+> access, so neither the Python suite nor any live VBA behavior could be
+> exercised; the change touches VBA only, no Python files. Committed on
+> branch `worktree-p1-bring-ppt-front`, not merged to `main`.
+>
+> **Next session's first action:** review this diff, merge to main if it
+> looks right, build the next addin (whatever `addin13x` follows `addin130`),
+> deploy, confirm loaded live, THEN retry the real Scenario 1 attempt from
+> scratch per the original plan's step 5 — "1. Set up my quarter" is
+> idempotent and safe to re-run.
+
 > ## 17 AUG, EVENING — First-ever real Scenario 1 ATTEMPT, killed twice,
 > AS fixed (a real bug found live), P1 diagnosed but NOT YET FIXED.
 > **STATUS: CURRENT, supersedes the block below. READ THIS FIRST — there is
