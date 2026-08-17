@@ -628,6 +628,27 @@ Private Sub ReviewChangesCore()
     Dim title As String
     title = CommandBarUI.STAGE_REVIEW_CHANGES
 
+    Dim fullReport As String
+    Dim totalQueued As Long
+    If Not BuildAllQueuesCore(title, fullReport, totalQueued) Then Exit Sub
+
+    ShowSyncResult title & " (nothing written)", fullReport
+End Sub
+
+' THE BUILD HALF OF BOTH "Review changes" AND "2. Put it on the slides",
+' extracted 2026-08-18 so the two buttons cannot disagree about what got
+' queued -- PutItOnTheSlidesCore's own header already explains why guards
+' must not be written twice ("two sets of wording to keep true"), and this is
+' the same rule applied to the queue-building loop itself.
+'
+' Returns False when the caller should stop; every refusal has already been
+' explained to the person by the time it returns (same contract as
+' ResolveDeckContext above).
+Private Function BuildAllQueuesCore(title As String, ByRef fullReport As String, ByRef totalQueued As Long) As Boolean
+    BuildAllQueuesCore = False
+    fullReport = ""
+    totalQueued = 0
+
     Dim pres As Object
     Set pres = Application.ActivePresentation
 
@@ -635,7 +656,7 @@ Private Sub ReviewChangesCore()
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath = "" Then
         MsgBox "This deck has no paired workbook yet. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", vbExclamation, title
-        Exit Sub
+        Exit Function
     End If
 
     Dim types() As String
@@ -649,14 +670,14 @@ Private Sub ReviewChangesCore()
 
     If Not hasTypes Then
         MsgBox "This deck has no registered slide types yet. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it walks setup on a deck that has none.", vbExclamation, title
-        Exit Sub
+        Exit Function
     End If
 
     Dim wb As Object
     Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath)
     If wb Is Nothing Then
         MsgBox "Could not open the paired workbook at: " & workbookPath, vbCritical, title
-        Exit Sub
+        Exit Function
     End If
 
     ' Refuse to build a queue out of Excel's unsaved buffer -- see
@@ -667,7 +688,7 @@ Private Sub ReviewChangesCore()
     If WorkbookBridge.IsDirty(wb) Then
         If MsgBox(WorkbookBridge.UnsavedWorkbookText(workbookPath), _
                   vbYesNo + vbExclamation, title) <> vbYes Then
-            Exit Sub
+            Exit Function
         End If
 
         ' VERIFIED, because the whole point of this prompt is that the file and
@@ -680,7 +701,7 @@ Private Sub ReviewChangesCore()
             MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
                    "Stopping here rather than reading values that are not in the file.", _
                    vbCritical, title
-            Exit Sub
+            Exit Function
         End If
     End If
 
@@ -688,10 +709,8 @@ Private Sub ReviewChangesCore()
     ' SyncNowCore unchanged -- the planner cannot report this usefully, because
     ' to PlanRoutineSync two slides sharing a key is indistinguishable from one
     ' matched slide and one unmatched one. It is only visible across instances.
-    If Not WarnOnDuplicateKeys(title, types, lo, hi) Then Exit Sub
+    If Not WarnOnDuplicateKeys(title, types, lo, hi) Then Exit Function
 
-    Dim fullReport As String
-    Dim totalQueued As Long
     Dim firstSheet As Object
 
     Dim i As Long
@@ -742,8 +761,8 @@ Private Sub ReviewChangesCore()
         On Error GoTo 0
     End If
 
-    ShowSyncResult title & " (nothing written)", fullReport
-End Sub
+    BuildAllQueuesCore = True
+End Function
 
 ' Toolbar entry point. The real work is in ApplyApprovedCore; this exists only
 ' to catch anything that escapes it. Same separate-frame reasoning as above.
@@ -1445,19 +1464,37 @@ Private Sub PutItOnTheSlidesCore()
     pending = ScanPendingApprovals(sheetNames, stamp)
 
     If pending = 0 Then
-        ' STRAIGHT INTO THE REVIEW. The three-way prompt that stood here was
-        ' ceremony in front of the real gate: it sat immediately before the review
-        ' queue, which asks the same question properly, per change, and is the ONE
-        ' approval step this tool is allowed.
+        ' BUILD, THEN ASK ONCE, THEN APPLY -- ALL IN THIS ONE PRESS.
         '
-        ' Its "No" branch was bulk approve, and that capability is now DELETED
-        ' rather than relocated -- see ReviewChangesCore's header. An earlier
-        ' version of THIS comment claimed it kept its own toolbar entry. It did
-        ' not: the wrapper was private and nothing pointed at it, so deleting the
-        ' prompt left the capability unreachable. A comment asserting a
-        ' reachability fact is exactly the kind that goes stale silently.
-        ReviewChangesCore
-        Exit Sub
+        ' Until 2026-08-18 this branch built the queue and STOPPED, telling the
+        ' person to go look at the review sheet and press this same button a
+        ' second time. Working as designed, not a bug -- but Rohan's own live
+        ' first-ever run hit it and named the actual cost: "should only click
+        ' put it on the slides once, then approve it... that's all." Pressing
+        ' one button twice, with no visible reason the first press didn't just
+        ' finish, reads as broken even when it isn't.
+        '
+        ' The three-way Yes/No/Cancel gate that stood here before THAT (deleted
+        ' the same night, LOBBY-DESIGN.md phase 3) is not what this restores.
+        ' That gate asked before anything was queued; this asks with the real,
+        ' final, already-pre-ticked list in hand -- one question, "apply what
+        ' you just built?", not three questions about what to build.
+        Dim fullReport As String
+        Dim totalQueued As Long
+        If Not BuildAllQueuesCore(CommandBarUI.CAP_PUT_ON_SLIDES, fullReport, totalQueued) Then Exit Sub
+
+        If totalQueued = 0 Then
+            ShowSyncResult CommandBarUI.CAP_PUT_ON_SLIDES, fullReport & vbCrLf & "Nothing queued -- nothing to apply."
+            Exit Sub
+        End If
+
+        If MsgBox(fullReport & vbCrLf & vbCrLf & totalQueued & _
+                  " change(s) queued, pre-approved. Apply them now?", _
+                  vbYesNo + vbQuestion, CommandBarUI.CAP_PUT_ON_SLIDES) <> vbYes Then
+            ' Queue stays written to the review sheet either way -- saying No
+            ' here does not lose it, same as the old two-press path never did.
+            Exit Sub
+        End If
     End If
 
     ' THE YES/NO/CANCEL GATE IS GONE. LOBBY-DESIGN.md phase 3, 2026-08-17.
