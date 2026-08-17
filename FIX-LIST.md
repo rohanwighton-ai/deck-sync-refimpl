@@ -27,7 +27,9 @@
 > Calculation=Manual) only covered the drafting-field loop, so BuildLobbyFromScratch
 > (already fixed, item AB) still cost 168.6s live against an isolated 2.67s, and
 > the tab/index/format cluster cost 53.7s for simple sheet operations. Widened to
-> cover both. NOT YET DEPLOYED. AF added 2026-08-17 evening, still open --
+> cover both. DEPLOYED `addin125`, confirmed loaded live, confirmed by real data:
+> `RefreshDraftingSheets` 665.4s -> 72.8s overall, `BuildLobbyFromScratch` 168.6s
+> -> 6.9s, tabs/index/format 53.7s -> 6.3s. AF added 2026-08-17 evening, still open --
 > `PublishAllDraftedFields` redoes press-level work 13x, once per field (~4 min
 > redundant register re-reads, ~2-3.5 min redundant saves, no fast-mode wrapper).
 > AG added 2026-08-17 evening, still open -- `OfferMarkingForUnwiredFields` costs a
@@ -43,7 +45,24 @@
 > entirely (Rohan: "delete the whole thing"); every check it made was independently
 > redundant with what the real operations already catch and explain when actually
 > run, at a cost of two full deck-file copies plus a full BuildQueue diff per type,
-> on every single press of the tool's most-used button.
+> on every single press of the tool's most-used button. AL added 2026-08-17
+> evening, still open -- the Lobby pin watcher (`AppEvents.cls`) taxes every
+> single cell write anywhere in the tool (~100-170 COM calls per event) despite
+> its own comments claiming "one comparison"; `ApplyApproved`'s fast-mode
+> wrapper never disables it. AM added 2026-08-17 evening, still open --
+> `WriteQueueSheet` (the review-sheet writer) has no fast-mode wrapper at all,
+> item AE's own omission unfixed here. AN added 2026-08-17 evening, still open
+> -- `UpsertRow` inside the publish loop rescans the whole register per row, per
+> field, item AB's shape in the second-hottest chain. AO added 2026-08-17
+> evening, still open -- "Add/Retire slides" run the full register-vs-deck diff
+> to answer a yes/no membership question. AP, AQ added 2026-08-17 evening,
+> found-not-fixed -- real but low-frequency, not worth the risk of touching.
+> AL-AQ full detail in `COLD-PATH-AUDIT.md`. **Real measurement, same evening:
+> Rohan pressed "2. Put it on the slides" for real on `addin125` --
+> `PublishAllDraftedFields (total)`: 362.2s for 4 fields, 90.6 sec/field, worse
+> than AF's own estimate. This is AF + AL + AN all stacking on the same real
+> path. Clears the standing condition for fixing AF next -- the number came
+> back large, on the real button.**
 
 ## Added 2026-08-17 afternoon — AA, STILL OPEN — long delay BEFORE the period dialog
 even appears, in code the new Timing instrumentation does not cover

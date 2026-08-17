@@ -231,24 +231,59 @@
 > plausibly necessary before it safely could. Worth an honest PM-style check next
 > session with BOTH facts on the table, not just one.
 >
-> **Next session's actual priority, in order: (1) build and deploy `addin125`
-> with AK's deletion + AE's fix, and actually attempt Scenario 1 for real** —
-> review real drafted content, tick approve, publish, unaided if possible — now
-> that the tool should be fast enough to make that attempt without a multi-minute
-> stall in the way. This is the actual test of Rohan's "performance was blocking
-> testing" claim: if it's still too slow to use, that's real evidence AF-AJ (or
-> AD's Phase A) need to happen before content work; if it's usable now, the
-> recipe/content work becomes the honest next priority per the needs-vs-build
-> finding. **(2)** Depending on (1)'s outcome: either AF-AJ (hot-path audit fixes,
-> cheap and low-risk) or a real recipe-writing pass on the three thin panels
-> (Strategic Alignment, Problem, Project Progress). **(3)** `WriteDraftingSheetBulk`
-> per `DRAFTING-SPEED-STRATEGY.md`'s Phase A — deliberately still not started,
-> real surgery on a function with 5 prior data-loss incidents deserves a fresh
-> run. **(4)** Instrument `Resolve()`'s own period-detection path — corrected:
-> the actual target is `WhereAmICore`'s old call site and `SyncNowChainCore`'s
-> other pre-dialog steps (AG/AH), not `Resolve()`, which doesn't run until last.
-> **(5)** Build a trimmed or fresh test fixture — this session's register is ~2x
-> a real deck's sheet count from accumulated test archives.
+> **UPDATE, same evening: `addin125` built, deployed, confirmed loaded live —
+> Rohan pressed "1. Set up my quarter" for real, unaided.** 665.4s -> 72.8s
+> total (~9.1x), `BuildLobbyFromScratch` 168.6s -> 6.9s, tabs/index/format
+> cluster 53.7s -> 6.3s, the pre-dialog wait (item AA/AK) ~20s (was 5+ minutes).
+> Direct, live, real-button-press evidence for AE and AK both landing correctly.
+>
+> **UPDATE, same evening: PM re-check on Rohan's "performance was killing the
+> testing" claim, verified against the live Timing sheet, not the transcription
+> above.** Verdict: **on track** — W/Y were hit live during the actual manager
+> demo, AC came from Rohan's own confusion about whether a run had finished, AK
+> was a tax paid on every real press regardless of who was watching. This was
+> defect remediation of things that hit him directly, not speed-for-its-own-
+> sake — the earlier needs-vs-build framing was the wrong lens. But the finish
+> line (Scenario 1, unaided) still hasn't moved, and the PM's exact words: "the
+> actual test — does Scenario 1 go unaided now — has not happened... this is
+> Rohan's five minutes, not more code." Explicit stopping condition: don't open
+> new lettered FIX-LIST items speculatively before that's tried.
+>
+> **UPDATE, same evening: second fable audit (`COLD-PATH-AUDIT.md`, items
+> AL-AQ) found the same defect class 6 more times across the rest of the
+> codebase**, most significantly AL — the Lobby pin watcher (`AppEvents.cls`)
+> taxes every single cell write anywhere in the tool (~100-170 COM calls/event),
+> despite its own comments claiming "one comparison" — and AN, `UpsertRow`
+> rescanning the whole register per row inside the publish loop, item AB's
+> shape again.
+>
+> **UPDATE, same evening: Rohan pressed "2. Put it on the slides" for real —
+> the actual other half of Scenario 1's chain, and the PM's own stopping
+> condition is now satisfied.** `PublishAllDraftedFields (total)`: **362.2s for
+> 4 fields, 90.6 sec/field** — worse than AF's own estimate, and exactly where
+> AF + AL + AN all stack on the same real path. This is real, Rohan-witnessed
+> evidence, not a projection — the standing PM condition for fixing AF next
+> ("if the number comes back large... that's sufficient real-user evidence")
+> is now met.
+>
+> **Next session's actual priority, in order: (1) fix AF + AL + AN together** —
+> they're the same real path, all three stack on the same measured 362.2s
+> number, and fixing them separately would mean re-measuring the same press
+> three times. Restructure `PublishAllDraftedFields` to do press-level work
+> once (one Resolve, one register read, one save, one log), add
+> `EnableEvents=False` to the fast-mode wrapper, and hoist `UpsertRow`'s
+> constant lookups out of its row loop using the register read the caller
+> already has. Build alongside/behind nothing risky needed here — unlike
+> `WriteDraftingSheetBulk`, none of this touches typed-content preservation
+> logic. **(2)** Once fixed and deployed, complete the actual close of
+> Scenario 1 (review, approve, publish, unaided) — the real outstanding test.
+> **(3)** AM (`WriteQueueSheet`'s missing wrapper), AG-AJ, AO (membership-check
+> redundancy) — same shape, lower individual weight, fold in opportunistically.
+> **(4)** `WriteDraftingSheetBulk` per `DRAFTING-SPEED-STRATEGY.md`'s Phase A —
+> still deliberately not started, real surgery on a function with 5 prior
+> data-loss incidents deserves a fresh run, not more of an already marathon
+> one. **(5)** Build a trimmed or fresh test fixture — this session's register
+> is ~2x a real deck's sheet count from accumulated test archives.
 >
 > ## 17 AUG, MIDDAY — Lobby fixes W/Y deployed as `addin120`. **STATUS: SUPERSEDED by
 > the block above**, kept for the detail. Continuation of the
