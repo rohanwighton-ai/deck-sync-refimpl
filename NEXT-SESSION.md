@@ -103,13 +103,28 @@
 > reconcile. One clean baseline run against an already-synced deck, untouched, is
 > needed before treating 503s as typical rather than worst-case.
 >
-> **Next session's actual priority, in order: (1) read `DraftingLobby.
-> BuildFromScratch`'s source and diagnose AB — it is now the single largest lever in
-> the whole codebase.** (2) Instrument `Resolve()`'s own period-detection path the
-> same way tonight's other stages were, so a real stall there is distinguishable from
-> this same kind of legitimate-but-slow wait (item AA). (3) Move or duplicate the
+> **UPDATE, same afternoon: AB diagnosed and FIXED, not yet deployed.**
+> `BuildLobbyFromScratch` went through `PinToLobby`/`FindLobbyRow` for every pin,
+> which did THREE full rescans-from-row-1 per call (item W's exact shape, stacked
+> three deep) — and since this function had just deleted and recreated the Lobby
+> sheet, every one of the 115 pins that run was provably new, so the whole lookup
+> was 100% wasted work (~33,000 wasted COM calls). Fixed two ways: `LastLobbyRow`
+> rewritten to `End(XL_UP)` (one COM call, not n — fixes every caller including
+> `AppEvents`' real-time path too), and `BuildLobbyFromScratch` no longer calls
+> `PinToLobby` at all — it tracks its own `nextRow` and writes directly, since it's
+> the only writer of a sheet it just wiped. `PinToLobby` itself untouched. Full
+> suite green (240/240), including both Lobby correctness tests — proves the
+> rewrite gives identical results, not just faster ones. **Not yet built into an
+> addin, not yet re-measured live** — `addin122` and a repeat of the same retest
+> scenario are the real next proof, not the passing test suite alone.
+>
+> **Next session's actual priority, in order: (1) build `addin122`, deploy, and
+> re-run the same retest scenario to get the real before/after number for AB.**
+> (2) Instrument `Resolve()`'s own period-detection path the same way this
+> afternoon's other stages were, so a real stall there is distinguishable from this
+> same kind of legitimate-but-slow wait (item AA). (3) Move or duplicate the
 > "(total)" Timing log to after the save, or add a stage for the WriteRunLog+Save
-> tail specifically.
+> tail specifically (item AC).
 >
 > ## 17 AUG, MIDDAY — Lobby fixes W/Y deployed as `addin120`. **STATUS: SUPERSEDED by
 > the block above**, kept for the detail. Continuation of the

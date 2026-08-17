@@ -10,9 +10,11 @@
 > Z added and FIXED 2026-08-17 afternoon (`Timing.bas`, running-long checkpoint in
 > `ApplyApproved`), deployed `addin121`.
 > AA added 2026-08-17 afternoon, still open -- long unmeasured delay before Resolve()'s
-> period-rollover dialog even appears. AB added 2026-08-17 afternoon, still open --
-> BuildLobbyFromScratch is 75% of a real run's cost, and RefreshDraftingSheets'
-> "(total)" Timing row fires before the real end of the function.
+> period-rollover dialog even appears. AB added and FIXED same afternoon --
+> BuildLobbyFromScratch's O(n^2) pin-scanning was 75% of a real run's cost. NOT YET
+> DEPLOYED (no addin build since). AC added 2026-08-17 afternoon, still open --
+> RefreshDraftingSheets' "(total)" Timing row fires before the real end of the
+> function.
 
 ## Added 2026-08-17 afternoon — AA, STILL OPEN — long delay BEFORE the period dialog
 even appears, in code the new Timing instrumentation does not cover
@@ -51,13 +53,12 @@ period-detection path the same way tonight's `RefreshDraftingSheets`/
 whatever does the slow part, so a real stall there is distinguishable from
 this same kind of legitimate-but-slow wait next time.
 
-## Added 2026-08-17 afternoon — AB, STILL OPEN — the real cost is
-`BuildLobbyFromScratch`, and the "(total)" Timing row fires before the function
-actually ends
+## Added 2026-08-17 afternoon — FIXED (AB) — `BuildLobbyFromScratch` was O(n^2),
+75% of a real run's cost
 
 **AB. FIRST REAL MEASUREMENT OF `RefreshDraftingSheets` EVER TAKEN: 665
-SECONDS TOTAL, 503 OF THEM (75%) IN `BuildLobbyFromScratch` ALONE.** From the
-same `addin121` retest as item AA, read straight off the `Timing` sheet:
+SECONDS TOTAL, 503 OF THEM (75%) IN `BuildLobbyFromScratch` ALONE. FIXED.**
+From the `addin121` retest, read straight off the `Timing` sheet:
 
 ```
 13x WriteDraftingSheet     ~40s total  (2.5-4.6s each)
@@ -65,35 +66,57 @@ BuildLobbyFromScratch      503.4s      (559 rows scanned, 115 pinned, across 13 
 RefreshDraftingSheets (total) 665.4s   (51.2 sec/field average, dominated by the above)
 ```
 
-~0.9 sec/row scanned in `BuildLobbyFromScratch` is far too slow for what
-should be reading register cells -- the same shape of suspicion as item W's
-own `AppendLogLine` (an O(n^2) rescan-from-start pattern, or several COM
-calls where one bulk read would do). **Not yet confirmed against the actual
-source** -- this is a measurement, not a diagnosis; `DraftingLobby.
-BuildFromScratch` needs to actually be read before assuming the cause.
-This is now the single largest lever in the whole codebase, ahead of
-everything items W/Y/Z touched combined -- NEXT-SESSION.md's own note that
-"the register-vs-slide diff scan inside BuildQueue/PlanRoutineSync... has
-never been measured on its own, only inferred" is finally answered, and the
-answer is worse than the AppendLogLine cost it sits next to.
+**Diagnosed against the actual source**, not just measured: every
+`PinToLobby` call goes through `FindLobbyRow`, which calls `LastLobbyRow`
+for its bound (a VBA loop reading one cell per row from `LOBBY_FIRST_ROW` --
+item W's exact shape) and then its own comparison loop checking 3 cells per
+row up to that bound. `PinToLobby` then calls `LastLobbyRow` a SECOND time,
+redundantly, if nothing was found. Three full rescans-from-row-1 per pin,
+not one. Worse than item W specifically inside `BuildLobbyFromScratch`,
+because that function deletes and recreates the Lobby sheet at its own
+start -- every one of the 115 pins that run is *provably* new, so
+`FindLobbyRow`'s entire comparison loop was 100% guaranteed-wasted work,
+summing to roughly 33,000 wasted COM calls across the run.
 
-**Confound not yet ruled out**, same as item AA: this run followed a
-deliberate deck-swap for the retest (register genuinely had more to
-reconcile than a normal already-synced press). Worth one clean baseline run
-against an untouched, already-synced deck before treating 503s as the
-typical cost rather than a worst case.
+**Fix, two parts:**
+1. `LastLobbyRow` rewritten to `Cells(Rows.Count, COL_L_FIELDID).End(XL_UP).Row`
+   -- one native COM call instead of up to n. Fixes the general case for
+   every caller, including `AppEvents`' real-time single-pin path.
+2. `BuildLobbyFromScratch` no longer calls `PinToLobby`/`FindLobbyRow` at
+   all -- it tracks its own `nextRow` counter (valid specifically because it
+   just wiped the sheet in this same call) and writes the 5 Lobby columns
+   directly. Turns the whole pin-writing part from O(n^2) to strict O(n).
+   `PinToLobby` itself is untouched; `AppEvents`' real-time path still gets
+   the genuine existing-pin lookup it actually needs.
 
-**AB also covers a smaller, related instrumentation gap**: `DraftingUI.
-RefreshDraftingSheets`'s `Timing.LogTiming ..., "RefreshDraftingSheets
-(total)", ...` call fires BEFORE `WorkbookBridge.WriteRunLog` and
-`WorkbookBridge.SaveWorkbookVerified` (the actual save-to-disk, verified) --
-only after both of those does the completion `MsgBox` appear. Found live:
-Rohan reported the completion dialog arrived "about 30 seconds" after the
-Timing sheet's own "(total)" row appeared, which is exactly consistent with
-watching the wrong signal -- the "(total)" row is not the true end of the
-function. Neither `WriteRunLog` nor `SaveWorkbookVerified` has ANY timing on
-it right now. Fix (next session): move the "(total)" log call to after the
-save, or add its own stage for the WriteRunLog+Save tail specifically.
+Full suite green (240/240), including
+`DraftingLobby_BuildFromScratchFindsOnlyApprovedRows` and
+`DraftingLobby_PinTwiceUpdatesInPlaceNotDuplicate` -- the rewrite produces
+identical results to the old code, not just faster ones. **NOT YET
+DEPLOYED** -- no addin build since this fix; needs `addin122` before the
+next live run benefits from it. **Not yet re-measured live either** -- the
+240/240 pass proves correctness, not the actual new number; a repeat of the
+same retest scenario is the real proof.
+
+**Confound not ruled out**: this run followed a deliberate deck-swap for
+the retest (register genuinely had more to reconcile than a normal
+already-synced press). Worth one clean baseline run against an untouched,
+already-synced deck to see the typical cost, not just this worst case.
+
+## Added 2026-08-17 afternoon — AC, STILL OPEN — the "(total)" Timing row
+fires before `RefreshDraftingSheets` actually ends
+
+**AC. `DraftingUI.RefreshDraftingSheets`'s `Timing.LogTiming ...,
+"RefreshDraftingSheets (total)", ...` call fires BEFORE
+`WorkbookBridge.WriteRunLog` and `WorkbookBridge.SaveWorkbookVerified` (the
+actual save-to-disk, verified) -- only after both of those does the
+completion `MsgBox` appear.** Found live: Rohan reported the completion
+dialog arrived "about 30 seconds" after the Timing sheet's own "(total)"
+row appeared, exactly consistent with watching the wrong signal -- the
+"(total)" row is not the true end of the function. Neither `WriteRunLog`
+nor `SaveWorkbookVerified` has ANY timing on it right now. Fix (next
+session): move the "(total)" log call to after the save, or add its own
+stage for the WriteRunLog+Save tail specifically.
 
 Not fixed tonight -- found at the very end of an already very long session,
 correctly left for a dedicated look next time rather than a rushed live

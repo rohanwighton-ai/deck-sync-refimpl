@@ -35,6 +35,11 @@ Private Const COL_L_TIMESTAMP As Long = 5
 Private Const LOBBY_HEADER_ROW As Long = 1
 Private Const LOBBY_FIRST_ROW As Long = 2
 
+' Numeric, not the named constant xlUp -- same reason as ExcelOutput.bas's own
+' XL_UP: this module is PowerPoint-hosted, where the named form does not
+' resolve.
+Private Const XL_UP As Long = -4162
+
 Public Type LobbyEntry
     SheetName As String
     Row As Long
@@ -112,13 +117,17 @@ Private Function EnsureLobbySheet(wb As Object) As Object
     Set EnsureLobbySheet = ws
 End Function
 
+' FIX-LIST item AB: this used to be a VBA loop reading one cell per row from
+' LOBBY_FIRST_ROW, the exact same shape item W fixed in AppendLogLine -- and
+' worse here, because THREE separate call sites lean on this one function
+' (FindLobbyRow's own bound, FindLobbyRow's comparison loop via that bound,
+' and PinToLobby's own direct call), so every pin during a from-scratch
+' rebuild paid for it three times over. End(XL_UP) is one native COM call
+' instead of up to n. The header row always carries "FieldID" in this exact
+' column (EnsureLobbySheet, above), so End(XL_UP) lands on row 1 -- same
+' "nothing pinned yet" answer the old loop gave via its own r-1 arithmetic.
 Private Function LastLobbyRow(ws As Object) As Long
-    Dim r As Long
-    r = LOBBY_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(r, COL_L_FIELDID).Value)) <> ""
-        r = r + 1
-    Loop
-    LastLobbyRow = r - 1
+    LastLobbyRow = ws.Cells(ws.Rows.Count, COL_L_FIELDID).End(XL_UP).Row
 End Function
 
 ' Finds an existing pin for this exact (sheet, field, entity), or 0.
@@ -277,6 +286,20 @@ Public Function BuildLobbyFromScratch(wb As Object) As String
     Dim ws As Object
     Set ws = EnsureLobbySheet(wb)
 
+    ' NO FindLobbyRow HERE, DELIBERATELY -- FIX-LIST item AB. The Lobby was
+    ' just deleted and recreated above, in THIS SAME CALL, so every pin this
+    ' function writes is provably new; going through PinToLobby's shared
+    ' existing-pin lookup would scan the (growing) Lobby sheet, 3 cells per
+    ' row, for a match that cannot exist. Measured live 2026-08-17: 503s for
+    ' 559 rows scanned, 115 pinned -- almost entirely this exact redundant
+    ' scan, repeated for every pin as the sheet grew. nextRow is tracked
+    ' locally instead, since this function is the only writer of this sheet
+    ' for the duration of this call. PinToLobby itself is untouched --
+    ' AppEvents' real-time, one-pin-at-a-time path still needs the genuine
+    ' existing-pin lookup, and still gets it.
+    Dim nextRow As Long
+    nextRow = LOBBY_FIRST_ROW
+
     Dim parts() As String
     parts = Split(fields, ",")
 
@@ -301,7 +324,12 @@ Public Function BuildLobbyFromScratch(wb As Object) As String
                     If ReviewQueue.IsApprovalMark(mark) Then
                         Dim entityKey As String
                         entityKey = Trim(CStr(dws.Cells(r, Drafting.COL_D_ENTITY).Value))
-                        PinToLobby wb, sheetName, r, fieldId, entityKey
+                        ws.Cells(nextRow, COL_L_SHEET).Value = sheetName
+                        ws.Cells(nextRow, COL_L_ROW).Value = r
+                        ws.Cells(nextRow, COL_L_FIELDID).Value = fieldId
+                        ws.Cells(nextRow, COL_L_ENTITY).Value = entityKey
+                        ws.Cells(nextRow, COL_L_TIMESTAMP).Value = Now
+                        nextRow = nextRow + 1
                         pinned = pinned + 1
                     End If
                     r = r + 1
