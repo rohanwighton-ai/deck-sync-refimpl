@@ -18,10 +18,16 @@
 > WriteRunLog+SaveWorkbookVerified, the true end of the function, and every
 > previously-unattributed stage (spec/sources write, missing-columns check,
 > validation, register read, tab/index/format, the three FieldSpec validations,
-> WriteRunLog+Save) now has its own Timing line -- NOT YET DEPLOYED. AD added
-> 2026-08-17 evening, still open -- `WriteDraftingSheet` is ~600 COM calls per
-> field; strategy in `DRAFTING-SPEED-STRATEGY.md`, Phase A (bulk read/write) not
-> yet started.
+> WriteRunLog+Save) now has its own Timing line -- DEPLOYED `addin123`, confirmed
+> loaded live, and confirmed by real data: full run 665.4s -> 284.8s, ~2.3x, with
+> every stage now individually visible for the first time. AD added 2026-08-17
+> evening, still open -- `WriteDraftingSheet` is ~600 COM calls per field; strategy
+> in `DRAFTING-SPEED-STRATEGY.md`, Phase A (bulk read/write) not yet started. AE
+> added and FIXED same evening -- the fast-mode wrapper (ScreenUpdating=False,
+> Calculation=Manual) only covered the drafting-field loop, so BuildLobbyFromScratch
+> (already fixed, item AB) still cost 168.6s live against an isolated 2.67s, and
+> the tab/index/format cluster cost 53.7s for simple sheet operations. Widened to
+> cover both. NOT YET DEPLOYED.
 
 ## Added 2026-08-17 afternoon — AA, STILL OPEN — long delay BEFORE the period dialog
 even appears, in code the new Timing instrumentation does not cover
@@ -145,9 +151,52 @@ initialized, found reading the source before trusting `.Count` on it),
 after the save -- the true end of the function, matching what a person
 watching the screen actually experiences as "done".
 
-Full suite green (240/240). **NOT YET DEPLOYED** -- no addin build since
-this fix; the next real "1. Set up my quarter" press, on a build that
-includes it, is what actually answers where the missing ~120s lives.
+Full suite green (240/240). **DEPLOYED `addin123`, confirmed loaded live.**
+Real retest with the completed instrumentation: full run 665.4s -> 284.84s
+(~2.3x), with every stage individually visible for the first time --
+`WriteSpecSheet+WriteSourcesSheet` 5.2s, `ReadSheetForDeckPeriod` 9.3s (43
+rows), 13x `WriteDraftingSheet` 23.7s total, `BuildLobbyFromScratch` 168.6s,
+`ArrangeTabs+WriteWorkbookIndex+FormatRegisterSheet` 53.7s, validations
+1.8s, `WriteRunLog+SaveWorkbookVerified` 8.8s. Residual unattributed gap:
+~12.7s (down from ~120s before this fix) -- close enough to call the
+attribution problem solved.
+
+## Added 2026-08-17 evening — FIXED (AE) — the fast-mode wrapper only covered
+the drafting loop, so the ALREADY-FIXED item AB still cost 168.6s live
+
+**AE. `BuildLobbyFromScratch` (item AB, already fixed to be O(n), proven
+2.67s in isolation) STILL COST 168.6s IN THE REAL RUN ABOVE -- 63x SLOWER
+THAN THE ISOLATED PROOF, WITH THE SAME CODE.** Found immediately from
+reading item AC's own newly-complete Timing sheet: `ArrangeTabs+
+WriteWorkbookIndex+FormatRegisterSheet` was ALSO surprisingly slow (53.7s
+for simple tab/formatting operations), the same shape of surprise in a
+second place.
+
+**Cause, found reading the source, not guessed:** `DraftingUI.
+RefreshDraftingSheets`'s `ScreenUpdating=False`/`Calculation=Manual`
+wrapper (added earlier tonight, items W/Z's own speed work) is scoped ONLY
+to the `WriteDraftingSheet` field loop -- it gets explicitly restored to
+normal (`ScreenUpdating=True`, `Calculation=Automatic`) immediately after
+`Next i`, BEFORE `BuildLobbyFromScratch` and the tabs/index/format cluster
+ever run. Both of those write to the same workbook the loop was just
+protecting, for the identical reason -- every one of their now-efficient
+writes was still paying full screen-redraw and full automatic dependent-
+formula recalculation, on a live 45-slide deck and a 54-sheet register.
+This is why the isolated proof of AB (a blank PowerPoint, no deck, no
+recalculation pressure) measured 2.67s while the real run measured 168.6s
+-- the isolated test was never wrong, it just wasn't exposed to the cost
+this fix addresses.
+
+**Fix:** the restore moved from immediately after `Next i` to after the
+`ArrangeTabs+WriteWorkbookIndex+FormatRegisterSheet` cluster -- widening
+fast mode to cover both. Checked first for the known ScreenUpdating+AutoFit
+interaction that can silently miscompute column widths: neither
+`DraftingLobby.bas` nor the three `WorkbookBridge` functions in that
+cluster use `AutoFit` anywhere, so this widening carries no correctness
+risk from that specific quirk.
+
+Full suite green (240/240). **NOT YET DEPLOYED** -- next addin build plus a
+live re-run is the actual proof, not the passing suite alone.
 
 ## Added 2026-08-17 afternoon — FIXED (Z) — no way to interrupt a long apply run
 

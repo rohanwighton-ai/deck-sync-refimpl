@@ -162,20 +162,44 @@
 > includes this is what actually answers where the missing ~120s lives; not
 > guessed at further before that.
 >
-> **Next session's actual priority, in order: (1) build and deploy `addin123`,
-> re-run the retest, read the newly-complete Timing sheet** — this is the real
-> next data point, not another round of instrumentation. **(2) Build
-> `WriteDraftingSheetBulk` per `DRAFTING-SPEED-STRATEGY.md`'s Phase A** (bulk
-> read/write, alongside the legacy function, behind a flag) — write the new
-> multi-row/orphan-row/numeric-text preservation test and the parity harness FIRST,
-> prove each fails on purpose, then build. Deliberately NOT started this session —
-> real surgery on the function with 5 prior data-loss incidents deserves a fresh
-> run, not the tail end of an already marathon one. **(3) Phase B** (cosmetic-skip
-> stamp). **(4) Instrument `Resolve()`'s own period-detection path** the same way
-> other stages were, so item AA's real (now twice-confirmed) cost is
-> distinguishable from a hang. **(5)** Build a trimmed or fresh test fixture —
-> this session's register is ~2x a real deck's sheet count from accumulated test
-> archives, and has been silently inflating every number measured tonight.
+> **UPDATE, same evening: `addin123` built, deployed, confirmed loaded live, retest
+> run for real.** Full run 665.4s -> 284.84s, ~2.3x, every stage now individually
+> visible: spec+sources write 5.2s, register read 9.3s (43 rows), 13x
+> `WriteDraftingSheet` 23.7s total (1.6-2.1s/field, down from 2.5-4.6s but Phase A/B
+> not started so this is incidental, not the real fix), `BuildLobbyFromScratch`
+> 168.6s, `ArrangeTabs+WriteWorkbookIndex+FormatRegisterSheet` 53.7s, validations
+> 1.8s, `WriteRunLog+Save` 8.8s. Residual unattributed gap ~12.7s (down from ~120s)
+> — attribution problem solved.
+>
+> **UPDATE, same evening: found and FIXED item AE the moment the data landed.**
+> `BuildLobbyFromScratch` — already fixed (AB), proven 2.67s in isolation — cost
+> 168.6s in this real run: 63x slower, same code. Cause: the fast-mode wrapper
+> (`ScreenUpdating`/`Calculation`) added earlier tonight only covers the
+> `WriteDraftingSheet` field loop, restored to normal immediately after — so
+> `BuildLobbyFromScratch` and the tabs/index/format cluster (also unexpectedly
+> slow at 53.7s) both paid full screen-redraw and full automatic recalculation on
+> every write, against a real 45-slide deck and 54-sheet register. The isolated
+> AB proof wasn't wrong — it just never faced this cost. Fixed by widening the
+> wrapper to cover both (checked first for the AutoFit+ScreenUpdating interaction
+> that can silently miscompute column widths — neither function uses AutoFit, no
+> risk). Full suite green (240/240). **NOT YET DEPLOYED** — `addin124` and one
+> more live retest are the real proof.
+>
+> **Next session's actual priority, in order: (1) build and deploy `addin124`,
+> re-run the retest, see the real effect of item AE** — the isolated AB win was
+> 188x; whether the LIVE number now approaches that once fast-mode actually covers
+> it is the open question. **(2) Build `WriteDraftingSheetBulk` per
+> `DRAFTING-SPEED-STRATEGY.md`'s Phase A** (bulk read/write, alongside the legacy
+> function, behind a flag) — write the new multi-row/orphan-row/numeric-text
+> preservation test and the parity harness FIRST, prove each fails on purpose,
+> then build. Deliberately NOT started this session — real surgery on the
+> function with 5 prior data-loss incidents deserves a fresh run, not the tail end
+> of an already marathon one. **(3) Phase B** (cosmetic-skip stamp). **(4)
+> Instrument `Resolve()`'s own period-detection path** the same way other stages
+> were, so item AA's real (now twice-confirmed) cost is distinguishable from a
+> hang. **(5)** Build a trimmed or fresh test fixture — this session's register is
+> ~2x a real deck's sheet count from accumulated test archives, and has been
+> silently inflating every number measured tonight.
 >
 > ## 17 AUG, MIDDAY — Lobby fixes W/Y deployed as `addin120`. **STATUS: SUPERSEDED by
 > the block above**, kept for the detail. Continuation of the

@@ -865,9 +865,16 @@ Public Sub RefreshDraftingSheets()
         seedIndex = seedIndex + 1
     Next i
 
-    wb.Application.EnableEvents = True
-    wb.Application.ScreenUpdating = origScreenUpdating
-    wb.Application.Calculation = origCalculation
+    ' RESTORE MOVED PAST BuildLobbyFromScratch AND THE TABS/INDEX/FORMAT
+    ' CLUSTER, NOT RIGHT HERE -- found live 2026-08-17: with the restore at
+    ' this point, BuildLobbyFromScratch (already fixed, item AB) still cost
+    ' 168.6s in a real run despite the isolated proof measuring 2.67s, and
+    ' the tabs/index/format cluster cost 53.7s for what should be simple
+    ' sheet operations -- both paid full screen-redraw and full automatic
+    ' recalculation on every write because ScreenUpdating/Calculation had
+    ' already been restored to normal before either ran. Widened to cover
+    ' both -- they write to the SAME workbook this loop was just protecting,
+    ' for the same reason.
 
     ' REPAIRS THE LOBBY FOR FREE, RIGHT HERE. LOBBY-DESIGN.md section 10 left
     ' open how a person forces a resync after a hand-edit at work -- no
@@ -893,6 +900,12 @@ Public Sub RefreshDraftingSheets()
     WorkbookBridge.WriteWorkbookIndex wb
     WorkbookBridge.FormatRegisterSheet regWs
     Timing.LogTiming wb, "ArrangeTabs+WriteWorkbookIndex+FormatRegisterSheet", tTabsIndexFormat
+
+    ' THE ACTUAL RESTORE POINT NOW -- see the comment at the end of the field
+    ' loop above for why this moved from right after `Next i` to here.
+    wb.Application.EnableEvents = True
+    wb.Application.ScreenUpdating = origScreenUpdating
+    wb.Application.Calculation = origCalculation
 
     ' Dropdowns on the controlled fields, and a report of anything already in
     ' the register that the vocabulary does not allow.
