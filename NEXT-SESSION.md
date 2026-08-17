@@ -28,11 +28,11 @@
 > a PowerPoint-side hang — logged as an update to FIX-LIST item X. Closed by killing
 > both processes (test deck, zero real risk), not chased further live.
 >
-> **Next real action: build `addin120` with both fixes in and deploy it**, then
-> re-run the same "2. Put it on the slides" scenario to see whether the stall is
-> gone or just smaller — that comparison is the actual proof, not a synthetic test.
-> Neither fix has been rebuilt into an add-in yet — both are source-only as of this
-> block.
+> **`addin120` built, deployed, confirmed loaded live** — both fixes (W: AppendLogLine,
+> Y: ShapeAddressBook) are now actually running, not just committed. Next real action:
+> re-run the same "2. Put it on the slides" scenario that stalled during the demo and
+> see whether it's gone or just smaller — that comparison is the actual proof, not a
+> synthetic test.
 >
 > ## 17 AUG, MORNING — Lobby phases 0-3 deployed, demo prep. **STATUS: SUPERSEDED by
 > the block above**, kept for the detail.
