@@ -2258,16 +2258,32 @@ visible while it writes, is the honest fix.
 
 ### P2. The field-picker InputBox has its text field OFF THE BOTTOM OF THE SCREEN
 
-`AskForField`'s prompt lists every field in the workbook — around 40 lines by the time it
-names the drafting fields, then the Given/Derived/Controlled ones with their kinds. On a
-1080p screen that pushes the actual entry box below the screen edge. Rohan: **"what box?"**
+**PRIMARY PATH FIXED 2026-08-14 (was already stale before tonight's pass found it) --
+RESIDUAL FIXED 2026-08-17 late night.** This entry had drifted: it described the typed
+InputBox as THE mechanism, but Rohan asked for click-to-pick instead on 2026-08-14
+("I don't want to do any secret hidden typing, I need to select the field by clicking on
+it"), and `PickFieldByClicking` (`DraftingUI.bas:674`) became the primary path -- it
+already does exactly this item's own suggested fix, "put the explanation on a sheet, not
+in the dialog," via `ShowSheet`/`BringExcelToFront`. The typed `InputBox` survived only as
+a fallback for when clicking is cancelled, but it still built the SAME long message
+(drafting fields AND the full "other fields, edit in register" list) that caused the
+original off-screen defect -- so the residual was real, just rare (only reachable when
+clicking is declined).
 
-He could not type into it because he could not see it. This is not a cosmetic problem: the
-box returns "" when dismissed, which silently cancels the stage.
+**Original description, for the record:** `AskForField`'s prompt listed every field in the
+workbook — around 40 lines by the time it named the drafting fields, then the Given/
+Derived/Controlled ones with their kinds. On a 1080p screen that pushed the actual entry
+box below the screen edge. Rohan: **"what box?"** He could not type into it because he
+could not see it — not cosmetic, the box returns "" when dismissed, silently cancelling
+the stage.
 
-**Fix:** cut the prompt to the drafting fields only (the ones that can be answered), and
-put the "these do not need a drafting sheet" explanation on a sheet, not in the dialog.
-Same lesson as the Sync Now report: the container was the problem, not the wording.
+**Residual fix:** the fallback prompt now only lists the drafting (Prose) fields — the
+ones actually worth typing here — and points at the Field Spec sheet (already open in
+Excel by the time this fallback can fire) instead of repeating the full "other fields"
+list a second time. `check_vba_static.py` clean. No automated test exists for either path
+(both are interactive InputBox/Excel-picker UI, same class of untestable-this-way gap as
+item AS) — a live look at the fallback next time it's reached is the real proof, same
+honest limit as AS.
 
 ### P3. The 21 `MS*` "fields with nothing to write into" warning is a FALSE POSITIVE
 

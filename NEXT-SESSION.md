@@ -73,7 +73,13 @@
 > `SetDeckPeriodVerified` (whose fix has a named "8/8 proven live" note) but
 > has never had its OWN live proof — plausibly inherits the same underlying
 > fix, never independently confirmed. Cheap to close (a live retest, and
-> Scenario 8 exercises this path anyway). Not urgent, not yet done.
+> Scenario 8 exercises this path anyway). **DONE, same night**: 2 rounds against
+> a real 49MB test deck (a scratch copy, never the real one), each a repoint +
+> close + reopen + read-back from the SAVED FILE'S BYTES via `WorkbookPathOnDisk`
+> — both matched. `SetWorkbookPathVerified` now has its own named live proof,
+> same bar as its siblings. (Test's own first attempt used non-existent fake
+> paths and was correctly REFUSED by the function's own existence guard — not a
+> bug, a good find: re-ran against real dummy `.xlsx` targets.)
 >
 > **Not yet done:** the actual live retest against item X's real stall this
 > was diagnosed from — press "1. Set up my quarter" then "2. Put it on the

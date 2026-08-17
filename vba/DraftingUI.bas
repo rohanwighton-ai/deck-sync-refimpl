@@ -632,24 +632,33 @@ Private Function AskForField(caption As String, wb As Object) As String
         r = r + 1
     Loop
 
-    Dim msg As String
-    msg = "Which field? (" & caption & ")" & vbCrLf & vbCrLf
-    If prose <> "" Then
-        msg = msg & "WORTH DRAFTING -- the words are the work:" & vbCrLf & prose & vbCrLf
-    End If
-    If other <> "" Then
-        msg = msg & "These do NOT need a drafting sheet. Their values are known, not" & vbCrLf & _
-                    "written -- edit them in the register instead:" & vbCrLf & other & vbCrLf
-    End If
-    msg = msg & "Type the FieldID -- capitals do not matter."
-
     ' CLICKING IS THE WAY IN; TYPING IS THE FALLBACK, not the other way round.
+    ' PickFieldByClicking already calls ShowSheet + BringExcelToFront BEFORE
+    ' this point, so by the time the fallback below can even fire, the "other"
+    ' fields (not worth drafting) are already visible on the real sheet --
+    ' FIX-LIST item P2's own suggested fix ("put the explanation on a sheet,
+    ' not in the dialog") is already true for them. The fallback's own prompt
+    ' only needs to list what you'd actually TYPE here (the drafting fields),
+    ' not repeat the full "other" list a second time in a box that pushed its
+    ' own text field off a 1080p screen (P2, 2026-08-14) -- that repetition
+    ' was the box's real problem, not the drafting list alone.
     Dim clicked As String
     clicked = PickFieldByClicking(caption, wb, ws)
     If clicked <> "" Then
         AskForField = clicked
         Exit Function
     End If
+
+    Dim msg As String
+    msg = "Which field? (" & caption & ")" & vbCrLf & vbCrLf
+    If prose <> "" Then
+        msg = msg & "WORTH DRAFTING -- the words are the work:" & vbCrLf & prose & vbCrLf
+    End If
+    If other <> "" Then
+        msg = msg & "(Fields that don't need drafting are listed on the '" & _
+            FieldSpec.SPEC_SHEET_NAME & "' sheet, already open in Excel.)" & vbCrLf & vbCrLf
+    End If
+    msg = msg & "Type the FieldID -- capitals do not matter."
 
     AskForField = CanonicalFieldId(wb, Trim(InputBox(msg, caption)))
 End Function
