@@ -29,27 +29,42 @@
 > the tab/index/format cluster cost 53.7s for simple sheet operations. Widened to
 > cover both. DEPLOYED `addin125`, confirmed loaded live, confirmed by real data:
 > `RefreshDraftingSheets` 665.4s -> 72.8s overall, `BuildLobbyFromScratch` 168.6s
-> -> 6.9s, tabs/index/format 53.7s -> 6.3s. AF added 2026-08-17 evening, still open --
-> `PublishAllDraftedFields` redoes press-level work 13x, once per field (~4 min
-> redundant register re-reads, ~2-3.5 min redundant saves, no fast-mode wrapper).
-> AG added 2026-08-17 evening, still open -- `OfferMarkingForUnwiredFields` costs a
-> full register read + full deck shape-walk per press, output destroyed before
-> anyone sees it. AH added 2026-08-17 evening, still open -- harvest dry-run reads
-> the register up to 3x in one press of button 1. AI added 2026-08-17 evening,
-> still open -- `ScanPendingApprovals` computes dead detail for a gate deleted this
-> morning, double-reads the review sheet. AJ added 2026-08-17 evening, still open
-> -- `SyncNow`/`SyncNowCore` is fully dead code containing the worst call pattern
-> found tonight (4x `BuildQueue` per type); recommend deletion, matching the
-> bulk-approve precedent. AF-AJ full detail in `HOT-PATH-AUDIT.md`. AK added and
-> FIXED 2026-08-17 evening -- `Readiness.bas`/`WhereAmI`/`WhereAmICore` deleted
-> entirely (Rohan: "delete the whole thing"); every check it made was independently
-> redundant with what the real operations already catch and explain when actually
-> run, at a cost of two full deck-file copies plus a full BuildQueue diff per type,
-> on every single press of the tool's most-used button. AL added 2026-08-17
-> evening, still open -- the Lobby pin watcher (`AppEvents.cls`) taxes every
-> single cell write anywhere in the tool (~100-170 COM calls per event) despite
-> its own comments claiming "one comparison"; `ApplyApproved`'s fast-mode
-> wrapper never disables it. AM added 2026-08-17 evening, still open --
+> -> 6.9s, tabs/index/format 53.7s -> 6.3s. AF added 2026-08-17 evening; FIXED
+> PROPERLY (not band-aided) later the same night on Rohan's explicit instruction
+> ("proper fundamental fix, every time, don't bandaid unless you're bleeding") --
+> `PublishAllDraftedFields` restructured so the per-field loop calls one new
+> function, `DraftingUI.PublishOneFieldForChain`, that does exactly one wet-only
+> `Drafting.PublishDrafts` call (no separate dry preview) per field, with resolve/
+> register-read/save/Run-Log-write hoisted to run ONCE per press instead of once
+> per field, and the fast-mode wrapper (now including EnableEvents, see AL) around
+> the whole loop. Caught and fixed a real second bug while proving this correct
+> (see AF-NTP below). Not yet re-measured live -- addin125 predates this build;
+> addin126 pending. AG added 2026-08-17 evening, still open -- `OfferMarkingFor
+> UnwiredFields` costs a full register read + full deck shape-walk per press,
+> output destroyed before anyone sees it. AH added 2026-08-17 evening, still open
+> -- harvest dry-run reads the register up to 3x in one press of button 1. AI
+> added 2026-08-17 evening, still open -- `ScanPendingApprovals` computes dead
+> detail for a gate deleted this morning, double-reads the review sheet. AJ added
+> 2026-08-17 evening, still open -- `SyncNow`/`SyncNowCore` is fully dead code
+> containing the worst call pattern found tonight (4x `BuildQueue` per type);
+> recommend deletion, matching the bulk-approve precedent. AF-AJ full detail in
+> `HOT-PATH-AUDIT.md`. AK added and FIXED 2026-08-17 evening --
+> `Readiness.bas`/`WhereAmI`/`WhereAmICore` deleted entirely (Rohan: "delete the
+> whole thing"); every check it made was independently redundant with what the
+> real operations already catch and explain when actually run, at a cost of two
+> full deck-file copies plus a full BuildQueue diff per type, on every single
+> press of the tool's most-used button. AL added 2026-08-17 evening; FIXED
+> PROPERLY same night, at its root cause rather than only in `ApplyApproved`'s
+> wrapper -- `DraftingLobby.FieldIdForSheet` (the pin-watcher's guard, called on
+> EVERY cell-change event in EVERY open workbook) had a header comment claiming
+> "exits in one comparison" while its actual first line ran a full Field Spec
+> scan (`DraftingUI.ProseFields`, ~54-worksheet `WorksheetExists` walk) before any
+> comparison happened. Added a zero-COM `StrComp(Left$(sheetName,4),"TPL_",
+> vbTextCompare)<>0` pre-check as the true first line, since every drafting
+> sheet name is guaranteed to start with that literal prefix
+> (`Drafting.DraftSheetNameFor`). `ApplyApproved`'s fast-mode wrapper also now
+> disables `EnableEvents` (belt-and-suspenders on top of the root-cause fix).
+> AM added 2026-08-17 evening, still open --
 > `WriteQueueSheet` (the review-sheet writer) has no fast-mode wrapper at all,
 > item AE's own omission unfixed here. AN added 2026-08-17 evening, still open
 > -- `UpsertRow` inside the publish loop rescans the whole register per row, per
@@ -311,6 +326,9 @@ summarized here, not duplicated in full:
   2 full register reads, 2 verified saves, 2 Run Log writes (each erasing
   the last -- all 26 unobservable) per field, and NO fast-mode wrapper on
   the loop at all. Rough bound: several minutes off every full publish.
+  **FIXED PROPERLY, later the same night** -- see "AF + AL, the real fix"
+  below, not a summary duplicate of the band-aid this bullet originally
+  described.
 - **AG.** `OfferMarkingForUnwiredFields` (runs on every "1. Set up my
   quarter" press) costs a full register read + full deck shape-walk --
   its own output gets destroyed by `RefreshDraftingSheets`'s `WriteRunLog`
@@ -346,6 +364,81 @@ stated finish line (a real quarter reviewed, approved and published
 UNAIDED) hasn't moved. AF-AJ are real, cheap, low-risk fixes -- but doing
 them is still choosing to extend tonight's pattern, not correct it. Full
 reasoning in `HOT-PATH-AUDIT.md`'s closing section.
+
+## Added and FIXED 2026-08-17 night — AF + AL, the real fix, not a band-aid
+
+Rohan, once the real 362.2s/4-field number landed: "lets go with the proper
+fundamental fix, every time. dont bandaid unless you bleeding" -- then "apply
+it across the class in line with best practice." This is that fix, for AF and
+AL together (they land on the same loop). AN (`UpsertRow`'s per-row rescan
+inside the publish loop, same shape one level deeper) was explicitly left
+alone tonight -- shared-function surgery, needs its own session and caution,
+not a bandaid-vs-fix question.
+
+**AF, root cause and fix.** `PublishAllDraftedFields`'s loop called two
+full-ceremony per-field Subs (`CopyAiDraftsToSubmit`, `PublishDraftsForField`)
+13 times, each independently resolving the presentation, reading the whole
+register, saving, and rewriting the Run Log (which REPLACES the sheet, so 12
+of every 13 writes were destroyed by the next one before ever being seen --
+this session's own "machinery that outlived its output" shape, found again).
+Fix: a new `Public Function DraftingUI.PublishOneFieldForChain(wb, regWs,
+srcWs, fieldId, period) As String` does only the per-field work -- copy AI
+drafts to submit, refresh counts, one `Drafting.PublishDrafts(..., dryRun:=
+False, ...)` call -- and returns a report string. `PublishAllDraftedFields`
+now resolves once, reads the register once, loops calling this new function,
+then saves once, writes the Run Log once, and shows once. Made `Public`
+(matching the existing `DistinctPinnedFields` precedent) specifically so
+`TestRunner.bas` can drive it directly with explicit parameters, instead of
+requiring a live `Application.ActivePresentation` the way the old Subs did --
+genuinely unit-testable for the first time. The old two Subs are untouched
+and still exist, complete and correct, confirmed via grep to be unreachable
+from any toolbar button (`CommandBarUI.bas`) or any other caller -- left in
+place because deleting known-good dead code is a separate decision from
+fixing the loop that used to call it.
+
+**AF-NTP -- a real bug found and fixed while proving AF correct.** The old
+per-field path always ran `Drafting.PublishDrafts` TWICE per field: once
+`dryRun:=True` to build preview text and answer "was there anything to
+publish?", then again `dryRun:=False` to actually write. The new function
+runs wet-only -- one call, not two -- and checks `Drafting.NothingToPublish`
+against the WET result instead. That exposed a genuine, previously-latent
+bug: `NothingToPublish` hardcoded ONLY the dry-run summary phrasing ("0
+would be published") as its match string, so it could never match a wet
+result's phrasing ("0 published", no "would be"). Every caller before
+tonight always passed it dry-mode text, so the gap was never exercised.
+Found by the "make it fail once before trusting it" discipline: a new test,
+`Test_DraftingUI_PublishOneFieldForChainRunsWetOnly`, deliberately broke the
+dry/wet flag first (confirmed the write-detection assertion could actually
+fail), reverted it, then a full unfiltered suite run caught this SECOND,
+real, unrelated failure on its own. Fixed at the actual source --
+`Drafting.NothingToPublish` now checks both phrasings (`Or`) -- verified
+safe via grep (only two real callers: the new function, wet-mode; the old
+`PublishDraftsForField`, still dry-mode, unaffected) and the existing
+correctness test (`Test_Drafting_NothingToPublishReadsTheSameCounts`) only
+exercises the dry branch, so widening cannot break it. Suite re-run clean,
+241/241.
+
+**AL, root cause and fix.** `AppEvents.cls`'s `mApp_SheetChange` fires on
+every sheet-change event in every open workbook (Application-level
+`WithEvents`) and gates on `DraftingLobby.FieldIdForSheet(wb, sheetName)`.
+That function's own header comment claimed "exits in one comparison," but
+its real first line called `DraftingUI.ProseFields(wb)` -- a full Field Spec
+sheet read plus a `WorksheetExists` scan across all ~54 worksheets -- before
+any name comparison ran at all. Measured at ~100-170 COM calls per event, on
+every write path that didn't explicitly disable events. Fix, at the root:
+`FieldIdForSheet` now exits in one real comparison first --
+`If StrComp(Left$(sheetName, 4), "TPL_", vbTextCompare) <> 0 Then Exit
+Function` -- since every drafting sheet name is guaranteed to start with
+that literal prefix (`Drafting.DraftSheetNameFor`). `ReviewQueue.
+ApplyApproved`'s fast-mode wrapper also now captures/restores
+`Application.EnableEvents` (belt-and-suspenders alongside the root-cause
+fix, restored on both the normal-completion and error paths, matching the
+existing ScreenUpdating/Calculation restore-before-re-raise pattern).
+
+**Not yet re-measured live.** `addin125` (currently loaded) predates all of
+this; `addin126` needs to be built and deployed, then "2. Put it on the
+slides" pressed for real, before the post-fix number replaces the 362.2s/
+4-field pre-fix measurement above.
 
 ## Added 2026-08-17 afternoon — FIXED (Z) — no way to interrupt a long apply run
 

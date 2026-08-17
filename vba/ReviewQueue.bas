@@ -1376,14 +1376,30 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
     ' property at all (confirmed live building item Y) and no equivalent
     ' calculation-mode switch, so there is no lever on that side to pull.
     ' This is the cheap, safe part of the win, not the whole of it.
+    '
+    ' EnableEvents ADDED HERE, FIX-LIST item AL. This wrapper covered
+    ' ScreenUpdating/Calculation but never EnableEvents -- so every write in
+    ' this loop (AppendLogLine, the register write itself, MarkConsumed) fired
+    ' the Lobby's SheetChange pin watcher (AppEvents.cls), which the watcher's
+    ' own comments claim costs "one comparison" but actually costs a full
+    ' Field Spec sheet read first (~100-170 COM calls) before it ever gets to
+    ' that comparison -- found reading the guard's real first line, not
+    ' trusting what it says about itself. At Phase-3 scale (221 items) that
+    ' is roughly 1,000 of those events in one press. Tool writes into this
+    ' loop's own sheets (Sync Log, the register, review sheets) never
+    ' legitimately pin a drafting sheet, so disabling events here carries the
+    ' same safety as RefreshDraftingSheets already relies on for its own loop.
     Dim origScreenUpdating As Boolean
     Dim origCalculation As Long
+    Dim origEnableEvents As Boolean
     Dim screenSettingsCaptured As Boolean
     If Not wb Is Nothing Then
         origScreenUpdating = wb.Application.ScreenUpdating
         wb.Application.ScreenUpdating = False
         origCalculation = wb.Application.Calculation
         wb.Application.Calculation = XL_CALCULATION_MANUAL
+        origEnableEvents = wb.Application.EnableEvents
+        wb.Application.EnableEvents = False
         screenSettingsCaptured = True
     End If
 
@@ -1527,6 +1543,7 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                     If screenSettingsCaptured And Not wb Is Nothing Then
                         wb.Application.ScreenUpdating = origScreenUpdating
                         wb.Application.Calculation = origCalculation
+                        wb.Application.EnableEvents = origEnableEvents
                     End If
                     Err.Raise itemErrNum, _
                         "ReviewQueue.ApplyApproved: dry probe of " & q.Items(n).EntityKey & "/" & q.Items(n).FieldID & _
@@ -1567,6 +1584,7 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                         If screenSettingsCaptured And Not wb Is Nothing Then
                             wb.Application.ScreenUpdating = origScreenUpdating
                             wb.Application.Calculation = origCalculation
+                            wb.Application.EnableEvents = origEnableEvents
                         End If
                         Err.Raise itemErrNum, _
                             "ReviewQueue.ApplyApproved: writing " & q.Items(n).EntityKey & "/" & q.Items(n).FieldID & _
@@ -1607,6 +1625,7 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
     If screenSettingsCaptured And Not wb Is Nothing Then
         wb.Application.ScreenUpdating = origScreenUpdating
         wb.Application.Calculation = origCalculation
+        wb.Application.EnableEvents = origEnableEvents
     End If
 
     ' THE TWO NUMBERS ITEM Y'S FIX IS ACTUALLY JUDGED AGAINST -- Timing.bas's

@@ -80,7 +80,29 @@ End Sub
 ' one workbook: anything that fails this check (every unrelated sheet on
 ' the machine, every non-drafting sheet in this workbook) exits in one
 ' comparison per field, cheap enough to run on every keystroke.
+' FIX-LIST item AL. This function's own header comment above claims "exits
+' in one comparison" for anything that is not a real drafting sheet name --
+' it didn't. Every call used to run `DraftingUI.ProseFields(wb)` FIRST
+' (`WorksheetExists` -- a For Each over every worksheet in the workbook --
+' then a full scan of the Field Spec sheet, 2 cell reads per row) before the
+' name comparison the comment describes ever ran. Found reading this
+' function's actual first line, not trusting what the comment above it
+' claims. `mApp_SheetChange` (`AppEvents.cls`) calls this on EVERY sheet
+' change in EVERY open workbook -- at ~100-170 COM calls per miss, that
+' ~0.3-1.2s tax landed on every cell written anywhere the tool wasn't
+' already disabling events (item AL's other half).
+'
+' Every drafting sheet name is `Drafting.DraftSheetNameFor`'s own output:
+' `"TPL_" & fieldId`, sanitized. A sheet whose name does not start with
+' "TPL_" cannot possibly be one, and that is checkable with zero COM calls,
+' before the workbook is ever touched -- making this comment's claim
+' actually true instead of aspirational.
 Public Function FieldIdForSheet(wb As Object, sheetName As String) As String
+    ' Case-insensitive, matching the StrComp(..., vbTextCompare) the loop
+    ' below already uses -- a behaviour-preserving fast path, not a stricter
+    ' one.
+    If StrComp(Left$(sheetName, 4), "TPL_", vbTextCompare) <> 0 Then Exit Function
+
     Dim fields As String
     fields = DraftingUI.ProseFields(wb)
     If Trim(fields) = "" Then Exit Function

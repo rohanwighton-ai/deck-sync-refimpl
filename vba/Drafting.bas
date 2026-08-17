@@ -1232,14 +1232,29 @@ Public Function PublishSummaryLine(published As Long, dryRun As Boolean, _
         noRow & " with no register row, " & failed & " failed"
 End Function
 
-' True when a publish preview found no work of any kind.
+' True when a publish report found no work of any kind -- dry preview OR a
+' real wet-mode result, both.
 '
 ' Reads the report the person is shown, so the question asked and the numbers
 ' displayed cannot disagree -- if the summary ever says something happened, this
 ' will not claim otherwise.
+'
+' FIX-LIST item AF, real bug found writing PublishOneFieldForChain's own
+' test tonight, not a hypothetical: this used to check ONLY against
+' PublishSummaryLine(0, True, ...) -- the DRY-RUN phrasing ("0 would be
+' published"). A wet-mode summary line says "0 published" (no "would be"),
+' which that check could never match, so calling this on a real (non-dry)
+' result would always report something-happened even when nothing did.
+' Every caller before tonight happened to only ever pass this a dry
+' preview, so the gap was never exercised -- until a genuine wet-only
+' caller (PublishOneFieldForChain, replacing a dry-then-wet pair to halve
+' the register-scan cost per field) needed it to work on real output too.
+' Checked both phrasings rather than picking one, since existing callers
+' still legitimately pass dry previews and must keep working exactly as
+' before.
 Public Function NothingToPublish(previewReport As String) As Boolean
-    NothingToPublish = (InStr(previewReport, _
-        PublishSummaryLine(0, True, 0, 0, 0, 0)) > 0)
+    NothingToPublish = (InStr(previewReport, PublishSummaryLine(0, True, 0, 0, 0, 0)) > 0) Or _
+                        (InStr(previewReport, PublishSummaryLine(0, False, 0, 0, 0, 0)) > 0)
 End Function
 
 Public Function PublishDrafts(ws As Object, regWs As Object, fieldId As String, _

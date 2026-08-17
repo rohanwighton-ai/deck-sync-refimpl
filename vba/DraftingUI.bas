@@ -372,6 +372,8 @@ End Function
 ' there). A field with nothing pinned is never opened, never crawled, never
 ' saved.
 Public Sub PublishAllDraftedFields(caption As String)
+    On Error GoTo Failed
+
     Dim pres As Object, wb As Object, regWs As Object
     If Not Resolve(caption, pres, wb, regWs) Then Exit Sub
 
@@ -389,30 +391,208 @@ Public Sub PublishAllDraftedFields(caption As String)
         Exit Sub
     End If
 
+    ' FIX-LIST item AF, the real fix, not the fast-mode-only band-aid.
+    ' CopyAiDraftsToSubmit and PublishDraftsForField each used to do their
+    ' own Resolve, dry-then-wet register read, verified save, run-log write
+    ' and ShowSheet PER FIELD -- ~4 min of redundant register re-reads and
+    ' ~2-3.5 min of redundant saves measured live across 13 fields (a
+    ' 665.4s-class run). Three of those five are press-level facts that
+    ' cannot vary between fields (the deck's pairing, its period, whether
+    ' the workbook is writable) and are hoisted below, checked once instead
+    ' of 13 times. The fourth (Resolve) is already done once above. The
+    ' fifth (register read) drops from 2x/field to 1x/field by running
+    ' PublishOneFieldForChain WET-ONLY, no dry preview pass -- see that
+    ' function's own header for why that is safe. Save/log/ShowSheet happen
+    ' ONCE, after the whole loop, not once per field.
+    '
+    ' CopyAiDraftsToSubmit/PublishDraftsForField themselves are UNTOUCHED --
+    ' still correct, complete, full-ceremony Subs, just no longer called
+    ' from this loop. Left in place rather than deleted: both are already
+    ' unreachable via any toolbar button today (grep confirms), but deleting
+    ' working code on a guess that nothing will ever call it again is a
+    ' different, separate decision from fixing this loop's real cost.
+    Dim pairNote As String
+    pairNote = DeckRegistry.PairingProblem(pres, wb)
+    If pairNote <> "" Then
+        Say pairNote, vbCritical, caption
+        Exit Sub
+    End If
+
+    Dim period As String
+    period = DeckRegistry.GetDeckPeriod(pres)
+    If period = "" Then
+        Say "This deck does not declare a period, so there is no way to know " & _
+               "which quarter's rows to publish into." & vbCrLf & vbCrLf & _
+               "Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' -- it sets the quarter first.", vbExclamation, caption
+        Exit Sub
+    End If
+
+    Dim macroWarn As String
+    macroWarn = WorkbookBridge.WriteBlockedReason(wb)
+
+    Dim srcWs As Object
+    Set srcWs = WorkbookBridge.GetOrAddWorksheet(wb, Sources.SOURCES_SHEET_NAME)
+
     Dim tPublish As Double
     tPublish = Timing.StartClock()
+
+    ' FIX-LIST item AL. Every write below (CopyAiToSubmit, PublishDrafts,
+    ' the Run Log write) used to fire the Lobby pin watcher's SheetChange
+    ' handler on every cell, at ~100-170 COM calls per event before it ever
+    ' got to the "one comparison" its own comment claimed -- see the real
+    ' fix in DraftingLobby.FieldIdForSheet, applied earlier tonight, which
+    ' makes that claim true again. EnableEvents=False here is defence in
+    ' depth on top of that fix, matching the discipline ApplyApproved's own
+    ' wrapper now uses.
+    Dim origScreenUpdating As Boolean
+    Dim origCalculation As Long
+    Dim origEnableEvents As Boolean
+    Dim screenSettingsCaptured As Boolean
+    origScreenUpdating = wb.Application.ScreenUpdating
+    wb.Application.ScreenUpdating = False
+    origCalculation = wb.Application.Calculation
+    wb.Application.Calculation = XL_CALCULATION_MANUAL
+    origEnableEvents = wb.Application.EnableEvents
+    wb.Application.EnableEvents = False
+    screenSettingsCaptured = True
 
     Dim parts() As String, i As Long
     parts = Split(list, ",")
 
+    Dim allReports As String
+
     For i = LBound(parts) To UBound(parts)
         mChainField = Trim(parts(i))
         If mChainField <> "" Then
-            ' Copy first, publish second, and BOTH per field: CopyAiToSubmit
-            ' never overwrites a row that already has your words, so running it
-            ' here is safe and saves a separate press. It used to run in the
-            ' quarter-setup chain, BEFORE Copilot had written anything -- which
-            ' is why it asked a question about drafts that did not exist yet.
-            CopyAiDraftsToSubmit
-            PublishDraftsForField
+            allReports = allReports & PublishOneFieldForChain(wb, regWs, srcWs, mChainField, period)
         End If
     Next i
+
+    wb.Application.ScreenUpdating = origScreenUpdating
+    wb.Application.Calculation = origCalculation
+    wb.Application.EnableEvents = origEnableEvents
+
+    ' ONE verified save for the whole press, not one per field -- the same
+    ' file, the same register, no intervening read that needed the
+    ' intermediate states saved separately.
+    Dim saveProblemText As String
+    saveProblemText = WorkbookBridge.SaveWorkbookVerified(wb)
+    If saveProblemText = "" Then
+        allReports = allReports & "Register SAVED to:" & vbCrLf & wb.FullName
+    Else
+        allReports = allReports & "!! THE REGISTER COULD NOT BE SAVED !!" & vbCrLf & _
+            "The rows above are in Excel's memory and NOT on disk. Do not close " & _
+            "Excel without saving." & vbCrLf & vbCrLf & saveProblemText
+    End If
+    If macroWarn <> "" Then allReports = macroWarn & vbCrLf & vbCrLf & allReports
+
+    ' ONE Run Log write for the whole press. WriteRunLog REPLACES the whole
+    ' sheet on every call (its own header) -- 26 per-field writes each
+    ' erasing the last meant every one of them was unobservable by the time
+    ' the completion dialog appeared. This one survives.
+    WorkbookBridge.WriteRunLog wb, "Publish all drafted fields -- " & list, allReports
+
+    Dim firstSheetName As String
+    firstSheetName = Drafting.DraftSheetNameFor(Trim(CStr(parts(LBound(parts)))))
+    ShowSheet wb, firstSheetName
 
     Timing.LogTiming wb, "PublishAllDraftedFields (total)", tPublish, _
         (UBound(parts) - LBound(parts) + 1), "field(s) published", list
 
+    ' Say(), not a raw MsgBox -- buffers into mReport when mCollecting is
+    ' True (always true for the real caller, PutItOnTheSlidesCore, which
+    ' brackets this whole call in BeginCollecting/EndCollecting), so this
+    ' reaches the eventual chain report exactly where the 26 individual Say
+    ' calls it replaces used to land, just assembled once instead of 13
+    ' times over.
+    Say RibbonUI.CapReport(allReports), vbInformation, caption
+
     mChainField = ""
+    Exit Sub
+
+Failed:
+    ' Restore BEFORE re-raising -- this function had no top-level handler
+    ' before tonight, so an error inside the loop used to propagate straight
+    ' past the fast-mode settings with no restore at all, exactly the class
+    ' of bug found and fixed in ApplyApproved earlier tonight (item AE's
+    ' neighbour). Re-raised, not swallowed: the caller chain's own handler
+    ' (SyncNowChain/PutItOnTheSlides) still reports the real error.
+    If screenSettingsCaptured And Not wb Is Nothing Then
+        On Error Resume Next
+        wb.Application.ScreenUpdating = origScreenUpdating
+        wb.Application.Calculation = origCalculation
+        wb.Application.EnableEvents = origEnableEvents
+        On Error GoTo 0
+    End If
+    mChainField = ""
+    Err.Raise Err.Number, Err.Source, Err.Description
 End Sub
+
+' Core per-field work for PublishAllDraftedFields' loop -- FIX-LIST item AF.
+' Split out of CopyAiDraftsToSubmit/PublishDraftsForField, which are left
+' untouched as their own complete, correct, full-ceremony standalone Subs
+' (unreachable via any button today, but not this fix's business to delete).
+'
+' RUNS WET-ONLY, NO DRY PREVIEW PASS. The old per-field path called
+' Drafting.PublishDrafts twice -- once dryRun:=True to build preview text
+' for a WriteRunLog entry and to answer NothingToPublish, then again
+' dryRun:=False to actually write. That preview WriteRunLog entry was
+' already unobservable in practice (the NEXT field's own WriteRunLog call
+' replaces the whole sheet, item AF's own finding), and the "write these
+' into the register?" confirmation the preview text once fed was deleted
+' 2026-08-14 -- nothing left reads the dry pass's output before deciding
+' anything. NothingToPublish is evaluated on the WET result instead --
+' correct now, but was NOT correct on the first attempt at this function:
+' Drafting.NothingToPublish used to check ONLY the dry-run summary
+' phrasing ("0 would be published"), which a wet result's "0 published"
+' (no "would be") can never match, so this call would always have read as
+' "something happened" even when nothing had. Caught by this function's
+' own test, made to fail once on purpose per the "prove before trusting"
+' rule, then fixed at the actual source (Drafting.NothingToPublish itself
+' now checks both phrasings) rather than worked around here. PublishDrafts'
+' own contract already leaves a row alone when there is nothing ticked for
+' it -- calling wet-only does not write anything a dry-then-wet pair would
+' not also have written. This halves the register-scan cost PublishDrafts
+' pays, per field, on top of the fast-mode wrapper the caller applies
+' around the whole loop.
+'
+' Returns report text for this one field; does not Save, WriteRunLog, or
+' ShowSheet -- the caller does all three once, for the whole press.
+' PUBLIC so the test suite can drive it directly -- unlike the old per-field
+' Subs it replaces, this function needs no Application.ActivePresentation
+' (no Resolve inside it), so it is genuinely testable without a live
+' presentation. Closes part of the coverage gap this restructure otherwise
+' has no automated test for at all.
+Public Function PublishOneFieldForChain(wb As Object, regWs As Object, srcWs As Object, _
+                                         fieldId As String, period As String) As String
+    Dim sheetName As String
+    sheetName = Drafting.DraftSheetNameFor(fieldId)
+    If Not WorkbookBridge.WorksheetExists(wb, sheetName) Then
+        PublishOneFieldForChain = "=== " & fieldId & " ===" & vbCrLf & _
+            "No drafting sheet for " & fieldId & " yet -- skipped." & vbCrLf & vbCrLf
+        Exit Function
+    End If
+
+    Dim ws As Object
+    Set ws = WorkbookBridge.GetOrAddWorksheet(wb, sheetName)
+
+    ' Copy AI -> Submit first, same order as the standalone path: never
+    ' overwrites a row that already has your words.
+    Dim copyNote As String
+    copyNote = Drafting.CopyAiToSubmit(ws) & Drafting.RefreshSubmitCounts(ws)
+
+    Dim result As String
+    result = Drafting.PublishDrafts(ws, regWs, fieldId, period, False, srcWs)
+
+    If Drafting.NothingToPublish(result) Then
+        PublishOneFieldForChain = "=== " & fieldId & " ===" & vbCrLf & copyNote & vbCrLf & _
+            "Nothing to publish for " & fieldId & " in " & period & "." & vbCrLf & vbCrLf
+        Exit Function
+    End If
+
+    PublishOneFieldForChain = "=== " & fieldId & " ===" & vbCrLf & copyNote & vbCrLf & _
+        result & vbCrLf & vbCrLf
+End Function
 
 Private Function FieldForRun(caption As String, wb As Object) As String
     If mCollecting Then

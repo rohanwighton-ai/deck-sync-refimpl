@@ -1,8 +1,77 @@
 # NEXT SESSION — start here
 
+> ## 17 AUG, NIGHT — AF + AL fixed properly (not band-aided), a real bug found
+> and fixed inside the proof, `waste-hound` agent built. **STATUS: CURRENT.**
+> Continuation of the same very long session (16 Aug evening through past
+> midnight 17/18 Aug).
+>
+> **Commissioned `waste-hound`** (`~/claude-brain/agents/waste-hound.md`,
+> committed and pushed to `claude-brain`, symlinked into `~/.claude/agents`):
+> read-only, cold performance auditor — `model: sonnet` (fable wrote the spec,
+> corrected mid-drafting to run on Sonnet, not fable, per Rohan). Encodes six
+> defect shapes found across tonight's two audits (eager full work where
+> incremental would do; rescan-from-scratch inside a loop; machinery outliving
+> the dialog/gate it fed; re-verifying a fast known-good copy against a slow
+> authoritative source with nothing invalidating it; no batching on a loop of
+> small expensive ops; the same computation repeated twice for the same data
+> in one pass) plus a "checked and clean reported with equal confidence as a
+> finding" rigor discipline. Never edits code — diagnoses only.
+> **Open idea, Rohan's, not yet built:** a companion "workaround hound" —
+> same read-only pattern, hunting band-aids left in instead of the real fix
+> (the exact thing "proper fundamental fix, don't bandaid unless you're
+> bleeding" is policing). Backlogged, not speced.
+>
+> **Fixed AF and AL properly — Rohan's explicit instruction after the real
+> 362.2s/4-field number landed**: "lets go with the proper fundamental fix,
+> every time. dont bandaid unless you bleeding," then "apply it across the
+> class in line with best practice." Full technical detail in `FIX-LIST.md`'s
+> "AF + AL, the real fix" section — summary:
+> - **AF**: `PublishAllDraftedFields`'s 13x-per-field redundant resolve/
+>   register-read/save/Run-Log-write collapsed to once-per-press, via a new
+>   `Public Function DraftingUI.PublishOneFieldForChain` that does the actual
+>   per-field work only (wet-only publish, no separate dry preview pass) and
+>   is genuinely unit-testable for the first time (explicit params, no
+>   `Application.ActivePresentation` dependency).
+> - **AL**: `DraftingLobby.FieldIdForSheet` (the Lobby pin-watcher's guard,
+>   fired by `AppEvents.cls` on every cell-change event in every open
+>   workbook) fixed at its root cause — a real zero-COM prefix check now
+>   runs first, instead of the full Field Spec scan its own header comment
+>   falsely claimed didn't happen. `ApplyApproved`'s fast-mode wrapper also
+>   now disables `EnableEvents` as belt-and-suspenders.
+> - **AF-NTP, found DURING the fix**: proving AF's wet-only optimization safe
+>   surfaced a real, previously-latent bug in `Drafting.NothingToPublish` —
+>   it only ever matched dry-run phrasing, so it could never detect "nothing
+>   published" against a wet-mode result. Caught by the "make it fail once"
+>   discipline (a new test deliberately broken and reverted first; a full
+>   unfiltered suite run then caught this second, real, unrelated failure on
+>   its own). Fixed at the source, not worked around at the call site.
+>   241/241 tests pass with the fix in.
+>
+> **Not yet re-measured live.** `addin125` (currently loaded) predates all of
+> this. Next session: build `addin126` (Rohan's manual Save-As step, same
+> pattern as every prior build), deploy, then press "2. Put it on the slides"
+> for real and get the actual post-fix number against the 362.2s/4-field
+> pre-fix baseline. Commit made this session covers all of AF/AL/AF-NTP plus
+> the `waste-hound` agent (separate repo, already pushed).
+>
+> **Still explicitly deferred, correctly, not forgotten**: AN
+> (`ExcelOutput.UpsertRow`'s per-row rescan inside the publish loop, same
+> shape one level deeper) — shared-function surgery across multiple callers
+> with different assumptions, needs its own session; `DRAFTING-SPEED-
+> STRATEGY.md`'s Phase A/B (bulk-array `WriteDraftingSheet`); remaining
+> COLD-PATH-AUDIT.md items AM, AG-AJ, AO-AQ.
+>
+> **DISCUSSION NOTE, not a task — Rohan explicitly flagged this as "note to
+> discuss," not implement**: "I'd like to make the drafting sheets very
+> simple and color block stylistic." No design done. Raised again mid-session
+> tonight without further detail (asked what "simple/color-block" means —
+> visual decluttering vs. status-color-coding per field — answer still
+> pending). Park it here until that's answered and it gets its own scoping
+> pass; do not start implementing from this note alone.
+
 > ## 17 AUG, AFTERNOON — Timing instrumentation + running-long checkpoint,
-> `addin121` deployed. **STATUS: CURRENT.** Continuation of the same very long
-> session (16 Aug evening through 17 Aug afternoon).
+> `addin121` deployed. **STATUS: SUPERSEDED by the block above.** Continuation
+> of the same very long session (16 Aug evening through 17 Aug afternoon).
 >
 > **Built `Timing.bas`** (new module), Rohan mid-demo-debrief: "can you please set
 > timing machinery in the code... within an order of magnitude regarding what you
@@ -265,6 +334,38 @@
 > evidence, not a projection — the standing PM condition for fixing AF next
 > ("if the number comes back large... that's sufficient real-user evidence")
 > is now met.
+>
+> **UPDATE, same evening: Rohan's real "2. Put it on the slides" press is still
+> in progress at time of writing** — `PublishAllDraftedFields` completed and
+> saved (362.2s, 4 fields, logged above), now inside `ApplyApproved`'s own
+> uninstrumented review-sheet read (finding AI/AL: `ScanPendingApprovals` +
+> `ApplyApproved` both call `ReadQueueSheet` on both review sheets --
+> `project-status-2D3D` (38 stale rows since 2026-08-10) and
+> `project-progress-A32C` (223 rows, CONSUMED but still walked in full) --
+> per-cell reads, no bulk read, no Timing instrumentation on this specific
+> stage). CPU climbing steadily (Excel ~9.5min, PowerPoint ~8min accumulated
+> at last check), workbook dirty again (new write cycle active). Whatever the
+> real `ApplyApproved (total)` number turns out to be is the actual close of
+> Scenario 1's second half -- read it off the Timing sheet next session if it
+> wasn't captured live.
+>
+> **UPDATE, same evening: a standing "efficiency auditor" subagent is being
+> built**, at Rohan's request after tonight's two fable audits both paid off
+> live. Not deck-sync-specific -- goes in `~/claude-brain/agents/` so it's
+> reusable across any of Rohan's repos. Authored by fable (drawing on what
+> just worked twice tonight: the six defect-shape taxonomy, file:line
+> grounding, frequency x cost ranking, explicit "checked and clean" reporting,
+> reusing a repo's own calibration numbers instead of inventing estimates),
+> but runs on Sonnet once built -- fable's role was one-time authorship, not
+> the agent's ongoing identity. Read-only (Read/Glob/Grep/Bash, no Edit/
+> Write) -- diagnoses, does not implement, matching the diagnose-cold/
+> implement-with-context separation this whole session was built on. Rohan's
+> explicit brief for its persona: "offended by even the slightest
+> inefficiency, but volcanic when significant" -- with the hard constraint
+> that the tone never substitutes for evidence; every strong reaction has to
+> survive being checked against the actual file line before it's written
+> down. Not yet saved to disk as of this update -- check
+> `~/claude-brain/agents/` for the actual filename next session.
 >
 > **Next session's actual priority, in order: (1) fix AF + AL + AN together** —
 > they're the same real path, all three stack on the same measured 362.2s

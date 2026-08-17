@@ -432,6 +432,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("DraftingUI_PublishOneFieldForChainRunsWetOnly", filterPattern) Then
+        r = Test_DraftingUI_PublishOneFieldForChainRunsWetOnly()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "DraftingUI_PublishOneFieldForChainRunsWetOnly", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("WorkbookBridge_RegisteredNameWinsOverASheetCalledRegister", filterPattern) Then
         r = Test_WorkbookBridge_RegisteredNameWinsOverASheetCalledRegister()
     Else
@@ -3837,6 +3846,71 @@ Private Function Test_Drafting_OnlyTickedNonEmptyDraftsPublish() As String
     wb.Close False
     xl.Quit
     Test_Drafting_OnlyTickedNonEmptyDraftsPublish = result
+End Function
+
+' FIX-LIST item AF's real fix. PublishOneFieldForChain replaced two
+' PublishDrafts calls (dry then wet) with one (wet only) -- this proves
+' that one call alone still writes the ticked-and-submitted row, still
+' reports "nothing to publish" correctly when there is nothing ticked, and
+' needs no Application.ActivePresentation to do either (the whole reason
+' this function, unlike the standalone Subs it was split out of, can be
+' driven directly here instead of only through a live chain).
+Private Function Test_DraftingUI_PublishOneFieldForChainRunsWetOnly() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, dws As Object, rws As Object, sws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set dws = wb.Worksheets(1)
+    ' PublishOneFieldForChain resolves its own sheet by name (unlike
+    ' Drafting.PublishDrafts, which takes the worksheet object directly) --
+    ' the fixture sheet must actually be named what Drafting.DraftSheetNameFor
+    ' would produce, or the lookup inside the function under test never finds
+    ' it and every call silently takes the "no drafting sheet" branch instead
+    ' of the one this test means to exercise.
+    dws.Name = Drafting.DraftSheetNameFor("ABOUT_BODY")
+    Set rws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+    Set sws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+    sws.Name = Sources.SOURCES_SHEET_NAME
+
+    ExcelOutput.CreateSheet rws, "deck-v1"
+    Dim seedVals As Object
+    Set seedVals = CreateObject("Scripting.Dictionary")
+    seedVals("ABOUT_BODY") = "old text"
+    ExcelOutput.UpsertRow rws, "P001", seedVals, "FY26Q4"
+
+    dws.Cells(Drafting.DRAFT_HEADER_ROW, 1).Value = "Project code"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_ENTITY).Value = "P001"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value = "new text via one call"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value = "Y"
+
+    Dim rep As String
+    rep = DraftingUI.PublishOneFieldForChain(wb, rws, sws, "ABOUT_BODY", "FY26Q4")
+
+    result = result & Assert(rws.Cells(2, 3).Value = "new text via one call", _
+        "a single PublishOneFieldForChain call -- no separate dry pass -- still writes the ticked row, got '" & rws.Cells(2, 3).Value & "'")
+    result = result & Assert(InStr(rep, "ABOUT_BODY") > 0, _
+        "the returned report names the field, got '" & rep & "'")
+
+    ' SAME FIELD, SAME REAL SHEET, NOTHING LEFT TO TICK -- proves
+    ' NothingToPublish still reads correctly off the WET result now that
+    ' there is no separate dry result to read it off instead. The row was
+    ' just published above, so calling again with the tick cleared is a
+    ' genuine "nothing ticked" state, not an invented one.
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value = ""
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value = ""
+
+    Dim rep2 As String
+    rep2 = DraftingUI.PublishOneFieldForChain(wb, rws, sws, "ABOUT_BODY", "FY26Q4")
+    result = result & Assert(InStr(rep2, "Nothing to publish") > 0, _
+        "a field with nothing ticked reports nothing to publish off the wet call alone, got '" & rep2 & "'")
+    result = result & Assert(rws.Cells(2, 3).Value = "new text via one call", _
+        "and the previously-published value is untouched by the no-op call, got '" & rws.Cells(2, 3).Value & "'")
+
+    wb.Close False
+    xl.Quit
+    Test_DraftingUI_PublishOneFieldForChainRunsWetOnly = result
 End Function
 
 ' --- WorkbookBridge.WorksheetForSlideType ------------------------------
