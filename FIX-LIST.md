@@ -2659,3 +2659,52 @@ way: a test written earlier the same session had its own delimiter collision --
 `"||"` used simultaneously as the intra-label line break AND the test helper's
 inter-milestone separator -- fixed by building the fixture arrays directly instead
 of through the string-splitting helper).
+
+## Added and FIXED 2026-08-19 morning — BA, a consistency audit found FieldWiring's
+## own copy of a bug already fixed elsewhere in this codebase
+
+**BA. `FieldWiring.WalkForRoles` ONLY RECURSED INTO A GROUP AND NEVER READ THE
+GROUP'S OWN ROLE TAG.** Same shape as `InjectPrimitive.WalkForRoleTag`'s
+2026-08-10 fix (item recorded in that function's own header, not lettered here at
+the time) -- a device's own role tag (`MILESTONE_TIMELINE`, stamped on the group
+shape itself, not on any child) was invisible to `RoleTagsInDeck`/
+`RolesByInstance`/`RoleTagsOnSlide`, the whole consistency-scanning family behind
+`ScanFieldWiring`. Found by a cold consistency audit asked to check whether recent
+field-type work (generic picture/bar/device routing, proven in items building up
+to `PROJECT_PHOTO`) was reflected everywhere the codebase branches on field type,
+not just where it was built. **Currently masked, not harmless**: nothing today
+queries a device's own tag through this scanner, so there is no visible symptom
+yet -- but it is the exact "device-owned column" blind spot item P3
+(`FieldWiring` had no concept of a device-owned column) was fixed for, recurring
+in a sibling walker P3 never touched. Fixed the same way as the 2026-08-10 fix:
+test the shape's own tag, then always recurse, instead of `If msoGroup Then
+recurse Else test`.
+
+Same audit found `Discovery.IsPicture` (`vba/Discovery.bas`) duplicating
+`InjectPrimitive.IsPictureShape`'s body verbatim rather than calling it, the one
+holdout after `BatchOnboardFlow.bas` already called the shared function directly.
+Deduped to the shared function; no behaviour change, just one fewer place the two
+copies could silently drift apart.
+
+## Added and FIXED 2026-08-19 morning — BB, a long-running Excel automation
+## instance found to silently refuse new workbook opens
+
+**BB. `WorkbookBridge.OpenOrGetWorkbook` HAD NO RECOVERY WHEN THE ATTACHED EXCEL
+INSTANCE SILENTLY REFUSED A NEW OPEN.** Probed live: `Workbooks.Open` on an
+`Excel.Application` attached via `GetObject` (hours of uptime, many prior
+automation calls already made against it that same session) returned Nothing with
+`Err.Number = 0` -- no error, no workbook -- against a confirmed-valid,
+confirmed-uncorrupted local `.xlsx`. A brand-new `CreateObject("Excel.Application")`
+instance opened the identical file instantly, isolating the cause to the
+long-running attached instance itself (a known-in-the-wild COM failure class: a
+long-lived automation server going quietly deaf to new requests) rather than the
+file or the pairing path. Surfaced to a person as "Could not open the paired
+workbook at: ..." from every one of `OpenOrGetWorkbook`'s callers (Preview Sync,
+Apply Approved, Set up my quarter, and more) with no indication the file itself
+was fine. Fixed with one retry against a genuinely fresh instance when the
+attached-instance open returns Nothing -- a truly bad/missing path still returns
+Nothing through the retry too, so the function's documented contract ("Returns
+Nothing if `path` doesn't exist and can't be opened") is unchanged for callers.
+No unit test added: this depends on a long-running COM server going quietly deaf,
+which the harness cannot simulate -- the live probing that found it (attached
+returns Nothing, fresh instance succeeds) is the fail-first proof.
