@@ -1,5 +1,17 @@
 # NEXT SESSION — start here
 
+> **BEFORE TRUSTING ANYTHING BELOW: run `ListAgents`.** This project gets
+> worked from multiple parallel/sequential Claude Code sessions, and this
+> doc has genuinely lagged a peer session by 5 addin builds and ~3 hours
+> before (2026-08-19 morning: this doc's newest entry named `addin139`
+> current while a peer session had already built through `addin144`). If a
+> peer session on this repo is listed, message it for a brief before doing
+> real work — see `feedback_peer_session_handoff` memory. Also cross-check
+> the actual `AutoLoad=True` build in
+> `C:\Users\rohan\AppData\Roaming\Microsoft\AddIns\` against whatever build
+> number this doc names below; the file with the highest number isn't
+> necessarily the one actually registered live.
+
 > ## 18-19 AUG, LATE EVENING (~16:30-18:20) — the milestone timeline is now
 > genuinely register-driven, proven live twice. Error 50290's diagnostic gap
 > closed at its fourth call site (a Fable-model agent built most of it from a
