@@ -1688,6 +1688,24 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "FieldWiring_DeviceOwnedColumnsAreNotUnmarkedFields", r
+    If TestMatches("FieldWiring_ScanUsesTheSharedShapeCache", filterPattern) Then
+        r = Test_FieldWiring_ScanUsesTheSharedShapeCache()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FieldWiring_ScanUsesTheSharedShapeCache", r
+    If TestMatches("FieldWiring_CachedCaseMismatchStillDetected", filterPattern) Then
+        r = Test_FieldWiring_CachedCaseMismatchStillDetected()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FieldWiring_CachedCaseMismatchStillDetected", r
+    If TestMatches("FieldWiring_MissingDetailNamesTheSlides", filterPattern) Then
+        r = Test_FieldWiring_MissingDetailNamesTheSlides()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FieldWiring_MissingDetailNamesTheSlides", r
     If TestMatches("FieldWiring_TemplateIsCheckedSeparatelyFromInstances", filterPattern) Then
         r = Test_FieldWiring_TemplateIsCheckedSeparatelyFromInstances()
     Else
@@ -12513,6 +12531,142 @@ Private Function Test_FieldWiring_DeviceOwnedColumnsAreNotUnmarkedFields() As St
 
     sld.Delete
     Test_FieldWiring_DeviceOwnedColumnsAreNotUnmarkedFields = result
+End Function
+
+' PROVES THE SHARED SHAPE CACHE IS ACTUALLY USED, not just that the scan still
+' returns a right-looking answer either way -- same trick as InjectPrimitive's
+' own Test_FastPathActuallyFires: create a scenario where a cache hit and a
+' fresh walk would DISAGREE, and confirm the cached (stale) answer wins.
+' 2026-08-19: RolesByInstance/RoleTagsOnSlide used to do a live, uncached
+' `shp.Tags("role")` walk every single call -- the same cost class
+' ShapeAddressBook.bas exists to eliminate, just never applied here.
+Private Function Test_FieldWiring_ScanUsesTheSharedShapeCache() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    ShapeAddressBook.SetActiveWorkbook wb
+
+    Dim sld As Object
+    Set sld = NewTaggedSlide("cache-scan-probe", "CSP001")
+    Dim shpA As Object
+    Set shpA = sld.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    shpA.TextFrame.TextRange.Text = "about"
+    shpA.Tags.Add "role", "ABOUT_BODY"
+
+    ' Populate the shared per-slide index via the injector's own slow path --
+    ' the same mechanism a real sync already exercises, not a test-only
+    ' shortcut. This indexes EVERY tag the walk saw, i.e. just ABOUT_BODY.
+    InjectPrimitive.FindShapeByRoleTag sld, "ABOUT_BODY"
+
+    ' Now add a SECOND field to the slide WITHOUT anything re-walking it --
+    ' the shared index does not know about this shape yet.
+    Dim shpB As Object
+    Set shpB = sld.Shapes.AddTextbox(1, 200, 40, 300, 40)
+    shpB.TextFrame.TextRange.Text = "progress"
+    shpB.Tags.Add "role", "PROGRESS_BODY"
+
+    Dim r As FieldWiringResult
+    r = FieldWiring.ScanFieldWiring("cache-scan-probe", _
+        FieldsCollection("ABOUT_BODY", "PROGRESS_BODY"), Nothing)
+
+    result = result & Assert(r.Scanned, "the scan ran")
+    result = result & Assert(r.UnmarkedCount = 1, _
+        "PROGRESS_BODY reads as unmarked -- proves the STALE shared index was consulted, not a " & _
+        "fresh walk (a fresh walk would have found shpB), got " & r.UnmarkedCount)
+    result = result & Assert(InStr(r.Unmarked, "PROGRESS_BODY") > 0, _
+        "and it is specifically PROGRESS_BODY, got '" & r.Unmarked & "'")
+
+    sld.Delete
+    wb.Close False
+    xl.Quit
+    ShapeAddressBook.SetActiveWorkbook Nothing
+
+    Test_FieldWiring_ScanUsesTheSharedShapeCache = result
+End Function
+
+' THE ADAPTER BETWEEN THE TWO CACHES' KEY CONVENTIONS MUST PRESERVE CASE.
+' ShapeAddressBook's per-slide index keys by the tag's OWN case; this
+' module's dictionaries key by UPPERCASE with the original case as the
+' value, because the case-mismatch check (this project's "defining defect,
+' arriving from the check rather than the writer") compares against the
+' ORIGINAL case. A cache hit that lost or normalised the case would make
+' every near-miss invisible the moment the cache warmed up -- a correctness
+' regression hiding behind a performance fix.
+Private Function Test_FieldWiring_CachedCaseMismatchStillDetected() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    ShapeAddressBook.SetActiveWorkbook wb
+
+    Dim sld As Object
+    Set sld = NewTaggedSlide("cache-case-probe", "CCP001")
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    shp.TextFrame.TextRange.Text = "progress"
+    ' Deliberately wrong case -- matches the register's PROJECT_PROGRESS
+    ' near-miss this project has already been burned by once.
+    shp.Tags.Add "role", "Project_Progress"
+
+    ' Populate the shared index via a real walk first (same as the cache
+    ' test above), so THIS scan reads the cached path, not a fresh walk.
+    InjectPrimitive.FindShapeByRoleTag sld, "Project_Progress"
+
+    Dim r As FieldWiringResult
+    r = FieldWiring.ScanFieldWiring("cache-case-probe", _
+        FieldsCollection("PROJECT_PROGRESS"), Nothing)
+
+    result = result & Assert(r.CaseMismatchCount = 1, _
+        "the case mismatch is still caught through a cache hit, got " & r.CaseMismatchCount)
+    result = result & Assert(InStr(r.CaseMismatch, "Project_Progress") > 0, _
+        "and the ORIGINAL case survives the cache round-trip, got '" & r.CaseMismatch & "'")
+
+    sld.Delete
+    wb.Close False
+    xl.Quit
+    ShapeAddressBook.SetActiveWorkbook Nothing
+
+    Test_FieldWiring_CachedCaseMismatchStillDetected = result
+End Function
+
+' NAMES THE SLIDES, NOT JUST THE FIELD. Rohan, 2026-08-19: "if the excel
+' register is not complete as per slide type we actually get a notification
+' for which field and which slides" -- this is the data half of that ask;
+' RibbonUI's modal is the delivery half.
+Private Function Test_FieldWiring_MissingDetailNamesTheSlides() As String
+    Dim result As String
+
+    Dim a As Object, b As Object
+    Set a = NewTaggedSlide("detail-probe", "DP001")
+    Set b = NewTaggedSlide("detail-probe", "DP002")
+
+    Dim s1 As Object
+    Set s1 = a.Shapes.AddTextbox(1, 40, 40, 200, 30)
+    s1.Tags.Add "role", "PROBLEM_BODY"
+    ' DP002 deliberately carries nothing -- the partial-coverage case.
+
+    Dim r As FieldWiringResult
+    r = FieldWiring.ScanFieldWiring("detail-probe", FieldsCollection("PROBLEM_BODY"), Nothing)
+
+    result = result & Assert(r.PartialCount = 1, "PROBLEM_BODY is partially covered, got " & r.PartialCount)
+    result = result & Assert(InStr(r.MissingDetail, "PROBLEM_BODY missing on") > 0, _
+        "names the field, got '" & r.MissingDetail & "'")
+    result = result & Assert(InStr(r.MissingDetail, "DP002") > 0, _
+        "names the SLIDE missing it, got '" & r.MissingDetail & "'")
+    result = result & Assert(InStr(r.MissingDetail, "DP001") = 0, _
+        "does not name the slide that already carries it, got '" & r.MissingDetail & "'")
+    result = result & Assert(InStr(FieldWiring.BlockingText(r), "DP002") > 0, _
+        "BlockingText (what the modal shows) carries the slide detail too, got '" & _
+        FieldWiring.BlockingText(r) & "'")
+
+    a.Delete
+    b.Delete
+    Test_FieldWiring_MissingDetailNamesTheSlides = result
 End Function
 
 ' THE ONE THAT MATTERS FOR NEW SLIDES. GatherInstances excludes the template by

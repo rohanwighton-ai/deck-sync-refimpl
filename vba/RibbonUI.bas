@@ -1242,10 +1242,44 @@ Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) A
         End If
     Next i
 
-    ' Reported, not prompted. The Run Log is where a person looks when they
-    ' want the detail; a modal is where they look when they want to get on.
+    ' STILL LOGGED IN FULL -- the Run Log is where the detail persists past
+    ' the moment the modal below gets dismissed.
     If unwiredNote <> "" And Not wb Is Nothing Then
         WorkbookBridge.WriteRunLog wb, "Fields with nothing to write into", unwiredNote
+    End If
+
+    ' A MODAL HERE AGAIN, DELIBERATELY REVERSING THE 2026-08-14 REMOVAL --
+    ' see that date's comment, still directly above this function's own
+    ' definition, for the full reasoning that removed it.
+    '
+    ' That removal was correct for what it fixed: the modal fired on EVERY
+    ' press with the SAME 21 names (MS1_LABEL..MS7_DONE), which were never
+    ' real gaps -- they are the milestone device's internal parts, asked
+    ' about individually when they are addressed as one device. A dialog
+    ' whose answer never varies is a toll, not a decision, and it trains the
+    ' click-through that eventually gets paid on the one press that matters.
+    '
+    ' THAT FALSE-POSITIVE SOURCE IS NOW FIXED, not just avoided. ScanFieldWiring
+    ' buckets device-owned columns into DeviceOwnedCount and excludes them from
+    ' Unmarked/TemplateUnmarked entirely (MilestoneDevice.IsColumnForThisDevice's
+    ' gate, above) -- confirmed by reading the function, not assumed by
+    ' analogy. So `unwiredNote` reaching here is a genuine structural gap
+    ' (a real field the register expects that the template or some slides do
+    ' not carry), not device noise -- the exact distinction the killed
+    ' modal never made. Rohan, 2026-08-19: "if the excel register is not
+    ' complete as per slide type we actually get a notification for which
+    ' field and which slides."
+    '
+    ' ONE MODAL FOR EVERYTHING, not one per slide type -- `unwiredNote`
+    ' already accumulates across the whole loop above before anything is
+    ' shown, same reasoning BlockingText's own per-type labelling relies on.
+    ' Still never blocks: OfferMarkingForUnwiredFields returns True either
+    ' way, same as before this change -- this is a notification, not a gate.
+    If unwiredNote <> "" Then
+        MsgBox "The register is not fully wired for this deck:" & vbCrLf & vbCrLf & _
+            unwiredNote & vbCrLf & _
+            "Full detail is also in the Run Log. Sync will continue -- this is a notice, not a block.", _
+            vbExclamation, TITLE
     End If
 End Function
 

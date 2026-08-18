@@ -90,6 +90,7 @@ Public Type FieldWiringResult
     CaseMismatchCount As Long
     Coverage As String          ' "FIELD on X of Y", only when X < Y
     PartialCount As Long
+    MissingDetail As String     ' "FIELD missing on: key1, key2" per partial field
     Wired As Long               ' register fields that resolve on some slide
     DeviceOwnedCount As Long    ' register fields owned by a device (e.g.
                                  ' MilestoneDevice's MS1_LABEL..MSn_DONE) --
@@ -258,8 +259,7 @@ Public Function RolesByInstance(slideType As String, ByRef seen As Object) As Ob
         inst = Resolve.ResolveSlideInstance(instances(i))
 
         Dim rs As Object
-        Set rs = CreateObject("Scripting.Dictionary")
-        WalkForRoles instances(i).Shapes, rs
+        Set rs = RolesForSlideCached(instances(i))
 
         Dim k As Variant
         For Each k In rs.Keys
@@ -284,14 +284,75 @@ End Function
 ' Every distinct `role` tag on ONE slide. Used for the template, which
 ' GatherInstances deliberately excludes.
 Public Function RoleTagsOnSlide(sld As Object) As Object
-    Dim seen As Object
-    Set seen = CreateObject("Scripting.Dictionary")
     If sld Is Nothing Then
         Set RoleTagsOnSlide = Nothing
         Exit Function
     End If
-    WalkForRoles sld.Shapes, seen
-    Set RoleTagsOnSlide = seen
+    Set RoleTagsOnSlide = RolesForSlideCached(sld)
+End Function
+
+' CACHE-FIRST, SAME SHARED INDEX InjectPrimitive.FindShapeByRoleTag ALREADY
+' BUILDS AND READS -- ShapeAddressBook.bas's own header. Before this,
+' RolesByInstance/RoleTagsOnSlide did a live, uncached `shp.Tags("role")`
+' walk of every shape on every slide of a type, every single call -- and
+' this scan runs from "1. Set up my quarter"'s own chain
+' (OfferMarkingForUnwiredFields), which a person presses every session, not
+' once ever. Measured live 2026-08-19: on a 44-slide deck this is the exact
+' cost class ShapeAddressBook exists to eliminate (items W/Y/AT), just never
+' given the same treatment here.
+'
+' ADAPTED, NOT SHARED DIRECTLY -- the two caches disagree on shape.
+' ShapeAddressBook.SlideTagsFor keys by the tag's OWN case (built from
+' InjectPrimitive.WalkForRoleTag's `tagsPresent(roleVal) = True`, plus a
+' NAME-based entry for an untagged device group found via SlotCount's
+' fallback -- see that function's header). This module's own `seen`/`rs`
+' dictionaries key by UPPERCASE, value the original case, because
+' CarriesField queries by `UCase(fieldName)` and the case-mismatch check
+' (line ~370) needs the original case to compare against. Converting is one
+' cheap in-memory pass over a per-slide set (a handful of entries), not a
+' second COM walk -- the whole point.
+'
+' Cache MISS still does the exact same full walk as before (WalkForRoles),
+' then records the result so the NEXT call -- by this scan, or by the
+' injector's own FindShapeByRoleTag -- takes the fast path instead. Shared
+' cache, shared benefit, same self-healing contract ShapeAddressBook
+' documents: a stale or wrong entry is never trusted blindly by the
+' injector side, and this side only ever reads what a real walk produced.
+Private Function RolesForSlideCached(sld As Object) As Object
+    Dim result As Object
+    Set result = CreateObject("Scripting.Dictionary")
+
+    Dim slideKey As String
+    slideKey = ShapeAddressBook.SlideKeyFor(sld)
+
+    Dim cached As Object
+    If slideKey <> "" Then Set cached = ShapeAddressBook.SlideTagsFor(slideKey)
+
+    If Not cached Is Nothing Then
+        Dim ck As Variant
+        For Each ck In cached.Keys
+            Dim original As String
+            original = CStr(ck)
+            result(UCase(Trim(original))) = original
+        Next ck
+        Set RolesForSlideCached = result
+        Exit Function
+    End If
+
+    ' MISS -- the existing, correct, ambiguity-checked walk, unchanged.
+    WalkForRoles sld.Shapes, result
+
+    If slideKey <> "" Then
+        Dim toCache As Object
+        Set toCache = CreateObject("Scripting.Dictionary")
+        Dim rk As Variant
+        For Each rk In result.Keys
+            toCache(CStr(result(rk))) = True
+        Next rk
+        ShapeAddressBook.RecordSlideTags slideKey, toCache
+    End If
+
+    Set RolesForSlideCached = result
 End Function
 
 ' `fields` is the register's own field collection (ExcelOutput.Sheet.Fields), so
@@ -344,10 +405,17 @@ Public Function ScanFieldWiring(slideType As String, fields As Collection, _
 
                 Dim carriers As Long
                 carriers = 0
+                Dim missingKeys As String
+                missingKeys = ""
 
                 Dim k As Variant
                 For Each k In rolesByKey.Keys
-                    If CarriesField(rolesByKey(k), fieldName) Then carriers = carriers + 1
+                    If CarriesField(rolesByKey(k), fieldName) Then
+                        carriers = carriers + 1
+                    Else
+                        If missingKeys <> "" Then missingKeys = missingKeys & ", "
+                        missingKeys = missingKeys & CStr(k)
+                    End If
                 Next k
 
                 ' THE NEAR-MISS. `PROJECT_PROGRESS` on the register against a
@@ -391,6 +459,15 @@ Public Function ScanFieldWiring(slideType As String, fields As Collection, _
                     If result.Coverage <> "" Then result.Coverage = result.Coverage & ", "
                     result.Coverage = result.Coverage & CStr(f) & " on " & carriers & _
                         " of " & result.SlidesScanned
+
+                    ' NAMES THE SLIDES, NOT JUST THE COUNT -- Rohan, 2026-08-19:
+                    ' "which field and which slides", one consolidated modal.
+                    ' `missingKeys` (built above, in the same pass, no second
+                    ' walk) lists the instance keys that do NOT carry this
+                    ' field -- the actionable direction ("go fix these"), not
+                    ' the larger set that already has it.
+                    If result.MissingDetail <> "" Then result.MissingDetail = result.MissingDetail & vbCrLf
+                    result.MissingDetail = result.MissingDetail & CStr(f) & " missing on: " & missingKeys
                 End If
 
                 If result.TemplateScanned Then
@@ -526,6 +603,15 @@ Public Function BlockingText(r As FieldWiringResult) As String
     If r.OrphanCount > 0 Then
         If s <> "" Then s = s & vbCrLf
         s = s & r.OrphanCount & " progress bar part(s) with no bar: " & r.OrphanTracks
+    End If
+    ' NAMES THE SLIDES for the one case where naming them is actionable --
+    ' see MissingDetail's own header comment. Unmarked/TemplateUnmarked
+    ' don't get the same treatment: "no slide carries this" already implies
+    ' "every slide", and "missing from the template" already names the one
+    ' place that matters.
+    If r.PartialCount > 0 And r.MissingDetail <> "" Then
+        If s <> "" Then s = s & vbCrLf
+        s = s & r.MissingDetail
     End If
     BlockingText = s
 End Function
