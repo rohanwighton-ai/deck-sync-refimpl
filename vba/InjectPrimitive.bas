@@ -986,7 +986,18 @@ End Sub
 
 Public Function IsPictureShape(shp As Object) As Boolean
     On Error Resume Next
-    IsPictureShape = (shp.Type = msoPicture) Or (shp.Type = msoLinkedPicture)
+    ' msoGraphic (28) COVERS SVG/ICON-INSERTED SHAPES, NOT JUST RASTER
+    ' PICTURES. Probed live 2026-08-19: a shape inserted as an SVG file
+    ' reports shp.Type = 28, not msoPicture (13) or msoLinkedPicture (11) --
+    ' PowerPoint auto-names it "Graphic N" instead of "Picture N" for the
+    ' same reason (confirmed against a real deck, two SVG-sourced shapes vs.
+    ' two PNG-sourced ones on the same slide, same row). Without this, a
+    ' picture field backed by an SVG source is invisible to the whole
+    ' picture pipeline -- not just at write time, but at DISCOVERY and
+    ' CHANGE-SCAN time too, since both call this function (directly, or via
+    ' InjectorFor). It silently drops out of the review queue instead of
+    ' erroring, which is what made it look like nothing was wrong.
+    IsPictureShape = (shp.Type = msoPicture) Or (shp.Type = msoLinkedPicture) Or (shp.Type = msoGraphic)
     On Error GoTo 0
 End Function
 

@@ -244,7 +244,10 @@ Private Function IsCandidateLeafType(shp As Object) As Boolean
     Select Case shp.Type
         Case msoAutoShape, msoTextBox, msoPlaceholder, msoFreeform
             IsCandidateLeafType = True
-        Case msoPicture, msoLinkedPicture
+        Case msoPicture, msoLinkedPicture, msoGraphic
+            ' msoGraphic (28) is an SVG/icon-inserted shape, not a raster
+            ' picture -- same gap, same fix, as InjectPrimitive.
+            ' IsPictureShape's header (probed live 2026-08-19).
             IsCandidateLeafType = True
         Case Else
             IsCandidateLeafType = False
