@@ -2738,3 +2738,49 @@ changes instead of 1) and "Put it on the slides" (3 written, 0 failed, 0
 stale). Verified from the saved file's own bytes, not the dialog: all five
 picture fields on `3_P001` (`PROJECT_PHOTO`, `DELIVERABLE1..4_PHOTO`) now
 carry a correct `PICSRC` tag matching their register source ID.
+
+## Added 2026-08-19 morning — BD, a real field-coverage notification (was a
+## one-off diagnostic, never a feature), and the uncached scan underneath it
+
+**BD. THE FIELD-COVERAGE QUESTION ("is the register complete for this
+slide type") HAD NO REAL ANSWER -- Rohan asked directly, after the BC
+incident, why the 2026-08-16 "Field Coverage Matrix" (`CHECKLIST.md`) was
+never real code.** Root-caused from the actual commit (`58b9631`): it
+touched zero lines outside `CHECKLIST.md`, built by hand into a throwaway
+test workbook via ad hoc PowerShell/COM, never a VBA function, button, or
+test. The tested, shipped mechanism that sounds similar (`cd9a6a6`,
+`FieldWiring.bas`'s per-slide coverage counting) answers a different
+question -- breadth across instances, not completeness across fields for
+one type.
+
+Two real changes, not one:
+
+1. **`RolesByInstance`/`RoleTagsOnSlide` were doing a live, uncached
+`shp.Tags("role")` walk of every shape on every slide of a type, on every
+single call** -- and this scan runs from "1. Set up my quarter," pressed
+every session, not once ever. The exact cost class `ShapeAddressBook.bas`
+exists to eliminate (items W, Y, AT), never applied here. Fixed: both now
+route through `ShapeAddressBook`'s shared per-slide tag index first,
+falling back to the existing full walk only on a genuine miss and
+populating the cache afterward -- shared with, and shared benefit from,
+`InjectPrimitive.FindShapeByRoleTag`'s own fast path. Proven the cache
+path is actually taken, not just "still correct either way": a scenario
+where a stale cache and a fresh walk would disagree, confirming the stale
+answer wins (`Test_FieldWiring_ScanUsesTheSharedShapeCache`).
+
+2. **A real, consolidated notification**, reversing the 2026-08-14 modal
+removal deliberately -- that removal was correct for what it fixed
+(`MS1_LABEL`..`MS7_DONE` false-positiving on every press, since a device's
+internals were being asked about individually). That source is now fixed
+(`MilestoneDevice.IsColumnForThisDevice` excludes them entirely), so
+`RibbonUI.OfferMarkingForUnwiredFields` now shows ONE `MsgBox` across every
+registered slide type, naming both the field AND (for partial coverage)
+the specific slide instance keys missing it
+(`FieldWiringResult.MissingDetail`, new). Never blocks -- still a notice,
+sync continues either way.
+
+Full suite run for real (not just compiled) via `run_vba_tests.ps1`:
+static checks clean, compile clean, **255 passed / 0 failed / 0 skipped**.
+Three new tests, cache-is-used and case-preservation both fail-first
+proven the same way `FastPathActuallyFires` was. **Not yet deployed to a
+live add-in build** -- `addin145` predates this commit.
