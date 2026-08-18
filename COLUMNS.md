@@ -40,6 +40,13 @@ and the sheet can.
 | `INDUSTRY_CASH`, `SAAFE_CASH`, `IN_KIND`, `TOTAL_VALUE` | Rohan | no |
 | team ×3 (role + name) | Rohan | no |
 | `DELIVERABLES_BODY` | Rohan | no |
+| `PROJECT_PHOTO` | Sources citation (picture) | rarely |
+| `DELIVERABLE1_PHOTO`..`DELIVERABLE4_PHOTO` | Sources citation (picture) | **yes**, as new outputs appear |
+
+> **2026-08-19: this table was already stale before tonight** — `PROJECT_PHOTO`
+> (added `d013b64`, 2026-08-18) was missing entirely. Added both rows now, but
+> per this file's own header, Field Spec is the authoritative list once
+> populated — don't trust this table over the live sheet.
 
 ## Derived — never a column
 

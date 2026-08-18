@@ -482,6 +482,19 @@ sheets, which predate today and were checked but not trusted as current.
       untagged by design-so-far, so `MakeTemplateFrom`/sync cannot touch
       them. This is why pictures didn't come across — a pre-existing,
       already-named gap that today's cloning made visible, not a regression.
+- [x] **RESOLVED 2026-08-19: "three" was undercounting.** All 45 slides in
+      the real deck checked directly — the count is 0-4+ per project, not a
+      fixed three; `3_P001` itself (the prototype this note is about) has
+      **four**. Built as `DELIVERABLE1_PHOTO..DELIVERABLE4_PHOTO` (fixed
+      max slots, matching `3_P001`'s own real count), tagged, wired
+      (register columns, Sources rows, Field Spec rows), and **proven live
+      end to end** on a copy of the real deck/register — see FIX-LIST items
+      BA-BC. Two of the four turned out to be SVG-inserted shapes
+      (`shp.Type = msoGraphic`, not `msoPicture`), which `IsPictureShape`
+      didn't recognise at all -- a second real defect found doing this,
+      also fixed (BC). **Not yet applied to the real deck/register** — the
+      copy this was proven against is
+      `C:\Users\rohan\deck-sync-test-deliverables\`, not the live files.
 - [ ] **Not yet resolved:** whether `PROJECT_PROGRESS` actually routes
       through the bar injector (`InjectProgressVia`) or the plain-text one
       on these templates. `InjectorFor()` auto-detects this from the shape's

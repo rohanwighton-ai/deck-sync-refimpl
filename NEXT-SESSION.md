@@ -12,15 +12,15 @@
 > number this doc names below; the file with the highest number isn't
 > necessarily the one actually registered live.
 
-> ## 19 AUG, EARLY MORNING (~06:00-08:00) — deliverable-picture-field
-> mechanism built and verified on a COPY (not yet live), two real
-> consistency defects found and fixed, one real live-Office-automation
-> defect found and fixed. **STATUS: CURRENT, supersedes every block below.**
+> ## 19 AUG, EARLY MORNING (~06:00-08:30) — deliverable-picture-field
+> mechanism built and PROVEN LIVE (on a copy, not yet applied to the real
+> deck), three real defects found and fixed, `addin145` now the registered
+> live build. **STATUS: CURRENT, supersedes every block below.**
 >
-> **DELIVERABLE1_PHOTO..DELIVERABLE4_PHOTO, NOT YET APPLIED TO THE LIVE
-> DECK/REGISTER.** Same mechanism as `PROJECT_PHOTO` (`d013b64`): four new
-> picture fields for the "PROJECT DELIVERABLES" card row on `3_P001`. Built
-> and verified entirely on copies at
+> **DELIVERABLE1_PHOTO..DELIVERABLE4_PHOTO, PROVEN LIVE END TO END, NOT YET
+> APPLIED TO THE REAL DECK/REGISTER.** Same mechanism as `PROJECT_PHOTO`
+> (`d013b64`): four new picture fields for the "PROJECT DELIVERABLES" card
+> row on `3_P001`. Built entirely on copies at
 > `C:\Users\rohan\deck-sync-test-deliverables\` (deck, register, extracted
 > card images) — tagged the 4 real shapes (`Graphic 247`/`59`, `Picture
 > 172`/`188`, left-to-right), added the register columns, Sources rows
@@ -28,34 +28,55 @@
 > embedded card content — these ARE the project's real deliverable cards,
 > not placeholders), and Field Spec rows (`Kind=Static`, `Behaviour=Fit
 > inside` per Rohan's own "thumbnails sit uncropped" note, `Renders
-> as=Picture`). Everything verified from the saved copy's own bytes, not
-> COM readback. **The live sync has NOT been proven yet** — blocked on item
-> BB below (now fixed in code, not yet re-tested live). Applying this to
-> the real deck/register is still a manual step, not done.
+> as=Picture`). **Genuinely proven live**, not just built: pressed "Review
+> changes" and "Put it on the slides" for real, through the actual add-in
+> UI, and verified from the saved deck's own bytes afterward (not the
+> dialog) — all five picture fields on `3_P001` (`PROJECT_PHOTO` +
+> `DELIVERABLE1..4_PHOTO`) now carry a correct `PICSRC` tag matching their
+> register source ID. **Applying this to the real deck/register is still a
+> manual step, not done.**
 >
-> No new injector code was needed — `InjectorFor`/`InjectPictureField`
-> are already fully generic (confirmed, not assumed, by reading the
-> router). Real count found across the live deck: the "3 cards" this doc's
-> `CHECKLIST.md` entry named was one reference slide, not the true shape —
-> the actual spread across all 45 slides is 0-4 cards per project,
-> variable. Rohan chose fixed max slots (4, matching `3_P001`'s own real
-> count) over a repeating-device model, same tradeoff as `MS1..MS7`.
+> No new injector code was needed for the mechanism itself —
+> `InjectorFor`/`InjectPictureField` are already fully generic (confirmed,
+> not assumed, by reading the router). Real count found across the live
+> deck: the "3 cards" this doc's `CHECKLIST.md` entry named was one
+> reference slide, not the true shape — the actual spread across all 45
+> slides is 0-4 cards per project, variable. Rohan chose fixed max slots
+> (4, matching `3_P001`'s own real count) over a repeating-device model,
+> same tradeoff as `MS1..MS7`.
 >
-> **FIX-LIST items BA and BB, both real, full detail there:** a
+> **FIX-LIST items BA, BB, and BC — all real, full detail there.** A
 > consistency/opportunity audit (asked "does discovery/marking recognise
 > the field types injection now handles, everywhere it needs to") found
 > `FieldWiring.WalkForRoles` repeating the exact group-role-tag blind spot
 > `InjectPrimitive.WalkForRoleTag` was fixed for on 2026-08-10 — masked
 > today, latent for the same reason the original was real (BA, `3dd36eb`).
 > Same commit deduped `Discovery.IsPicture` into the shared
-> `InjectPrimitive.IsPictureShape`. Separately, proving the deliverable
-> fields live surfaced a genuine Office-automation defect:
-> `WorkbookBridge.OpenOrGetWorkbook` had no recovery when a long-running
-> attached Excel instance silently returned Nothing from `Workbooks.Open`
-> with no error — fixed with one retry against a fresh instance (BB,
-> `4462e79`). An earlier waste-hound nit from `/ultrareview` was also fixed
-> the same night: `WalkForRoleTag` was double-reading `shp.Tags("role")`
-> per shape on the hot walk (`8d7b140`).
+> `InjectPrimitive.IsPictureShape`. Proving the deliverable fields live
+> surfaced two more genuine defects: `WorkbookBridge.OpenOrGetWorkbook` had
+> no recovery when a long-running attached Excel instance silently returned
+> Nothing from `Workbooks.Open` with no error — fixed with one retry
+> against a fresh instance (BB, `4462e79`). Then, testing THAT fix, two of
+> the four deliverable fields (the SVG-sourced ones) never even appeared in
+> the review queue — `IsPictureShape`/`IsCandidateLeafType` only recognised
+> `msoPicture`/`msoLinkedPicture`, missing `msoGraphic` (the type PowerPoint
+> reports for SVG/icon-inserted shapes) entirely, so they were invisible to
+> the whole picture pipeline (BC, `6195590`). An earlier waste-hound nit
+> from `/ultrareview` was also fixed the same night: `WalkForRoleTag` was
+> double-reading `shp.Tags("role")` per shape on the hot walk (`8d7b140`).
+>
+> **`addin145` IS NOW THE REGISTERED LIVE BUILD, `addin139` DISABLED.**
+> Rebuilt via `build_ppam.ps1` (stages modules, but the actual File > Save
+> As > PowerPoint Add-in click is a real manual step, confirmed still true)
+> to carry the BC fix, saved to `OneDrive\Claude\` (confirmed, per
+> `AGENTS.md`'s documented gotcha, NOT the AddIns folder by default), moved
+> to `AppData\Roaming\Microsoft\AddIns\`, registered `AddIns.Add` +
+> `Loaded=True` + `AutoLoad=True`. `addin139`'s `AutoLoad` and `Loaded` were
+> both explicitly set False first, per `AGENTS.md`'s documented "duplicate
+> AutoLoad hazard." **This is a real change to Rohan's actual PowerPoint
+> environment, not just the test copy** — the next session should confirm
+> `addin145` is still the one loaded before assuming anything about current
+> behaviour.
 >
 > **MULTI-SESSION STALENESS, THE THING THIS DOC'S OWN HEADER NOW WARNS
 > ABOUT.** This doc's previous top block (18-19 Aug, below) named `addin139`
@@ -63,20 +84,19 @@
 > by the time this block was written — a second, parallel Claude Code
 > session had built `addin140` through `addin144` (19:18-22:28 the prior
 > night) without folding any of it back in here. Cross-session messaging
-> confirmed: repos match exactly (both at `278d7df` before this session's
-> further commits, nothing uncommitted), but `addin139` is still the only
-> build confirmed `AutoLoad=True` — 140-144 exist as files, not confirmed
-> as the actually-registered live add-in. Whoever picks this up next should
-> verify that before trusting either number. See `feedback_peer_session_
+> confirmed: repos match exactly, nothing uncommitted. Those builds were
+> never registered `AutoLoad` (confirmed via `Application.AddIns` — they
+> existed only as files), so `addin145` (built fresh this session, from
+> current `main`) supersedes them regardless. See `feedback_peer_session_
 > handoff` memory for the practice this prompted.
 >
-> **STILL NOT DONE, CARRIED FORWARD:** proving the deliverable-field sync
-> live (Office was closed to reset the stuck Excel automation state; not
-> yet re-attempted as of this entry). And unrelated to tonight's work but
-> flagged by a `deck-sync-pm` audit this same session and still true:
-> **Scenario 1's unaided close is the actual project priority, not more
-> field coverage** — review the Q1F27 roll-forward, tick APPROVE, publish,
-> with no Claude in the loop. Open since 15 Aug.
+> **STILL NOT DONE, CARRIED FORWARD:** applying the deliverable-field
+> tagging/register/Sources/Field Spec work to the REAL deck/register (only
+> proven on the copy so far). And unrelated to tonight's work but flagged
+> by a `deck-sync-pm` audit this same session and still true: **Scenario
+> 1's unaided close is the actual project priority, not more field
+> coverage** — review the Q1F27 roll-forward, tick APPROVE, publish, with
+> no Claude in the loop. Open since 15 Aug.
 
 > ## 18-19 AUG, LATE EVENING (~16:30-18:20) — the milestone timeline is now
 > genuinely register-driven, proven live twice. Error 50290's diagnostic gap

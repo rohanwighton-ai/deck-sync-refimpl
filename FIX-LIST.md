@@ -2708,3 +2708,33 @@ Nothing if `path` doesn't exist and can't be opened") is unchanged for callers.
 No unit test added: this depends on a long-running COM server going quietly deaf,
 which the harness cannot simulate -- the live probing that found it (attached
 returns Nothing, fresh instance succeeds) is the fail-first proof.
+
+## Added and FIXED 2026-08-19 morning — BC, SVG-inserted picture shapes were
+## invisible to the entire picture pipeline, found proving items BA/BB's fix live
+
+**BC. `IsPictureShape` (`InjectPrimitive.bas`) AND `IsCandidateLeafType`
+(`Discovery.bas`) ONLY RECOGNISED `msoPicture` AND `msoLinkedPicture`,
+MISSING `msoGraphic` ENTIRELY.** Building the four `DELIVERABLE1_PHOTO..
+DELIVERABLE4_PHOTO` fields (see `CHECKLIST.md`'s "RESOLVED 2026-08-19" entry)
+put two PNG-sourced and two SVG-sourced picture shapes on the same slide, same
+row, tagged the identical way. The two PNGs worked correctly end to end on the
+first live test. **The two SVGs never even appeared in the review queue --
+no error, nothing wrong-looking, just silent absence.** Probed live: PowerPoint
+reports `shp.Type = 13` (`msoPicture`) for the PNG shapes and `shp.Type = 28`
+(`msoGraphic`) for the SVG ones -- confirmed against the real shapes, not
+documentation, since it auto-names SVG-inserted shapes "Graphic N" instead of
+"Picture N" for the same underlying reason. `IsPictureShape` backs both
+`InjectorFor` (routing) and the review-queue's change-detection scan, so a
+shape this function doesn't recognise as a picture is invisible everywhere,
+not just at write time -- and `Discovery.IsCandidateLeafType`'s matching
+allowlist meant an SVG-backed field could never even be offered as a taggable
+candidate via "Tag fields on this slide" either. Fixed by adding `msoGraphic`
+to both checks.
+
+**Proven live, not just compiled**: rebuilt the `.ppam` (`build_ppam.ps1`,
+addin145), registered it `AutoLoad` in place of the stale `addin139`,
+reopened the deck fresh, re-ran "Review changes" (now correctly queued 3
+changes instead of 1) and "Put it on the slides" (3 written, 0 failed, 0
+stale). Verified from the saved file's own bytes, not the dialog: all five
+picture fields on `3_P001` (`PROJECT_PHOTO`, `DELIVERABLE1..4_PHOTO`) now
+carry a correct `PICSRC` tag matching their register source ID.
