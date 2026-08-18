@@ -748,10 +748,22 @@ Private Function WriteText(shp As Object, value As String) As Boolean
         WriteText = False     ' the old code silently no-op'd here. This is that case, named.
         Exit Function
     End If
+
+    ' SAME LINE-BREAK CONVENTION InjectPrimitive's own text writer already uses
+    ' (InjectPrimitive.bas:38, LINE_BREAK_DELIMITER = "||") -- this module's own
+    ' header says a milestone label is a register column like any other
+    ' ("these are FIELDS, not a new kind of thing"), so a two-line label needs
+    ' the same conversion a two-line plain-text field already gets. Missing
+    ' here, "||" showed up as two literal pipe characters on a real slide
+    ' instead of a line break -- found live 2026-08-19 comparing a genuine
+    ' two-line milestone against Rohan's real original timeline.
+    Dim converted As String
+    converted = Replace(value, InjectPrimitive.LINE_BREAK_DELIMITER, vbCr)
+
     On Error Resume Next
-    shp.TextFrame.TextRange.text = value
+    shp.TextFrame.TextRange.text = converted
     Dim landed As Boolean
-    landed = (shp.TextFrame.TextRange.text = value)
+    landed = (shp.TextFrame.TextRange.text = converted)
     On Error GoTo 0
     WriteText = landed
 End Function

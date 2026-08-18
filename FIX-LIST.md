@@ -2483,3 +2483,179 @@ the number.
 "would be written" when that role's register cell is empty and the shape's text is
 non-empty — the same two tests `HarvestSlide` applies — instead of only counting
 already-tagged fields.
+
+### AV. FIXED 2026-08-19 — `PairingProblem` existed and was checked in exactly one place
+
+The workbook↔deck identity check (`DeckRegistry.PairingProblem`, stamped by
+`StampPairing`) was built 2026-08-14 specifically to close the "wrong register" risk —
+but the only caller was `DraftingUI.bas`'s AI-drafting publish path. Every other place
+that opens the register and then writes real content never asked whether the workbook
+it just opened actually belongs to this deck: `DraftingUI.Resolve` (the shared resolver
+behind "1. Set up my quarter" and three other callers), `RibbonUI.BuildAllQueuesCore`
+("Review changes" and half of "Put it on the slides"), `RibbonUI.ApplyApprovedCore`
+(the actual slide-write step — the highest-stakes gap), `RibbonUI.OfferHarvestForSelectedSlides`
+(the reverse direction, slide→register), `AdoptFlow.PromptAdoptExistingSlides`
+(onboarding writes), and both branches of `BatchOnboardFlow.ResolveDataWorkbook`
+(silently reusing an existing path, and choosing a new one during onboarding — this
+second branch also never completed the pairing: it set the deck's half of the pairing
+but never stamped the workbook's, so a deck onboarded this way looked "unstamped"
+forever). `DiscoverUI.DiscoverFields`'s common case (an already-paired deck) was also
+uncovered.
+
+**Fix:** added the identical `PairingProblem` check to all eight sites, matching the
+existing pattern exactly. `BatchOnboardFlow`'s new-workbook branch also gained a check
+*before* stamping — without it, choosing an existing file there would have silently
+overwritten that file's identity with this deck's, hijacking someone else's register.
+`RibbonUI.ResolveSyncContext` (found to have zero callers — see item AX's sibling note
+below) was fixed too, for consistency, even though nothing currently reaches it.
+
+Full suite 246/246 across all eight edits. `ResolveSyncContext` and `BuildAllQueuesCore`/
+`ApplyApprovedCore` still carry independent, duplicated copies of the same
+resolve-and-check sequence rather than sharing one — the exact "two copies of a guard
+drift" shape `WarnOnDuplicateKeys` was already extracted to fix once. Not consolidated
+this pass; flagged as a real follow-up, not done silently.
+
+### AW. FIXED 2026-08-19 — `SaveWorkbookVerified` reported failure for a register with nothing pending, live, blocking
+
+`WorkbookBridge.SaveWorkbookVerified` never had the "nothing pending is not a failure"
+fix `DeckRegistry.SaveDeckVerified` got on 2026-08-14 for the identical defect: a plain
+`wb.Save()` on a workbook with nothing to save legitimately does not move the file's
+mtime, and without a `wasClean` check that read as "THE WORKBOOK WAS NOT SAVED" — hit
+live, mid-session, blocking a real Apply Approved run on the real register. Ported
+`SaveDeckVerified`'s exact fix: capture `wb.Saved` before attempting the save, exit
+clean if there was nothing pending, and only escalate to a forced full rewrite
+(`wb.SaveAs path`, no format arg) when a real change genuinely didn't reach disk.
+
+**A second, real bug found applying the same pattern**: the forced-rewrite escalation
+needed `wb.Application.DisplayAlerts = False` around the `SaveAs` call, which
+`SaveDeckVerified`'s identical-looking PowerPoint version never needed — confirmed live
+that Excel prompts "a file named ... already exists ... replace it?" for a `SaveAs` to
+its own already-open path, and PowerPoint does not. Restored unconditionally right
+after the call, not in an error handler, so a future edit here can't leave it off.
+
+New tests `WorkbookBridge_SaveWorkbookVerifiedProvesTheFileMoved` (mirrors
+`Test_DeckRegistry_SaveDeckVerifiedProvesTheFileMoved` exactly) and
+`WorkbookBridge_EnsureSavedQuietlySavesWithoutAsking` (see AX). Full suite 246/246.
+
+### AX. FIXED 2026-08-19 — the "unsaved changes, save now?" prompt was an invariant answered "Yes" every time
+
+Four independent copies of "`IsDirty`, then a Yes/No `MsgBox`, then `SaveWorkbookVerified`"
+lived across `RibbonUI.bas`. The prompt's own justification (written 2026-08-14) already
+argued for doing the save silently — *"go and press Ctrl+S yourself is friction with no
+safety benefit over doing it for them"* — without noticing that argument applies to the
+prompt itself, not just to who performs the save. An invariant prompt, always answered
+the same way, is how the one that matters gets clicked past (the same rule that collapsed
+"Put it on the slides" to one press).
+
+**Fix:** new `WorkbookBridge.EnsureSavedQuietly(wb, path)` — saves without asking if
+dirty, returns `""` on success or a real error message on genuine failure (a save that
+actually fails is never hidden). Replaced all four `RibbonUI.bas` copies with a single
+call each. `UnsavedWorkbookText` (the prompt's wording, previously pinned by its own
+test) is deleted — nothing shows it anymore, and a written-but-unread string is exactly
+this project's own signature defect in miniature.
+
+**A live, real-world byproduct of this whole evening's testing**: running the automated
+suite repeatedly in quick succession surfaced roughly 1,000 accumulated leftover test
+files in `%TEMP%` (days old, from every prior run that crashed before its own cleanup
+ran) and several genuine SaveAs-collision bugs across both the test harness and this
+fix's own new tests — full detail in `AGENTS.md`'s "hangs waiting for a click nobody's
+there to give" section rather than duplicated here, since it's tooling hygiene, not a
+product defect.
+
+### AY. FIXED 2026-08-19 — the milestone timeline was never register-driven in practice: corrupted data, an unconverted line-break delimiter, and a roll-forward gap that was actually a data-freshness gap
+
+`3_P001`'s `MILESTONE_TIMELINE` device (the only project with any milestone data at
+all) had three real, separate defects, found by comparing a fresh register-only
+rebuild against Rohan's real original deck:
+
+1. **Data entered by hand, packed wrong.** `MS1_LABEL`/`MS7_LABEL` had the milestone's
+   date typed straight into the label with `" | "` (e.g. `"Project initiated | Oct
+   2023"`), leaving `MS1_DATE`/`MS7_DATE` as literal `"?"` placeholders. `MS3_LABEL`/
+   `MS4_LABEL` are genuine two-line labels but used the same `" | "` instead of the
+   codebase's real multi-line convention, `InjectPrimitive.LINE_BREAK_DELIMITER`
+   (`"||"`, no spaces).
+2. **`MilestoneDevice.WriteText` never converted the delimiter at all.** Unlike
+   `InjectPrimitive`'s own text writer (`Replace(sourceValue, LINE_BREAK_DELIMITER,
+   PPT_LINE_BREAK)`), the milestone writer did a raw, unconverted
+   `shp.TextFrame.TextRange.text = value` assignment -- so even a correctly-formatted
+   `"||"` label would have shown two literal pipe characters on a real slide instead
+   of a line break. This is the actual code defect; everything else this item lists
+   is data.
+3. **`MS*_DATE` cells corrupted the same way as `PROJECT_PROGRESS`'s percentage cells
+   were (item AU's sibling defect, same session).** Assigning `.Value = "Oct 2023"`
+   to a cell without first forcing `NumberFormat = "@"` let Excel silently
+   reinterpret it as a real date (`1/10/2023`), and the bare-number `MS2`-`MS6`
+   dates (`6`, `12`, `24`...) were independently found to be raw Numbers wearing a
+   text-looking display, same class as the percentage-column sweep earlier the same
+   day.
+4. **NOT a roll-forward bug, confirmed rather than assumed.**
+   `ExcelOutput.RollForwardPeriod` copies every column verbatim already -- proven by
+   reading it, not guessed. `Q4F26`/`Q1F27` (current) were blank in every `MS*`
+   column while `Q3F26` had data because the milestone data was typed into `Q3F26`
+   *after* the later periods had already forked from an earlier, blank version of
+   it -- the same pattern `START_DATE`/`END_DATE` show on the identical three rows
+   (blank in `Q3F26`, populated only from `Q4F26` onward). A one-time data copy into
+   the current row, not a code change, is the correct fix for this part.
+
+**Fix:** `MilestoneDevice.WriteText` now converts `LINE_BREAK_DELIMITER` to a real
+line break, matching `InjectPrimitive`'s own writer -- new test
+`MilestoneDevice_TwoLineLabelConvertsThePipeDelimiterToARealBreak`, made to fail
+first (asserted the delimiter itself must not survive onto the slide; failed against
+the unwrapped code exactly as expected, then passed once fixed). The `Q3F26` data
+mistakes were corrected in place (label/date properly split, correct `"||"`
+convention, `NumberFormat = "@"` locked on all 7 `MS*_DATE` columns before writing),
+then copied into the current period's row -- a real backup was taken first
+(`SaveCopyAs`, never `SaveAs`, per this project's own standing rule for touching
+real data).
+
+**Proven live, not just in the test suite**: applied through the real "2. Put it on
+the slides" button, unaided, twice (once for the data/visibility fix, once more
+after the `WriteText` fix reached a built addin) -- verified both times by reading
+the saved `.pptx`'s own slide XML directly. First pass confirmed every circle's
+visibility state now matches the corrected `_DONE` flags exactly (achieved/current/
+not-achieved, all four states). Second pass confirmed `MS3_LABEL`/`MS4_LABEL` are
+now genuinely two separate text runs in the saved XML (`'Method exploration'`,
+`'Pre-trial package complete'`), not one run containing literal `"||"` -- proof the
+line break is real, not a screenshot artifact.
+
+### AZ. FIXED 2026-08-19 — Error 50290's fourth occurrence, diagnostic capture extended to the queue-build/planning phase
+
+Error 50290 (this item's own earlier entries, item V) recurred for a fourth time,
+at a fourth different call site: this time during the queue-BUILD/planning phase
+(`RibbonUI.BuildAllQueuesCore` -> `ReviewQueue.BuildQueue` -> `SyncOperations.
+PlanRoutineSync`), before `ApplyApproved`'s own per-item trap (built for the third
+occurrence) was ever reached. No new Sync Log line appeared and PowerPoint was not
+mid-macro when checked afterward, confirming the crash landed in the planning chain
+and nothing there captured `Err.Description`/`Source` at the point of failure --
+the top-level dialog said only "VBAProject" again, same as every prior occurrence
+before its own call site got wrapped.
+
+**Root cause is still open, deliberately not chased further** -- four occurrences
+in four different call sites across four sessions has already ruled out a
+single-function cause, and Office cannot be made to raise the real fault on demand.
+This entry is about closing the diagnostic gap at this NEW call site, matching the
+pattern already proven for `ApplyApproved`.
+
+**Fix, built by a Fable-model agent from a detailed brief, verified and finished in
+the main session:** a shared `ReviewQueue.LogAndReraiseCrash` helper (log-before-
+re-raise, enriched `Err.Source`) now backs per-item traps in `PlanRoutineSync`
+(the resolve loop, the device-tag scan, the elapsed-bar lookup, and -- the actual
+site tonight's crash hit -- the main per-field probe, via a new `GuardedPlanProbe`
+wrapper) and per-stage traps in `BuildQueue` (gather, parity resolve) and
+`BuildAllQueuesCore`. A new gated test-only hook, `SyncOperations.
+mTestForcePlanCrash` (matching `ReviewQueue.mTestForceInjectCrash`'s exact shape --
+module-level, declared with the Consts rather than after a procedure, per this
+project's own documented `check_vba_static.py` gap), simulates the fault
+deterministically since the real one can't be summoned.
+
+**Genuinely proven fail-first, not assumed**: the agent deliberately left the main
+field-probe site unwrapped through its own work so
+`Test_SyncOperations_PlanRoutineSyncNamesTheItemWhenProbeCrashes` could demonstrate
+failing against real uncaptured code first -- run and confirmed failing (raw
+`Err.Source` of just `"InjectPrimitive.InjectField"`, nothing logged to the Sync
+Log) before the final wrap was applied in the main session, then re-run and
+confirmed passing. Full suite 248/248 (one unrelated bug found and fixed along the
+way: a test written earlier the same session had its own delimiter collision --
+`"||"` used simultaneously as the intra-label line break AND the test helper's
+inter-milestone separator -- fixed by building the fixture arrays directly instead
+of through the string-splitting helper).

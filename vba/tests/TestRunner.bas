@@ -170,6 +170,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "SyncOperations_DeviceFieldReachableThroughPlanRoutineSync", r
+    If TestMatches("SyncOperations_PlanRoutineSyncNamesTheItemWhenProbeCrashes", filterPattern) Then
+        r = Test_SyncOperations_PlanRoutineSyncNamesTheItemWhenProbeCrashes()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "SyncOperations_PlanRoutineSyncNamesTheItemWhenProbeCrashes", r
     If TestMatches("SyncOperations_Case6UnclassifiedSlide", filterPattern) Then
         r = Test_SyncOperations_Case6UnclassifiedSlide()
     Else
@@ -1167,6 +1173,24 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     End If
     AppendResult report, "WorkbookBridge_IsDirtyDetectsUnsavedEdits", r
     On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("WorkbookBridge_SaveWorkbookVerifiedProvesTheFileMoved", filterPattern) Then
+        r = Test_WorkbookBridge_SaveWorkbookVerifiedProvesTheFileMoved()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "WorkbookBridge_SaveWorkbookVerifiedProvesTheFileMoved", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("WorkbookBridge_EnsureSavedQuietlySavesWithoutAsking", filterPattern) Then
+        r = Test_WorkbookBridge_EnsureSavedQuietlySavesWithoutAsking()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "WorkbookBridge_EnsureSavedQuietlySavesWithoutAsking", r
+    On Error GoTo 0
     On Error GoTo 0
     On Error GoTo 0
     On Error GoTo 0
@@ -1554,6 +1578,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashes", r
+    If TestMatches("ReviewQueue_ApplyApprovedSummaryCountsMatchTheReport", filterPattern) Then
+        r = Test_ReviewQueue_ApplyApprovedSummaryCountsMatchTheReport()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "ReviewQueue_ApplyApprovedSummaryCountsMatchTheReport", r
     If TestMatches("ReviewQueue_BuildQueuePreTicksEveryItem", filterPattern) Then
         r = Test_ReviewQueue_BuildQueuePreTicksEveryItem()
     Else
@@ -1686,6 +1716,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "MilestoneDevice_DrawsFromDataAndCreatesNothing", r
+    If TestMatches("MilestoneDevice_TwoLineLabelConvertsThePipeDelimiterToARealBreak", filterPattern) Then
+        r = Test_MilestoneDevice_TwoLineLabelConvertsThePipeDelimiterToARealBreak()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "MilestoneDevice_TwoLineLabelConvertsThePipeDelimiterToARealBreak", r
     If TestMatches("MilestoneDevice_RefusesListsThatCannotBeAligned", filterPattern) Then
         r = Test_MilestoneDevice_RefusesListsThatCannotBeAligned()
     Else
@@ -7158,20 +7194,189 @@ Private Function Test_WorkbookBridge_IsDirtyDetectsUnsavedEdits() As String
     result = result & Assert(Not WorkbookBridge.IsDirty(wb), _
         "and it can be cleared a second time")
 
-    ' --- the wording the human actually sees ---
-    Dim msg As String
-    msg = WorkbookBridge.UnsavedWorkbookText("C:\somewhere\Data.xlsx")
-    result = result & Assert(InStr(msg, "C:\somewhere\Data.xlsx") > 0, _
-        "names the workbook, so it is actionable, got: " & msg)
-    result = result & Assert(InStr(msg, "only in Excel's memory") > 0, _
-        "explains WHY it matters rather than just refusing, got: " & msg)
-    result = result & Assert(InStr(msg, "no matching row") > 0, _
-        "names the actual consequence -- an orphaned slide, got: " & msg)
+    ' UnsavedWorkbookText and its wording-pinning assertions here were
+    ' deleted 2026-08-19 along with the MsgBox that showed them -- see
+    ' WorkbookBridge.EnsureSavedQuietly's header for why the prompt is gone.
 
     wb.Saved = True
     wb.Close
 
     Test_WorkbookBridge_IsDirtyDetectsUnsavedEdits = result
+End Function
+
+' Mirrors Test_DeckRegistry_SaveDeckVerifiedProvesTheFileMoved exactly -- same
+' defect, same fix, same proof shape, ported to the workbook side 2026-08-19
+' after SaveWorkbookVerified reported "THE WORKBOOK WAS NOT SAVED" about a
+' register with nothing pending, on the real deck, live.
+Private Function Test_WorkbookBridge_SaveWorkbookVerifiedProvesTheFileMoved() As String
+    Dim result As String
+
+    Dim testPath As String
+    testPath = Environ("TEMP") & "\deck_sync_test_wb_save_" & Format(Now, "hhmmss") & ".xlsx"
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    Dim xl As Object, wb As Object
+    Set xl = WorkbookBridge.GetExcelApp()
+    Set wb = xl.Workbooks.Add()
+
+    ' A STALE FILE FROM A PRIOR RUN AT THE SAME SECOND HANGS THE WHOLE SUITE.
+    ' Confirmed live 2026-08-19: hhmmss has one-second resolution, and a
+    ' leftover same-named file made Excel's own "replace it?" prompt block an
+    ' automated run waiting for a click nobody was there to give. Deleted
+    ' proactively; DisplayAlerts is still the backstop for anything this
+    ' doesn't catch.
+    If fso.FileExists(testPath) Then fso.DeleteFile testPath, True
+    Dim origAlerts As Boolean
+    origAlerts = xl.DisplayAlerts
+    xl.DisplayAlerts = False
+    wb.SaveAs testPath
+    xl.DisplayAlerts = origAlerts
+    Dim before As Date
+    before = fso.GetFile(testPath).DateLastModified
+
+    ' Same reasoning as the deck test: a real change, then a pause, because the
+    ' check is "did the timestamp ADVANCE" and NTFS can report the same second
+    ' for two saves a moment apart.
+    wb.Worksheets(1).Cells(1, 1).Value = "a real change"
+    Dim waitUntil As Date
+    waitUntil = DateAdd("s", 2, Now)
+    Do While Now < waitUntil
+        DoEvents
+    Loop
+
+    Dim problem As String
+    problem = WorkbookBridge.SaveWorkbookVerified(wb)
+    result = result & Assert(problem = "", _
+        "a workbook that can be saved reports no problem, got '" & problem & "'")
+    result = result & Assert(fso.GetFile(testPath).DateLastModified > before, _
+        "and the file on disk is genuinely newer than before the save")
+
+    ' NOTHING PENDING IS NOT A FAILURE -- the actual live incident this test
+    ' exists to catch. Called again with no change made, the timestamp cannot
+    ' advance; before this fix that ambiguity was read as failure.
+    Dim afterFirst As Date
+    afterFirst = fso.GetFile(testPath).DateLastModified
+
+    Dim secondProblem As String
+    secondProblem = WorkbookBridge.SaveWorkbookVerified(wb)
+    result = result & Assert(secondProblem = "", _
+        "a workbook with nothing pending reports no problem, got '" & secondProblem & "'")
+    result = result & Assert(fso.GetFile(testPath).DateLastModified = afterFirst, _
+        "and it did not rewrite the file to establish that")
+
+    ' A workbook that has never been written to a file must be REFUSED with an
+    ' explanation, not silently reported as saved.
+    '
+    ' DisplayAlerts suppressed around this specific call only -- found live
+    ' 2026-08-19. SaveWorkbookVerified's blind branch calls wb.Save on a
+    ' workbook with no real path, which is a genuine implicit SaveAs to
+    ' Excel's default folder under an auto-generated name ("Book8.xlsx" and
+    ' however many came before it in this session) -- exactly the collision
+    ' shape as every other fix in this block, just from a path this function
+    ' never chose. Scoped to this one call, not the whole test: this is the
+    ' one deliberately-never-saved case, and the function's own header notes
+    ' production code can never actually reach it (every real caller comes
+    ' through OpenOrGetWorkbook, which opens an existing file).
+    Dim neverSaved As Object
+    Set neverSaved = xl.Workbooks.Add()
+    Dim neverSavedAlerts As Boolean
+    neverSavedAlerts = xl.DisplayAlerts
+    xl.DisplayAlerts = False
+    Dim neverSavedProblem As String
+    neverSavedProblem = WorkbookBridge.SaveWorkbookVerified(neverSaved)
+    xl.DisplayAlerts = neverSavedAlerts
+    result = result & Assert(neverSavedProblem <> "", _
+        "a never-saved workbook is refused rather than reported as saved")
+
+    wb.Saved = True
+    wb.Close
+    neverSaved.Saved = True
+    neverSaved.Close
+    fso.DeleteFile testPath, True
+
+    Test_WorkbookBridge_SaveWorkbookVerifiedProvesTheFileMoved = result
+End Function
+
+' PROVES THE SAVE HAPPENS AND NOTHING BLOCKS ON IT. If EnsureSavedQuietly ever
+' regressed to showing a MsgBox again, this test would hang the whole
+' automated run rather than fail cleanly -- that hang IS the test for "does
+' not ask", alongside the explicit assertions below for "does it actually
+' save".
+Private Function Test_WorkbookBridge_EnsureSavedQuietlySavesWithoutAsking() As String
+    Dim result As String
+
+    Dim testPath As String
+    testPath = Environ("TEMP") & "\deck_sync_test_wb_quiet_" & Format(Now, "hhmmss") & ".xlsx"
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    Dim xl As Object, wb As Object
+    Set xl = WorkbookBridge.GetExcelApp()
+    Set wb = xl.Workbooks.Add()
+
+    ' A STALE FILE FROM A PRIOR RUN AT THE SAME SECOND HANGS THE WHOLE SUITE --
+    ' see the identical comment on this test's sibling above.
+    If fso.FileExists(testPath) Then fso.DeleteFile testPath, True
+    Dim origAlerts As Boolean
+    origAlerts = xl.DisplayAlerts
+    xl.DisplayAlerts = False
+    wb.SaveAs testPath
+    xl.DisplayAlerts = origAlerts
+
+    ' CLEAN WORKBOOK: nothing to do, and nothing asked.
+    Dim cleanProblem As String
+    cleanProblem = WorkbookBridge.EnsureSavedQuietly(wb, testPath)
+    result = result & Assert(cleanProblem = "", _
+        "a clean workbook reports no problem, got '" & cleanProblem & "'")
+
+    ' DIRTY WORKBOOK: saved for real, not just claimed.
+    wb.Worksheets(1).Cells(1, 1).Value = "unsaved until EnsureSavedQuietly runs"
+    result = result & Assert(WorkbookBridge.IsDirty(wb), _
+        "sanity check -- the edit above genuinely made it dirty")
+
+    ' Same reasoning as the sibling test above (SaveWorkbookVerified's own
+    ' mtime check): NTFS can report the same second for the initial SaveAs
+    ' and this save, and without the wait that reads as "did not move" --
+    ' failed live 2026-08-19 for exactly that reason, not a real defect in
+    ' EnsureSavedQuietly.
+    Dim waitUntilQuiet As Date
+    waitUntilQuiet = DateAdd("s", 2, Now)
+    Do While Now < waitUntilQuiet
+        DoEvents
+    Loop
+
+    Dim dirtyProblem As String
+    dirtyProblem = WorkbookBridge.EnsureSavedQuietly(wb, testPath)
+    result = result & Assert(dirtyProblem = "", _
+        "a dirty workbook that saves cleanly reports no problem, got '" & dirtyProblem & "'")
+    result = result & Assert(Not WorkbookBridge.IsDirty(wb), _
+        "and the workbook is genuinely clean afterward, not just reported so")
+
+    ' CLOSE FIRST, THEN REOPEN -- found live 2026-08-19. Opening testPath a
+    ' second time while `wb` still held it open triggered Excel's own "this
+    ' file is already open; reopening discards your changes" prompt, which
+    ' blocked the same as any other unattended dialog. Closing wb first is
+    ' what makes the reopen genuinely independent (real close, not the same
+    ' cache) AND avoids the prompt in one move -- the two were never in
+    ' tension.
+    wb.Saved = True
+    wb.Close
+
+    Dim savedText As String
+    Dim reopened As Object
+    Set reopened = xl.Workbooks.Open(testPath)
+    savedText = CStr(reopened.Worksheets(1).Cells(1, 1).Value)
+    result = result & Assert(savedText = "unsaved until EnsureSavedQuietly runs", _
+        "the edit genuinely reached the file on disk, got '" & savedText & "'")
+    reopened.Saved = True
+    reopened.Close
+
+    fso.DeleteFile testPath, True
+
+    Test_WorkbookBridge_EnsureSavedQuietlySavesWithoutAsking = result
 End Function
 
 Private Function Test_WorkbookBridge_SanitizeSheetNameStripsInvalidCharsAndTruncates() As String
@@ -7321,12 +7526,17 @@ Private Function Test_DeckRegistry_SaveDeckVerifiedProvesTheFileMoved() As Strin
     Dim testPath As String
     testPath = Environ("TEMP") & "\deck_sync_test_save_" & Format(Now, "hhmmss") & ".pptx"
 
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    ' A STALE FILE FROM A PRIOR RUN AT THE SAME SECOND HANGS THE WHOLE SUITE --
+    ' hhmmss has one-second resolution, and running the suite repeatedly in
+    ' quick succession made this collide live 2026-08-19, blocking on
+    ' PowerPoint's own "replace it?" prompt with nobody there to answer it.
+    If fso.FileExists(testPath) Then fso.DeleteFile testPath, True
+
     Dim testPres As Object
     Set testPres = Application.Presentations.Add
     testPres.SaveAs testPath
-
-    Dim fso As Object
-    Set fso = CreateObject("Scripting.FileSystemObject")
     Dim before As Date
     before = fso.GetFile(testPath).DateLastModified
 
@@ -7373,10 +7583,21 @@ Private Function Test_DeckRegistry_SaveDeckVerifiedProvesTheFileMoved() As Strin
 
     ' A presentation that has never been written to a file must be REFUSED with
     ' an explanation, not silently reported as saved.
+    '
+    ' DisplayAlerts suppressed defensively -- same reasoning as the identical
+    ' fix on the workbook side (SaveWorkbookVerified's neverSaved case): the
+    ' blind branch calls .Save on a document with no real path, which risks
+    ' an implicit save under an auto-generated name if PowerPoint behaves the
+    ' same way Excel does here. Not confirmed to have actually fired for the
+    ' presentation case, but cheap enough to guard against regardless.
     Dim unsaved As Object
     Set unsaved = Application.Presentations.Add
+    Dim unsavedAlerts As Boolean
+    unsavedAlerts = Application.DisplayAlerts
+    Application.DisplayAlerts = False
     Dim unsavedProblem As String
     unsavedProblem = DeckRegistry.SaveDeckVerified(unsaved)
+    Application.DisplayAlerts = unsavedAlerts
     result = result & Assert(unsavedProblem <> "", _
         "a never-saved presentation is refused rather than reported as saved")
 
@@ -7393,6 +7614,10 @@ Private Function Test_DeckRegistry_PeriodOnDiskReadsTheSavedFile() As String
 
     Dim testPath As String
     testPath = Environ("TEMP") & "\deck_sync_test_period_" & Format(Now, "hhmmss") & ".pptx"
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists(testPath) Then fso.DeleteFile testPath, True
 
     Dim testPres As Object
     Set testPres = Application.Presentations.Add
@@ -8479,7 +8704,16 @@ Private Function Test_BatchOnboardFlow_SaveMarkingSessionToPropertyForcesRealSav
     ' one, .Save behaves as a normal, silent, no-dialog operation for the
     ' rest of this run too.
     If Application.ActivePresentation.Path = "" Then
-        Application.ActivePresentation.SaveAs Environ("TEMP") & "\deck_sync_test_run_presentation.pptx"
+        ' .pptm, NOT .pptx -- found live 2026-08-19, the hard way.
+        ' DisplayAlerts = False does NOT suppress PowerPoint's "the following
+        ' cannot be saved... VBA Project... continue as macro-free?" warning
+        ' (confirmed: still raised it with alerts off). This presentation
+        ' carries the whole harness's imported VBA project, so it genuinely
+        ' IS a macro-enabled file -- saving it as one is the fix, not
+        ' silencing a warning that turned out unsilenceable. PowerPoint
+        ' infers the format from the extension with no format arg needed,
+        ' same as this file's own testPres.SaveAs calls elsewhere.
+        Application.ActivePresentation.SaveAs Environ("TEMP") & "\deck_sync_test_run_presentation.pptm"
     End If
 
     BatchOnboardFlow.ResetMarkingSession
@@ -9088,6 +9322,10 @@ Private Function Test_BatchOnboardFlow_LastSaveTimeOfReadsARealTimestamp() As St
     Dim testPath As String
     testPath = Environ("TEMP") & "\deck_sync_test_lastsave_" & Format(Now, "hhmmss") & ".pptx"
 
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists(testPath) Then fso.DeleteFile testPath, True
+
     Dim testPres As Object
     Set testPres = Application.Presentations.Add
     testPres.SaveAs testPath
@@ -9160,6 +9398,10 @@ Private Function Test_BatchOnboardFlow_ReopeningTheSameDeckLeavesShapeRefsDead()
     Dim testPath As String
     testPath = Environ("TEMP") & "\deck_sync_test_reopen_guard_" & Format(Now, "hhmmss") & ".pptx"
 
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists(testPath) Then fso.DeleteFile testPath, True
+
     Dim testPres As Object
     Set testPres = Application.Presentations.Add
     testPres.SaveAs testPath
@@ -9227,6 +9469,10 @@ Private Function Test_BatchOnboardFlow_MarkingSessionSurvivesRealCloseAndReopen(
 
     Dim testPath As String
     testPath = Environ("TEMP") & "\deck_sync_test_close_reopen_" & Format(Now, "hhmmss") & ".pptx"
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists(testPath) Then fso.DeleteFile testPath, True
 
     Dim testPres As Object
     Set testPres = Application.Presentations.Add
@@ -11035,6 +11281,185 @@ Private Function Test_ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashe
     Test_ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashes = result
 End Function
 
+' Error 50290's FOURTH occurrence (2026-08-19) landed in the queue-BUILD phase
+' -- RibbonUI.BuildAllQueuesCore -> ReviewQueue.BuildQueue -> SyncOperations.
+' PlanRoutineSync -- where none of ApplyApproved's per-item crash capture
+' existed, so the dialog once again said only "VBAProject". Same proof shape
+' as Test_ReviewQueue_ApplyApprovedNamesTheItemWhenInjectFieldCrashes directly
+' above: the real fault cannot be summoned from Office on demand, so a gated
+' hook (SyncOperations.mTestForcePlanCrash) simulates one deterministically at
+' the per-field dry probe, and this test proves the capture (a) lets the fault
+' propagate, (b) folds the specific instance/field into Err.Source, (c) keeps
+' the original Err.Description, and (d) writes a Sync Log line BEFORE the
+' re-raise -- the half that survives PowerPoint dying entirely.
+Private Function Test_SyncOperations_PlanRoutineSyncNamesTheItemWhenProbeCrashes() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "plan-crash-type"
+    sld.Tags.Add "instance_key", "PLANCRASH001"
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp.TextFrame.TextRange.Text = "before"
+    shp.Tags.Add "role", "ABOUT_BODY"
+
+    Dim instances(1 To 1) As Object
+    Set instances(1) = sld
+    Dim order As New Collection
+    order.Add "PLANCRASH001"
+    Dim rows As Object
+    Set rows = CreateObject("Scripting.Dictionary")
+    Dim vals As Object
+    Set vals = CreateObject("Scripting.Dictionary")
+    vals("ABOUT_BODY") = "after"
+    Set rows("PLANCRASH001") = vals
+
+    ' A real Excel sheet for the Sync Log line -- the part of the capture that
+    ' must survive even if PowerPoint dies mid-run, so it is asserted against a
+    ' real worksheet, not a stub.
+    Dim xl As Object, wb As Object, logWs As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set logWs = wb.Worksheets(1)
+
+    SyncOperations.mTestForcePlanCrash = True
+    Dim raised As Boolean, raisedNum As Long, raisedDesc As String, raisedSrc As String
+    Dim actions() As SyncAction
+    On Error Resume Next
+    Err.Clear
+    actions = SyncOperations.PlanRoutineSync(instances, order, rows, True, logWs, "TESTRUN")
+    raised = (Err.Number <> 0)
+    raisedNum = Err.Number: raisedDesc = Err.Description: raisedSrc = Err.Source
+    On Error GoTo 0
+    SyncOperations.mTestForcePlanCrash = False
+
+    result = result & Assert(raised, "the deliberate fault propagates out of PlanRoutineSync rather than being swallowed")
+    result = result & Assert(InStr(raisedSrc, "PLANCRASH001") > 0 And InStr(raisedSrc, "ABOUT_BODY") > 0, _
+        "the re-raised error's Source names the specific instance and field, got '" & raisedSrc & "'")
+    result = result & Assert(raisedDesc = "TEST: deliberately injected fault", _
+        "the original Err.Description survives the re-raise unchanged, got '" & raisedDesc & "'")
+
+    ' Written BEFORE the re-raise, so it must be there even though the call
+    ' above never returned normally. Row 2 because AppendLogLine writes its
+    ' header into row 1 of a fresh sheet.
+    Dim logText As String
+    logText = CStr(logWs.Cells(2, 5).Value)
+    result = result & Assert(InStr(logText, "CRASHED") > 0, _
+        "the crash is logged to the Sync Log before re-raising, got '" & logText & "'")
+    result = result & Assert(CStr(logWs.Cells(2, 3).Value) = "PLANCRASH001" And CStr(logWs.Cells(2, 4).Value) = "ABOUT_BODY", _
+        "the log line's own columns name the instance and field, got '" & _
+        CStr(logWs.Cells(2, 3).Value) & "/" & CStr(logWs.Cells(2, 4).Value) & "'")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing
+    Set xl = Nothing
+
+    Test_SyncOperations_PlanRoutineSyncNamesTheItemWhenProbeCrashes = result
+End Function
+
+' Rohan, 2026-08-18: the modal must show a SUMMARY, never the item list --
+' this proves ApplyApproved's new outWritten/outSkipped ByRef counts are
+' correct, cross-checked against the SAME "Summary: N written..." line the
+' function already builds into its own full-detail report (existing,
+' trusted text), not against a second independent computation of the same
+' thing. One approved item, one deliberately unapproved -- proves the
+' counts discriminate, not just that they're non-zero.
+Private Function Test_ReviewQueue_ApplyApprovedSummaryCountsMatchTheReport() As String
+    Dim result As String
+
+    Dim testPres As Object
+    Set testPres = Application.Presentations.Add
+    Dim tmpPath As String
+    tmpPath = Environ("TEMP") & "\applyapproved_counts_test_" & Format(Now, "yyyymmddhhnnss") & ".pptx"
+    testPres.SaveAs tmpPath
+
+    Dim sld As Object
+    Set sld = testPres.Slides.Add(1, ppLayoutBlank)
+    sld.Tags.Add "slide_type", "test-counts-type"
+    sld.Tags.Add "instance_key", "COUNTS001"
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    shp.TextFrame.TextRange.Text = "before"
+    shp.Tags.Add "role", "ABOUT_BODY"
+    Dim shp2 As Object
+    Set shp2 = sld.Shapes.AddTextbox(1, 40, 100, 300, 40)
+    shp2.TextFrame.TextRange.Text = "before2"
+    shp2.Tags.Add "role", "PROBLEM_BODY"
+
+    Dim sheet As Sheet
+    Set sheet.Rows = CreateObject("Scripting.Dictionary")
+    Set sheet.Fields = New Collection
+    Set sheet.InstanceOrder = New Collection
+    Dim vals As Object
+    Set vals = CreateObject("Scripting.Dictionary")
+    vals("ABOUT_BODY") = "after"
+    vals("PROBLEM_BODY") = "after2"
+    Set sheet.Rows("COUNTS001") = vals
+    sheet.InstanceOrder.Add "COUNTS001"
+
+    Dim q As ReviewQueueSet
+    q.SlideType = "test-counts-type"
+    q.RunStamp = "TEST"
+    q.Consumed = False
+    q.Count = 2
+    ReDim q.Items(1 To 2)
+    q.Items(1).EntityKey = "COUNTS001"
+    q.Items(1).FieldID = "ABOUT_BODY"
+    q.Items(1).Approved = True
+    q.Items(1).ChangeHash = ReviewQueue.ChangeHash("COUNTS001", "ABOUT_BODY", "before", "after")
+    q.Items(2).EntityKey = "COUNTS001"
+    q.Items(2).FieldID = "PROBLEM_BODY"
+    q.Items(2).Approved = False
+    q.Items(2).ChangeHash = ReviewQueue.ChangeHash("COUNTS001", "PROBLEM_BODY", "before2", "after2")
+
+    Dim xl As Object, wb As Object, ws As Object, logWs As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+    ws.Name = ReviewQueue.ReviewSheetNameFor("test-counts-type")
+    ReviewQueue.WriteQueueSheet ws, q
+    Set logWs = wb.Worksheets.Add
+    logWs.Name = "TestLog"
+
+    Dim outW As Long, outSk As Long, outSt As Long, outF As Long
+    Dim report As String
+    report = ReviewQueue.ApplyApproved(sheet, "test-counts-type", ws, logWs, outW, outSk, outSt, outF)
+
+    result = result & Assert(outW = 1, "one item was approved and written, got outWritten=" & outW)
+    result = result & Assert(outSk = 1, "one item was not approved, got outSkipped=" & outSk)
+    result = result & Assert(outSt = 0, "nothing was stale, got outStale=" & outSt)
+    result = result & Assert(outF = 0, "nothing failed, got outFailed=" & outF)
+
+    ' Cross-checked against the function's OWN existing summary line, not a
+    ' second independent count -- if these ever disagree, one of the two
+    ' is wrong, and this is what would catch it.
+    result = result & Assert(InStr(report, "Summary: 1 written, 1 not approved, 0 dropped as stale, 0 failed") > 0, _
+        "the ByRef counts match the report's own summary line, got '" & report & "'")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing
+    Set xl = Nothing
+
+    testPres.Saved = True
+    testPres.Close
+
+    On Error Resume Next
+    Dim fso2 As Object
+    Set fso2 = CreateObject("Scripting.FileSystemObject")
+    Dim f2 As Object
+    For Each f2 In fso2.GetFolder(Environ("TEMP")).Files
+        If InStr(f2.Name, "applyapproved_counts_test_") > 0 Then f2.Delete
+    Next f2
+    On Error GoTo 0
+
+    Test_ReviewQueue_ApplyApprovedSummaryCountsMatchTheReport = result
+End Function
+
 ' LOBBY-DESIGN.md section 5, phase 3: every field a fresh review queue shows
 ' now arrives pre-ticked -- working the queue is REMOVING ticks from what
 ' should not sync this round, not adding them to bless what should. Proves
@@ -12455,6 +12880,53 @@ Private Function Test_MilestoneDevice_DrawsFromDataAndCreatesNothing() As String
 
     sld.Delete
     Test_MilestoneDevice_DrawsFromDataAndCreatesNothing = result
+End Function
+
+' A TWO-LINE LABEL USES THE SAME "||" CONVENTION EVERY OTHER FIELD DOES.
+' Found live 2026-08-19: WriteText wrote "||" as two literal pipe characters
+' on a real slide instead of converting it to a line break, unlike
+' InjectPrimitive's text writer. Asserts the actual rendered character, not
+' just "no error" -- a Replace that silently no-ops would still pass a test
+' that only checked for the absence of a crash.
+Private Function Test_MilestoneDevice_TwoLineLabelConvertsThePipeDelimiterToARealBreak() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 2)
+
+    ' Built directly, not via SplitList("...||...") -- LINE_BREAK_DELIMITER
+    ' and SplitList's own inter-milestone separator are the SAME "||"
+    ' characters (InjectPrimitive.bas: VALUE_SEPARATOR = LINE_BREAK_DELIMITER,
+    ' deliberately), so a label containing "||" cannot be built through the
+    ' same string SplitList later splits on -- it would take the label's own
+    ' internal break as a second milestone's boundary. Two different
+    ' delimiter CONTEXTS sharing one character sequence; this test needs the
+    ' array already split, not another string to split.
+    Dim labels(1 To 2) As String, dates(1 To 2) As String, done(1 To 2) As String
+    labels(1) = "Method exploration" & InjectPrimitive.LINE_BREAK_DELIMITER & "Pre-trial package complete"
+    labels(2) = "Design"
+    dates(1) = "Oct 2023": dates(2) = "Mar 2024"
+    done(1) = "Y": done(2) = "N"
+
+    Dim r As MilestoneDrawResult
+    r = MilestoneDevice.DrawMilestones(grp, labels, dates, done)
+
+    result = result & Assert(r.ErrorMessage = "", "it draws [" & r.ErrorMessage & "]")
+
+    Dim got As String
+    got = NamedIn(grp, "MS1_LABEL").TextFrame.TextRange.text
+
+    result = result & Assert(InStr(got, InjectPrimitive.LINE_BREAK_DELIMITER) = 0, _
+        "the delimiter itself must not survive onto the slide, got '" & got & "'")
+    result = result & Assert(InStr(got, vbCr) > 0, _
+        "a real line break must be there instead, got '" & got & "'")
+    result = result & Assert(got = "Method exploration" & vbCr & "Pre-trial package complete", _
+        "and it is exactly the two intended lines, got '" & got & "'")
+
+    sld.Delete
+    Test_MilestoneDevice_TwoLineLabelConvertsThePipeDelimiterToARealBreak = result
 End Function
 
 ' THREE LISTS PAIRED BY POSITION IS THE ONE REAL HAZARD IN THIS DESIGN.

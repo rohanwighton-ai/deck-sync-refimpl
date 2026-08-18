@@ -149,24 +149,29 @@ Private Function ResolveSyncContext(title As String, pres As Object, ByRef wb As
         Exit Function
     End If
 
-    If WorkbookBridge.IsDirty(wb) Then
-        If MsgBox(WorkbookBridge.UnsavedWorkbookText(workbookPath), _
-                  vbYesNo + vbExclamation, title) <> vbYes Then
-            Exit Function
-        End If
+    ' IS THIS EVEN OUR REGISTER? Same check as DraftingUI.Resolve's, 2026-08-19
+    ' -- this function has no callers today (confirmed by grep; BuildAllQueuesCore
+    ' and ApplyApprovedCore both grew their own inline copy of this exact
+    ' resolve-and-check sequence instead of calling it), but it is a live piece
+    ' of this project's history of exactly that drift and worth keeping correct
+    ' in case something calls it again.
+    Dim pairNote As String
+    pairNote = DeckRegistry.PairingProblem(pres, wb)
+    If pairNote <> "" Then
+        MsgBox pairNote, vbCritical, title
+        Exit Function
+    End If
 
-        ' VERIFIED, because the whole point of this prompt is that the file and
-        ' the screen agree before anything reads the register. A Save that
-        ' reported nothing and moved nothing would leave us proceeding on exactly
-        ' the mismatch the prompt exists to prevent.
-        Dim promptSaveProblem As String
-        promptSaveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
-        If promptSaveProblem <> "" Then
-            MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
-                   "Stopping here rather than reading values that are not in the file.", _
-                   vbCritical, title
-            Exit Function
-        End If
+    ' Saves quietly instead of asking -- see WorkbookBridge.EnsureSavedQuietly's
+    ' own header for why the prompt this replaced (2026-08-19) no longer needs
+    ' to interrupt to do its job. A genuine save failure is still never hidden.
+    Dim promptSaveProblem As String
+    promptSaveProblem = WorkbookBridge.EnsureSavedQuietly(wb, workbookPath)
+    If promptSaveProblem <> "" Then
+        MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
+               "Stopping here rather than reading values that are not in the file.", _
+               vbCritical, title
+        Exit Function
     End If
 
     ResolveSyncContext = True
@@ -390,6 +395,12 @@ Private Sub SlideMembershipCore(ByVal retireMode As Boolean)
     Dim retireSlides As Collection
     Set retireSlides = New Collection
 
+    ' Same Sync Log wiring as BuildAllQueuesCore, same reason: this is the
+    ' other button-reachable BuildQueue call site, and a crash inside its
+    ' build chain (FIX-LIST item V) must leave a record naming the item.
+    Dim logWs As Object
+    Set logWs = WorkbookBridge.GetOrAddWorksheet(wb, WorkbookBridge.SYNC_LOG_SHEET_NAME)
+
     Dim i As Long
     For i = lo To hi
         Dim templateSld As Object
@@ -408,7 +419,7 @@ Private Sub SlideMembershipCore(ByVal retireMode As Boolean)
                 refusals = refusals & "  " & types(i) & ": " & problem & vbCrLf
             Else
                 Dim q As ReviewQueueSet
-                q = ReviewQueue.BuildQueue(sheet, types(i))
+                q = ReviewQueue.BuildQueue(sheet, types(i), logWs)
 
                 If q.OrphanCount > 0 Then
                     orphanTotal = orphanTotal + q.OrphanCount
@@ -603,20 +614,16 @@ Private Function ResolveDeckContext(title As String, ByRef pres As Object, ByRef
         Exit Function
     End If
 
-    If WorkbookBridge.IsDirty(wb) Then
-        If MsgBox(WorkbookBridge.UnsavedWorkbookText(workbookPath), _
-                  vbYesNo + vbExclamation, title) <> vbYes Then
-            Exit Function
-        End If
-
-        Dim promptSaveProblem As String
-        promptSaveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
-        If promptSaveProblem <> "" Then
-            MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
-                   "Stopping here rather than reading values that are not in the file.", _
-                   vbCritical, title
-            Exit Function
-        End If
+    ' Saves quietly instead of asking -- see WorkbookBridge.EnsureSavedQuietly's
+    ' own header for why the prompt this replaced (2026-08-19) no longer needs
+    ' to interrupt to do its job. A genuine save failure is still never hidden.
+    Dim promptSaveProblem As String
+    promptSaveProblem = WorkbookBridge.EnsureSavedQuietly(wb, workbookPath)
+    If promptSaveProblem <> "" Then
+        MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
+               "Stopping here rather than reading values that are not in the file.", _
+               vbCritical, title
+        Exit Function
     End If
 
     If Not WarnOnDuplicateKeys(title, types, lo, hi) Then Exit Function
@@ -680,29 +687,35 @@ Private Function BuildAllQueuesCore(title As String, ByRef fullReport As String,
         Exit Function
     End If
 
+    ' IS THIS EVEN OUR REGISTER? Same check DraftingUI.Resolve now makes for
+    ' its own callers, added 2026-08-19 -- this is the register-diff queue
+    ' build behind "Review changes" and half of "Put it on the slides", and
+    ' until now nothing here asked whether the workbook just opened actually
+    ' belongs to this deck. See DeckRegistry's "THE PAIRING, BOTH WAYS" for
+    ' the full history: the check existed, but only the AI-drafting publish
+    ' path ever called it.
+    Dim pairNote As String
+    pairNote = DeckRegistry.PairingProblem(pres, wb)
+    If pairNote <> "" Then
+        MsgBox pairNote, vbCritical, title
+        Exit Function
+    End If
+
     ' Refuse to build a queue out of Excel's unsaved buffer -- see
     ' WorkbookBridge.IsDirty for the live incident. Checked BEFORE planning, not
     ' after: the plan reads the sheet, so a queue built on unsaved data would
     ' show a human before-and-afters whose "after" exists in no file, and they
     ' would be approving values that could still change before Apply runs.
-    If WorkbookBridge.IsDirty(wb) Then
-        If MsgBox(WorkbookBridge.UnsavedWorkbookText(workbookPath), _
-                  vbYesNo + vbExclamation, title) <> vbYes Then
-            Exit Function
-        End If
-
-        ' VERIFIED, because the whole point of this prompt is that the file and
-        ' the screen agree before anything reads the register. A Save that
-        ' reported nothing and moved nothing would leave us proceeding on exactly
-        ' the mismatch the prompt exists to prevent.
-        Dim promptSaveProblem As String
-        promptSaveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
-        If promptSaveProblem <> "" Then
-            MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
-                   "Stopping here rather than reading values that are not in the file.", _
-                   vbCritical, title
-            Exit Function
-        End If
+    ' Saves quietly instead of asking -- see WorkbookBridge.EnsureSavedQuietly's
+    ' own header for why the prompt this replaced (2026-08-19) no longer needs
+    ' to interrupt to do its job. A genuine save failure is still never hidden.
+    Dim promptSaveProblem As String
+    promptSaveProblem = WorkbookBridge.EnsureSavedQuietly(wb, workbookPath)
+    If promptSaveProblem <> "" Then
+        MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
+               "Stopping here rather than reading values that are not in the file.", _
+               vbCritical, title
+        Exit Function
     End If
 
     ' R9: duplicate identity tags, checked BEFORE planning. Kept from
@@ -711,7 +724,17 @@ Private Function BuildAllQueuesCore(title As String, ByRef fullReport As String,
     ' matched slide and one unmatched one. It is only visible across instances.
     If Not WarnOnDuplicateKeys(title, types, lo, hi) Then Exit Function
 
+    ' The Sync Log, resolved here for the same reason ApplyApprovedCore
+    ' resolves it: Error 50290's FOURTH occurrence (2026-08-19, FIX-LIST item
+    ' V) landed in THIS build phase -- before any write ever reached the Sync
+    ' Log -- so a crash during the build must now leave a record naming what
+    ' was mid-flight, and it must survive even if PowerPoint dies before any
+    ' dialog appears.
+    Dim logWs As Object
+    Set logWs = WorkbookBridge.GetOrAddWorksheet(wb, WorkbookBridge.SYNC_LOG_SHEET_NAME)
+
     Dim firstSheet As Object
+    Dim stageErrNum As Long, stageErrDesc As String, stageErrSrc As String
 
     Dim i As Long
     For i = lo To hi
@@ -721,9 +744,22 @@ Private Function BuildAllQueuesCore(title As String, ByRef fullReport As String,
             Dim ws As Object
             Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
 
+            ' PER-STAGE CRASH CAPTURE around the chain's two heavy Excel-side
+            ' stages (this read, and WriteQueueSheet below) -- the per-slide/
+            ' per-field granularity lives one layer down, in BuildQueue and
+            ' PlanRoutineSync's own traps. See ReviewQueue.LogAndReraiseCrash.
             Dim sheet As Sheet
             Dim problem As String
+            On Error Resume Next
+            Err.Clear
             sheet = ExcelOutput.ReadSheetForDeckPeriod(ws, DeckRegistry.GetDeckPeriod(pres), problem)
+            stageErrNum = Err.Number: stageErrDesc = Err.Description: stageErrSrc = Err.Source
+            On Error GoTo 0
+            If stageErrNum <> 0 Then
+                ReviewQueue.LogAndReraiseCrash logWs, "", "RibbonUI.BuildAllQueuesCore", "", "", _
+                    "reading register sheet '" & wsName & "' for type '" & types(i) & "'", _
+                    stageErrNum, stageErrDesc, stageErrSrc
+            End If
 
             If problem <> "" Then
                 ' Reported and skipped rather than stopping the run: this builds
@@ -735,12 +771,21 @@ Private Function BuildAllQueuesCore(title As String, ByRef fullReport As String,
                     "REFUSED at period '" & DeckRegistry.GetDeckPeriod(pres) & "': " & problem & vbCrLf & vbCrLf
             Else
                 Dim q As ReviewQueueSet
-                q = ReviewQueue.BuildQueue(sheet, types(i))
+                q = ReviewQueue.BuildQueue(sheet, types(i), logWs)
                 totalQueued = totalQueued + q.Count
 
                 Dim reviewWs As Object
                 Set reviewWs = WorkbookBridge.GetOrAddWorksheet(wb, ReviewQueue.ReviewSheetNameFor(types(i)))
+                On Error Resume Next
+                Err.Clear
                 ReviewQueue.WriteQueueSheet reviewWs, q
+                stageErrNum = Err.Number: stageErrDesc = Err.Description: stageErrSrc = Err.Source
+                On Error GoTo 0
+                If stageErrNum <> 0 Then
+                    ReviewQueue.LogAndReraiseCrash logWs, q.RunStamp, "RibbonUI.BuildAllQueuesCore", "", "", _
+                        "writing review sheet for type '" & types(i) & "'", _
+                        stageErrNum, stageErrDesc, stageErrSrc
+                End If
                 If firstSheet Is Nothing Then Set firstSheet = reviewWs
 
                 fullReport = fullReport & "=== " & types(i) & " ===" & vbCrLf & _
@@ -882,6 +927,18 @@ Private Function OfferHarvestForSelectedSlides(pres As Object, TITLE As String) 
     Set wb = WorkbookBridge.OpenOrGetWorkbook(DeckRegistry.GetWorkbookPath(pres))
     On Error GoTo 0
     If wb Is Nothing Then Exit Function
+
+    ' IS THIS EVEN OUR REGISTER? Same check DraftingUI.Resolve now makes for
+    ' its own callers, added 2026-08-19. This is the OTHER direction --
+    ' slide content written INTO the register -- so a mismatch here means
+    ' this project's real numbers land in a stranger's workbook, not just
+    ' the reverse.
+    Dim pairNote As String
+    pairNote = DeckRegistry.PairingProblem(pres, wb)
+    If pairNote <> "" Then
+        MsgBox pairNote, vbCritical, TITLE
+        Exit Function
+    End If
 
     ' PASS ONE -- dry run. Writes nothing, to the deck or the register. Its only
     ' job is to decide whether there is anything worth interrupting for, and to
@@ -1623,33 +1680,40 @@ Private Sub ApplyApprovedCore()
         Exit Sub
     End If
 
+    ' IS THIS EVEN OUR REGISTER? Same check DraftingUI.Resolve now makes for
+    ' its own callers, added 2026-08-19. THIS is the actual slide-write step
+    ' -- the highest-stakes of the three places this was missing, since a
+    ' mismatch here means real content lands in another deck's register (or
+    ' another register's values land on these slides) and every stage after
+    ' reports success. See DeckRegistry's "THE PAIRING, BOTH WAYS" comment.
+    Dim pairNote As String
+    pairNote = DeckRegistry.PairingProblem(pres, wb)
+    If pairNote <> "" Then
+        MsgBox pairNote, vbCritical, CommandBarUI.STAGE_APPLY_APPROVED
+        Exit Sub
+    End If
+
     ' The ticks live in the workbook, so an unsaved workbook means the
     ' approvals being read are on screen and not in any file. Same refusal as
     ' the review step, for the same reason.
-    If WorkbookBridge.IsDirty(wb) Then
-        If MsgBox(WorkbookBridge.UnsavedWorkbookText(workbookPath), _
-                  vbYesNo + vbExclamation, CommandBarUI.STAGE_APPLY_APPROVED) <> vbYes Then
-            Exit Sub
-        End If
-
-        ' VERIFIED, because the whole point of this prompt is that the file and
-        ' the screen agree before anything reads the register. A Save that
-        ' reported nothing and moved nothing would leave us proceeding on exactly
-        ' the mismatch the prompt exists to prevent.
-        Dim promptSaveProblem As String
-        promptSaveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
-        If promptSaveProblem <> "" Then
-            MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
-                   "Stopping here rather than reading values that are not in the file.", _
-                   vbCritical, CommandBarUI.STAGE_APPLY_APPROVED
-            Exit Sub
-        End If
+    ' Saves quietly instead of asking -- see WorkbookBridge.EnsureSavedQuietly's
+    ' own header for why the prompt this replaced (2026-08-19) no longer needs
+    ' to interrupt to do its job. A genuine save failure is still never hidden.
+    Dim promptSaveProblem As String
+    promptSaveProblem = WorkbookBridge.EnsureSavedQuietly(wb, workbookPath)
+    If promptSaveProblem <> "" Then
+        MsgBox promptSaveProblem & vbCrLf & vbCrLf & _
+               "Stopping here rather than reading values that are not in the file.", _
+               vbCritical, CommandBarUI.STAGE_APPLY_APPROVED
+        Exit Sub
     End If
 
     Dim logWs As Object
     Set logWs = WorkbookBridge.GetOrAddWorksheet(wb, WorkbookBridge.SYNC_LOG_SHEET_NAME)
 
     Dim fullReport As String
+    Dim totalWritten As Long, totalSkipped As Long, totalStale As Long, totalFailed As Long
+    Dim refusedTypes As Long, skippedTypes As Long
     Dim i As Long
     For i = lo To hi
         Dim templateSld As Object
@@ -1661,6 +1725,7 @@ Private Sub ApplyApprovedCore()
             If Not WorkbookBridge.WorksheetExists(wb, reviewName) Then
                 fullReport = fullReport & "=== " & types(i) & " ===" & vbCrLf & _
                     "No review has been built for this type. Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' first." & vbCrLf & vbCrLf
+                skippedTypes = skippedTypes + 1
             Else
                 Dim ws As Object
                 Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
@@ -1677,22 +1742,53 @@ Private Sub ApplyApprovedCore()
                     fullReport = fullReport & "=== " & types(i) & " ===" & vbCrLf & _
                         "REFUSED at period '" & DeckRegistry.GetDeckPeriod(pres) & "': " & problem & vbCrLf & _
                         "Nothing was written for this type." & vbCrLf & vbCrLf
+                    refusedTypes = refusedTypes + 1
                 Else
                     Dim reviewWs As Object
                     Set reviewWs = WorkbookBridge.GetOrAddWorksheet(wb, reviewName)
 
+                    Dim tWritten As Long, tSkipped As Long, tStale As Long, tFailed As Long
                     fullReport = fullReport & _
-                        ReviewQueue.ApplyApproved(sheet, types(i), reviewWs, logWs) & vbCrLf
+                        ReviewQueue.ApplyApproved(sheet, types(i), reviewWs, logWs, _
+                            tWritten, tSkipped, tStale, tFailed) & vbCrLf
+                    totalWritten = totalWritten + tWritten
+                    totalSkipped = totalSkipped + tSkipped
+                    totalStale = totalStale + tStale
+                    totalFailed = totalFailed + tFailed
                 End If
             End If
         Else
             fullReport = fullReport & "SKIPPED " & types(i) & ": registered type's template slide no longer resolves (was it deleted?)" & vbCrLf
+            skippedTypes = skippedTypes + 1
         End If
     Next i
 
     fullReport = fullReport & PersistBothFiles(pres, wb)
     WorkbookBridge.WriteRunLog wb, "Apply Approved -- full report", fullReport
-    ShowSyncResult CommandBarUI.STAGE_APPLY_APPROVED, fullReport
+
+    ' MODAL GETS A SUMMARY, NEVER THE ITEM LIST -- Rohan, 2026-08-18: the
+    ' modal listing every published item by ID and character count was the
+    ' actual complaint, not the count of items. Full per-item detail is
+    ' still unconditionally in the Run Log, written above, unchanged.
+    Dim summary As String
+    summary = totalWritten & " written, " & totalSkipped & " not approved, " & _
+        totalStale & " dropped as stale, " & totalFailed & " failed."
+    If refusedTypes > 0 Then summary = summary & vbCrLf & refusedTypes & " type(s) refused -- see the Run Log."
+    If skippedTypes > 0 Then summary = summary & vbCrLf & skippedTypes & " type(s) skipped -- see the Run Log."
+
+    ' POSITION + NEXT, so the modal orients rather than just reports.
+    summary = summary & vbCrLf & vbCrLf & "Position: " & DeckRegistry.GetDeckPeriod(pres) & ", " & _
+        (hi - lo + 1) & " slide type(s)."
+    If totalStale > 0 Then
+        summary = summary & vbCrLf & "Next: press '" & CommandBarUI.CAP_SET_UP_QUARTER & _
+            "' to refresh the " & totalStale & " stale item(s) with their current before-and-after."
+    ElseIf refusedTypes > 0 Or skippedTypes > 0 Then
+        summary = summary & vbCrLf & "Next: read the Run Log for what needs fixing before the next sync."
+    Else
+        summary = summary & vbCrLf & "Next: nothing pending -- deck and register both saved."
+    End If
+
+    ShowSyncResult CommandBarUI.STAGE_APPLY_APPROVED, summary
 End Sub
 
 ' Toolbar entry point. The real work is in SyncPreviewCore; this exists only to

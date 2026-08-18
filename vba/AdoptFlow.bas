@@ -201,6 +201,18 @@ Private Function PromptAdoptExistingSlides() As String
         PromptAdoptExistingSlides = "Could not open the paired workbook at: " & workbookPath
         Exit Function
     End If
+
+    ' IS THIS EVEN OUR REGISTER? Same check DraftingUI.Resolve now makes for
+    ' its own callers, added 2026-08-19 -- adoption creates new rows in
+    ' whatever workbook this resolves to, so a mismatch here means a
+    ' stranger's register gains rows describing this deck's real projects.
+    Dim pairNote As String
+    pairNote = DeckRegistry.PairingProblem(pres, wb)
+    If pairNote <> "" Then
+        PromptAdoptExistingSlides = pairNote
+        Exit Function
+    End If
+
     Dim ws As Object
     Set ws = WorkbookBridge.GetOrAddWorksheet(wb, wsName)
 

@@ -119,6 +119,17 @@ Public Sub DiscoverFields()
         Exit Sub
     End If
 
+    ' IS THIS EVEN OUR REGISTER? Same check DraftingUI.Resolve now makes for
+    ' its own callers, added 2026-08-19. Only the FIRST-TIME pairing above
+    ' (via ResolveDataWorkbook) was covered; the common case -- a deck that
+    ' already has a stored path -- comes straight here instead and was not.
+    Dim pairNote As String
+    pairNote = DeckRegistry.PairingProblem(pres, wb)
+    If pairNote <> "" Then
+        MsgBox pairNote, vbCritical, CAP
+        Exit Sub
+    End If
+
     Dim built As String
     built = BuildDiscoverySheet(sld, wb)
     If Left(built, 1) = "!" Then

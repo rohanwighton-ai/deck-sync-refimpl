@@ -113,6 +113,36 @@ guidance.
   new probing session, not just the one currently in use -- a leftover
   broken project from an earlier attempt can block an unrelated one.
 
+- **A TEST THAT SAVES TO A TIMESTAMPED PATH IS NOT SAFE FROM COLLISION, AND
+  `DisplayAlerts` DOES NOT COVER EVERY DIALOG.** Found 2026-08-19, live,
+  across a whole evening of repeated test-suite runs: (1) `Format(Now,
+  "hhmmss")` has one-second resolution, and running the suite several times
+  in quick succession made a fresh run's filename collide with a leftover
+  from a run moments earlier -- Excel/PowerPoint's own "already exists,
+  replace it?" then hangs an unattended run waiting for a click nobody's
+  there to give. Roughly **1,000 leftover `deck_sync_test_*` files** had
+  accumulated in `%TEMP%` over the preceding week from every run that ever
+  crashed before reaching its own cleanup, which is what finally made the
+  odds of a same-second collision high enough to hit repeatedly in one
+  night. (2) `Application.DisplayAlerts = False` suppresses Excel's
+  replace-file prompt but does **not** suppress PowerPoint's "the following
+  cannot be saved in macro-free presentations... continue as macro-free?"
+  warning -- confirmed live, alerts off, warning still raised. (3) Opening
+  a file a second time via `Workbooks.Open` while the first handle to it is
+  still open triggers a THIRD kind of prompt ("this file is already open;
+  reopening discards changes") -- close the first handle before the
+  independent reopen, which is both the correct verification (a real close,
+  not the same cache) and the fix. **Takeaway, three related but distinct
+  fixes, not one:** delete any pre-existing file at a timestamped test path
+  before writing to it; never assume `DisplayAlerts` covers a dialog class
+  you haven't specifically confirmed it does (PowerPoint's macro-loss
+  warning needed a real format fix -- save as `.pptm`, not `.pptx`, for a
+  presentation that genuinely carries a VBA project -- not a suppression
+  attempt); and always close a handle before reopening the same path
+  independently. And periodically sweep `%TEMP%` for `deck_sync_test_*`
+  leftovers -- a test's own `fso.DeleteFile` at the end of a PASS never
+  runs on a run that errors first.
+
 - **ONE WRITER ON THE RIG AT A TIME. Delegating an Office task means not doing
   it yourself.** 2026-08-01: a Fable agent was put on the property-persistence
   bug, and the main agent then ran the same experiments concurrently -- same

@@ -113,6 +113,26 @@ rediscovered as a second problem later.**
   **4 is closed; 7 is built and unrun; 3 is still blocked.**
 - **9 quietly matters most and is the easiest to defer forever.**
 
+## A related but distinct proof, 2026-08-19 — not a Scenario 1 close
+
+**A different, narrower thing was proven, and it should not be read as closing the row
+above.** Scenario 1 is "generate a new quarter... unaided," start to publish. Tonight's
+deck was already sitting at `Q1F27` the whole session -- no roll-forward happened -- so
+this does not touch the "unaided roll-forward then publish" gap the table still names.
+
+What DID happen, unaided, on the REAL live deck (not an isolated rig): `PROJECT_PROGRESS`
+on `3_P001` had been silently invisible to `PlanRoutineSync`'s queue-build for reasons
+never fully pinned down (see `FIX-LIST.md` items AV-AX for what WAS found and fixed
+along the way — a real pairing-check gap, a real save-verification bug, and a real
+invariant-prompt UX problem — none of which turned out to be the direct cause, though
+one or more of them, or the register-repair sweep from earlier the same day, appears to
+have resolved it as a side effect). Rohan pressed "Review changes," then "2. Put it on
+the slides," unaided; the register-diff queue correctly detected `0.8` -> `80%`, applied
+it, and the saved `.pptx`'s own XML bytes (not the dialog, not the object model) confirm
+`Text 6` now reads `80%`. This is real evidence the Apply Approved mechanism works
+end-to-end, unaided, on the live deck — but it is evidence for that mechanism, not for
+Scenario 1's specific roll-forward claim.
+
 ## What is left, honestly
 
 **Scenario 1 is the last of "the quarter" that is neither closed nor built.** 2 and 7 are

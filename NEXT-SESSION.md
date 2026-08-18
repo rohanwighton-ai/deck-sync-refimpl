@@ -1,5 +1,183 @@
 # NEXT SESSION — start here
 
+> ## 18-19 AUG, LATE EVENING (~16:30-18:20) — the milestone timeline is now
+> genuinely register-driven, proven live twice. Error 50290's diagnostic gap
+> closed at its fourth call site (a Fable-model agent built most of it from a
+> detailed brief; fail-first proof and final wrap finished in the main
+> session). `addin139` is the current live build. Committed and pushed.
+> **STATUS: CURRENT, supersedes every block below.**
+>
+> **Rohan's own framing, worth keeping**: this started as "I want to see
+> interpretable results on the shapes, then the pictures, I don't want any
+> multimedia unknowns tripping us" -- prove the timeline can be rebuilt from
+> the register alone, fix it for real if it can't (no workarounds), then do
+> the same for progress bars and pictures. Timeline is done. **Progress
+> bars and pictures are the explicitly-stated next task, not yet started.**
+>
+> **THE TIMELINE, item AY, full detail there:** three real, separate defects
+> found comparing a register-only rebuild against Rohan's actual original
+> deck (which he shared for structural reference, not pixel-matching --
+> "if it works it works"). (1) `Q3F26`'s milestone data -- the only period
+> that had any -- had dates hand-typed into labels with `" | "`
+> (`MS1_DATE`/`MS7_DATE` were literal `"?"`), and two genuine two-line
+> labels used `" | "` instead of the real `"||"` convention. (2)
+> `MilestoneDevice.WriteText` never converted `"||"` to a line break at all
+> (unlike `InjectPrimitive`'s own writer) -- the actual code defect, now
+> fixed and proven with a fail-first test. (3) `MS*_DATE` cells were
+> independently corrupted the same way `PROJECT_PROGRESS` was earlier the
+> same day (Excel silently reinterpreting text as a real date without
+> `NumberFormat = "@"` forced first). **Confirmed NOT a roll-forward
+> code bug** -- `RollForwardPeriod` already copies every column verbatim;
+> the blank later periods were a data-freshness gap (milestone data typed
+> into `Q3F26` after `Q4F26`/`Q1F27` had already forked from an earlier,
+> blank version -- same pattern `START_DATE`/`END_DATE` show on the
+> identical rows). Fixed as data (one-time correction + copy into the
+> current row, real backup taken first) plus the one real code fix.
+> **Proven live twice**, verified both times from the saved `.pptx`'s own
+> XML bytes, not the dialog or a screenshot: first pass confirmed every
+> circle's visibility state (achieved/current/not-achieved/unused) matches
+> the corrected data exactly; second pass confirmed `MS3_LABEL`/`MS4_LABEL`
+> are genuinely two separate text runs now, not literal `"||"`.
+>
+> **ERROR 50290, item AZ, full detail there:** fourth occurrence, fourth
+> different call site (this time the queue-BUILD/planning phase, before
+> `ApplyApproved`'s existing per-item trap was ever reached). Root cause
+> still explicitly open -- four sessions, four call sites already rules out
+> a single-function cause, and Office cannot be made to raise it on demand.
+> This fix closes the diagnostic gap at the new site only, same shape as
+> the fix for the third occurrence: a shared `ReviewQueue.
+> LogAndReraiseCrash` helper now backs per-item traps through
+> `PlanRoutineSync`, `BuildQueue`, and `BuildAllQueuesCore`. A Fable-model
+> agent built most of this from a detailed brief (see the agent-launch
+> message in this session's transcript if the exact prompt is ever needed
+> again) and deliberately left the main field-probe site unwrapped so the
+> new test could prove failing first -- confirmed genuinely failing (raw,
+> unenriched `Err.Source`, nothing logged) before the final wrap was
+> applied and re-confirmed passing, in the main session, with Office
+> closed (the automated suite refuses to run otherwise). Full suite
+> 248/248. One unrelated bug found and fixed along the way: a test written
+> earlier the same session collided `"||"` as both the line-break delimiter
+> and its own test-helper's array-splitting separator -- fixed by building
+> the fixture array directly instead of through the string-splitter.
+>
+> **Committed and pushed** (see git log for the hash -- this file doesn't
+> duplicate that). Working tree at commit time still carried the three
+> untracked `vba/tools/*Probe.bas` throwaway diagnostics from the
+> PROJECT_PROGRESS investigation -- harmless, not part of the commit,
+> fine to delete whenever or leave as reference.
+>
+> **Orphan-function sweep from the earlier block below is still
+> unactioned** -- `DraftingLobby.ClearLobbyEntry` in particular
+> (functionally live: published Lobby entries are never cleared). Not
+> touched tonight; still a real next-session item alongside progress bars
+> and pictures.
+
+> ## 18-19 AUG, EVENING (~14:00-16:30) — the `PROJECT_PROGRESS` sync-skip bug
+> is CLOSED, proven live on the real deck. Along the way: a real
+> pairing-check gap fixed across 8 sites, a real save-verification bug
+> fixed, an invariant UX prompt removed, and a systematic orphan-function
+> sweep. `addin138` is the current live build.
+> **STATUS: CURRENT, supersedes every block below, including the
+> "HANDOVER" block immediately under this one (which was written mid-flight,
+> before the actual bug closed).**
+>
+> **THE HEADLINE: proven, unaided, on the real deck.** `3_P001`'s
+> `PROJECT_PROGRESS` field showed `0.8` on the slide against `80%` in the
+> register for the whole preceding investigation. Rohan pressed "Review
+> changes" then "2. Put it on the slides," unaided; the register-diff queue
+> correctly detected the mismatch and applied it. Verified from the saved
+> `.pptx`'s own XML bytes (not the dialog, not the object model, not a
+> screenshot): `Text 6` (tagged `ROLE=PROJECT_PROGRESS`) now reads `80%`.
+> **Honest gap: the true original root cause of why the OLD build
+> (`addin136`) silently skipped this field was never conclusively pinned
+> down.** Extensive tracing that night showed the comparison logic itself
+> (`InjectPrimitive.InjectField`'s `WouldChange` check) is correct and,
+> tonight, genuinely fires `WouldChange=True` for this exact case
+> (confirmed via the temporary diagnostic line still sitting in
+> `SyncOperations.bas` — see cleanup note below). Something between last
+> night and tonight fixed it as a side effect — most likely candidates,
+> not confirmed: the register system-repair sweep (13:30 block below), or
+> simply a fresh build picking up whatever was fixed since. Not worth
+> further archaeology now that the live symptom is gone; flagged rather
+> than silently claimed.
+>
+> **FIX-LIST items AV, AW, AX — all real product/tooling bugs, full detail
+> there, summarised here:**
+> - **AV**: the workbook↔deck pairing identity check (`PairingProblem`)
+>   existed since 2026-08-14 but was only ever called from the AI-drafting
+>   publish path. Added to the 8 other places that open the register and
+>   write real content — "1. Set up my quarter," "Review changes," "Put it
+>   on the slides," "Apply Approved" (the highest-stakes one), the harvest
+>   write-back, onboarding, and both branches of workbook resolution during
+>   bulk onboarding (one of which also never completed the pairing stamp on
+>   a newly-chosen workbook — fixed too).
+> - **AW**: `WorkbookBridge.SaveWorkbookVerified` was missing the "nothing
+>   pending is not a failure" fix its `DeckRegistry.SaveDeckVerified` sibling
+>   already had — hit live, mid-session, genuinely blocking a real Apply
+>   Approved run with a false "THE WORKBOOK WAS NOT SAVED." Ported the fix,
+>   found and fixed a second real bug applying it (Excel's SaveAs-to-self
+>   needs `DisplayAlerts = False`; PowerPoint's equivalent doesn't).
+> - **AX**: the "unsaved changes, save now?" prompt was answered "Yes"
+>   every single time in practice — an invariant prompt, same class the
+>   project already collapsed once for "Put it on the slides." Replaced
+>   with a silent `EnsureSavedQuietly` across all 4 call sites; a genuine
+>   save failure is still never hidden.
+>
+> **Tooling hygiene, not product bugs, full detail in `AGENTS.md`:** ~1,000
+> leftover test files had accumulated in `%TEMP%` over the preceding week
+> (swept, gone); several genuine SaveAs-collision and dialog-suppression
+> bugs found and fixed across the test harness itself, including one where
+> `DisplayAlerts = False` does NOT suppress PowerPoint's macro-loss warning
+> (fixed by saving as `.pptm`, not by trying harder to suppress it).
+>
+> **Orphan-function sweep, done as requested, not yet acted on.**
+> Systematically checked all 323 public functions in production `.bas`
+> files for zero production callers (the project's own named "signature
+> defect" — tested machinery nothing can reach). Found 4, beyond the
+> already-known `ResolveSyncContext`:
+> - `ReviewQueue.ApproveBatchedOnly` — tested, zero callers. A direct
+>   sibling of `ApproveAllInSheet`, which was found orphaned and deleted
+>   2026-08-14 for the identical reason. Recurrence of the same defect
+>   class, not a new one.
+> - `DraftingLobby.ClearLobbyEntry` — tested, zero callers, and
+>   **functionally live, not cosmetic**: its own comment says it should run
+>   after a Lobby-pinned field is published. Confirmed the live publish
+>   path (`DraftingUI.PublishAllDraftedFields`) never calls it — published
+>   Lobby entries are never cleared and will sit there looking like
+>   pending work indefinitely. Worth real attention next session.
+> - `RunSync.PlanCounts` — fully dead, no test either. Built for the old
+>   "Sync Now" confirmation flow, itself deleted when the toolbar moved to
+>   the current design. Safe deletion candidate.
+> - `PlaceholderCheck.WriteMarker` — fully dead, paired with a `ParseMarker`
+>   that reads a marker nothing writes.
+>
+> **Cleanup TODOs, deliberately not done this pass (docs were the ask, not
+> more code changes):**
+> - Remove the temporary diagnostic line in `SyncOperations.bas` (~line
+>   210) now that it's done its job — logs to
+>   `C:\Users\rohan\AppData\Local\Temp\deck-sync-debug.log`.
+> - `ResolveSyncContext`/`BuildAllQueuesCore`/`ApplyApprovedCore` still
+>   independently duplicate the same resolve-and-check sequence rather than
+>   sharing one (item AV's note) — a real consolidation opportunity, not
+>   done to keep that fix minimal.
+> - The 4 orphan functions above — decide per-function: wire up
+>   (`ClearLobbyEntry` especially), or delete (`PlanCounts`, `WriteMarker`,
+>   arguably `ApproveBatchedOnly` too, matching its sibling's fate).
+>
+> **Current live state:** `addin138` registered and loaded (build-stamped
+> `2026-08-18 16:11`), everything else disabled, toolbar shown, real deck
+> reopened and maximized. Deck and register both saved. **Uncommitted:**
+> `AGENTS.md`, `FIX-LIST.md`, `SCENARIOS.md`, `TRACKER.md`, `NEXT-SESSION.md`
+> (this block) modified; `vba/AdoptFlow.bas`, `vba/BatchOnboardFlow.bas`,
+> `vba/DiscoverUI.bas`, `vba/DraftingUI.bas`, `vba/ReviewQueue.bas`,
+> `vba/RibbonUI.bas`, `vba/SyncOperations.bas`, `vba/WorkbookBridge.bas`,
+> `vba/tests/TestRunner.bas` modified (862 insertions, 111 deletions
+> total); `vba/tools/OpenOrGetProbe.bas`, `vba/tools/ProgressReadProbe.bas`,
+> `vba/tools/TemplateAuditProbe.bas` untracked (throwaway diagnostics from
+> the investigation, safe to delete or keep). Last real commit before this
+> session's work is still `44cda10`. Full suite 246/246, confirmed multiple
+> times across the evening.
+
 > ## 18 AUG, AFTERNOON (~13:30) — register-wide corruption swept and fixed;
 > a real, still-open bug found in the sync queue-build path for `3_P001`'s
 > `PROJECT_PROGRESS` field. Nothing built into a new addin this session.

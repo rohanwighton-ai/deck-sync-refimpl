@@ -91,6 +91,26 @@ End Type
 ' project has already paid for once.
 Public Const TIMELINE_ELAPSED_TAG As String = "TIMELINE_ELAPSED"
 
+' TEST-ONLY HOOK, same shape and same reason as ReviewQueue.
+' mTestForceInjectCrash (its comment carries the full history). Error 50290
+' (FIX-LIST.md item V) hit a FOURTH call site on 2026-08-19 -- this time
+' during the queue-BUILD phase (RibbonUI.BuildAllQueuesCore -> ReviewQueue.
+' BuildQueue -> PlanRoutineSync), before ApplyApproved's per-item loop was
+' ever reached, and once again the top-level dialog said nothing more
+' specific than "VBAProject" because nothing captured Err.Description/Source
+' at the actual point of failure. The fault cannot be summoned from Office on
+' demand, so this flag lets a test simulate one deterministically inside
+' PlanRoutineSync's per-field probe, proving the per-item capture actually
+' captures and enriches rather than merely compiling. Set only by
+' Test_SyncOperations_PlanRoutineSyncNamesTheItemWhenProbeCrashes; never
+' read by anything reachable from a button.
+'
+' MODULE-LEVEL DECLARATION, DELIBERATELY UP HERE with the Consts: a bare
+' module-level variable below the first procedure compiles quietly wrong and
+' reports its error in a DIFFERENT module -- hit twice on 2026-08-17, once
+' building the ORIGINAL version of this very fix (AGENTS.md, Known Patterns).
+Public mTestForcePlanCrash As Boolean
+
 ' Returns a string fraction 0-1 (e.g. "0.42"), clamped, or "" if either
 ' date is missing or unparseable -- refusing rather than drawing a wrong
 ' bar, the same rule InjectProgressVia already applies to an out-of-range
@@ -118,7 +138,10 @@ BadDate:
     ElapsedFraction = ""
 End Function
 
-Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collection, dataRows As Object, Optional dryRun As Boolean = False) As SyncAction()
+Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collection, dataRows As Object, _
+                                Optional dryRun As Boolean = False, _
+                                Optional logWs As Object = Nothing, _
+                                Optional runStamp As String = "") As SyncAction()
     Dim actions() As SyncAction
     Dim n As Long
     n = 0
@@ -138,12 +161,33 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
     hasInstances = (Err.Number = 0)
     On Error GoTo 0
 
+    ' Captured per COM call site below -- the crash capture for FIX-LIST item
+    ' V's fourth occurrence (see GuardedPlanProbe's header for the pattern).
+    Dim planErrNum As Long, planErrDesc As String, planErrSrc As String
+
     Dim resolved() As SlideInstance
     Dim i As Long
     If hasInstances Then
         ReDim resolved(lo To hi)
         For i = lo To hi
+            ' Per-slide COM work (tag reads) -- trapped like every other
+            ' per-item COM call in this function.
+            On Error Resume Next
+            Err.Clear
             resolved(i) = Resolve.ResolveSlideInstance(instances(i))
+            planErrNum = Err.Number: planErrDesc = Err.Description: planErrSrc = Err.Source
+            On Error GoTo 0
+            If planErrNum <> 0 Then
+                Dim crashSlideLabel As String
+                crashSlideLabel = "slide " & i & " of " & hi
+                ' SlideID read is itself COM -- best-effort only, never let
+                ' the label lookup mask the error being reported.
+                On Error Resume Next
+                crashSlideLabel = crashSlideLabel & " (SlideID " & instances(i).SlideID & ")"
+                On Error GoTo 0
+                ReviewQueue.LogAndReraiseCrash logWs, runStamp, "SyncOperations.PlanRoutineSync", _
+                    "", "", "resolving tags of " & crashSlideLabel, planErrNum, planErrDesc, planErrSrc
+            End If
             If Not resolved(i).HasTypeTag Or Not resolved(i).HasInstanceKey Then
                 n = n + 1
                 ReDim Preserve actions(1 To n)
@@ -207,7 +251,17 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                 ' is handed rows, not a workbook, so a picture field here reports
                 ' that it could not be resolved rather than being written wrongly.
                 ' Progress bars need nothing extra and work on this path.
-                r = InjectPrimitive.InjectField(instanceSlide, CStr(fieldName), sourceValue, dryRun, Nothing, rowValues)
+                '
+                ' GUARDED, same as the device/elapsed-bar probes below --
+                ' this is the MAIN field probe, hit for every ordinary
+                ' register column on every slide, and until now it was the
+                ' one call in this function with no crash capture at all.
+                ' Deliberately left unwrapped through the rest of tonight's
+                ' fix so Test_SyncOperations_PlanRoutineSyncNamesTheItemWhen
+                ' ProbeCrashes could prove it fails without this wrapping --
+                ' confirmed 2026-08-19: raw Err.Source, nothing logged. This
+                ' is that fix, applied.
+                r = GuardedPlanProbe(instanceSlide, key, CStr(fieldName), sourceValue, dryRun, rowValues, logWs, runStamp)
 
                 ' r.Found = False covers both "no shape carries this
                 ' field's tag" (skip -- matches resolve.py's
@@ -242,12 +296,28 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
             ' InjectorFor already uses to decide a tag routes to a device, so
             ' this asks about exactly the devices actually on this slide.
             Dim deviceTags As Object
+            ' The scan walks every shape on the slide -- per-item COM work,
+            ' trapped like the probes.
+            On Error Resume Next
+            Err.Clear
             Set deviceTags = InjectPrimitive.DeviceRoleTagsOnSlide(instanceSlide)
+            planErrNum = Err.Number: planErrDesc = Err.Description: planErrSrc = Err.Source
+            On Error GoTo 0
+            If planErrNum <> 0 Then
+                ReviewQueue.LogAndReraiseCrash logWs, runStamp, "SyncOperations.PlanRoutineSync", _
+                    key, "", "scanning for device tags", planErrNum, planErrDesc, planErrSrc
+            End If
             Dim devTag As Variant
             For Each devTag In deviceTags.Keys
                 If Not changedVerified.Exists(devTag) Then
                     Dim rd As InjectResult
-                    rd = InjectPrimitive.InjectField(instanceSlide, CStr(devTag), "", dryRun, Nothing, rowValues)
+                    ' NOTE this probe is NOT read-only even when dryRun is
+                    ' True: InjectDeviceVia calls MilestoneDevice.
+                    ' DeviceIntegrity(grp) unconditionally (InjectPrimitive.
+                    ' bas), so a dry run still does real COM work against the
+                    ' device group -- one reason a mid-PLAN crash was always
+                    ' plausible here.
+                    rd = GuardedPlanProbe(instanceSlide, key, CStr(devTag), "", dryRun, rowValues, logWs, runStamp)
                     If rd.Found And (rd.Written Or rd.WouldChange) Then
                         changedVerified(devTag) = rd.Verified
                         changedError(devTag) = rd.ErrorMessage
@@ -267,7 +337,17 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
             ' its own.
             If Not changedVerified.Exists(TIMELINE_ELAPSED_TAG) Then
                 Dim elapsedShp As Object
+                ' Another whole-slide shape walk -- trapped like the scan above.
+                On Error Resume Next
+                Err.Clear
                 Set elapsedShp = InjectPrimitive.FindShapeByRoleTag(instanceSlide, TIMELINE_ELAPSED_TAG)
+                planErrNum = Err.Number: planErrDesc = Err.Description: planErrSrc = Err.Source
+                On Error GoTo 0
+                If planErrNum <> 0 Then
+                    ReviewQueue.LogAndReraiseCrash logWs, runStamp, "SyncOperations.PlanRoutineSync", _
+                        key, TIMELINE_ELAPSED_TAG, "locating the elapsed-time bar", _
+                        planErrNum, planErrDesc, planErrSrc
+                End If
                 If Not elapsedShp Is Nothing Then
                     Dim startVal As String, endVal As String
                     startVal = ""
@@ -279,7 +359,7 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                     frac = ElapsedFraction(startVal, endVal)
                     If frac <> "" Then
                         Dim re As InjectResult
-                        re = InjectPrimitive.InjectField(instanceSlide, TIMELINE_ELAPSED_TAG, frac, dryRun, Nothing, rowValues)
+                        re = GuardedPlanProbe(instanceSlide, key, TIMELINE_ELAPSED_TAG, frac, dryRun, rowValues, logWs, runStamp)
                         If re.Found And (re.Written Or re.WouldChange) Then
                             changedVerified(TIMELINE_ELAPSED_TAG) = re.Verified
                             changedError(TIMELINE_ELAPSED_TAG) = re.ErrorMessage
@@ -307,6 +387,42 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
     Next instanceId
 
     PlanRoutineSync = actions
+End Function
+
+' One guarded call to InjectPrimitive.InjectField on behalf of PlanRoutineSync,
+' trapping locally so a mid-plan COM fault (Error 50290, FIX-LIST item V --
+' its fourth occurrence landed in this planning chain, 2026-08-19) is captured
+' at the actual point of failure: the Sync Log line is written BEFORE the
+' re-raise (it must survive PowerPoint dying entirely), and Err.Source gains
+' the specific instance/field so the top-level dialog names the item instead
+' of "VBAProject". Same pattern as ReviewQueue.ApplyApproved's per-item traps,
+' one layer earlier in the chain. The phase string distinguishes a dry probe
+' from PlanRoutineSync's write mode (dryRun:=False is the real Sync Now path);
+' WHICH probe it was is already told by the fieldId itself (a device tag, the
+' elapsed bar's tag, or an ordinary register column).
+'
+' The test hook fires here, in place of the real call, for the same reason
+' ReviewQueue.mTestForceInjectCrash fires inside ApplyApproved's trap: Office
+' cannot be made to raise the real fault on demand, so proving this capture
+' works at all requires a deterministic stand-in at the exact wrapped site.
+Private Function GuardedPlanProbe(instanceSlide As Object, key As String, fieldId As String, _
+                                  sourceValue As String, dryRun As Boolean, rowValues As Object, _
+                                  logWs As Object, runStamp As String) As InjectResult
+    Dim errNum As Long, errDesc As String, errSrc As String
+    On Error Resume Next
+    Err.Clear
+    If mTestForcePlanCrash Then
+        Err.Raise 12346, "InjectPrimitive.InjectField", "TEST: deliberately injected fault"
+    Else
+        GuardedPlanProbe = InjectPrimitive.InjectField(instanceSlide, fieldId, sourceValue, dryRun, Nothing, rowValues)
+    End If
+    errNum = Err.Number: errDesc = Err.Description: errSrc = Err.Source
+    On Error GoTo 0
+    If errNum <> 0 Then
+        ReviewQueue.LogAndReraiseCrash logWs, runStamp, "SyncOperations.PlanRoutineSync", _
+            key, fieldId, IIf(dryRun, "planning dry probe", "sync write"), _
+            errNum, errDesc, errSrc
+    End If
 End Function
 
 Private Function CloneStringDict(source As Object) As Object

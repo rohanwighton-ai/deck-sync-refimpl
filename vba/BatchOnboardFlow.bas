@@ -909,6 +909,19 @@ Public Function ResolveDataWorkbook(pres As Object, ByRef outPath As String, ByR
             cancelMsg = openErr & vbCrLf & "Paired path: " & existing
             Exit Function
         End If
+
+        ' IS THIS EVEN OUR REGISTER? Same check DraftingUI.Resolve now makes
+        ' for its own callers, added 2026-08-19. This is the SILENT reuse of
+        ' an already-stored path -- exactly the case a stray same-named file
+        ' could get picked up through, and unlike the explicit-typed-path
+        ' branch below, nobody just made a deliberate choice here to accept.
+        Dim existingPairNote As String
+        existingPairNote = DeckRegistry.PairingProblem(pres, wbExisting)
+        If existingPairNote <> "" Then
+            cancelMsg = existingPairNote
+            Exit Function
+        End If
+
         outPath = existing
         Set ResolveDataWorkbook = wbExisting
         Exit Function
@@ -959,12 +972,37 @@ Public Function ResolveDataWorkbook(pres As Object, ByRef outPath As String, ByR
             End If
 
             If Not wbNew Is Nothing Then
-                DeckRegistry.SetWorkbookPath pres, candidate
-                outPath = candidate
-                Set ResolveDataWorkbook = wbNew
-                Exit Function
+                ' IS THIS SOMEONE ELSE'S REGISTER? Checked BEFORE stamping,
+                ' 2026-08-19 -- a person can type the path to an EXISTING
+                ' file here (the comment above explains why that has to be
+                ' allowed), and StampPairing below would otherwise silently
+                ' overwrite that file's DeckReference with this deck's GUID,
+                ' hijacking a register that genuinely belongs to another
+                ' deck. An unstamped file is fine to adopt; a file already
+                ' stamped for a DIFFERENT deck is exactly the case
+                ' DeckRegistry.PairingVerdict exists to name.
+                Dim newPairNote As String
+                newPairNote = DeckRegistry.PairingProblem(pres, wbNew)
+                If newPairNote <> "" Then
+                    problem = newPairNote
+                Else
+                    DeckRegistry.SetWorkbookPath pres, candidate
+                    ' COMPLETES THE PAIRING BOTH WAYS. This branch used to set
+                    ' only the deck's half (the stored path) and never write
+                    ' this deck's identity into the workbook -- so a deck
+                    ' onboarded through here would look "unstamped" forever,
+                    ' and every future safety check on THIS pairing would read
+                    ' as "unknown" instead of "verified", the same gap
+                    ' DeckRegistry's "THE PAIRING, BOTH WAYS" comment
+                    ' describes for the original onboarding path.
+                    DeckRegistry.StampPairing pres, wbNew
+                    outPath = candidate
+                    Set ResolveDataWorkbook = wbNew
+                    Exit Function
+                End If
+            Else
+                problem = createErr
             End If
-            problem = createErr
         End If
 
         If MsgBox(problem & vbCrLf & vbCrLf & "Try a different location?", vbYesNo + vbExclamation, "Bulk Onboard Type -- Pair Workbook") <> vbYes Then

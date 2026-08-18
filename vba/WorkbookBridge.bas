@@ -139,7 +139,24 @@ Public Function OpenOrGetWorkbook(path As String) As Object
 
     Dim wb As Object
     For Each wb In xl.Workbooks
-        If LCase(wb.FullName) = LCase(path) Then
+        ' wb.FullName can be a cloud URL (https://d.docs.live.net/...) even
+        ' when `path` (from DeckRegistry.GetWorkbookPath) is a local disk
+        ' path -- OneDrive syncs between the two, but as bare strings they
+        ' never match. Same normalisation DeckRegistry.LocalPathForUrl
+        ' already does for the DECK's own OneDrive reliability fix (item P)
+        ' -- reused here rather than duplicated, so the deck and register
+        ' pairing paths cannot drift apart on this exact question again.
+        '
+        ' Confirmed live 2026-08-18: this exact mismatch made the match
+        ' below always fail for a cloud-hosted register, so every single
+        ' call silently fell through to opening a SECOND, separate copy of
+        ' the register from its local path -- invisible to the person
+        ' editing the real, already-open one. A value corrected in the real
+        ' register never reached the sync, because the sync was reading a
+        ' different file. FIX-LIST item AU.
+        Dim wbLocalPath As String
+        wbLocalPath = DeckRegistry.LocalPathForUrl(wb.FullName)
+        If LCase(wbLocalPath) = LCase(path) Then
             Set OpenOrGetWorkbook = wb
             Exit Function
         End If
@@ -484,6 +501,21 @@ Public Function SaveWorkbookVerified(wb As Object) As String
     Dim before As Date
     before = fso.GetFile(checkPath).DateLastModified
 
+    ' THE DIRTY FLAG ANSWERS A DIFFERENT QUESTION FROM THE FILE, AND THAT IS WHY
+    ' IT IS ALLOWED HERE. Same fix as DeckRegistry.SaveDeckVerified, ported here
+    ' 2026-08-19 after this function reported "THE WORKBOOK WAS NOT SAVED" on a
+    ' register that had nothing pending -- wb.Save is a legitimate no-op when
+    ' wb.Saved was already True, and "the mtime did not move" is ambiguous
+    ' between that and a genuine failure without this check. wb.Saved is not
+    ' being used as proof a save happened -- the file's mtime still is, every
+    ' Exit Function below is still gated on the bytes moving -- only as proof
+    ' there was nothing TO happen.
+    Dim wasClean As Boolean
+    wasClean = False
+    On Error Resume Next
+    wasClean = wb.Saved
+    On Error GoTo 0
+
     On Error Resume Next
     wb.Save
     Dim saveErr As String
@@ -493,11 +525,43 @@ Public Function SaveWorkbookVerified(wb As Object) As String
 
     If fso.GetFile(checkPath).DateLastModified > before Then Exit Function      ' "" = saved
 
+    ' NOTHING PENDING IS NOT A FAILURE -- checked BEFORE the retry, so a
+    ' workbook with no changes never pays for a full rewrite to prove it.
+    If wasClean Then Exit Function                                             ' "" = nothing to save
+
+    ' Save reported nothing and moved nothing -- force the full rewrite, TO
+    ' SELF, same escalation DeckRegistry.SaveDeckVerified already uses for the
+    ' identical cloud-sync fragility. No format number: path already carries
+    ' the real extension, matching this file's own CreateWorkbookSafely
+    ' (`wb.SaveAs path`, no format arg) rather than inventing a new one.
+    '
+    ' DisplayAlerts SUPPRESSED HERE, and it was not needed on the deck side --
+    ' confirmed live 2026-08-19. PowerPoint's SaveAs-to-self on an
+    ' already-open file does not prompt; Excel's does ("A file named ...
+    ' already exists ... replace it?"), and unattended that hangs the caller
+    ' waiting for a click. This is a REAL file this deck's user is looking
+    ' at, not a throwaway -- restored unconditionally in a Finally-shaped
+    ' block so a future edit here can't leave it off.
+    Dim origAlerts As Boolean
+    origAlerts = wb.Application.DisplayAlerts
+    wb.Application.DisplayAlerts = False
+
+    Dim retryErr As String
+    On Error Resume Next
+    wb.SaveAs path
+    If Err.Number <> 0 Then retryErr = "Error " & Err.Number & ": " & Err.Description
+    Err.Clear
+    On Error GoTo 0
+
+    wb.Application.DisplayAlerts = origAlerts
+
+    If fso.GetFile(checkPath).DateLastModified > before Then Exit Function      ' "" = saved
+
     SaveWorkbookVerified = "THE WORKBOOK WAS NOT SAVED." & vbCrLf & vbCrLf & _
         path & vbCrLf & vbCrLf & _
         "Anything written to it -- including the review sheet -- is on screen " & _
         "only. Save it yourself before closing Excel." & _
-        IIf(saveErr = "", "", vbCrLf & vbCrLf & saveErr)
+        IIf(retryErr = "", IIf(saveErr = "", "", vbCrLf & vbCrLf & saveErr), vbCrLf & vbCrLf & retryErr)
     Exit Function
 
 Failed:
@@ -715,22 +779,27 @@ Assume:
     IsDirty = True
 End Function
 
-' What the human is asked when the paired workbook has unsaved edits. Pure, so
-' the wording is pinned by a test rather than by a live click-through.
+' SAVES QUIETLY INSTEAD OF ASKING. Replaces the four independent copies of
+' "IsDirty, then a Yes/No MsgBox, then SaveWorkbookVerified" that used to live
+' in RibbonUI.bas (ResolveSyncContext, ResolveDeckContext, BuildAllQueuesCore,
+' ApplyApprovedCore) -- the exact "two copies of a guard drift" shape this
+' project already extracted WarnOnDuplicateKeys to fix once, just not fixed
+' here yet. Rohan, 2026-08-19, on why the prompt itself should go: this
+' project's own reasoning for it ("go and press Ctrl+S yourself is friction
+' with no safety benefit over doing it for them") already argued FOR doing it
+' silently: an invariant prompt, always answered the same way, is how the one
+' that matters gets clicked past -- the exact rule "Put it on the slides"
+' collapsed to one press for. This IS a bar that matters (unsaved edits
+' really would be read from a buffer), so it still cannot be skipped -- it
+' just no longer needs to interrupt to be honoured.
 '
-' Offers to save rather than refusing outright: the user is mid-task with Excel
-' open in front of them, and "go and press Ctrl+S yourself" is friction with no
-' safety benefit over doing it for them. Refusing is still the outcome if they
-' decline -- syncing from a buffer is the thing being prevented, and there is
-' no third option where it happens anyway.
-Public Function UnsavedWorkbookText(workbookPath As String) As String
-    UnsavedWorkbookText = _
-        "The Data workbook has unsaved changes:" & vbCrLf & vbCrLf & _
-        "    " & workbookPath & vbCrLf & vbCrLf & _
-        "Syncing now would read values that exist only in Excel's memory, " & _
-        "not in the file. If Excel is later closed without saving, any slide " & _
-        "built from those values is left with no matching row." & vbCrLf & vbCrLf & _
-        "Save the workbook and continue?"
+' Returns "" when there was nothing to save, or the save is done and
+' confirmed on disk. Returns a message when the save genuinely failed --
+' that failure is never hidden, because proceeding on an unsaved buffer is
+' the exact thing this whole check exists to prevent.
+Public Function EnsureSavedQuietly(wb As Object, workbookPath As String) As String
+    If Not IsDirty(wb) Then Exit Function
+    EnsureSavedQuietly = SaveWorkbookVerified(wb)
 End Function
 
 ' Format the register itself. It is the biggest sheet in the workbook and the

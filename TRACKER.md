@@ -110,6 +110,13 @@ stale counts carried a stale count — caught by the PM agent, not by anyone edi
       then becomes the deck. *Done when: Rohan says the sentence. "No" is a valid answer and a
       spec for what to fix.*
 
+      **2026-08-19 note, not a tick:** a real, unaided proof landed on the live deck — the
+      `PROJECT_PROGRESS` sync-skip bug that had been blocking a clean field-level correction
+      is fixed, and Rohan applied a genuine register-diff change (`0.8` -> `80%`) by button,
+      verified from the saved file's own bytes. This is evidence the mechanism works, not the
+      sentence this item asks for — no full quarter has been run through it yet. See
+      `SCENARIOS.md`'s new section for why this isn't a Scenario 1 close either.
+
 ---
 
 ## The first real run — 2026-08-01

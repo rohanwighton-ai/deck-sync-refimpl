@@ -401,15 +401,34 @@ End Function
 ' text WHILE planning (see its header); building the queue wet would perform
 ' the very changes it exists to hold back, and the grid would be describing
 ' work already done.
-Public Function BuildQueue(sheet As Sheet, slideType As String) As ReviewQueueSet
+' `logWs` (optional, the Sync Log sheet) exists for the crash capture below:
+' Error 50290's fourth occurrence (2026-08-19, FIX-LIST item V) landed in this
+' build/planning chain, and a crash here must leave a record naming what was
+' mid-flight even if PowerPoint dies before any dialog appears. Passing
+' Nothing keeps the Err.Source enrichment and only forgoes the log line
+' (AppendLogLine's own Nothing guard), so existing callers are unchanged.
+Public Function BuildQueue(sheet As Sheet, slideType As String, _
+                           Optional logWs As Object = Nothing) As ReviewQueueSet
     Dim q As ReviewQueueSet
     q.SlideType = slideType
     q.RunStamp = MakeRunStamp()
     q.Count = 0
     q.Consumed = False
 
+    ' PER-STAGE CRASH CAPTURE, same shape as ApplyApproved's per-item traps
+    ' (see LogAndReraiseCrash's header). GatherInstances walks every slide in
+    ' the deck reading tags -- real per-slide COM work a 50290 can land in.
+    Dim bqErrNum As Long, bqErrDesc As String, bqErrSrc As String
     Dim instances() As Object
+    On Error Resume Next
+    Err.Clear
     instances = RunSync.GatherInstances(slideType)
+    bqErrNum = Err.Number: bqErrDesc = Err.Description: bqErrSrc = Err.Source
+    On Error GoTo 0
+    If bqErrNum <> 0 Then
+        LogAndReraiseCrash logWs, q.RunStamp, "ReviewQueue.BuildQueue", "", "", _
+            "gathering slides of type '" & slideType & "'", bqErrNum, bqErrDesc, bqErrSrc
+    End If
 
     ' THE OTHER HALF OF PARITY, measured here because nothing downstream can.
     ' PlanRoutineSync walks the register's rows, so a slide whose key has no row
@@ -424,7 +443,22 @@ Public Function BuildQueue(sheet As Sheet, slideType As String) As ReviewQueueSe
     If hasSlides Then
         For si = sLo To sHi
             Dim ri As SlideInstance
+            ' Same per-item trap as the gather above: resolving reads each
+            ' slide's tags -- per-slide COM work inside the build chain.
+            On Error Resume Next
+            Err.Clear
             ri = Resolve.ResolveSlideInstance(instances(si))
+            bqErrNum = Err.Number: bqErrDesc = Err.Description: bqErrSrc = Err.Source
+            On Error GoTo 0
+            If bqErrNum <> 0 Then
+                Dim crashSlideLabel As String
+                crashSlideLabel = "slide " & si & " of " & sHi & " (type '" & slideType & "')"
+                On Error Resume Next
+                crashSlideLabel = crashSlideLabel & ", SlideID " & instances(si).SlideID
+                On Error GoTo 0
+                LogAndReraiseCrash logWs, q.RunStamp, "ReviewQueue.BuildQueue", "", "", _
+                    "resolving tags of " & crashSlideLabel, bqErrNum, bqErrDesc, bqErrSrc
+            End If
             If ri.HasInstanceKey Then
                 q.SlideCount = q.SlideCount + 1
                 If Not sheet.Rows.Exists(ri.InstanceKey) Then
@@ -437,7 +471,10 @@ Public Function BuildQueue(sheet As Sheet, slideType As String) As ReviewQueueSe
     End If
 
     Dim actions() As SyncAction
-    actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows, True)
+    ' logWs/q.RunStamp threaded through so PlanRoutineSync's own per-item
+    ' traps can log which instance/field a crash interrupted (FIX-LIST item V,
+    ' fourth occurrence -- it landed in this planning call's chain).
+    actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows, True, logWs, q.RunStamp)
 
     Dim lo As Long, hi As Long, hasActions As Boolean
     On Error Resume Next
@@ -1246,8 +1283,16 @@ End Function
 ' `logWs` receives one appended line per attempted change, written BEFORE the
 ' next change is attempted, so a run that dies at slide 12 of 19 leaves a record
 ' of exactly what landed. Pass Nothing to skip logging.
+' outWritten/outSkipped/outStale/outFailed let the caller build a MODAL-safe
+' SUMMARY without parsing this function's own full text report -- the counts
+' already exist as local variables below, just not exposed. The full report
+' (this function's return value) is unchanged and still carries every
+' per-item line for the Run Log; these are additive, nothing about the
+' existing detailed report was touched to add them.
 Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object, _
-                              logWs As Object) As String
+                              logWs As Object, _
+                              Optional ByRef outWritten As Long, Optional ByRef outSkipped As Long, _
+                              Optional ByRef outStale As Long, Optional ByRef outFailed As Long) As String
     ' Timing.bas's own module, wired via ws.Parent (ws is the review sheet,
     ' its Parent is the register workbook) rather than a new parameter --
     ' same reasoning as ShapeAddressBook.bas's SetActiveWorkbook: no new
@@ -1679,6 +1724,11 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
             "again to see them with their current before-and-after." & vbCrLf
     End If
 
+    outWritten = writtenCount
+    outSkipped = skippedCount
+    outStale = staleCount
+    outFailed = failedCount
+
     ApplyApproved = report
 End Function
 
@@ -1723,6 +1773,45 @@ Public Sub AppendLogLine(logWs As Object, runStamp As String, item As ReviewItem
     logWs.Cells(r, 5).Value = outcome
     logWs.Cells(r, 6).Value = item.ChangeHash
     On Error GoTo 0
+End Sub
+
+' The crash-capture shape ApplyApproved's per-item traps established (FIX-LIST
+' item V), factored so the queue-BUILD chain can use it too: log the failure
+' to the Sync Log BEFORE re-raising (AppendLogLine's own reasoning -- the
+' record must survive even if PowerPoint dies entirely), then re-raise with
+' the specific item folded into Err.Source so the top-level dialog names what
+' was mid-flight instead of just "VBAProject". Error 50290's FOURTH occurrence
+' (2026-08-19) landed in the build/planning phase, where none of this existed
+' -- same defect shape as the first three, one layer earlier, which is exactly
+' why this is a shared Sub rather than a fourth hand-rolled copy.
+'
+' Gist: when something crashes mid-run, this writes down exactly what was
+' being worked on before passing the crash up, so the error message can say
+' which slide and field it died on instead of a generic code.
+'
+' `raisingFrame` names the function whose loop was interrupted (e.g.
+' "SyncOperations.PlanRoutineSync"); `key`/`fieldId` land in the Sync Log's
+' own EntityCode/FieldID columns, and either may be "" when the crash happened
+' before that context existed (e.g. while gathering slides).
+Public Sub LogAndReraiseCrash(logWs As Object, runStamp As String, _
+                              raisingFrame As String, key As String, fieldId As String, _
+                              phase As String, errNum As Long, errDesc As String, errSrc As String)
+    Dim crashed As ReviewItem
+    crashed.EntityKey = key
+    crashed.FieldID = fieldId
+    AppendLogLine logWs, runStamp, crashed, _
+        "CRASHED in " & phase & ": " & errNum & " " & errDesc & " [" & errSrc & "]"
+
+    Dim itemLabel As String
+    itemLabel = key
+    If fieldId <> "" Then
+        If itemLabel <> "" Then itemLabel = itemLabel & "/"
+        itemLabel = itemLabel & fieldId
+    End If
+    If itemLabel <> "" Then itemLabel = " of " & itemLabel
+
+    Err.Raise errNum, _
+        raisingFrame & ": " & phase & itemLabel & " (originally from " & errSrc & ")", errDesc
 End Sub
 
 ' ---------------------------------------------------------------------

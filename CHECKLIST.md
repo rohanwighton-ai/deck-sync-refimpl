@@ -32,16 +32,28 @@
 - [ ] Publish, **unaided, no Claude in the loop** — the only action that moves the
       count past 5/9. *Source: `SCENARIOS.md`'s own pass condition, line 22-25.*
 
-## Milestone device — Q and R fixed in source, two things still owed
+## Milestone device — Q and R fixed in source, one thing still owed
 
-- [ ] Confirm Q + R actually work on slide 1 of the real rig deck once `addin104`
-      is loaded — evidence so far is tests, not a live slide. *Source:
-      `NEXT-SESSION.md`, "What was not done" block.*
+- [x] Confirm Q + R actually work on slide 1 of the real rig deck. **DONE
+      2026-08-19**, and with genuine register data, not a fixture: found and
+      fixed three real defects along the way (FIX-LIST item AY — corrupted
+      hand-typed date/label data, a real code bug in `MilestoneDevice.
+      WriteText` never converting the `"||"` line-break delimiter, and a
+      separate `NumberFormat` corruption on the date columns). Proven live
+      twice through the real "2. Put it on the slides" button, unaided,
+      verified both times from the saved `.pptx`'s own XML bytes.
 - [ ] `InjectDeviceVia` always reports `WouldChange = True`, even when nothing on
       the slide differs from the register. Will pollute the review queue once real
       milestone data exists. Needs a real current-vs-proposed comparison. *Found
       2026-08-16, not previously written anywhere — see `InjectPrimitive.bas`,
       `InjectDeviceVia`, every branch sets `WouldChange = True` unconditionally.*
+      **Confirmed still true 2026-08-19** with real milestone data finally in
+      the register: every "Put it on the slides" run queues the timeline as
+      1 pending change regardless of whether anything actually differs.
+      Not blocking (one device = one queue entry, not one per milestone, so
+      "pollute" so far means a single always-pending row, not a flood) but
+      still a real gap — worth a proper current-vs-proposed comparison
+      before this is called fully closed.
 
 ## Provenance (scenario 9) — fully designed, five concrete steps, none built
 
@@ -806,6 +818,15 @@ a machine-knowable fact lives once).
       ("1. Set up my quarter") now silently repairs the Lobby from ground truth every
       run, at no extra cost (it already reads every row of every sheet) -- closes the
       at-work hand-edit gap without a third button.
+
+      **Found 2026-08-19, not yet fixed:** `DraftingLobby.ClearLobbyEntry` is tested
+      but has zero production callers -- its own comment says it should run "after
+      `PublishDraftsForField` has actually published" a pinned entry, and the LIVE
+      publish path (`DraftingUI.PublishAllDraftedFields`) never calls it. Practical
+      effect: a Lobby entry is never cleared after its field is actually published,
+      so it keeps looking like pending work indefinitely. Phase 0/2 above are still
+      correctly marked done for what they DO cover (pin, read, publish-from-Lobby);
+      this is a gap in what happens AFTER a successful publish, not in those.
 - [x] **Phase 3 — pre-ticked queue items + remove the Yes/No/Cancel apply gate.**
       Built, tested (236/0), held back overnight, reviewed by Rohan the next morning
       (asked real questions about the layered no-overwrite mechanism and a proposed

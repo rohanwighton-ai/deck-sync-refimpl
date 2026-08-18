@@ -192,6 +192,24 @@ Private Function Resolve(caption As String, ByRef pres As Object, ByRef wb As Ob
         Exit Function
     End If
 
+    ' PAIRING CHECKED HERE, ONCE, FOR EVERY CALLER OF THIS SHARED RESOLVER --
+    ' 2026-08-19. Until now PairingProblem was called separately by whichever
+    ' individual function remembered to (PublishAllDraftedFields did;
+    ' RefreshDraftingSheets, reached through this exact function, did not).
+    ' Same "two copies of a guard drift" shape WarnOnDuplicateKeys was
+    ' extracted to fix in RibbonUI.bas -- fixed here the same way, at the
+    ' choke point every caller already passes through, instead of trusting
+    ' every future caller to remember. Harmless where a caller already checks
+    ' it separately (PairingProblem is a cheap read-and-compare); those extra
+    ' calls are left as-is rather than removed, to keep this change to the
+    ' one actual gap.
+    Dim pairNote As String
+    pairNote = DeckRegistry.PairingProblem(pres, wb)
+    If pairNote <> "" Then
+        Say pairNote, vbCritical, caption
+        Exit Function
+    End If
+
     Dim problem As String
     Set regWs = ResolveRegisterSheet(pres, wb, problem)
     If regWs Is Nothing Then
@@ -460,11 +478,14 @@ Public Sub PublishAllDraftedFields(caption As String)
     parts = Split(list, ",")
 
     Dim allReports As String
+    Dim allSummaries As String
 
     For i = LBound(parts) To UBound(parts)
         mChainField = Trim(parts(i))
         If mChainField <> "" Then
-            allReports = allReports & PublishOneFieldForChain(wb, regWs, srcWs, mChainField, period)
+            Dim oneSummary As String
+            allReports = allReports & PublishOneFieldForChain(wb, regWs, srcWs, mChainField, period, oneSummary)
+            allSummaries = allSummaries & oneSummary
         End If
     Next i
 
@@ -476,15 +497,21 @@ Public Sub PublishAllDraftedFields(caption As String)
     ' file, the same register, no intervening read that needed the
     ' intermediate states saved separately.
     Dim saveProblemText As String
+    Dim saveStatus As String
     saveProblemText = WorkbookBridge.SaveWorkbookVerified(wb)
     If saveProblemText = "" Then
-        allReports = allReports & "Register SAVED to:" & vbCrLf & wb.FullName
+        saveStatus = "Register SAVED to:" & vbCrLf & wb.FullName
     Else
-        allReports = allReports & "!! THE REGISTER COULD NOT BE SAVED !!" & vbCrLf & _
+        saveStatus = "!! THE REGISTER COULD NOT BE SAVED !!" & vbCrLf & _
             "The rows above are in Excel's memory and NOT on disk. Do not close " & _
             "Excel without saving." & vbCrLf & vbCrLf & saveProblemText
     End If
-    If macroWarn <> "" Then allReports = macroWarn & vbCrLf & vbCrLf & allReports
+    allReports = allReports & saveStatus
+    allSummaries = allSummaries & saveStatus
+    If macroWarn <> "" Then
+        allReports = macroWarn & vbCrLf & vbCrLf & allReports
+        allSummaries = macroWarn & vbCrLf & vbCrLf & allSummaries
+    End If
 
     ' ONE Run Log write for the whole press. WriteRunLog REPLACES the whole
     ' sheet on every call (its own header) -- 26 per-field writes each
@@ -505,7 +532,16 @@ Public Sub PublishAllDraftedFields(caption As String)
     ' reaches the eventual chain report exactly where the 26 individual Say
     ' calls it replaces used to land, just assembled once instead of 13
     ' times over.
-    Say RibbonUI.CapReport(allReports), vbInformation, caption
+    '
+    ' allSummaries, NOT allReports -- MODAL GETS A SUMMARY, NEVER THE ITEM
+    ' LIST. Rohan, 2026-08-18: this exact dialog, itemising every published
+    ' field by ID and character count, was the concrete example that named
+    ' the complaint. allReports (full per-item detail) already went to the
+    ' Run Log above, unconditionally, not just when this would overflow.
+    Dim fieldCount As Long
+    fieldCount = UBound(parts) - LBound(parts) + 1
+    Say allSummaries & vbCrLf & "Position: " & period & ", " & fieldCount & _
+        " field(s) processed." & vbCrLf & "Next: the slide changes.", vbInformation, caption
 
     mChainField = ""
     Exit Sub
@@ -563,13 +599,22 @@ End Sub
 ' (no Resolve inside it), so it is genuinely testable without a live
 ' presentation. Closes part of the coverage gap this restructure otherwise
 ' has no automated test for at all.
+' outSummaryOnly is the MODAL-safe twin of the return value -- same "=== field
+' ===" header and the copy-note (already a count, never itemized), but the
+' Summary line extracted from PublishDrafts' report instead of its full
+' per-item "published: X (N chars)" list. The return value itself is
+' UNCHANGED (still full detail, still what the Run Log gets) -- Rohan,
+' 2026-08-18: the modal listing every published item was the complaint, not
+' the Run Log having it.
 Public Function PublishOneFieldForChain(wb As Object, regWs As Object, srcWs As Object, _
-                                         fieldId As String, period As String) As String
+                                         fieldId As String, period As String, _
+                                         Optional ByRef outSummaryOnly As String) As String
     Dim sheetName As String
     sheetName = Drafting.DraftSheetNameFor(fieldId)
     If Not WorkbookBridge.WorksheetExists(wb, sheetName) Then
         PublishOneFieldForChain = "=== " & fieldId & " ===" & vbCrLf & _
             "No drafting sheet for " & fieldId & " yet -- skipped." & vbCrLf & vbCrLf
+        outSummaryOnly = PublishOneFieldForChain
         Exit Function
     End If
 
@@ -587,11 +632,31 @@ Public Function PublishOneFieldForChain(wb As Object, regWs As Object, srcWs As 
     If Drafting.NothingToPublish(result) Then
         PublishOneFieldForChain = "=== " & fieldId & " ===" & vbCrLf & copyNote & vbCrLf & _
             "Nothing to publish for " & fieldId & " in " & period & "." & vbCrLf & vbCrLf
+        outSummaryOnly = PublishOneFieldForChain
         Exit Function
     End If
 
     PublishOneFieldForChain = "=== " & fieldId & " ===" & vbCrLf & copyNote & vbCrLf & _
         result & vbCrLf & vbCrLf
+
+    outSummaryOnly = "=== " & fieldId & " ===" & vbCrLf & copyNote & vbCrLf & _
+        SummaryLineOf(result) & vbCrLf & vbCrLf
+End Function
+
+' Pulls just the "Summary: ..." line out of a PublishDrafts report -- a
+' stable, deliberately-formatted marker this codebase already parses
+' elsewhere (Drafting.NothingToPublish's own InStr check), not fragile
+' scraping of arbitrary text.
+Private Function SummaryLineOf(report As String) As String
+    Dim lines() As String
+    lines = Split(report, vbCrLf)
+    Dim i As Long
+    For i = LBound(lines) To UBound(lines)
+        If Left$(lines(i), 9) = "Summary: " Then
+            SummaryLineOf = lines(i)
+            Exit Function
+        End If
+    Next i
 End Function
 
 Private Function FieldForRun(caption As String, wb As Object) As String
