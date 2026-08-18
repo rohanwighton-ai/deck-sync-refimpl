@@ -91,6 +91,28 @@ guidance.
   as the component type you think it is before trusting the symptom's own
   framing of the problem.**
 
+  **RECURRED 2026-08-18 via a raw ad-hoc import, bypassing the fix above
+  entirely.** A throwaway diagnostic bulk-imported all 37 production
+  modules into a fresh scratch presentation using a plain PowerShell
+  `VBComponents.Import()` loop instead of the project's own staging
+  scripts (`build_ppam.ps1` etc.) that already CRLF-normalise `.cls`
+  files. Same silent misimport, same "Compile error: Expected: end of
+  statement" on the `WithEvents` line. This time it also produced a
+  genuine VBA IDE hang (not just a dialog): a second, unrelated scratch
+  presentation from earlier in the session still had the same broken
+  `AppEvents.cls` sitting unresolved, and `Application.Run` triggers a
+  compile pass across ALL loaded projects, not just the target one -- so
+  the stale leftover project's dialog blocked everything, including
+  reads against the real, unrelated deck, for several minutes before
+  being noticed (confirmed stuck via a screenshot showing a taskbar
+  clock several minutes behind the capture time -- the window had
+  stopped redrawing entirely). **Takeaway: any ad-hoc module import for a
+  scratch/probe run must either use the project's own staging scripts or
+  simply exclude `.cls` files** (a probe rarely needs the event-hook
+  class anyway); and close every scratch presentation before starting a
+  new probing session, not just the one currently in use -- a leftover
+  broken project from an earlier attempt can block an unrelated one.
+
 - **ONE WRITER ON THE RIG AT A TIME. Delegating an Office task means not doing
   it yourself.** 2026-08-01: a Fable agent was put on the property-persistence
   bug, and the main agent then ran the same experiments concurrently -- same

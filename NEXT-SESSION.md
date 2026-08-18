@@ -1,5 +1,126 @@
 # NEXT SESSION — start here
 
+> ## 18 AUG, AFTERNOON (~13:30) — register-wide corruption swept and fixed;
+> a real, still-open bug found in the sync queue-build path for `3_P001`'s
+> `PROJECT_PROGRESS` field. Nothing built into a new addin this session.
+> **STATUS: CURRENT, supersedes every block below.**
+>
+> **Register repair, done and verified:** a system-wide sweep (not a
+> row-by-row patch, per Rohan's explicit redirect) fixed every cell across
+> `PROJECT_PROGRESS`/`INDUSTRY_CASH`/`SAAFE_CASH`/`TOTAL_INKIND`/
+> `TOTAL_VALUE` whose stored VBA type was a raw Number wearing a text
+> display (36 `TOTAL_VALUE` + 27 `INDUSTRY_CASH` + 1 stale `PROJECT_PROGRESS`
+> row), and locked `NumberFormat = "@"` on the full used range of all five
+> columns going forward. First run hit a genuine VBA compile error —
+> `wb.Save()` used as a bare statement (parens on a no-arg method call
+> without `Call` is a syntax error in VBA) — fixed to `wb.Save`. Verified
+> natively in VBA (not PowerShell's own `.Value`, which is unreliable for
+> this — documented earlier this session) that `3_P001`/Q1F27's
+> `PROJECT_PROGRESS` cell genuinely holds the string `"80%"`. No duplicate
+> rows for `3_P001` (exactly 3: Q3F26/Q4F26/Q1F27, as expected).
+>
+> **But the live slide still shows `"0.8"` for that same field, and the
+> sync tool never actually attempted to fix it.** Live end-to-end retest
+> ("1. Set up my quarter" -> "2. Put it on the slides"), traced against the
+> workbook's own Sync Log timestamps (not guessed from a screenshot): the
+> `Apply Approved: project-progress` step at 13:25:16 reported "1 written...
+> 0 failed... saved" — genuinely true, but the ONE logged item was
+> `3_P001 / MILESTONE_TIMELINE`, not `PROJECT_PROGRESS`. **`PROJECT_PROGRESS`
+> was never queued at all** — `BuildQueue`/`SyncOperations.PlanRoutineSync`
+> silently didn't flag it as needing a change, despite register="80%" and
+> slide="0.8" clearly differing.
+>
+> Ruled out, with evidence, not guessed: no caching in `ExcelOutput`
+> (every Dictionary is created fresh per call); no duplicate register row
+> or duplicate slide sharing the `3_P001` key (checked all 45 slides);
+> `IgnoringTrailingBreaks` only strips trailing CR/LF/vtab, no fuzzy
+> percent-vs-fraction matching; `InjectorFor` correctly routes this field
+> to `INJECTOR_TEXT` (no `.track`/`.rest` companion shape exists for it on
+> this slide, confirmed from the actual tag dump). The Field Spec's Kind
+> column for `PROJECT_PROGRESS` reads `"Given"`, which is not one of the
+> four values the header names (`Controlled/Prose/Static/Derived`) — traced
+> whether this gates queue-building and it does NOT (`ContentKindOf` in
+> ReviewQueue.bas is a separate, hardcoded FieldID switch used only for
+> approval batching, defaults unknown fields to Prose, and PlanRoutineSync
+> never reads the Field Spec sheet at all). **Not yet found**: why
+> `PlanRoutineSync`'s per-field dry-run call
+> (`InjectPrimitive.InjectField(..., dryRun:=True, ...)`) for this exact
+> field/slide combination isn't reporting `WouldChange = True`.
+>
+> **Next step:** instrument `PlanRoutineSync`'s field loop (SyncOperations.bas
+> ~line 200-235) directly for `3_P001`/`PROJECT_PROGRESS` rather than more
+> inference — a probe module needs a scratch presentation with the full
+> production module set imported (the loaded addin's own VBProject is
+> `Protection = 1`, locked, so a probe cannot be imported directly into
+> `addin136.ppam`). Was mid-diagnosis when parked; Rohan called time
+> ("going around in circles") — correctly, this had gone long.
+>
+> **Byproduct, not yet acted on:** `WorkbookBridge.OpenOrGetWorkbook`'s
+> cloud-URL/local-path matching bug (source comments call it item AU) is
+> fixed in source but not yet built into any addin, and is confirmed NOT
+> the cause of the bug above (only one workbook was ever open, no
+> duplicate). Still worth shipping on its own merits next session. Neither
+> AT nor AU has a proper FIX-LIST.md entry yet despite being named in code
+> comments — needs doing. Current loaded addin is still `addin136`
+> (contains neither the AU fix nor anything from tonight).
+>
+> **HANDOVER, same afternoon, ~14:05 — the live-diagnosis attempt failed on
+> tooling, not on the bug itself, and cost about an hour.** Tried to run
+> `vba/tools/ProgressReadProbe.bas` (see block above) against the real
+> deck by bulk-importing all 37 production `.bas`/`.cls` files into a
+> fresh scratch presentation via a raw PowerShell `VBComponents.Import()`
+> loop. Hit the ALREADY-DOCUMENTED `.cls` LF-line-ending bug (this file,
+> a few paragraphs up, dated 2026-08-16) a SECOND time, because the ad-hoc
+> import bypassed the project's own staging scripts
+> (`build_ppam.ps1`/etc.) that already fix it — `AppEvents.cls` silently
+> imported as a Standard Module, `WithEvents` failed to compile. Worse
+> than the original occurrence: a SECOND, unrelated leftover scratch
+> presentation from earlier probing was still sitting open with the same
+> broken import, and `Application.Run` compiles ALL loaded projects, not
+> just the target — so its stale compile-error dialog silently blocked
+> everything, including reads against the real, unrelated deck, for
+> several minutes. Confirmed as a genuine hang (not just slow) from a
+> screenshot whose taskbar clock was minutes behind the capture time — the
+> window had stopped redrawing. Rohan force-closed PowerPoint via Task
+> Manager; **no data lost** — the deck and register were both already
+> saved to disk before any of this started, and nothing after that point
+> was anything but scratch/probe presentations. Full mechanism and the
+> takeaway (never raw-import `.cls` files; close every leftover scratch
+> presentation before starting a new probe session, not just the current
+> one) are now documented in `AGENTS.md` right after the original 2026-08-16
+> entry.
+>
+> **PowerPoint is currently closed.** Nothing is loaded — no addin, no
+> deck. Reopening the deck will reload whatever the toolbar's registered
+> addin is (was `addin136` before the crash; check it's still registered
+> after relaunch, per the duplicate-AutoLoad gotcha elsewhere in
+> AGENTS.md).
+>
+> **Recommended actual next step, not more live probing:** add one
+> temporary debug line directly into `SyncOperations.PlanRoutineSync`'s
+> per-field loop (`vba/SyncOperations.bas`, the `For Each fieldName In
+> rowValues.Keys` loop, right after the `r = InjectPrimitive.InjectField(...)`
+> call around line 210) that logs `fieldName`, `r.Found`, `r.WouldChange`,
+> and `r.CurrentValue` — filtered to `fieldName = "PROJECT_PROGRESS"` and
+> `key = "3_P001"` — to the Sync Log or a scratch sheet. Build a real addin
+> via `build_ppam.ps1` (already CRLF-normalises `.cls` correctly) and read
+> the answer off one normal "1. Set up my quarter" press through the
+> actual toolbar, instead of another scratch-presentation COM session.
+> Remove the debug line once the cause is found.
+>
+> **Uncommitted state, unchanged in substance since the block above, now
+> also includes this file's own edits and the AGENTS.md lesson:**
+> `git status --short` shows 7 modified (`AGENTS.md`, `NEXT-SESSION.md`,
+> `vba/DraftingUI.bas`, `vba/ReviewQueue.bas`, `vba/RibbonUI.bas`,
+> `vba/WorkbookBridge.bas`, `vba/tests/TestRunner.bas` — 313 insertions,
+> 10 deletions total) and 3 untracked (`vba/tools/OpenOrGetProbe.bas`,
+> `vba/tools/ProgressReadProbe.bas`, `vba/tools/TemplateAuditProbe.bas`).
+> Last real commit is still `cbf600b` (the one-press collapse). Nothing
+> committed or pushed this session. The modal-summary UI change (in
+> `DraftingUI.bas`/`RibbonUI.bas`/`ReviewQueue.bas`) is still the CUT from
+> the PM check earlier today — leave it alone until the sync-skip bug
+> above is closed.
+
 > ## 17 AUG, LATE NIGHT (~22:10) — the Device Registry (P3) turned out to be
 > one small fix, not a new module — three of the four suspected consumers
 > were already fine. Full suite 243/243. NOT yet built into an addin.
