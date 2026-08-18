@@ -198,7 +198,7 @@ Private Sub Walk(shapesColl As Object, groupPath As String, ByRef results() As C
             c.Name = shp.Name
             c.GroupPath = groupPath
             c.ZOrder = z
-            c.ShapeType = IIf(IsPicture(shp), "picture", "autoshape_or_textbox")
+            c.ShapeType = IIf(InjectPrimitive.IsPictureShape(shp), "picture", "autoshape_or_textbox")
 
             c.HasPlaceholder = (shp.Type = msoPlaceholder)
             If c.HasPlaceholder Then
@@ -208,7 +208,7 @@ Private Sub Walk(shapesColl As Object, groupPath As String, ByRef results() As C
             End If
             c.PlaceholderIdx = -1 ' not exposed by the object model -- see SPIKE_NOTES_Discovery.md
 
-            If IsPicture(shp) Then
+            If InjectPrimitive.IsPictureShape(shp) Then
                 c.HasText = False
             Else
                 c.HasText = ShapeHasNonEmptyText(shp)
@@ -239,10 +239,6 @@ Private Sub Walk(shapesColl As Object, groupPath As String, ByRef results() As C
         ' is-picture check *within* the sp/pic tags Python actually looks at.
     Next shp
 End Sub
-
-Private Function IsPicture(shp As Object) As Boolean
-    IsPicture = (shp.Type = msoPicture) Or (shp.Type = msoLinkedPicture)
-End Function
 
 Private Function IsCandidateLeafType(shp As Object) As Boolean
     Select Case shp.Type

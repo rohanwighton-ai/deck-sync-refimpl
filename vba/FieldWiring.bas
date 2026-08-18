@@ -195,23 +195,31 @@ End Function
 ' layouts, and a flat walk under-reports -- which here would mean reporting a
 ' field as unmarked when it is tagged, and sending someone to re-tag a shape
 ' that is already correct.
+'
+' A GROUP IS TESTED **AND** RECURSED INTO, same fix as InjectPrimitive.
+' WalkForRoleTag (2026-08-10) and the same reason: this was an ElseIf, so a
+' device's own role tag (MILESTONE_TIMELINE, stamped on the group shape
+' itself, not on any child) was invisible to this scanner -- masked so far
+' because nothing has queried a device's own tag through this dictionary yet,
+' but latent for the same reason the InjectPrimitive copy of this bug was
+' real: a group carrying a role tag could never be found by anything.
 Private Sub WalkForRoles(shapesColl As Object, ByRef seen As Object)
     Dim shp As Object
     For Each shp In shapesColl
+        Dim role As String
+        role = ""
+        On Error Resume Next
+        role = shp.Tags("role")
+        On Error GoTo 0
+        ' KEY uppercased, VALUE the original casing. The injector matches
+        ' role tags with `=` under VBA's default binary comparison, so it is
+        ' CASE SENSITIVE, while this check has always uppercased both sides.
+        ' Keeping the original is what lets the near-miss be reported by name
+        ' instead of the two quietly disagreeing.
+        If role <> "" Then seen(UCase(Trim(role))) = Trim(role)
+
         If shp.Type = msoGroup Then
             WalkForRoles shp.GroupItems, seen
-        Else
-            Dim role As String
-            role = ""
-            On Error Resume Next
-            role = shp.Tags("role")
-            On Error GoTo 0
-            ' KEY uppercased, VALUE the original casing. The injector matches
-            ' role tags with `=` under VBA's default binary comparison, so it is
-            ' CASE SENSITIVE, while this check has always uppercased both sides.
-            ' Keeping the original is what lets the near-miss be reported by name
-            ' instead of the two quietly disagreeing.
-            If role <> "" Then seen(UCase(Trim(role))) = Trim(role)
         End If
     Next shp
 End Sub
