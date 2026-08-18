@@ -103,6 +103,14 @@ Public Function RunRoutineSyncWithSheet(sheet As Sheet, slideType As String, tem
     Dim instances() As Object
     instances = GatherInstances(slideType)
 
+    ' srcWs DELIBERATELY NOT THREADED THROUGH HERE. This function (and
+    ' RunRoutineSync, its only caller) has zero live callers of its own --
+    ' slide creation left the sync path 2026-07-31, see this function's own
+    ' comment above. A picture field would hit the same "Sources sheet was
+    ' not available here" gap PreviewRoutineSync and PlanCounts were fixed
+    ' for (2026-08-18) if this is ever reconnected -- fix it THEN, alongside
+    ' whatever revives the call site, rather than threading a parameter
+    ' through dead code on spec now.
     Dim actions() As SyncAction
     actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows)
 
@@ -211,6 +219,13 @@ Public Function CreateMissingSlides(sheet As Sheet, slideType As String, templat
     ' writes corrected field text WHILE planning (see its header), and this
     ' operation must not correct anything -- it creates. Letting it plan wet
     ' would make Create Missing Slides silently do a sync's work too.
+    '
+    ' srcWs NOT NEEDED HERE, unlike PreviewRoutineSync/PlanCounts (fixed
+    ' 2026-08-18 for the same gap): this function only ever reads Kind =
+    ' "new_record"/"flagged" from the result below, never "in_place_correction",
+    ' so a picture field's WouldChange/ErrorMessage is computed and discarded
+    ' either way. No `ws` in this function's own signature to resolve one from,
+    ' and nothing downstream would consume it if there were.
     Dim actions() As SyncAction
     actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows, True)
 
@@ -430,8 +445,21 @@ Public Function PreviewRoutineSync(ws As Object, slideType As String, deckPeriod
     Dim instances() As Object
     instances = GatherInstances(slideType)
 
+    ' SAME GAP ApplyApproved AND BuildQueue ALREADY CLOSE, found 2026-08-18 by
+    ' a purpose-hound sweep after the BuildQueue fix landed: PlanRoutineSync
+    ' has six call sites and only one had srcWs threaded through. Without it,
+    ' a picture field can never report itself correctly unchanged here either
+    ' -- every Preview would show it as "would correct" with "the Sources
+    ' sheet was not available here", live and reachable from DraftingUI's
+    ' post-publish "Preview only" prompt.
+    Dim srcWs As Object
+    Set srcWs = Nothing
+    If WorkbookBridge.WorksheetExists(ws.Parent, Sources.SOURCES_SHEET_NAME) Then
+        Set srcWs = ws.Parent.Worksheets(Sources.SOURCES_SHEET_NAME)
+    End If
+
     Dim actions() As SyncAction
-    actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows, True)
+    actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows, True, Nothing, "", srcWs)
 
     Dim lo As Long, hi As Long, hasActions As Boolean
     On Error Resume Next
@@ -530,8 +558,17 @@ Public Sub PlanCounts(ws As Object, slideType As String, ByRef unchangedCount As
     Dim instances() As Object
     instances = GatherInstances(slideType)
 
+    ' SAME GAP AS PreviewRoutineSync, closed the same way -- ws is already
+    ' available here, so there is no reason for this call site to be the odd
+    ' one out among PlanRoutineSync's callers.
+    Dim srcWs As Object
+    Set srcWs = Nothing
+    If WorkbookBridge.WorksheetExists(ws.Parent, Sources.SOURCES_SHEET_NAME) Then
+        Set srcWs = ws.Parent.Worksheets(Sources.SOURCES_SHEET_NAME)
+    End If
+
     Dim actions() As SyncAction
-    actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows, True)
+    actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows, True, Nothing, "", srcWs)
 
     Dim lo As Long, hi As Long
     On Error Resume Next

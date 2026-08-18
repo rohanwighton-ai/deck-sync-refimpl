@@ -159,13 +159,47 @@ End Sub
 ' it returns Nothing on TWO matches as well as none, so an ambiguous tag can
 ' never be silently resolved to whichever shape came first.
 Public Function FindShapeByRoleTag(sld As Object, identityTag As String) As Object
+    ' CONFIRMED ABSENCE, PER SLIDE, CHECKED FIRST -- free, in-memory, zero
+    ' COM calls of any kind. If a full walk of THIS slide has already run
+    ' this session, the identity keys it saw are on record, and a tag not
+    ' among them is confirmed absent here -- for this slide only. The old
+    ' per-TYPE absent marker let one slide's genuine lack of a shape veto
+    ' another slide's confirmed presence of it (the 2026-08-18
+    ' TIMELINE_ELAPSED "dropped: changed since approval" incident --
+    ' ShapeAddressBook.mSlideTagIndex's header has the full story). A
+    ' recorded "present" is deliberately NOT trusted the same way: it only
+    ' licenses the fast path/walk below, whose own tag check remains the
+    ' authority, so a stale "present" costs a walk while a false "absent"
+    ' can never happen for a slide the walk actually saw.
+    '
+    ' CHECKED BEFORE THE LOOKUP FAST PATH BELOW, not after -- found by a
+    ' waste-hound audit 2026-08-18: this used to run second, so every one of
+    ' InjectorFor's up-to-four suffix checks per field paid a real
+    ' cross-application Excel round-trip (ShapeAddressBook.Lookup, ~80ms
+    ' measured, FIX-LIST item AT) before ever reaching the free answer this
+    ' block gives with zero COM calls once a slide has been indexed. The
+    ' per-slide index's whole point was to make repeat lookups on an
+    ' already-walked slide free; paying the expensive check first undercut
+    ' that on every field, every suffix, every slide, all session.
+    Dim slideKey As String
+    slideKey = ShapeAddressBook.SlideKeyFor(sld)
+    Dim slideTags As Object
+    Set slideTags = ShapeAddressBook.SlideTagsFor(slideKey)
+    If Not slideTags Is Nothing Then
+        If Not slideTags.Exists(identityTag) Then
+            Set FindShapeByRoleTag = Nothing
+            Exit Function
+        End If
+    End If
+
     ' THE FAST PATH. ShapeAddressBook.bas's own header has the full story --
     ' compressed here: a shape's name and location never change between
     ' runs (Slide.Duplicate copies both from the template, and nothing in
     ' this codebase renames a shape afterwards), so a name once discovered
     ' by the full walk below is remembered and tried FIRST next time,
     ' verified by the same tag check the walk itself uses, never trusted
-    ' blindly. Costs one cheap Lookup and, on a hit, one native
+    ' blindly. Costs one Lookup (a real Excel round-trip, not free -- the
+    ' per-slide check above is what's free) and, on a hit, one native
     ' Shapes(name) access instead of walking the whole slide.
     Dim slideType As String
     Dim resolved As SlideInstance
@@ -180,8 +214,8 @@ Public Function FindShapeByRoleTag(sld As Object, identityTag As String) As Obje
         ' no longer produces it itself). It is a hint that expired with its
         ' design, not a verdict: treating it as one was the 2026-08-18
         ' TIMELINE_ELAPSED incident (see mSlideTagIndex's header in
-        ' ShapeAddressBook.bas). Ignore it and let the per-slide index
-        ' below answer instead.
+        ' ShapeAddressBook.bas). Ignore it -- the per-slide index above
+        ' already had first say on absence.
         If cachedName <> "" And cachedName <> ShapeAddressBook.NO_SHAPE_MARKER Then
             Dim candidate As Object
             On Error Resume Next
@@ -193,28 +227,6 @@ Public Function FindShapeByRoleTag(sld As Object, identityTag As String) As Obje
                     Exit Function
                 End If
             End If
-        End If
-    End If
-
-    ' CONFIRMED ABSENCE, PER SLIDE. If a full walk of THIS slide has already
-    ' run this session, the identity keys it saw are on record, and a tag
-    ' not among them is confirmed absent here with zero COM calls -- for
-    ' this slide only. The old per-TYPE absent marker let one slide's
-    ' genuine lack of a shape veto another slide's confirmed presence of it
-    ' (the 2026-08-18 TIMELINE_ELAPSED "dropped: changed since approval"
-    ' incident -- ShapeAddressBook.mSlideTagIndex's header has the full
-    ' story). A recorded "present" is deliberately NOT trusted the same
-    ' way: it only licenses the walk below, whose own tag check remains the
-    ' authority, so a stale "present" costs a walk while a false "absent"
-    ' can never happen for a slide the walk actually saw.
-    Dim slideKey As String
-    slideKey = ShapeAddressBook.SlideKeyFor(sld)
-    Dim slideTags As Object
-    Set slideTags = ShapeAddressBook.SlideTagsFor(slideKey)
-    If Not slideTags Is Nothing Then
-        If Not slideTags.Exists(identityTag) Then
-            Set FindShapeByRoleTag = Nothing
-            Exit Function
         End If
     End If
 
@@ -306,16 +318,39 @@ End Sub
 ' difference: stamping a role onto a slide that already has two of them makes a
 ' broken slide worse, and stamping onto one that has none is the whole job.
 Public Function CountShapesWithRoleTag(sld As Object, identityTag As String) As Long
+    ' PER-SLIDE FREE CHECK FIRST, same fix as FindShapeByRoleTag, same day
+    ' (2026-08-18 waste-hound audit): a slide already indexed this session
+    ' answers presence/absence with zero COM calls instead of a full walk.
+    ' The exact count past 1 has never been used -- this function's only
+    ' caller (Harvest.PropagateTemplateTags) checks `> 0` -- so a confirmed
+    ' "present" safely answers 1 without re-walking.
+    Dim slideKey As String
+    slideKey = ShapeAddressBook.SlideKeyFor(sld)
+    Dim slideTags As Object
+    Set slideTags = ShapeAddressBook.SlideTagsFor(slideKey)
+    If Not slideTags Is Nothing Then
+        If slideTags.Exists(identityTag) Then
+            CountShapesWithRoleTag = 1
+        Else
+            CountShapesWithRoleTag = 0
+        End If
+        Exit Function
+    End If
+
     Dim match As Object
     Dim matchCount As Long
     matchCount = 0
-    ' Throwaway collector: this caller wants the count, not the index, and
-    ' deliberately does not record it -- counting is a pre-stamp check
-    ' (Harvest), and recording a pre-stamp snapshot would be exactly the
-    ' stale-absence NoteRoleTagAdded exists to prevent.
-    Dim discard As Object
-    Set discard = CreateObject("Scripting.Dictionary")
-    WalkForRoleTag sld.Shapes, identityTag, match, matchCount, discard
+    ' NO LONGER A THROWAWAY COLLECTOR. Recording this walk's byproduct
+    ' (RecordSlideTags -- the same self-healing overwrite FindShapeByRoleTag's
+    ' own slow path uses) is exactly what NoteRoleTagAdded exists to keep
+    ' coherent afterward, not a reason to discard it: this walk was indexing
+    ' the whole slide for free and throwing that away, so PropagateTemplateTags'
+    ' own loop re-walked the same slide once per role it checked, every press
+    ' of "Set up my quarter."
+    Dim tagsPresent As Object
+    Set tagsPresent = CreateObject("Scripting.Dictionary")
+    WalkForRoleTag sld.Shapes, identityTag, match, matchCount, tagsPresent
+    ShapeAddressBook.RecordSlideTags slideKey, tagsPresent
     CountShapesWithRoleTag = matchCount
 End Function
 

@@ -141,7 +141,8 @@ End Function
 Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collection, dataRows As Object, _
                                 Optional dryRun As Boolean = False, _
                                 Optional logWs As Object = Nothing, _
-                                Optional runStamp As String = "") As SyncAction()
+                                Optional runStamp As String = "", _
+                                Optional srcWs As Object = Nothing) As SyncAction()
     Dim actions() As SyncAction
     Dim n As Long
     n = 0
@@ -261,7 +262,7 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                 ' ProbeCrashes could prove it fails without this wrapping --
                 ' confirmed 2026-08-19: raw Err.Source, nothing logged. This
                 ' is that fix, applied.
-                r = GuardedPlanProbe(instanceSlide, key, CStr(fieldName), sourceValue, dryRun, rowValues, logWs, runStamp)
+                r = GuardedPlanProbe(instanceSlide, key, CStr(fieldName), sourceValue, dryRun, rowValues, logWs, runStamp, srcWs)
 
                 ' r.Found = False covers both "no shape carries this
                 ' field's tag" (skip -- matches resolve.py's
@@ -317,7 +318,7 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                     ' bas), so a dry run still does real COM work against the
                     ' device group -- one reason a mid-PLAN crash was always
                     ' plausible here.
-                    rd = GuardedPlanProbe(instanceSlide, key, CStr(devTag), "", dryRun, rowValues, logWs, runStamp)
+                    rd = GuardedPlanProbe(instanceSlide, key, CStr(devTag), "", dryRun, rowValues, logWs, runStamp, srcWs)
                     If rd.Found And (rd.Written Or rd.WouldChange) Then
                         changedVerified(devTag) = rd.Verified
                         changedError(devTag) = rd.ErrorMessage
@@ -359,7 +360,7 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                     frac = ElapsedFraction(startVal, endVal)
                     If frac <> "" Then
                         Dim re As InjectResult
-                        re = GuardedPlanProbe(instanceSlide, key, TIMELINE_ELAPSED_TAG, frac, dryRun, rowValues, logWs, runStamp)
+                        re = GuardedPlanProbe(instanceSlide, key, TIMELINE_ELAPSED_TAG, frac, dryRun, rowValues, logWs, runStamp, srcWs)
                         If re.Found And (re.Written Or re.WouldChange) Then
                             changedVerified(TIMELINE_ELAPSED_TAG) = re.Verified
                             changedError(TIMELINE_ELAPSED_TAG) = re.ErrorMessage
@@ -407,14 +408,25 @@ End Function
 ' works at all requires a deterministic stand-in at the exact wrapped site.
 Private Function GuardedPlanProbe(instanceSlide As Object, key As String, fieldId As String, _
                                   sourceValue As String, dryRun As Boolean, rowValues As Object, _
-                                  logWs As Object, runStamp As String) As InjectResult
+                                  logWs As Object, runStamp As String, _
+                                  Optional srcWs As Object = Nothing) As InjectResult
     Dim errNum As Long, errDesc As String, errSrc As String
     On Error Resume Next
     Err.Clear
     If mTestForcePlanCrash Then
         Err.Raise 12346, "InjectPrimitive.InjectField", "TEST: deliberately injected fault"
     Else
-        GuardedPlanProbe = InjectPrimitive.InjectField(instanceSlide, fieldId, sourceValue, dryRun, Nothing, rowValues)
+        ' srcWs THREADED THROUGH, NOT HARDCODED NOTHING. A picture field's
+        ' proposed value is a source-ID citation, not a value InjectorFor can
+        ' resolve on its own -- without the real Sources sheet here,
+        ' InjectPictureVia can only ever report "Sources sheet was not
+        ' available here" and force WouldChange=True, so a picture field
+        ' could never correctly report itself unchanged during planning, even
+        ' once it is genuinely synced. Found 2026-08-18 wiring the first real
+        ' picture field (PROJECT_PHOTO) -- ApplyApproved already resolved
+        ' srcWs correctly; PlanRoutineSync's own dry-run probe, one call
+        ' earlier in the same chain, never did.
+        GuardedPlanProbe = InjectPrimitive.InjectField(instanceSlide, fieldId, sourceValue, dryRun, srcWs, rowValues)
     End If
     errNum = Err.Number: errDesc = Err.Description: errSrc = Err.Source
     On Error GoTo 0

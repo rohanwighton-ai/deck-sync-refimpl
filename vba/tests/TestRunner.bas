@@ -170,6 +170,14 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "SyncOperations_DeviceFieldReachableThroughPlanRoutineSync", r
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("SyncOperations_PictureFieldReportsNoChangeThroughPlanRoutineSync", filterPattern) Then
+        r = Test_SyncOperations_PictureFieldReportsNoChangeThroughPlanRoutineSync()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "SyncOperations_PictureFieldReportsNoChangeThroughPlanRoutineSync", r
+    On Error GoTo 0
     If TestMatches("SyncOperations_PlanRoutineSyncNamesTheItemWhenProbeCrashes", filterPattern) Then
         r = Test_SyncOperations_PlanRoutineSyncNamesTheItemWhenProbeCrashes()
     Else
@@ -2682,6 +2690,72 @@ Private Function Test_SyncOperations_DeviceFieldReachableThroughPlanRoutineSync(
 
     sld.Delete
     Test_SyncOperations_DeviceFieldReachableThroughPlanRoutineSync = result
+End Function
+
+' FOUND 2026-08-18 wiring the first real picture field (PROJECT_PHOTO).
+' GuardedPlanProbe -- the dry-run probe PlanRoutineSync uses to decide what
+' belongs in the review queue -- hardcoded srcWs to Nothing. A picture
+' field's proposed value is a source-ID citation, and InjectPictureVia
+' cannot resolve one without the real Sources sheet -- without it, it can
+' only ever report "the Sources sheet was not available here" and force
+' WouldChange=True. So an already-correctly-synced picture field could
+' NEVER report itself unchanged during planning, even once genuinely
+' synced -- every single "Put it on the slides" press would show it as a
+' pending change, forever. ApplyApproved already resolved srcWs correctly;
+' PlanRoutineSync, one call earlier in the same chain, never did.
+Private Function Test_SyncOperations_PictureFieldReportsNoChangeThroughPlanRoutineSync() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "project-progress"
+    sld.Tags.Add "instance_key", "3_P001"
+
+    Dim seedPath As String
+    seedPath = MakeTestBitmap(Environ("TEMP") & "\dsphoto.bmp", 40, 20)
+    Dim frame As Object
+    Set frame = sld.Shapes.AddPicture(seedPath, msoFalse, msoTrue, 100, 80, 300, 150)
+    frame.Tags.Add "role", "PROJECT_PHOTO"
+    ' Already stamped, as if a real sync had already placed it -- the state
+    ' this test needs to prove PlanRoutineSync can correctly recognise.
+    frame.Tags.Add InjectPrimitive.PICTURE_SOURCE_TAG, "S20"
+
+    Dim instances(1 To 1) As Object
+    Set instances(1) = sld
+    Dim order As New Collection
+    order.Add "3_P001"
+
+    Dim rowValues As Object
+    Set rowValues = CreateObject("Scripting.Dictionary")
+    rowValues.Add "PROJECT_PHOTO", "S20"
+    Dim rows As Object
+    Set rows = CreateObject("Scripting.Dictionary")
+    Set rows("3_P001") = rowValues
+
+    Dim xl As Object, wb As Object, srcWs As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set srcWs = wb.Worksheets(1)
+    srcWs.Name = Sources.SOURCES_SHEET_NAME
+    Sources.WriteSourcesSheet srcWs
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_ID).Value = "S20"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_LABEL).Value = "Test photo"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_TYPE).Value = "Image"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_LOCATOR).Value = seedPath
+
+    Dim actions() As SyncAction
+    actions = SyncOperations.PlanRoutineSync(instances, order, rows, True, Nothing, "", srcWs)
+
+    result = result & Assert(UBound(actions) = 1, "one action produced, got " & (UBound(actions) - LBound(actions) + 1))
+    result = result & Assert(actions(1).Kind = "no_change", _
+        "THE FIX: an already-synced picture field reports no_change during planning, got '" & _
+        actions(1).Kind & "' -- without srcWs threaded through, this was always in_place_correction")
+
+    wb.Close False
+    xl.Quit
+    sld.Delete
+    Test_SyncOperations_PictureFieldReportsNoChangeThroughPlanRoutineSync = result
 End Function
 
 Private Function Test_SyncOperations_Case6UnclassifiedSlide() As String

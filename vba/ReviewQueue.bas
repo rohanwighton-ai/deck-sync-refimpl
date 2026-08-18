@@ -470,11 +470,26 @@ Public Function BuildQueue(sheet As Sheet, slideType As String, _
         Next si
     End If
 
+    ' THE SAME RESOLUTION ApplyApproved ALREADY DOES, one call earlier in the
+    ' chain. Looked up, never created -- GetOrAddWorksheet would invent an
+    ' empty Sources sheet and then truthfully report no source was on it.
+    ' Without this, PlanRoutineSync's dry-run probe always passed Nothing, so
+    ' a picture field could never report itself correctly unchanged during
+    ' planning even once genuinely synced -- found 2026-08-18 wiring the
+    ' first real picture field.
+    Dim srcWs As Object
+    Set srcWs = Nothing
+    If Not logWs Is Nothing Then
+        If WorkbookBridge.WorksheetExists(logWs.Parent, Sources.SOURCES_SHEET_NAME) Then
+            Set srcWs = logWs.Parent.Worksheets(Sources.SOURCES_SHEET_NAME)
+        End If
+    End If
+
     Dim actions() As SyncAction
     ' logWs/q.RunStamp threaded through so PlanRoutineSync's own per-item
     ' traps can log which instance/field a crash interrupted (FIX-LIST item V,
     ' fourth occurrence -- it landed in this planning call's chain).
-    actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows, True, logWs, q.RunStamp)
+    actions = SyncOperations.PlanRoutineSync(instances, sheet.InstanceOrder, sheet.Rows, True, logWs, q.RunStamp, srcWs)
 
     Dim lo As Long, hi As Long, hasActions As Boolean
     On Error Resume Next
