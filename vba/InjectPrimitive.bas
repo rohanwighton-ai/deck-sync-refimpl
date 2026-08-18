@@ -222,7 +222,7 @@ Public Function FindShapeByRoleTag(sld As Object, identityTag As String) As Obje
             Set candidate = sld.Shapes(cachedName)
             On Error GoTo 0
             If Not candidate Is Nothing Then
-                If ShapeHasRoleTag(candidate, identityTag) Then
+                If ShapeHasRoleTag(candidate, identityTag, candidate.Tags("role")) Then
                     Set FindShapeByRoleTag = candidate
                     Exit Function
                 End If
@@ -302,7 +302,7 @@ Private Sub WalkForRoleTag(shapesColl As Object, identityTag As String, ByRef ma
         '
         ' Safe to widen: nothing tagged a group before now, because the marking
         ' flow refused one outright.
-        If ShapeHasRoleTag(shp, identityTag) Then
+        If ShapeHasRoleTag(shp, identityTag, roleVal) Then
             matchCount = matchCount + 1
             Set match = shp
         End If
@@ -373,17 +373,23 @@ End Function
 ' only a shape MilestoneDevice.SlotCount already recognises as a device gets
 ' the name fallback; everything else still requires an exact tag match,
 ' unchanged.
-Private Function ShapeHasRoleTag(shp As Object, identityTag As String) As Boolean
+' roleVal is the caller's already-read shp.Tags("role") -- passed in rather
+' than re-read here, since both callers (the FindShapeByRoleTag fast path
+' and WalkForRoleTag's per-shape loop) already have it in hand; re-reading
+' inside this function used to cost WalkForRoleTag a second (or third, for
+' an untagged msoGroup) COM tag read per shape on the exact walk this
+' module's header calls out as still running on the hot path.
+Private Function ShapeHasRoleTag(shp As Object, identityTag As String, ByVal roleVal As String) As Boolean
     If identityTag = "" Then
         ShapeHasRoleTag = False
         Exit Function
     End If
-    If shp.Tags("role") = identityTag Then
+    If roleVal = identityTag Then
         ShapeHasRoleTag = True
         Exit Function
     End If
     If shp.Type = msoGroup Then
-        If shp.Tags("role") = "" Then
+        If roleVal = "" Then
             If MilestoneDevice.SlotCount(shp) > 0 Then
                 ShapeHasRoleTag = (shp.Name = identityTag)
                 Exit Function
