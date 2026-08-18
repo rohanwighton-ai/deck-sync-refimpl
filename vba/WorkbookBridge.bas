@@ -166,6 +166,31 @@ Public Function OpenOrGetWorkbook(path As String) As Object
     Set wb = xl.Workbooks.Open(path)
     On Error GoTo 0
 
+    ' A LONG-LIVED ATTACHED INSTANCE CAN SILENTLY REFUSE A NEW OPEN.
+    ' Probed live 2026-08-19: Workbooks.Open on an Excel.Application
+    ' attached via GetObject (hours of uptime, many prior automation calls
+    ' already made against it) returned Nothing with Err.Number = 0 -- no
+    ' error, no workbook -- against a confirmed-valid, confirmed-
+    ' uncorrupted file. A brand-new CreateObject("Excel.Application")
+    ' instance opened the identical file instantly. This matches a known
+    ' COM failure class (a long-running automation server going quietly
+    ' deaf to new requests), not a bad path or a bad file -- so one retry
+    ' against a genuinely fresh instance recovers exactly this case. A
+    ' truly bad path still returns Nothing here too (a fresh instance
+    ' cannot open a file that does not exist either), so the function's own
+    ' contract -- "Returns Nothing if `path` doesn't exist and can't be
+    ' opened" -- is unchanged for callers.
+    If wb Is Nothing Then
+        Dim freshXl As Object
+        On Error Resume Next
+        Set freshXl = CreateObject("Excel.Application")
+        If Not freshXl Is Nothing Then
+            freshXl.Visible = True
+            Set wb = freshXl.Workbooks.Open(path)
+        End If
+        On Error GoTo 0
+    End If
+
     Set OpenOrGetWorkbook = wb
 
     ' THE LOBBY'S PIN MECHANISM GETS WIRED HERE, NOT AT Auto_Open. There is no
