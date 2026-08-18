@@ -175,21 +175,14 @@ Public Function FindShapeByRoleTag(sld As Object, identityTag As String) As Obje
         Dim cachedName As String
         cachedName = ShapeAddressBook.Lookup(slideType, identityTag)
 
-        ' FIX-LIST item AR. CONFIRMED ABSENT is exactly as trustworthy as a
-        ' confirmed name (ShapeAddressBook.bas's own header has the
-        ' invariant this relies on) -- so a recorded miss skips the walk
-        ' too, not just a recorded hit. This is what actually collapses
-        ' InjectorFor's up-to-four calls per identity tag (base, ".1",
-        ' ".track", ".rest") down to four cheap Lookups instead of four
-        ' full slide walks, for every field with no matching shape on this
-        ' slide type -- the majority case, and the dominant real cost a
-        ' cold audit found tonight.
-        If cachedName = ShapeAddressBook.NO_SHAPE_MARKER Then
-            Set FindShapeByRoleTag = Nothing
-            Exit Function
-        End If
-
-        If cachedName <> "" Then
+        ' NO_SHAPE_MARKER can only arrive from a LEGACY sheet row (the
+        ' pre-AT era persisted misses to the sheet; ShapeAddressBook.Lookup
+        ' no longer produces it itself). It is a hint that expired with its
+        ' design, not a verdict: treating it as one was the 2026-08-18
+        ' TIMELINE_ELAPSED incident (see mSlideTagIndex's header in
+        ' ShapeAddressBook.bas). Ignore it and let the per-slide index
+        ' below answer instead.
+        If cachedName <> "" And cachedName <> ShapeAddressBook.NO_SHAPE_MARKER Then
             Dim candidate As Object
             On Error Resume Next
             Set candidate = sld.Shapes(cachedName)
@@ -203,15 +196,43 @@ Public Function FindShapeByRoleTag(sld As Object, identityTag As String) As Obje
         End If
     End If
 
-    ' THE SLOW PATH, UNCHANGED. Cache miss (nothing recorded yet) or a stale
-    ' entry (candidate gone, or its tag no longer matches) both land here --
-    ' same full, ambiguity-checked walk this function has always done, no
-    ' correctness change of any kind.
+    ' CONFIRMED ABSENCE, PER SLIDE. If a full walk of THIS slide has already
+    ' run this session, the identity keys it saw are on record, and a tag
+    ' not among them is confirmed absent here with zero COM calls -- for
+    ' this slide only. The old per-TYPE absent marker let one slide's
+    ' genuine lack of a shape veto another slide's confirmed presence of it
+    ' (the 2026-08-18 TIMELINE_ELAPSED "dropped: changed since approval"
+    ' incident -- ShapeAddressBook.mSlideTagIndex's header has the full
+    ' story). A recorded "present" is deliberately NOT trusted the same
+    ' way: it only licenses the walk below, whose own tag check remains the
+    ' authority, so a stale "present" costs a walk while a false "absent"
+    ' can never happen for a slide the walk actually saw.
+    Dim slideKey As String
+    slideKey = ShapeAddressBook.SlideKeyFor(sld)
+    Dim slideTags As Object
+    Set slideTags = ShapeAddressBook.SlideTagsFor(slideKey)
+    If Not slideTags Is Nothing Then
+        If Not slideTags.Exists(identityTag) Then
+            Set FindShapeByRoleTag = Nothing
+            Exit Function
+        End If
+    End If
+
+    ' THE SLOW PATH. Cache miss (nothing recorded yet) or a stale entry
+    ' (candidate gone, or its tag no longer matches) both land here -- the
+    ' same full, ambiguity-checked walk this function has always done. The
+    ' walk now also collects EVERY identity key it passes, so one walk
+    ' indexes the whole slide as a byproduct: that is what bounds the
+    ' session's walk count by the slide count instead of by
+    ' (type x absent-field x suffix variant).
     Dim match As Object
     Dim matchCount As Long
     matchCount = 0
+    Dim tagsPresent As Object
+    Set tagsPresent = CreateObject("Scripting.Dictionary")
 
-    WalkForRoleTag sld.Shapes, identityTag, match, matchCount
+    WalkForRoleTag sld.Shapes, identityTag, match, matchCount, tagsPresent
+    ShapeAddressBook.RecordSlideTags slideKey, tagsPresent
 
     If matchCount = 1 Then
         Set FindShapeByRoleTag = match
@@ -223,13 +244,10 @@ Public Function FindShapeByRoleTag(sld As Object, identityTag As String) As Obje
         If slideType <> "" Then ShapeAddressBook.Record slideType, identityTag, match.Name
     Else
         Set FindShapeByRoleTag = Nothing
-        ' Only a GENUINE zero-match miss is cached as absent. matchCount = 2+
-        ' is the ambiguous, exceptional case FindShapeByRoleTag has always
-        ' collapsed to Nothing too -- but caching THAT as "confirmed absent"
-        ' would hide a real problem (two shapes claiming one tag) behind a
-        ' fast path instead of surfacing it on every call the way it does
-        ' today. Ambiguity is rare; re-walking it costs nothing.
-        If slideType <> "" And matchCount = 0 Then ShapeAddressBook.RecordAbsent slideType, identityTag
+        ' matchCount = 2+ (two shapes claiming one tag) still refuses on
+        ' every call: the tag IS in tagsPresent, so the index never
+        ' short-circuits it, and every probe re-walks and re-refuses --
+        ' ambiguity stays loud, exactly as before.
     End If
 End Function
 
@@ -242,9 +260,28 @@ End Function
 ' collision between a top-level shape and a nested one (or between two
 ' shapes in different groups) is still caught, not silently missed by
 ' scoping matchCount per group level.
-Private Sub WalkForRoleTag(shapesColl As Object, identityTag As String, ByRef match As Object, ByRef matchCount As Long)
+' `tagsPresent` collects every identity key this walk passes -- the role tag
+' of any shape carrying one, plus the NAME of any untagged group that
+' MilestoneDevice.SlotCount confirms as a device. The collection rule MUST
+' mirror ShapeHasRoleTag exactly (same tag read, same name-fallback gate),
+' because the per-slide index built from it answers "could ShapeHasRoleTag
+' ever return True for tag T on this slide" -- collect less and a real
+' shape becomes invisible for the session, collect more and the only cost
+' is a wasted walk that answers correctly.
+Private Sub WalkForRoleTag(shapesColl As Object, identityTag As String, ByRef match As Object, ByRef matchCount As Long, ByRef tagsPresent As Object)
     Dim shp As Object
     For Each shp In shapesColl
+        Dim roleVal As String
+        roleVal = shp.Tags("role")
+        If roleVal <> "" Then
+            tagsPresent(roleVal) = True
+        ElseIf shp.Type = msoGroup Then
+            ' The device name-fallback, same gate as ShapeHasRoleTag: only a
+            ' structurally-confirmed device (untagged group with a real slot
+            ' structure) is findable by its name.
+            If MilestoneDevice.SlotCount(shp) > 0 Then tagsPresent(shp.Name) = True
+        End If
+
         ' A GROUP IS TESTED **AND** RECURSED INTO. This was an ElseIf until
         ' 2026-08-10, so a group carrying a role tag could never be found by
         ' anything -- the walk stepped straight past it into its members. That
@@ -258,7 +295,7 @@ Private Sub WalkForRoleTag(shapesColl As Object, identityTag As String, ByRef ma
             Set match = shp
         End If
         If shp.Type = msoGroup Then
-            WalkForRoleTag shp.GroupItems, identityTag, match, matchCount
+            WalkForRoleTag shp.GroupItems, identityTag, match, matchCount, tagsPresent
         End If
     Next shp
 End Sub
@@ -272,7 +309,13 @@ Public Function CountShapesWithRoleTag(sld As Object, identityTag As String) As 
     Dim match As Object
     Dim matchCount As Long
     matchCount = 0
-    WalkForRoleTag sld.Shapes, identityTag, match, matchCount
+    ' Throwaway collector: this caller wants the count, not the index, and
+    ' deliberately does not record it -- counting is a pre-stamp check
+    ' (Harvest), and recording a pre-stamp snapshot would be exactly the
+    ' stale-absence NoteRoleTagAdded exists to prevent.
+    Dim discard As Object
+    Set discard = CreateObject("Scripting.Dictionary")
+    WalkForRoleTag sld.Shapes, identityTag, match, matchCount, discard
     CountShapesWithRoleTag = matchCount
 End Function
 
@@ -1077,6 +1120,10 @@ Public Function InjectPictureField(sld As Object, identityTag As String, _
     newShp.Tags.Add "role", identityTag
     newShp.Tags.Add PICTURE_SOURCE_TAG, sourceId
     On Error GoTo 0
+    ' Keeps the per-slide tag index honest about the stamp (a no-op here in
+    ' practice -- the deleted original carried the same tag -- but every
+    ' path that adds a role tag notifies, so the rule has no exceptions).
+    ShapeAddressBook.NoteRoleTagAdded newShp, identityTag
 
     shp.Delete
     On Error Resume Next

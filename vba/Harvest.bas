@@ -233,7 +233,14 @@ Public Function PropagateTemplateTags(sld As Object, templateSld As Object, _
                 ' Tags.Add on an existing name REPLACES rather than duplicating
                 ' (TagMigration.bas:12), and this shape has no role tag anyway --
                 ' it came out of the untagged list.
-                If Not dryRun Then target.Tags.Add "role", matches(j).Role
+                If Not dryRun Then
+                    target.Tags.Add "role", matches(j).Role
+                    ' The propagated role is a NEW identity key on this
+                    ' slide -- tell the per-slide tag index, or a slide
+                    ' walked before propagation keeps answering "absent"
+                    ' for it all session (NoteRoleTagAdded's header).
+                    ShapeAddressBook.NoteRoleTagAdded target, matches(j).Role
+                End If
             End If
         End If
     Next j

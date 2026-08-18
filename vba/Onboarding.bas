@@ -194,6 +194,11 @@ End Function
 ' original's hand-rolled OOXML.
 Public Sub ConfirmFieldMatch(shp As Object, role As String)
     shp.Tags.Add "role", role
+    ' A freshly-confirmed role is a NEW identity key on this slide -- tell
+    ' the per-slide tag index, or a slide walked before this confirmation
+    ' keeps answering "absent" for the new role all session
+    ' (ShapeAddressBook.NoteRoleTagAdded's header).
+    ShapeAddressBook.NoteRoleTagAdded shp, role
 End Sub
 
 ' Tag a new instance's slide-level identity (supplied by whatever created

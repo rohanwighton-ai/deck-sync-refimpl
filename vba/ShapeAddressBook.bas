@@ -109,30 +109,40 @@ Private mWb As Object
 Private mSheet As Object
 Private mNextRow As Long ' 0 = not yet resolved for the current mSheet
 
-' FIX-LIST item AT, continued same night -- Rohan's own question ("why is
-' it caching misses?") found the real remaining cost after the mSheet fix
-' above only cut it 508.5ms -> 222.1ms/call (measured in-process, apples-
-' to-apples). The negative cache borrowed the POSITIVE cache's
-' justification -- "the template fixes this answer forever, worth
-' surviving a reopen" -- but that justification does not actually
-' transfer. A HIT is rare and worth persisting. A MISS is the MAJORITY
-' case (most fields aren't on most slide types) and only needs to survive
-' the rest of the CURRENT button press -- every other row of the same
-' slide type hits it within the same session regardless of whether it
-' ever touches disk. Persisting it anyway is what grew the sheet
-' FindBookRow has to scan (roughly one row per absent field per suffix
-' variant -- base/.1/.track/.rest -- per slide type; fable's audit
-' estimated hundreds of rows once a few types are in real use).
-' mNegativeCache is a plain in-memory Scripting.Dictionary instead:
-' zero sheet growth, zero Excel COM calls for a cached miss, and the only
-' cost is one extra walk per (slide type, field) the first time each
-' session -- the walk that was always going to happen anyway. The
-' positive cache (mSheet/Record) is UNCHANGED -- hits still persist,
-' because for hits the original "worth surviving a reopen" reasoning
-' actually holds. Reset on the same workbook-change trigger as mSheet:
-' a miss recorded for one workbook's template is not evidence about a
-' different workbook's template.
-Private mNegativeCache As Object ' Scripting.Dictionary, key "slideType|fieldId"
+' THE PER-SLIDE TAG INDEX -- the second generation of the miss cache, and a
+' correctness fix, not a tuning pass (2026-08-18, the TIMELINE_ELAPSED
+' "dropped: changed since approval" incident). The first generation
+' (mNegativeCache, FIX-LIST item AT) keyed confirmed absence by
+' (slideType, fieldId) -- but ABSENCE IS A PER-SLIDE FACT, and keying it
+' per TYPE let one slide's genuine lack of a shape veto another slide's
+' confirmed presence of it. Live shape of the failure: 44 slides carry
+' slide_type=project-progress and exactly ONE of them (the prototype,
+' 3_P001) has the elapsed-time bar. Every "Put it on the slides" press
+' built the queue (3_P001 probed first, bar found), then walked the 43
+' barless siblings -- the first of which recorded a TYPE-WIDE "(no shape)"
+' -- so seconds later ApplyApproved's dry probe of 3_P001 itself was told
+' the bar did not exist, read CurrentValue="", and dropped the approved
+' change as "changed since approval" on every single run. The positive
+' book row for the bar sat on this very sheet the whole time; the
+' in-memory miss simply outranked it, and nothing ever reconciled the two.
+'
+' Gist: the old notebook of "that shape doesn't exist" answers was filed
+' under the slide's TYPE, so one slide that truly lacked a shape hid the
+' same shape on the one slide that had it; this files every answer under
+' the individual slide instead, so slides can no longer lie about each
+' other.
+'
+' The replacement stores, per individual slide (keyed by SlideID), the
+' full set of identity keys the walk saw on that slide -- built as a free
+' byproduct of the first full walk of that slide each session, since the
+' walk visits every shape anyway. Absence for (slide, tag) is then a
+' memory lookup with zero COM calls, same cost as the old design, and the
+' walk count per session is BOUNDED BY THE SLIDE COUNT (one indexing walk
+' per slide) instead of by (type x absent-field x suffix). Same
+' in-memory-only, reset-on-workbook-change lifetime as before, for the
+' same reason: presence only needs to survive the current session, and an
+' in-memory cache invalidates itself for free on every reopen.
+Private mSlideTagIndex As Object ' Scripting.Dictionary: slideKey -> Dictionary of identity keys present
 
 ' Wired from WorkbookBridge.OpenOrGetWorkbook, the one place every path
 ' through this add-in already goes through to reach the register workbook --
@@ -144,18 +154,81 @@ Public Sub SetActiveWorkbook(wb As Object)
     If Not (mWb Is wb) Then
         Set mSheet = Nothing
         mNextRow = 0
-        Set mNegativeCache = Nothing
+        Set mSlideTagIndex = Nothing
     End If
     Set mWb = wb
 End Sub
 
-Private Function NegativeCache() As Object
-    If mNegativeCache Is Nothing Then
-        Set mNegativeCache = CreateObject("Scripting.Dictionary")
-        mNegativeCache.CompareMode = vbTextCompare
+Private Function SlideIndex() As Object
+    If mSlideTagIndex Is Nothing Then
+        Set mSlideTagIndex = CreateObject("Scripting.Dictionary")
     End If
-    Set NegativeCache = mNegativeCache
+    Set SlideIndex = mSlideTagIndex
 End Function
+
+' The one place a slide's cache key is derived, so the walk's recorder, the
+' absence check, and the stamp-notification below can never disagree about
+' what identifies a slide. SlideID is PowerPoint's own stable per-
+' presentation id (survives reorders, unlike SlideIndex); "" on anything
+' that cannot produce one, and every consumer treats "" as "do not cache".
+' Two presentations open in one session could in principle collide on
+' SlideID -- accepted: real sessions work one deck at a time, and a deck
+' switch goes through a workbook re-wire that resets this index anyway.
+Public Function SlideKeyFor(sld As Object) As String
+    On Error Resume Next
+    SlideKeyFor = CStr(sld.SlideID)
+    On Error GoTo 0
+End Function
+
+' The identity keys the last full walk saw on this slide, or Nothing if the
+' slide has not been walked this session (or no workbook is wired). A
+' caller holding Nothing MUST walk; a caller holding a dictionary may trust
+' `Not .Exists(tag)` as confirmed absence ON THIS SLIDE -- the per-slide
+' scope is the entire point, see mSlideTagIndex's header.
+Public Function SlideTagsFor(slideKey As String) As Object
+    If mWb Is Nothing Then Exit Function
+    If slideKey = "" Then Exit Function
+    If mSlideTagIndex Is Nothing Then Exit Function
+    If mSlideTagIndex.Exists(slideKey) Then Set SlideTagsFor = mSlideTagIndex(slideKey)
+End Function
+
+' Called by InjectPrimitive.FindShapeByRoleTag every time its full walk
+' completes, with the complete set of identity keys the walk saw. Always an
+' overwrite, never a merge: the walk just visited every shape on the slide,
+' so its answer supersedes whatever was recorded before -- which is also
+' what lets a re-walk self-heal a stale entry, same reasoning as Record.
+Public Sub RecordSlideTags(slideKey As String, tagsPresent As Object)
+    If mWb Is Nothing Then Exit Sub
+    If slideKey = "" Then Exit Sub
+    If tagsPresent Is Nothing Then Exit Sub
+    Set SlideIndex()(slideKey) = tagsPresent
+End Sub
+
+' CACHE COHERENCE FOR THE ONE EVENT THAT CAN CREATE A FALSE ABSENCE: a role
+' tag stamped onto a shape mid-session (Onboarding.ConfirmFieldMatch,
+' Harvest.PropagateTemplateTags, TagMigration, picture re-add). A stale
+' "present" entry is benign -- it just buys a walk that answers correctly
+' and re-records. A stale "absent" entry is the dangerous direction: it
+' short-circuits BEFORE any walk, so without this call a slide indexed
+' before the stamp would hide the newly-tagged shape for the rest of the
+' session. Every code path that adds a role tag calls this; a tag added by
+' hand in the PowerPoint UI mid-session is not covered (nothing to hook),
+' matching the restart-to-clear limitation the old design documented.
+' Gist: when the tool itself gives a shape a new name-tag, it also updates
+' its own notebook so it doesn't keep believing the tag isn't there.
+Public Sub NoteRoleTagAdded(shp As Object, identityTag As String)
+    If mWb Is Nothing Then Exit Sub
+    If identityTag = "" Then Exit Sub
+    If mSlideTagIndex Is Nothing Then Exit Sub
+
+    Dim k As String
+    On Error Resume Next
+    k = CStr(shp.Parent.SlideID)
+    On Error GoTo 0
+    If k = "" Then Exit Sub
+
+    If mSlideTagIndex.Exists(k) Then mSlideTagIndex(k)(identityTag) = True
+End Sub
 
 ' READ PATH. Deliberately does NOT create the sheet -- Lookup's "nothing
 ' cached yet" contract for a never-yet-written book depends on that. Caches
@@ -233,14 +306,15 @@ End Function
 ' before any workbook is open, same defensive shape DraftingLobby's
 ' functions already use).
 Public Function Lookup(slideType As String, fieldId As String) As String
-    ' Negative cache first -- zero Excel COM calls for the majority-case
-    ' answer (see RecordAbsent's header for why misses live in memory, not
-    ' on the sheet).
-    If NegativeCache().Exists(slideType & "|" & fieldId) Then
-        Lookup = NO_SHAPE_MARKER
-        Exit Function
-    End If
-
+    ' Misses are no longer answered here at all -- confirmed absence lives
+    ' in the per-slide tag index (SlideTagsFor), because absence is a
+    ' per-slide fact and answering it per type is the exact defect
+    ' mSlideTagIndex's header records. This function now only ever reports
+    ' the positive book: a name once found, or "" for never-recorded.
+    ' (A legacy register whose sheet still carries "(no shape)" rows from
+    ' the pre-AT persistent-miss era can still surface NO_SHAPE_MARKER
+    ' through the sheet read below; FindShapeByRoleTag treats that as
+    ' "no hint", never as a verdict.)
     Dim ws As Object
     Set ws = ResolveSheetForRead()
     If ws Is Nothing Then Exit Function
@@ -280,22 +354,8 @@ Public Sub Record(slideType As String, fieldId As String, shapeName As String)
     ws.Cells(targetRow, COL_B_SHAPENAME).Value = shapeName
 End Sub
 
-' THE NEGATIVE TWIN OF Record. Called by FindShapeByRoleTag only when its
-' full walk finds ZERO matches -- deliberately NOT when it finds two or
-' more (an ambiguous, exceptional state; caching that as "absent" would be
-' actively wrong, and re-walking a rare ambiguous case costs nothing).
-' IN-MEMORY ONLY, not written to the sheet -- see mNegativeCache's header
-' for why a miss doesn't need to survive a reopen the way a hit does.
-' Idempotent same as before (Dictionary keys are naturally update-in-
-' place). A genuinely later-added template shape would need this cleared
-' (restart the add-in, or the next session, whichever comes first -- an
-' in-memory cache invalidates itself for free on every reopen, which a
-' persistent one never did) -- no automatic invalidation exists within one
-' session for either cache direction today, and none is added here on the
-' strength of a case that has not happened.
-Public Sub RecordAbsent(slideType As String, fieldId As String)
-    If mWb Is Nothing Then Exit Sub
-    If slideType = "" Or fieldId = "" Then Exit Sub
-
-    NegativeCache()(slideType & "|" & fieldId) = True
-End Sub
+' RecordAbsent (the per-TYPE negative twin of Record) was retired
+' 2026-08-18: recording one slide's zero-match walk as a type-wide verdict
+' is the defect mSlideTagIndex's header documents. Absence is now recorded
+' as a byproduct of RecordSlideTags above -- a tag not in a slide's
+' recorded set is confirmed absent for THAT slide only.

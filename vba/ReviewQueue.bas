@@ -814,6 +814,26 @@ Public Function ReadQueueSheet(ws As Object) As ReviewQueueSet
         q.Items(q.Count).ChangeHash = Trim(CStr(ws.Cells(r, COL_HASH).Value))
         q.Items(q.Count).BatchLabel = Trim(CStr(ws.Cells(r, COL_BATCH).Value))
         q.Items(q.Count).Approved = IsApprovalMark(CStr(ws.Cells(r, COL_APPROVE).Value))
+        ' NEVER READ BACK, UNTIL NOW. WriteQueueSheet writes both (as
+        ' apostrophe-prefixed text, so Excel cannot silently turn "0.9597"
+        ' into a number) but nothing here ever read them back -- both UDT
+        ' fields defaulted to "". Harmless for a device (its ApplyApproved
+        ' branch hardcodes a literal "(redrawn from its register columns)"
+        ' rather than touching ProposedValue at all) and invisible for an
+        ' ordinary register-column field (ApplyApproved re-reads the
+        ' register directly, not this). But TIMELINE_ELAPSED's branch is
+        ' the one case that genuinely needs its build-time ProposedValue
+        ' back (InjectPrimitive.bas's own header: re-deriving the fraction
+        ' a second time would be a second copy of a computed value) -- so
+        ' every apply fed it "" as the fraction, IsNumeric("") failed,
+        ' CurrentValue never got set either, and ChangeHash(key, field, "",
+        ' "") could never equal the hash actually stored on the sheet. Not
+        ' staleness -- a guaranteed mismatch on every single run. Found
+        ' 2026-08-18 chasing why the elapsed bar dropped as "changed since
+        ' approval" twice in a row with nothing on the deck actually
+        ' changing between build and apply.
+        q.Items(q.Count).CurrentValue = CStr(ws.Cells(r, COL_CURRENT).Value)
+        q.Items(q.Count).ProposedValue = CStr(ws.Cells(r, COL_PROPOSED).Value)
         r = r + 1
     Loop
 
@@ -1599,16 +1619,27 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                 liveHash = ChangeHash(q.Items(n).EntityKey, q.Items(n).FieldID, _
                                       probe.CurrentValue, proposed)
 
-                If liveHash <> q.Items(n).ChangeHash Then
-                    staleCount = staleCount + 1
-                    report = report & "  DROPPED " & q.Items(n).EntityKey & "/" & q.Items(n).FieldID & _
-                        " -- changed since you approved it; re-review" & vbCrLf
-                    AppendLogLine logWs, q.RunStamp, q.Items(n), "dropped: changed since approval"
-                ElseIf Not probe.Found Then
+                ' FOUND IS CHECKED BEFORE THE HASH, and the order is load-
+                ' bearing for the DIAGNOSIS, not the outcome (both branches
+                ' refuse to write). A probe that never located the shape
+                ' leaves CurrentValue = "", which mismatches the stored hash
+                ' by construction -- so with the hash checked first, every
+                ' locate failure was reported as "dropped: changed since
+                ' approval", a true-sounding sentence about the wrong
+                ' problem. That mislabel sent the 2026-08-18 TIMELINE_ELAPSED
+                ' hunt through the hash pipeline for two sessions while the
+                ' actual fault (a poisoned shape-cache entry) sat behind
+                ' probe.ErrorMessage the whole time, never printed once.
+                If Not probe.Found Then
                     failedCount = failedCount + 1
                     report = report & "  FAILED " & q.Items(n).EntityKey & "/" & q.Items(n).FieldID & _
                         " -- " & probe.ErrorMessage & vbCrLf
                     AppendLogLine logWs, q.RunStamp, q.Items(n), "failed: " & probe.ErrorMessage
+                ElseIf liveHash <> q.Items(n).ChangeHash Then
+                    staleCount = staleCount + 1
+                    report = report & "  DROPPED " & q.Items(n).EntityKey & "/" & q.Items(n).FieldID & _
+                        " -- changed since you approved it; re-review" & vbCrLf
+                    AppendLogLine logWs, q.RunStamp, q.Items(n), "dropped: changed since approval"
                 Else
                     Dim tWrite As Double
                     tWrite = Timing.StartClock()

@@ -101,7 +101,15 @@ Private Sub WalkShapes(shapesColl As Object, fromValues() As String, toValues() 
                     ' over a capital letter is worse than one that refuses.
                     If StrComp(current, fromValues(i), vbTextCompare) = 0 Then
                         matched = True
-                        If Not dryRun Then shp.Tags.Add "role", toValues(i)
+                        If Not dryRun Then
+                            shp.Tags.Add "role", toValues(i)
+                            ' The renamed tag is a NEW identity key on this
+                            ' slide -- tell the per-slide tag index, or a
+                            ' slide walked before the rename keeps answering
+                            ' "absent" for the new name all session
+                            ' (ShapeAddressBook.NoteRoleTagAdded's header).
+                            ShapeAddressBook.NoteRoleTagAdded shp, toValues(i)
+                        End If
                         result.Renamed = result.Renamed + 1
                         result.Detail = result.Detail & _
                             "  slide " & slideIndex & ": '" & current & "' -> '" & toValues(i) & "'" & vbCrLf

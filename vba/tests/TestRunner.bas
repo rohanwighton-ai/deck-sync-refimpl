@@ -1590,6 +1590,18 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "ReviewQueue_BuildQueuePreTicksEveryItem", r
+    If TestMatches("ReviewQueue_ReadQueueSheetRoundTripsCurrentAndProposed", filterPattern) Then
+        r = Test_ReviewQueue_ReadQueueSheetRoundTripsCurrentAndProposed()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "ReviewQueue_ReadQueueSheetRoundTripsCurrentAndProposed", r
+    If TestMatches("ReviewQueue_ApplyApprovedReportsLocateFailureAsFailedNotStale", filterPattern) Then
+        r = Test_ReviewQueue_ApplyApprovedReportsLocateFailureAsFailedNotStale()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "ReviewQueue_ApplyApprovedReportsLocateFailureAsFailedNotStale", r
     If TestMatches("Sources_CitedBlockPutsTheDocumentInThePrompt", filterPattern) Then
         r = Test_Sources_CitedBlockPutsTheDocumentInThePrompt()
     Else
@@ -1800,6 +1812,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "InjectPrimitive_NegativeCacheSkipsTheWalk", r
+    If TestMatches("InjectPrimitive_MissOnOneSlideDoesNotHideAnothersShape", filterPattern) Then
+        r = Test_InjectPrimitive_MissOnOneSlideDoesNotHideAnothersShape()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectPrimitive_MissOnOneSlideDoesNotHideAnothersShape", r
     If TestMatches("ShapeAddressBook_SelfHealsAndPersistsTheCorrection", filterPattern) Then
         r = Test_ShapeAddressBook_SelfHealsAndPersistsTheCorrection()
     Else
@@ -11460,6 +11478,166 @@ Private Function Test_ReviewQueue_ApplyApprovedSummaryCountsMatchTheReport() As 
     Test_ReviewQueue_ApplyApprovedSummaryCountsMatchTheReport = result
 End Function
 
+' FOUND 2026-08-18 chasing why the elapsed-time bar dropped as "changed since
+' approval" on every real run, twice in a row, with nothing on the deck
+' actually changing between build and apply. ReadQueueSheet populated every
+' UDT field it wrote except these two -- CurrentValue and ProposedValue
+' stayed at their zero-value "", silently. Harmless for MILESTONE_TIMELINE
+' (its ApplyApproved branch hardcodes a literal string, never touches
+' ProposedValue) and invisible for an ordinary register-column field
+' (ApplyApproved re-reads the register directly) -- but TIMELINE_ELAPSED's
+' branch genuinely needs its build-time ProposedValue back, by design
+' (InjectPrimitive.bas's own header: re-deriving the fraction a second time
+' would be a second copy of a computed value). Fed "" as the fraction every
+' time, guaranteeing ChangeHash(key, field, "", "") could never match the
+' hash actually stored on the sheet.
+Private Function Test_ReviewQueue_ReadQueueSheetRoundTripsCurrentAndProposed() As String
+    Dim result As String
+
+    Dim q As ReviewQueueSet
+    q.SlideType = "project-progress"
+    q.RunStamp = "TEST"
+    q.Consumed = False
+    q.Count = 1
+    ReDim q.Items(1 To 1)
+    q.Items(1).EntityKey = "3_P001"
+    q.Items(1).FieldID = "TIMELINE_ELAPSED"
+    q.Items(1).CurrentValue = "127.28"
+    q.Items(1).ProposedValue = "0.9597"
+    q.Items(1).Approved = True
+    q.Items(1).ChangeHash = ReviewQueue.ChangeHash("3_P001", "TIMELINE_ELAPSED", "127.28", "0.9597")
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+    ws.Name = ReviewQueue.ReviewSheetNameFor("project-progress")
+    ReviewQueue.WriteQueueSheet ws, q
+
+    Dim roundTripped As ReviewQueueSet
+    roundTripped = ReviewQueue.ReadQueueSheet(ws)
+
+    result = result & Assert(roundTripped.Count = 1, "one item round-trips, got " & roundTripped.Count)
+    result = result & Assert(roundTripped.Items(1).CurrentValue = "127.28", _
+        "CurrentValue survives the round trip, got '" & roundTripped.Items(1).CurrentValue & "'")
+    result = result & Assert(roundTripped.Items(1).ProposedValue = "0.9597", _
+        "ProposedValue survives the round trip, got '" & roundTripped.Items(1).ProposedValue & "'")
+
+    ' The actual failure mode this defect caused: a hash recomputed from the
+    ' round-tripped values must equal the hash that was written, or ApplyApproved
+    ' drops the item as "changed since approval" even though nothing changed.
+    Dim recomputedHash As String
+    recomputedHash = ReviewQueue.ChangeHash(roundTripped.Items(1).EntityKey, roundTripped.Items(1).FieldID, _
+        roundTripped.Items(1).CurrentValue, roundTripped.Items(1).ProposedValue)
+    result = result & Assert(recomputedHash = roundTripped.Items(1).ChangeHash, _
+        "a hash recomputed from round-tripped values matches the stored hash, got '" & recomputedHash & _
+        "' vs stored '" & roundTripped.Items(1).ChangeHash & "'")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing
+    Set xl = Nothing
+
+    Test_ReviewQueue_ReadQueueSheetRoundTripsCurrentAndProposed = result
+End Function
+
+' THE MISLABEL THAT HID THE 2026-08-18 ROOT CAUSE. ApplyApproved used to
+' check the revalidation hash BEFORE probe.Found -- but a probe that never
+' located the shape leaves CurrentValue = "", which mismatches the stored
+' hash BY CONSTRUCTION, so every locate failure was reported as "dropped:
+' changed since approval": a true-sounding sentence about the wrong problem.
+' The TIMELINE_ELAPSED hunt spent two sessions in the hash pipeline while
+' the probe's own ErrorMessage named the real fault and was never printed.
+' Both branches refuse to write either way -- this pins the DIAGNOSIS: a
+' locate failure must be reported as FAILED with the probe's reason, and
+' must not inflate the stale count.
+Private Function Test_ReviewQueue_ApplyApprovedReportsLocateFailureAsFailedNotStale() As String
+    Dim result As String
+
+    Dim testPres As Object
+    Set testPres = Application.Presentations.Add
+    Dim tmpPath As String
+    tmpPath = Environ("TEMP") & "\applyapproved_faillabel_test_" & Format(Now, "yyyymmddhhnnss") & ".pptx"
+    testPres.SaveAs tmpPath
+
+    ' A real slide of the right type and key -- but NOTHING on it carries
+    ' the field's tag, so the dry probe genuinely cannot locate the shape.
+    Dim sld As Object
+    Set sld = testPres.Slides.Add(1, ppLayoutBlank)
+    sld.Tags.Add "slide_type", "fail-label-type"
+    sld.Tags.Add "instance_key", "FL001"
+
+    Dim sheet As Sheet
+    Set sheet.Rows = CreateObject("Scripting.Dictionary")
+    Set sheet.Fields = New Collection
+    Set sheet.InstanceOrder = New Collection
+    Dim vals As Object
+    Set vals = CreateObject("Scripting.Dictionary")
+    vals("GHOST_FIELD") = "after"
+    Set sheet.Rows("FL001") = vals
+    sheet.InstanceOrder.Add "FL001"
+
+    Dim q As ReviewQueueSet
+    q.SlideType = "fail-label-type"
+    q.RunStamp = "TEST"
+    q.Consumed = False
+    q.Count = 1
+    ReDim q.Items(1 To 1)
+    q.Items(1).EntityKey = "FL001"
+    q.Items(1).FieldID = "GHOST_FIELD"
+    q.Items(1).CurrentValue = "before"
+    q.Items(1).ProposedValue = "after"
+    q.Items(1).Approved = True
+    ' The hash a real BuildQueue would have stored: computed from the value
+    ' that WAS on the slide at build time. The apply-time probe cannot find
+    ' the shape, so its CurrentValue is "" and this hash can never match --
+    ' which is exactly what used to get this item mislabelled as stale.
+    q.Items(1).ChangeHash = ReviewQueue.ChangeHash("FL001", "GHOST_FIELD", "before", "after")
+
+    Dim xl As Object, wb As Object, ws As Object, logWs As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+    ws.Name = ReviewQueue.ReviewSheetNameFor("fail-label-type")
+    ReviewQueue.WriteQueueSheet ws, q
+    Set logWs = wb.Worksheets.Add
+    logWs.Name = "TestLog"
+
+    Dim outW As Long, outSk As Long, outSt As Long, outF As Long
+    Dim report As String
+    report = ReviewQueue.ApplyApproved(sheet, "fail-label-type", ws, logWs, outW, outSk, outSt, outF)
+
+    result = result & Assert(outF = 1, _
+        "a locate failure lands in the FAILED count, got outFailed=" & outF)
+    result = result & Assert(outSt = 0, _
+        "a locate failure does NOT masquerade as stale, got outStale=" & outSt & " (report: " & report & ")")
+    result = result & Assert(InStr(report, "no single shape found tagged role=GHOST_FIELD") > 0, _
+        "the report carries the probe's own reason, not the stale mislabel, got '" & report & "'")
+    result = result & Assert(InStr(report, "changed since you approved it") = 0, _
+        "the 'changed since approval' text does not appear for a locate failure")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing
+    Set xl = Nothing
+
+    testPres.Saved = True
+    testPres.Close
+
+    On Error Resume Next
+    Dim fso3 As Object
+    Set fso3 = CreateObject("Scripting.FileSystemObject")
+    Dim f3 As Object
+    For Each f3 In fso3.GetFolder(Environ("TEMP")).Files
+        If InStr(f3.Name, "applyapproved_faillabel_test_") > 0 Then f3.Delete
+    Next f3
+    On Error GoTo 0
+
+    Test_ReviewQueue_ApplyApprovedReportsLocateFailureAsFailedNotStale = result
+End Function
+
 ' LOBBY-DESIGN.md section 5, phase 3: every field a fresh review queue shows
 ' now arrives pre-ticked -- working the queue is REMOVING ticks from what
 ' should not sync this round, not adding them to bless what should. Proves
@@ -13487,18 +13665,21 @@ End Function
 ' HIT. Every genuine MISS -- the majority case once a register carries more
 ' populated columns than any one slide type has fields for -- re-walked the
 ' whole slide from scratch, every time, and InjectorFor calls this up to four
-' times per identity tag (base, ".1", ".track", ".rest"). ShapeAddressBook.
-' RecordAbsent/NO_SHAPE_MARKER closes that gap.
+' times per identity tag (base, ".1", ".track", ".rest"). The per-slide tag
+' index (ShapeAddressBook.mSlideTagIndex -- second generation; the first,
+' per-TYPE RecordAbsent design, caused the 2026-08-18 TIMELINE_ELAPSED
+' incident and is gone) closes that gap.
 '
 ' Same proof shape as Test_InjectPrimitive_FastPathActuallyFires: create a
 ' condition the SLOW path could not produce this answer under, then show the
-' fast path produces it anyway. Here: cache a miss for a tag, THEN add a real
-' shape carrying that exact tag. A slow-path re-walk would find it and return
-' it. The negative fast path does not verify (ShapeAddressBook.bas's own
-' header says why: it costs a full walk to disprove a cached absence, which
-' defeats the point), so it must still return Nothing. Getting Nothing here
-' despite a real matching shape existing is proof the fast path fired, not
-' that the feature quietly does nothing.
+' fast path produces it anyway. Here: walk a slide with no matching shape
+' (which indexes the slide), THEN add a real shape carrying that exact tag by
+' hand. A slow-path re-walk would find it and return it. The absence fast
+' path does not verify (disproving a recorded absence costs a full walk,
+' which defeats the point -- hand-added tags are the restart-to-clear
+' limitation; TOOL-added tags notify via NoteRoleTagAdded), so it must still
+' return Nothing. Getting Nothing here despite a real matching shape existing
+' is proof the fast path fired, not that the feature quietly does nothing.
 Private Function Test_InjectPrimitive_NegativeCacheSkipsTheWalk() As String
     Dim result As String
 
@@ -13512,12 +13693,17 @@ Private Function Test_InjectPrimitive_NegativeCacheSkipsTheWalk() As String
     Set sld = NewTaggedSlide("negcache-probe", "NC001")
 
     ' First call: genuinely nothing on the slide carries this tag. Slow path
-    ' walks, finds zero matches, must record the absence.
+    ' walks, finds zero matches, must index the slide with the tag absent.
     Dim first As Object
     Set first = InjectPrimitive.FindShapeByRoleTag(sld, "NC_FIELD")
     result = result & Assert(first Is Nothing, "first call (cold cache, no shape) returns Nothing")
-    result = result & Assert(ShapeAddressBook.Lookup("negcache-probe", "NC_FIELD") = ShapeAddressBook.NO_SHAPE_MARKER, _
-        "the miss is recorded as the confirmed-absent marker, not left blank")
+    Dim idx As Object
+    Set idx = ShapeAddressBook.SlideTagsFor(ShapeAddressBook.SlideKeyFor(sld))
+    result = result & Assert(Not idx Is Nothing, "the zero-match walk indexed the slide")
+    If Not idx Is Nothing Then
+        result = result & Assert(Not idx.Exists("NC_FIELD"), _
+            "the miss is recorded as per-slide absence (tag not in the slide's index)")
+    End If
 
     ' NOW ADD A REAL, CORRECTLY-TAGGED SHAPE. If the fast path is live, it
     ' trusts the cached absence and never looks -- still Nothing. If this
@@ -13534,6 +13720,17 @@ Private Function Test_InjectPrimitive_NegativeCacheSkipsTheWalk() As String
     result = result & Assert(second Is Nothing, _
         "still Nothing despite a real matching shape now existing -- proves the negative fast path fired " & _
         "(a re-walk would have found shpA and returned it instead)")
+
+    ' THE TOOL-STAMPED COUNTERPART. A tag the TOOL adds goes through
+    ' NoteRoleTagAdded (here via Onboarding.ConfirmFieldMatch, the
+    ' confirmation primitive), which updates the slide's index -- so unlike
+    ' the hand-added case above, the shape is findable IMMEDIATELY, no
+    ' restart needed. This is the coherence half of the per-slide design.
+    Onboarding.ConfirmFieldMatch shpA, "NC_FIELD"
+    Dim third As Object
+    Set third = InjectPrimitive.FindShapeByRoleTag(sld, "NC_FIELD")
+    result = result & Assert(Not third Is Nothing, _
+        "a tool-stamped tag is findable immediately -- NoteRoleTagAdded kept the per-slide index honest")
 
     ' AMBIGUITY IS NEVER CACHED AS ABSENT. Two shapes sharing a tag must
     ' still refuse (Nothing) via the ordinary matchCount check on every
@@ -13560,6 +13757,79 @@ Private Function Test_InjectPrimitive_NegativeCacheSkipsTheWalk() As String
     ShapeAddressBook.SetActiveWorkbook Nothing
 
     Test_InjectPrimitive_NegativeCacheSkipsTheWalk = result
+End Function
+
+' THE 2026-08-18 TIMELINE_ELAPSED INCIDENT, REPLICATED AT ITS ROOT. The live
+' deck has 44 slides of one type and exactly ONE carries the elapsed-time
+' bar. Confirmed absence was cached per (slideType, fieldId) -- a per-TYPE
+' key for a per-SLIDE fact -- so the first barless sibling's zero-match walk
+' during BuildQueue poisoned the type, and seconds later ApplyApproved's dry
+' probe of the ONE slide that has the bar was told it did not exist:
+' CurrentValue = "", hash mismatch by construction, and the approved change
+' dropped as "changed since approval" on every single run. The positive book
+' row for the bar sat on the sheet the whole time; the in-memory miss
+' outranked it.
+'
+' Both orders are covered because both failed differently under the old
+' design: found-then-missed (the live incident -- apply's re-find broke) and
+' missed-then-found (the landmine: a NEW field whose prototype slide is not
+' first in instance order would have been invisible EVERY session, forever).
+Private Function Test_InjectPrimitive_MissOnOneSlideDoesNotHideAnothersShape() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    ShapeAddressBook.SetActiveWorkbook wb
+
+    ' ORDER 1: found on the prototype, then missed on a barless sibling,
+    ' then re-found on the prototype -- BuildQueue / plan-walk / ApplyApproved.
+    Dim sldA As Object, sldB As Object
+    Set sldA = NewTaggedSlide("poison-probe", "PP001")
+    Dim shpA As Object
+    Set shpA = sldA.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    shpA.TextFrame.TextRange.Text = "the one real bar"
+    shpA.Tags.Add "role", "PP_FIELD"
+    Set sldB = NewTaggedSlide("poison-probe", "PP002")
+
+    Dim first As Object
+    Set first = InjectPrimitive.FindShapeByRoleTag(sldA, "PP_FIELD")
+    result = result & Assert(Not first Is Nothing, "found on the slide that carries it")
+    result = result & Assert(InjectPrimitive.FindShapeByRoleTag(sldB, "PP_FIELD") Is Nothing, _
+        "correctly absent on the barless sibling of the same type")
+
+    Dim again As Object
+    Set again = InjectPrimitive.FindShapeByRoleTag(sldA, "PP_FIELD")
+    result = result & Assert(Not again Is Nothing, _
+        "STILL found on its own slide after a same-type sibling's miss -- " & _
+        "the per-TYPE absent cache failed exactly here (one slide's lack vetoed another's presence)")
+
+    ' ORDER 2: the barless sibling is probed FIRST -- the order that would
+    ' have hidden a brand-new field permanently under the old design.
+    Dim sldC As Object, sldD As Object
+    Set sldD = NewTaggedSlide("poison-probe-cold", "PPX02")
+    Set sldC = NewTaggedSlide("poison-probe-cold", "PPX01")
+    Dim shpC As Object
+    Set shpC = sldC.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    shpC.TextFrame.TextRange.Text = "new field's only shape"
+    shpC.Tags.Add "role", "PP_NEW_FIELD"
+
+    result = result & Assert(InjectPrimitive.FindShapeByRoleTag(sldD, "PP_NEW_FIELD") Is Nothing, _
+        "cold order: absent on the barless slide probed first")
+    result = result & Assert(Not InjectPrimitive.FindShapeByRoleTag(sldC, "PP_NEW_FIELD") Is Nothing, _
+        "cold order: a never-yet-found shape is still discoverable after a sibling's miss -- " & _
+        "under the per-TYPE cache this slide's field was invisible every session")
+
+    sldA.Delete
+    sldB.Delete
+    sldC.Delete
+    sldD.Delete
+    wb.Close False
+    xl.Quit
+    ShapeAddressBook.SetActiveWorkbook Nothing
+
+    Test_InjectPrimitive_MissOnOneSlideDoesNotHideAnothersShape = result
 End Function
 
 ' Proves the SELF-HEALING half. NOT via renaming a shape -- probed live

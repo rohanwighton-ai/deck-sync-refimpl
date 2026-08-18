@@ -112,6 +112,14 @@ guidance.
   class anyway); and close every scratch presentation before starting a
   new probing session, not just the one currently in use -- a leftover
   broken project from an earlier attempt can block an unrelated one.
+  **RECURRED A THIRD TIME 2026-08-19** (same evening, same mistake, a
+  different probe) -- clicking OK on the "Compile error" MsgBox alone was
+  NOT enough to unblock COM automation; Rohan had to manually exit the
+  VBE window itself before `Application.Run` calls worked again. Dismissing
+  the dialog returns you to the code editor, still inside the broken
+  project's break mode -- the automation stays blocked until the VBE is
+  actually closed. Note for whoever hits this next: ask the person to
+  close the VBE window, not just click OK.
 
 - **A TEST THAT SAVES TO A TIMESTAMPED PATH IS NOT SAFE FROM COLLISION, AND
   `DisplayAlerts` DOES NOT COVER EVERY DIALOG.** Found 2026-08-19, live,
@@ -142,6 +150,22 @@ guidance.
   independently. And periodically sweep `%TEMP%` for `deck_sync_test_*`
   leftovers -- a test's own `fso.DeleteFile` at the end of a PASS never
   runs on a run that errors first.
+
+- **A MODAL DIALOG CAN BE DETECTED WITHOUT A SCREENSHOT, INDEPENDENTLY OF
+  COM.** Found 2026-08-19 after repeated ambiguous COM reads all evening
+  (`Presentations.Count` returning 0, or a call hanging, when the window
+  was genuinely open) that always ended up resolved by asking for a
+  screenshot. PowerPoint's own object model has no supported "is a modal
+  open" property, but Win32 window enumeration is a genuinely independent
+  signal: `EnumWindows` + `GetWindowThreadProcessId` filtered to the
+  POWERPNT PID, then `GetClassName` on each visible top-level window.
+  Standard Windows dialogs (including VBA's own `MsgBox`) use class
+  `#32770`; the main deck window is `PPTFrameClass`. Seeing only
+  `PPTFrameClass` means no modal is blocking; seeing a `#32770` window
+  too means one is, and its title names which. Cheap (one PowerShell call
+  with an inline C# `Add-Type`), no screenshot round-trip, and answers a
+  question COM itself cannot. Worth reaching for FIRST on the next
+  ambiguous COM read, before asking for a screenshot.
 
 - **ONE WRITER ON THE RIG AT A TIME. Delegating an Office task means not doing
   it yourself.** 2026-08-01: a Fable agent was put on the property-persistence
