@@ -283,6 +283,18 @@ End Function
 ' column for every Field Spec row would demand one for every Derived field too,
 ' and then report them as missing forever. A warning that always fires stops
 ' being read.
+'
+' FIX-LIST P4, 2026-08-19: SLOTS FIELDS ARE EXCLUDED TOO, for a different
+' reason -- not "never needs a column" but "never needs exactly ONE". A field
+' declared `Renders-as = Slots` (HIGHLIGHTS_BODY is the specimen: three
+' shapes per slide, one field) needs slot columns like the milestones
+' (`MSn_LABEL` etc., which are each their own separate Field Spec row, not
+' auto-expanded from one). `AddRegisterColumns` can only create exactly one
+' column per name; bundling a Slots field into the same "add a column for
+' each?" Yes as sixteen genuinely single-column fields is a real
+' architectural decision (how many columns does this field actually need)
+' made silently by one Yes. Declined twice on 2026-08-13 for exactly this
+' reason.
 Public Function MissingRegisterColumns(specWs As Object, regWs As Object) As String
     If specWs Is Nothing Or regWs Is Nothing Then Exit Function
 
@@ -302,11 +314,13 @@ Public Function MissingRegisterColumns(specWs As Object, regWs As Object) As Str
     Dim r As Long
     r = FieldSpec.SPEC_FIRST_ROW
     Do While Trim$(CStr(specWs.Cells(r, FieldSpec.COL_SPEC_FIELDID).Value)) <> ""
-        Dim fid As String, kind As String
+        Dim fid As String, kind As String, renders As String
         fid = Trim$(CStr(specWs.Cells(r, FieldSpec.COL_SPEC_FIELDID).Value))
         kind = Trim$(CStr(specWs.Cells(r, FieldSpec.COL_SPEC_KIND).Value))
+        renders = Trim$(CStr(specWs.Cells(r, FieldSpec.COL_SPEC_RENDERS).Value))
 
-        If StrComp(kind, KIND_DERIVED, vbTextCompare) <> 0 Then
+        If StrComp(kind, KIND_DERIVED, vbTextCompare) <> 0 _
+           And StrComp(renders, FieldSpec.RENDER_SLOTS, vbTextCompare) <> 0 Then
             If Not have.Exists(UCase(fid)) Then
                 If out <> "" Then out = out & ","
                 out = out & fid

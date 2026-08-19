@@ -1001,7 +1001,8 @@ Public Sub RefreshDraftingSheets()
             "Yes -- add the headers now (no values, just the columns)." & vbCrLf & _
             "No  -- leave them; they stay unenterable until they have a column." & vbCrLf & vbCrLf & _
             "Derived fields are deliberately not listed -- they are computed, " & _
-            "never stored.", _
+            "never stored. Fields marked 'Slots' aren't listed either -- they " & _
+            "need more than one column, which this can't safely add.", _
             vbYesNo + vbQuestion, CAP)
         waitedRefresh = waitedRefresh + Timing.LogWait(wb, "add missing register columns?", tWaitCols)
         If addColsAnswer = vbYes Then

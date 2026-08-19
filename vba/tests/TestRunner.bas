@@ -735,6 +735,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob", r
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("FieldSpec_RendersAsForRecognisesSlots", filterPattern) Then
+        r = Test_FieldSpec_RendersAsForRecognisesSlots()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FieldSpec_RendersAsForRecognisesSlots", r
+    On Error GoTo 0
     If TestMatches("Drafting_AFieldWithNoValueLeavesColumnCEmpty", filterPattern) Then
         r = Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty()
     Else
@@ -5136,6 +5145,36 @@ Private Function Test_FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob() As Strin
     On Error GoTo 0
 
     Test_FieldSpec_TheFiveProsePanelsEachHaveTheirOwnJob = result
+End Function
+
+' FIX-LIST P4's fourth render kind, recognised cleanly -- no "unrecognised
+' value, treated as Text" note, which is exactly what would happen if
+' RendersAsFor's Select Case were never taught about it.
+Private Function Test_FieldSpec_RendersAsForRecognisesSlots() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+    ws.Name = FieldSpec.SPEC_SHEET_NAME
+
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_SPEC_FIELDID).Value = "MOOD_BOARD"
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_SPEC_RENDERS).Value = FieldSpec.RENDER_SLOTS
+
+    Dim note As String
+    Dim renders As String
+    renders = FieldSpec.RendersAsFor(ws, "MOOD_BOARD", note)
+
+    result = result & Assert(renders = FieldSpec.RENDER_SLOTS, "Slots is read back as Slots, got '" & renders & "'")
+    result = result & Assert(note = "", "no 'unrecognised value' note for a real, declared render kind, got '" & note & "'")
+
+    wb.Close False
+    xl.Quit
+
+    Test_FieldSpec_RendersAsForRecognisesSlots = result
 End Function
 
 ' ONE PROJECT'S TEXT MUST NEVER APPEAR AGAINST ANOTHER PROJECT.
@@ -11162,9 +11201,18 @@ Private Function Test_ExcelOutput_MissingRegisterColumns() As String
     spec.Cells(3, FieldSpec.COL_SPEC_FIELDID).Value = "MS1_DATE":     spec.Cells(3, FieldSpec.COL_SPEC_KIND).Value = "Given"
     spec.Cells(4, FieldSpec.COL_SPEC_FIELDID).Value = "MS1_DONE":     spec.Cells(4, FieldSpec.COL_SPEC_KIND).Value = "Given"
     spec.Cells(5, FieldSpec.COL_SPEC_FIELDID).Value = "TIME_ELAPSED": spec.Cells(5, FieldSpec.COL_SPEC_KIND).Value = ExcelOutput.KIND_DERIVED
+    ' FIX-LIST P4. A field that needs SEVERAL columns, not exactly one --
+    ' AddRegisterColumns can only ever create one, so bundling this into the
+    ' same "add a column for each?" Yes as the ordinary fields below would be
+    ' the tool silently deciding this field's structure.
+    spec.Cells(6, FieldSpec.COL_SPEC_FIELDID).Value = "MOOD_BOARD": spec.Cells(6, FieldSpec.COL_SPEC_KIND).Value = "Prose"
+    spec.Cells(6, FieldSpec.COL_SPEC_RENDERS).Value = FieldSpec.RENDER_SLOTS
 
     Dim missing As String
     missing = ExcelOutput.MissingRegisterColumns(spec, reg)
+
+    result = result & Assert(InStr(missing, "MOOD_BOARD") = 0, _
+        "a Slots field is never listed -- it needs more than one column, got '" & missing & "'")
 
     result = result & Assert(InStr(missing, "MS1_DATE") > 0 And InStr(missing, "MS1_DONE") > 0, _
         "the Given fields with no column are named, got '" & missing & "'")

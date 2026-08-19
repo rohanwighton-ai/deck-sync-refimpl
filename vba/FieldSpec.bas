@@ -111,6 +111,17 @@ Public Const RENDER_TEXT As String = "Text"
 Public Const RENDER_PICTURE As String = "Picture"
 Public Const RENDER_PROGRESS As String = "Progress bar"
 
+' FIX-LIST P4, 2026-08-19: the fourth render kind, for a field that is not
+' ONE shape but several -- HIGHLIGHTS_BODY is the specimen (three shapes per
+' slide, one field). Its own purpose is to be checked FOR, not computed from:
+' `ExcelOutput.MissingRegisterColumns` excludes any field marked this way
+' from the bundled "add a column for each" prompt, because
+' `AddRegisterColumns` can only ever create exactly one column, which is the
+' wrong structure for a Slots field -- the same "a real architectural
+' decision made silently by a Yes on a bundled prompt" this project has
+' already refused once for Derived fields.
+Public Const RENDER_SLOTS As String = "Slots"
+
 Public Const COL_SPEC_GLOBAL As Long = 9
 Public Const SPEC_GLOBAL_ROW As Long = 2
 
@@ -705,10 +716,11 @@ Public Function RendersAsFor(specWs As Object, fieldId As String, Optional ByRef
                 Case LCase(RENDER_TEXT):     RendersAsFor = RENDER_TEXT
                 Case LCase(RENDER_PICTURE):  RendersAsFor = RENDER_PICTURE
                 Case LCase(RENDER_PROGRESS): RendersAsFor = RENDER_PROGRESS
+                Case LCase(RENDER_SLOTS):    RendersAsFor = RENDER_SLOTS
                 Case Else
                     note = "'" & fieldId & "' has 'Renders as' = '" & raw & _
                         "', which is not one of " & RENDER_TEXT & " / " & RENDER_PICTURE & _
-                        " / " & RENDER_PROGRESS & ". Treated as " & RENDER_TEXT & "."
+                        " / " & RENDER_PROGRESS & " / " & RENDER_SLOTS & ". Treated as " & RENDER_TEXT & "."
                     RendersAsFor = RENDER_TEXT
             End Select
             Exit Function
@@ -726,7 +738,7 @@ Public Function ApplyRendersValidation(ws As Object) As String
     End If
 
     Dim listText As String
-    listText = RENDER_TEXT & "," & RENDER_PICTURE & "," & RENDER_PROGRESS
+    listText = RENDER_TEXT & "," & RENDER_PICTURE & "," & RENDER_PROGRESS & "," & RENDER_SLOTS
 
     Dim lastRow As Long
     lastRow = SPEC_FIRST_ROW
