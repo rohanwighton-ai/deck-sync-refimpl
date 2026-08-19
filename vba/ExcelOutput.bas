@@ -301,10 +301,10 @@ Public Function MissingRegisterColumns(specWs As Object, regWs As Object) As Str
     Dim out As String
     Dim r As Long
     r = FieldSpec.SPEC_FIRST_ROW
-    Do While Trim$(CStr(specWs.Cells(r, FieldSpec.COL_S_FIELDID).Value)) <> ""
+    Do While Trim$(CStr(specWs.Cells(r, FieldSpec.COL_SPEC_FIELDID).Value)) <> ""
         Dim fid As String, kind As String
-        fid = Trim$(CStr(specWs.Cells(r, FieldSpec.COL_S_FIELDID).Value))
-        kind = Trim$(CStr(specWs.Cells(r, FieldSpec.COL_S_KIND).Value))
+        fid = Trim$(CStr(specWs.Cells(r, FieldSpec.COL_SPEC_FIELDID).Value))
+        kind = Trim$(CStr(specWs.Cells(r, FieldSpec.COL_SPEC_KIND).Value))
 
         If StrComp(kind, KIND_DERIVED, vbTextCompare) <> 0 Then
             If Not have.Exists(UCase(fid)) Then

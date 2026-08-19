@@ -270,9 +270,9 @@ Private Function CanonicalFieldId(wb As Object, typed As String) As String
 
     Dim r As Long
     r = FieldSpec.SPEC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(r, FieldSpec.COL_S_FIELDID).Value)) <> ""
+    Do While Trim(CStr(ws.Cells(r, FieldSpec.COL_SPEC_FIELDID).Value)) <> ""
         Dim fid As String
-        fid = Trim(CStr(ws.Cells(r, FieldSpec.COL_S_FIELDID).Value))
+        fid = Trim(CStr(ws.Cells(r, FieldSpec.COL_SPEC_FIELDID).Value))
         If StrComp(fid, Trim(typed), vbTextCompare) = 0 Then
             CanonicalFieldId = fid
             Exit Function
@@ -294,8 +294,8 @@ Private Function FieldIsKnown(wb As Object, fieldId As String) As Boolean
 
     Dim r As Long
     r = FieldSpec.SPEC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(r, FieldSpec.COL_S_FIELDID).Value)) <> ""
-        If StrComp(Trim(CStr(ws.Cells(r, FieldSpec.COL_S_FIELDID).Value)), fieldId, vbTextCompare) = 0 Then
+    Do While Trim(CStr(ws.Cells(r, FieldSpec.COL_SPEC_FIELDID).Value)) <> ""
+        If StrComp(Trim(CStr(ws.Cells(r, FieldSpec.COL_SPEC_FIELDID).Value)), fieldId, vbTextCompare) = 0 Then
             FieldIsKnown = True
             Exit Function
         End If
@@ -704,10 +704,10 @@ Private Function AskForField(caption As String, wb As Object) As String
     Dim prose As String, other As String
     Dim r As Long
     r = FieldSpec.SPEC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(r, FieldSpec.COL_S_FIELDID).Value)) <> ""
+    Do While Trim(CStr(ws.Cells(r, FieldSpec.COL_SPEC_FIELDID).Value)) <> ""
         Dim fid As String, kind As String
-        fid = Trim(CStr(ws.Cells(r, FieldSpec.COL_S_FIELDID).Value))
-        kind = Trim(CStr(ws.Cells(r, FieldSpec.COL_S_KIND).Value))
+        fid = Trim(CStr(ws.Cells(r, FieldSpec.COL_SPEC_FIELDID).Value))
+        kind = Trim(CStr(ws.Cells(r, FieldSpec.COL_SPEC_KIND).Value))
         If StrComp(kind, "Prose", vbTextCompare) = 0 Then
             prose = prose & "    " & fid & vbCrLf
         Else
@@ -792,7 +792,7 @@ Private Function PickFieldByClicking(caption As String, wb As Object, ws As Obje
         picked = ""
         On Error Resume Next
         If pick.Row >= FieldSpec.SPEC_FIRST_ROW Then
-            picked = Trim(CStr(ws.Cells(pick.Row, FieldSpec.COL_S_FIELDID).Value))
+            picked = Trim(CStr(ws.Cells(pick.Row, FieldSpec.COL_SPEC_FIELDID).Value))
         End If
         On Error GoTo 0
 
@@ -912,9 +912,9 @@ Public Function ProseFields(wb As Object) As String
     Dim out As String
     Dim r As Long
     r = FieldSpec.SPEC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(r, FieldSpec.COL_S_FIELDID).Value)) <> ""
-        If StrComp(Trim(CStr(ws.Cells(r, FieldSpec.COL_S_KIND).Value)), "Prose", vbTextCompare) = 0 Then
-            out = out & IIf(out = "", "", ",") & Trim(CStr(ws.Cells(r, FieldSpec.COL_S_FIELDID).Value))
+    Do While Trim(CStr(ws.Cells(r, FieldSpec.COL_SPEC_FIELDID).Value)) <> ""
+        If StrComp(Trim(CStr(ws.Cells(r, FieldSpec.COL_SPEC_KIND).Value)), "Prose", vbTextCompare) = 0 Then
+            out = out & IIf(out = "", "", ",") & Trim(CStr(ws.Cells(r, FieldSpec.COL_SPEC_FIELDID).Value))
         End If
         r = r + 1
     Loop

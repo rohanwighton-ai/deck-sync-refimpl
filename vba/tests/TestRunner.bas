@@ -3007,10 +3007,10 @@ Private Function Test_SyncOperations_PictureFieldReportsNoChangeThroughPlanRouti
     Set srcWs = wb.Worksheets(1)
     srcWs.Name = Sources.SOURCES_SHEET_NAME
     Sources.WriteSourcesSheet srcWs
-    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_ID).Value = "S20"
-    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_LABEL).Value = "Test photo"
-    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_TYPE).Value = "Image"
-    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_LOCATOR).Value = seedPath
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_ID).Value = "S20"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_LABEL).Value = "Test photo"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_TYPE).Value = "Image"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_LOCATOR).Value = seedPath
 
     Dim actions() As SyncAction
     actions = SyncOperations.PlanRoutineSync(instances, order, rows, True, Nothing, "", srcWs)
@@ -4466,10 +4466,10 @@ End Function
 Private Function SpecSheetWithVocabulary(wb As Object, fieldId As String, allowed As String) As Object
     Dim ws As Object
     Set ws = wb.Worksheets.Add
-    ws.Cells(FieldSpec.SPEC_HEADER_ROW, FieldSpec.COL_S_FIELDID).Value = "FieldID"
-    ws.Cells(FieldSpec.SPEC_HEADER_ROW, FieldSpec.COL_S_ALLOWED).Value = "Allowed"
-    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_S_FIELDID).Value = fieldId
-    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_S_ALLOWED).Value = allowed
+    ws.Cells(FieldSpec.SPEC_HEADER_ROW, FieldSpec.COL_SPEC_FIELDID).Value = "FieldID"
+    ws.Cells(FieldSpec.SPEC_HEADER_ROW, FieldSpec.COL_SPEC_ALLOWED).Value = "Allowed"
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_SPEC_FIELDID).Value = fieldId
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_SPEC_ALLOWED).Value = allowed
     Set SpecSheetWithVocabulary = ws
 End Function
 
@@ -11109,11 +11109,11 @@ Private Function Test_ExcelOutput_MissingRegisterColumns() As String
     Dim spec As Object
     Set spec = wb.Worksheets.Add
     spec.Name = FieldSpec.SPEC_SHEET_NAME
-    spec.Cells(1, FieldSpec.COL_S_FIELDID).Value = "FieldID"
-    spec.Cells(2, FieldSpec.COL_S_FIELDID).Value = "ABOUT_BODY":   spec.Cells(2, FieldSpec.COL_S_KIND).Value = "Prose"
-    spec.Cells(3, FieldSpec.COL_S_FIELDID).Value = "MS1_DATE":     spec.Cells(3, FieldSpec.COL_S_KIND).Value = "Given"
-    spec.Cells(4, FieldSpec.COL_S_FIELDID).Value = "MS1_DONE":     spec.Cells(4, FieldSpec.COL_S_KIND).Value = "Given"
-    spec.Cells(5, FieldSpec.COL_S_FIELDID).Value = "TIME_ELAPSED": spec.Cells(5, FieldSpec.COL_S_KIND).Value = ExcelOutput.KIND_DERIVED
+    spec.Cells(1, FieldSpec.COL_SPEC_FIELDID).Value = "FieldID"
+    spec.Cells(2, FieldSpec.COL_SPEC_FIELDID).Value = "ABOUT_BODY":   spec.Cells(2, FieldSpec.COL_SPEC_KIND).Value = "Prose"
+    spec.Cells(3, FieldSpec.COL_SPEC_FIELDID).Value = "MS1_DATE":     spec.Cells(3, FieldSpec.COL_SPEC_KIND).Value = "Given"
+    spec.Cells(4, FieldSpec.COL_SPEC_FIELDID).Value = "MS1_DONE":     spec.Cells(4, FieldSpec.COL_SPEC_KIND).Value = "Given"
+    spec.Cells(5, FieldSpec.COL_SPEC_FIELDID).Value = "TIME_ELAPSED": spec.Cells(5, FieldSpec.COL_SPEC_KIND).Value = ExcelOutput.KIND_DERIVED
 
     Dim missing As String
     missing = ExcelOutput.MissingRegisterColumns(spec, reg)
@@ -12140,11 +12140,11 @@ Private Function Test_Sources_CitedBlockPutsTheDocumentInThePrompt() As String
     Set srcWs = wb.Worksheets(1)
     Set dws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
 
-    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_ID).Value = "S12"
-    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_LABEL).Value = "Program plan -- declared linkage codes"
-    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_TYPE).Value = "SPOT source"
-    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_LOCATOR).Value = "C:\rig\plan.md"
-    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_APPLIES).Value = Sources.APPLIES_ALL
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_ID).Value = "S12"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_LABEL).Value = "Program plan -- declared linkage codes"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_TYPE).Value = "SPOT source"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_LOCATOR).Value = "C:\rig\plan.md"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_APPLIES).Value = Sources.APPLIES_ALL
 
     ' Two rows: one citing a known source, one citing an ID that does not exist.
     dws.Cells(Drafting.DRAFT_FIRST_ROW, 1).Value = "2_P004"
@@ -12208,9 +12208,9 @@ Private Function Test_Drafting_CitedSourceReachesThePromptCell() As String
     Dim reg As Sheet
     reg = ExcelOutput.ReadSheetForDeckPeriod(regWs, "Q4F26", "")
 
-    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_ID).Value = "S12"
-    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_LABEL).Value = "Program plan -- declared linkage codes"
-    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_S_LOCATOR).Value = "C:\rig\plan.md"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_ID).Value = "S12"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_LABEL).Value = "Program plan -- declared linkage codes"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_LOCATOR).Value = "C:\rig\plan.md"
 
     ' Build once, cite, rebuild -- the citation is carried across.
     Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", srcWs
@@ -14865,10 +14865,10 @@ Private Function MakeLobbyFixture(xl As Object) As Object
     Dim spec As Object
     Set spec = wb.Worksheets(1)
     spec.Name = FieldSpec.SPEC_SHEET_NAME
-    spec.Cells(1, FieldSpec.COL_S_FIELDID).Value = "FieldID"
-    spec.Cells(1, FieldSpec.COL_S_KIND).Value = "Kind"
-    spec.Cells(2, FieldSpec.COL_S_FIELDID).Value = "TEST_FIELD"
-    spec.Cells(2, FieldSpec.COL_S_KIND).Value = "Prose"
+    spec.Cells(1, FieldSpec.COL_SPEC_FIELDID).Value = "FieldID"
+    spec.Cells(1, FieldSpec.COL_SPEC_KIND).Value = "Kind"
+    spec.Cells(2, FieldSpec.COL_SPEC_FIELDID).Value = "TEST_FIELD"
+    spec.Cells(2, FieldSpec.COL_SPEC_KIND).Value = "Prose"
 
     Dim draft As Object
     Set draft = wb.Worksheets.Add

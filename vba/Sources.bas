@@ -28,13 +28,13 @@ Option Explicit
 
 Public Const SOURCES_SHEET_NAME As String = "Sources"
 
-Public Const COL_S_ID As Long = 1
-Public Const COL_S_LABEL As Long = 2
-Public Const COL_S_TYPE As Long = 3
-Public Const COL_S_LOCATOR As Long = 4
-Public Const COL_S_NOTES As Long = 5
-Public Const COL_S_ADDED As Long = 6
-Public Const COL_S_APPLIES As Long = 7
+Public Const COL_SRC_ID As Long = 1
+Public Const COL_SRC_LABEL As Long = 2
+Public Const COL_SRC_TYPE As Long = 3
+Public Const COL_SRC_LOCATOR As Long = 4
+Public Const COL_SRC_NOTES As Long = 5
+Public Const COL_SRC_ADDED As Long = 6
+Public Const COL_SRC_APPLIES As Long = 7
 
 ' SPELLED OUT, and deliberately NOT the token "ALL" -- DECISIONS.md 2026-08-04.
 ' "ALL" was the sentinel the wide-sheet model replaced, and reusing the word for
@@ -66,26 +66,26 @@ Public Function WriteSourcesSheet(ws As Object) As String
     ws.Cells(4, 1).Value = "A drafting row referring to an ID that is not listed here is reported when you publish. It will not stop the publish, but it means the record is wrong."
     ws.Cells(4, 1).Font.Italic = True
 
-    ws.Cells(3, COL_S_APPLIES).Value = "Applies to: pick " & APPLIES_ALL & " for something cited in every period (a contract, a project description), or pick the one period it belongs to (a period's own report). The list offers the periods your register actually holds. Blank counts as " & APPLIES_ALL & "."
+    ws.Cells(3, COL_SRC_APPLIES).Value = "Applies to: pick " & APPLIES_ALL & " for something cited in every period (a contract, a project description), or pick the one period it belongs to (a period's own report). The list offers the periods your register actually holds. Blank counts as " & APPLIES_ALL & "."
 
-    ws.Cells(SRC_HEADER_ROW, COL_S_ID).Value = "ID"
-    ws.Cells(SRC_HEADER_ROW, COL_S_LABEL).Value = "What it is"
-    ws.Cells(SRC_HEADER_ROW, COL_S_TYPE).Value = "Type"
-    ws.Cells(SRC_HEADER_ROW, COL_S_LOCATOR).Value = "Where it lives"
-    ws.Cells(SRC_HEADER_ROW, COL_S_NOTES).Value = "Notes"
-    ws.Cells(SRC_HEADER_ROW, COL_S_ADDED).Value = "Added"
-    ws.Cells(SRC_HEADER_ROW, COL_S_APPLIES).Value = "Applies to"
+    ws.Cells(SRC_HEADER_ROW, COL_SRC_ID).Value = "ID"
+    ws.Cells(SRC_HEADER_ROW, COL_SRC_LABEL).Value = "What it is"
+    ws.Cells(SRC_HEADER_ROW, COL_SRC_TYPE).Value = "Type"
+    ws.Cells(SRC_HEADER_ROW, COL_SRC_LOCATOR).Value = "Where it lives"
+    ws.Cells(SRC_HEADER_ROW, COL_SRC_NOTES).Value = "Notes"
+    ws.Cells(SRC_HEADER_ROW, COL_SRC_ADDED).Value = "Added"
+    ws.Cells(SRC_HEADER_ROW, COL_SRC_APPLIES).Value = "Applies to"
     ws.Rows(SRC_HEADER_ROW).Font.Bold = True
 
     ws.Cells.Font.Size = 8
     ws.Cells(SRC_INTRO_ROW, 1).Font.Size = 9
-    ws.Columns(COL_S_ID).ColumnWidth = 7
-    ws.Columns(COL_S_LABEL).ColumnWidth = 44
-    ws.Columns(COL_S_TYPE).ColumnWidth = 10
-    ws.Columns(COL_S_LOCATOR).ColumnWidth = 46
-    ws.Columns(COL_S_NOTES).ColumnWidth = 34
-    ws.Columns(COL_S_ADDED).ColumnWidth = 11
-    ws.Columns(COL_S_APPLIES).ColumnWidth = 14
+    ws.Columns(COL_SRC_ID).ColumnWidth = 7
+    ws.Columns(COL_SRC_LABEL).ColumnWidth = 44
+    ws.Columns(COL_SRC_TYPE).ColumnWidth = 10
+    ws.Columns(COL_SRC_LOCATOR).ColumnWidth = 46
+    ws.Columns(COL_SRC_NOTES).ColumnWidth = 34
+    ws.Columns(COL_SRC_ADDED).ColumnWidth = 11
+    ws.Columns(COL_SRC_APPLIES).ColumnWidth = 14
     ws.Cells.VerticalAlignment = -4160        ' xlTop
 
     Dim n As Long
@@ -96,7 +96,7 @@ End Function
 Public Function CountSources(ws As Object) As Long
     Dim r As Long
     r = SRC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(r, COL_S_ID).Value)) <> ""
+    Do While Trim(CStr(ws.Cells(r, COL_SRC_ID).Value)) <> ""
         CountSources = CountSources + 1
         r = r + 1
     Loop
@@ -109,9 +109,9 @@ Public Function NextSourceId(ws As Object) As String
     Dim highest As Long
     Dim r As Long
     r = SRC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(r, COL_S_ID).Value)) <> ""
+    Do While Trim(CStr(ws.Cells(r, COL_SRC_ID).Value)) <> ""
         Dim raw As String
-        raw = UCase(Trim(CStr(ws.Cells(r, COL_S_ID).Value)))
+        raw = UCase(Trim(CStr(ws.Cells(r, COL_SRC_ID).Value)))
         If Left(raw, 1) = "S" Then
             Dim numPart As String
             numPart = Mid(raw, 2)
@@ -130,8 +130,8 @@ Public Function KnownSourceIds(ws As Object) As Object
     Set d = CreateObject("Scripting.Dictionary")
     Dim r As Long
     r = SRC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(r, COL_S_ID).Value)) <> ""
-        d(UCase(Trim(CStr(ws.Cells(r, COL_S_ID).Value)))) = CStr(ws.Cells(r, COL_S_LABEL).Value)
+    Do While Trim(CStr(ws.Cells(r, COL_SRC_ID).Value)) <> ""
+        d(UCase(Trim(CStr(ws.Cells(r, COL_SRC_ID).Value)))) = CStr(ws.Cells(r, COL_SRC_LABEL).Value)
         r = r + 1
     Loop
     Set KnownSourceIds = d
@@ -158,10 +158,10 @@ Public Function LocatorFor(ws As Object, sourceId As String, ByRef found As Bool
 
     Dim r As Long
     r = SRC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(r, COL_S_ID).Value)) <> ""
-        If UCase(Trim(CStr(ws.Cells(r, COL_S_ID).Value))) = want Then
+    Do While Trim(CStr(ws.Cells(r, COL_SRC_ID).Value)) <> ""
+        If UCase(Trim(CStr(ws.Cells(r, COL_SRC_ID).Value))) = want Then
             found = True
-            LocatorFor = Trim(CStr(ws.Cells(r, COL_S_LOCATOR).Value))
+            LocatorFor = Trim(CStr(ws.Cells(r, COL_SRC_LOCATOR).Value))
             Exit Function
         End If
         r = r + 1
@@ -238,8 +238,8 @@ Public Function ApplyPeriodValidation(srcWs As Object, regWs As Object) As Strin
     lastSrcRow = lastSrcRow + 50
 
     Dim rng As Object
-    Set rng = srcWs.Range(srcWs.Cells(SRC_FIRST_ROW, COL_S_APPLIES), _
-                          srcWs.Cells(lastSrcRow, COL_S_APPLIES))
+    Set rng = srcWs.Range(srcWs.Cells(SRC_FIRST_ROW, COL_SRC_APPLIES), _
+                          srcWs.Cells(lastSrcRow, COL_SRC_APPLIES))
 
     Dim failed As Boolean
     On Error Resume Next
@@ -263,10 +263,10 @@ Public Function ApplyPeriodValidation(srcWs As Object, regWs As Object) As Strin
     Dim n As Long
     For r = SRC_FIRST_ROW To SRC_FIRST_ROW + CountSources(srcWs) - 1
         Dim cur As String
-        cur = Trim(CStr(srcWs.Cells(r, COL_S_APPLIES).Value))
+        cur = Trim(CStr(srcWs.Cells(r, COL_SRC_APPLIES).Value))
         If cur <> "" And Not seen.Exists(UCase(cur)) And _
            StrComp(cur, APPLIES_ALL, vbTextCompare) <> 0 Then
-            offending = offending & "  " & Trim(CStr(srcWs.Cells(r, COL_S_ID).Value)) & _
+            offending = offending & "  " & Trim(CStr(srcWs.Cells(r, COL_SRC_ID).Value)) & _
                 " = """ & cur & """" & vbCrLf
             n = n + 1
         End If
@@ -289,11 +289,11 @@ Public Function SourceApplicability(ws As Object) As Object
     Set d = CreateObject("Scripting.Dictionary")
     Dim r As Long
     r = SRC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(r, COL_S_ID).Value)) <> ""
+    Do While Trim(CStr(ws.Cells(r, COL_SRC_ID).Value)) <> ""
         Dim applies As String
-        applies = Trim(CStr(ws.Cells(r, COL_S_APPLIES).Value))
+        applies = Trim(CStr(ws.Cells(r, COL_SRC_APPLIES).Value))
         If applies = "" Then applies = APPLIES_ALL
-        d(UCase(Trim(CStr(ws.Cells(r, COL_S_ID).Value)))) = UCase(applies)
+        d(UCase(Trim(CStr(ws.Cells(r, COL_SRC_ID).Value)))) = UCase(applies)
         r = r + 1
     Loop
     Set SourceApplicability = d
@@ -441,12 +441,12 @@ Public Function CitedBlockFor(srcWs As Object, draftWs As Object, _
         rr = SRC_FIRST_ROW
         Dim found As Boolean
         found = False
-        Do While Trim(CStr(srcWs.Cells(rr, COL_S_ID).Value)) <> ""
-            If UCase(Trim(CStr(srcWs.Cells(rr, COL_S_ID).Value))) = wantId Then
-                s = s & wantId & "  " & Trim(CStr(srcWs.Cells(rr, COL_S_LABEL).Value)) & vbCrLf & _
-                    "    kind:     " & Trim(CStr(srcWs.Cells(rr, COL_S_TYPE).Value)) & vbCrLf & _
-                    "    where:    " & Trim(CStr(srcWs.Cells(rr, COL_S_LOCATOR).Value)) & vbCrLf & _
-                    "    applies:  " & Trim(CStr(srcWs.Cells(rr, COL_S_APPLIES).Value)) & vbCrLf & vbCrLf
+        Do While Trim(CStr(srcWs.Cells(rr, COL_SRC_ID).Value)) <> ""
+            If UCase(Trim(CStr(srcWs.Cells(rr, COL_SRC_ID).Value))) = wantId Then
+                s = s & wantId & "  " & Trim(CStr(srcWs.Cells(rr, COL_SRC_LABEL).Value)) & vbCrLf & _
+                    "    kind:     " & Trim(CStr(srcWs.Cells(rr, COL_SRC_TYPE).Value)) & vbCrLf & _
+                    "    where:    " & Trim(CStr(srcWs.Cells(rr, COL_SRC_LOCATOR).Value)) & vbCrLf & _
+                    "    applies:  " & Trim(CStr(srcWs.Cells(rr, COL_SRC_APPLIES).Value)) & vbCrLf & vbCrLf
                 found = True
                 Exit Do
             End If

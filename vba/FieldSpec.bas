@@ -27,13 +27,13 @@ Option Explicit
 
 Public Const SPEC_SHEET_NAME As String = "Field Spec"
 
-Public Const COL_S_FIELDID As Long = 1
-Public Const COL_S_KIND As Long = 2
-Public Const COL_S_PURPOSE As Long = 3
-Public Const COL_S_VOICE As Long = 4
-Public Const COL_S_LENGTH As Long = 5
-Public Const COL_S_OWNJOB As Long = 6
-Public Const COL_S_DONOT As Long = 7
+Public Const COL_SPEC_FIELDID As Long = 1
+Public Const COL_SPEC_KIND As Long = 2
+Public Const COL_SPEC_PURPOSE As Long = 3
+Public Const COL_SPEC_VOICE As Long = 4
+Public Const COL_SPEC_LENGTH As Long = 5
+Public Const COL_SPEC_OWNJOB As Long = 6
+Public Const COL_SPEC_DONOT As Long = 7
 
 ' The vocabulary a Controlled field is allowed to take, comma-separated.
 '
@@ -44,7 +44,7 @@ Public Const COL_S_DONOT As Long = 7
 ' of its rows.
 '
 ' Empty means unconstrained. A Prose field leaves it blank forever.
-Public Const COL_S_ALLOWED As Long = 8
+Public Const COL_SPEC_ALLOWED As Long = 8
 
 ' THE RULES THAT APPLY TO EVERY FIELD, ON THE SHEET RATHER THAN IN CODE.
 '
@@ -78,7 +78,7 @@ Public Const COL_S_ALLOWED As Long = 8
 '
 ' The code owns the vocabulary and the sheet owns the assignment, the same split
 ' as Kind and the Sources period list. Picked, never typed.
-Public Const COL_S_BEHAVIOUR As Long = 10
+Public Const COL_SPEC_BEHAVIOUR As Long = 10
 
 Public Const BEHAVIOUR_FILL As String = "Fill the frame"
 Public Const BEHAVIOUR_FIT As String = "Fit inside"
@@ -105,13 +105,13 @@ Public Const BEHAVIOUR_ASIS As String = "Leave as is"
 ' comparing them is precisely what FieldWiring's check is for. Blank means
 ' Text: every field that existed before this column was added is text, and a
 ' blank that meant "unknown" would make every old sheet report a problem.
-Public Const COL_S_RENDERS As Long = 11
+Public Const COL_SPEC_RENDERS As Long = 11
 
 Public Const RENDER_TEXT As String = "Text"
 Public Const RENDER_PICTURE As String = "Picture"
 Public Const RENDER_PROGRESS As String = "Progress bar"
 
-Public Const COL_S_GLOBAL As Long = 9
+Public Const COL_SPEC_GLOBAL As Long = 9
 Public Const SPEC_GLOBAL_ROW As Long = 2
 
 Public Const SPEC_HEADER_ROW As Long = 1
@@ -127,8 +127,8 @@ Public Type FieldGuidance
     Length As String
     OwnJob As String
     DoNot As String
-    GlobalRules As String   ' shared by every field -- see COL_S_GLOBAL
-    Behaviour As String     ' how the content is PLACED -- see COL_S_BEHAVIOUR
+    GlobalRules As String   ' shared by every field -- see COL_SPEC_GLOBAL
+    Behaviour As String     ' how the content is PLACED -- see COL_SPEC_BEHAVIOUR
 End Type
 
 ' Creates the sheet with its headers and, on a fresh workbook, the rows already
@@ -142,20 +142,20 @@ Public Function WriteSpecSheet(ws As Object) As String
     Dim r As Long
     r = SPEC_FIRST_ROW
     On Error Resume Next
-    Do While Trim(CStr(ws.Cells(r, COL_S_FIELDID).Value)) <> ""
-        existing(UCase(Trim(CStr(ws.Cells(r, COL_S_FIELDID).Value)))) = True
+    Do While Trim(CStr(ws.Cells(r, COL_SPEC_FIELDID).Value)) <> ""
+        existing(UCase(Trim(CStr(ws.Cells(r, COL_SPEC_FIELDID).Value)))) = True
         r = r + 1
     Loop
     On Error GoTo 0
 
-    ws.Cells(SPEC_HEADER_ROW, COL_S_FIELDID).Value = "FieldID"
-    ws.Cells(SPEC_HEADER_ROW, COL_S_KIND).Value = "Kind (Controlled/Prose/Static/Derived)"
-    ws.Cells(SPEC_HEADER_ROW, COL_S_PURPOSE).Value = "Purpose -- the question this field answers"
-    ws.Cells(SPEC_HEADER_ROW, COL_S_VOICE).Value = "Voice"
-    ws.Cells(SPEC_HEADER_ROW, COL_S_LENGTH).Value = "Length"
-    ws.Cells(SPEC_HEADER_ROW, COL_S_OWNJOB).Value = "Own-job test"
-    ws.Cells(SPEC_HEADER_ROW, COL_S_DONOT).Value = "Do NOT"
-    ws.Cells(SPEC_HEADER_ROW, COL_S_ALLOWED).Value = "Allowed values (Controlled fields -- comma separated)"
+    ws.Cells(SPEC_HEADER_ROW, COL_SPEC_FIELDID).Value = "FieldID"
+    ws.Cells(SPEC_HEADER_ROW, COL_SPEC_KIND).Value = "Kind (Controlled/Prose/Static/Derived)"
+    ws.Cells(SPEC_HEADER_ROW, COL_SPEC_PURPOSE).Value = "Purpose -- the question this field answers"
+    ws.Cells(SPEC_HEADER_ROW, COL_SPEC_VOICE).Value = "Voice"
+    ws.Cells(SPEC_HEADER_ROW, COL_SPEC_LENGTH).Value = "Length"
+    ws.Cells(SPEC_HEADER_ROW, COL_SPEC_OWNJOB).Value = "Own-job test"
+    ws.Cells(SPEC_HEADER_ROW, COL_SPEC_DONOT).Value = "Do NOT"
+    ws.Cells(SPEC_HEADER_ROW, COL_SPEC_ALLOWED).Value = "Allowed values (Controlled fields -- comma separated)"
     ws.Rows(SPEC_HEADER_ROW).Font.Bold = True
     ws.Rows(SPEC_HEADER_ROW).WrapText = True
 
@@ -270,10 +270,10 @@ Public Function WriteSpecSheet(ws As Object) As String
     ' PROJECT_STATUS's Allowed-values pass immediately after this one.
     Dim er As Long
     er = SPEC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(er, COL_S_FIELDID).Value)) <> ""
-        If StrComp(Trim(CStr(ws.Cells(er, COL_S_FIELDID).Value)), "TIMELINE_ELAPSED", vbTextCompare) = 0 Then
-            If Trim(CStr(ws.Cells(er, COL_S_RENDERS).Value)) = "" Then
-                ws.Cells(er, COL_S_RENDERS).Value = RENDER_PROGRESS
+    Do While Trim(CStr(ws.Cells(er, COL_SPEC_FIELDID).Value)) <> ""
+        If StrComp(Trim(CStr(ws.Cells(er, COL_SPEC_FIELDID).Value)), "TIMELINE_ELAPSED", vbTextCompare) = 0 Then
+            If Trim(CStr(ws.Cells(er, COL_SPEC_RENDERS).Value)) = "" Then
+                ws.Cells(er, COL_SPEC_RENDERS).Value = RENDER_PROGRESS
             End If
         End If
         er = er + 1
@@ -284,30 +284,30 @@ Public Function WriteSpecSheet(ws As Object) As String
     ' owner's and survives a rebuild.
     Dim vr As Long
     vr = SPEC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(vr, COL_S_FIELDID).Value)) <> ""
-        If StrComp(Trim(CStr(ws.Cells(vr, COL_S_FIELDID).Value)), "PROJECT_STATUS", vbTextCompare) = 0 Then
-            If Trim(CStr(ws.Cells(vr, COL_S_ALLOWED).Value)) = "" Then
-                ws.Cells(vr, COL_S_ALLOWED).Value = "In Progress,Not Started,Project Closed"
+    Do While Trim(CStr(ws.Cells(vr, COL_SPEC_FIELDID).Value)) <> ""
+        If StrComp(Trim(CStr(ws.Cells(vr, COL_SPEC_FIELDID).Value)), "PROJECT_STATUS", vbTextCompare) = 0 Then
+            If Trim(CStr(ws.Cells(vr, COL_SPEC_ALLOWED).Value)) = "" Then
+                ws.Cells(vr, COL_SPEC_ALLOWED).Value = "In Progress,Not Started,Project Closed"
             End If
         End If
         vr = vr + 1
     Loop
-    ws.Columns(COL_S_ALLOWED).ColumnWidth = 40
-    ws.Columns(COL_S_ALLOWED).WrapText = True
+    ws.Columns(COL_SPEC_ALLOWED).ColumnWidth = 40
+    ws.Columns(COL_SPEC_ALLOWED).WrapText = True
 
     ' The global clauses. Seeded once with what used to be hardcoded, then
     ' never touched again -- like every other row on this sheet, an edit here
     ' is the owner's and must survive a rebuild.
-    ws.Cells(SPEC_HEADER_ROW, COL_S_BEHAVIOUR).Value = "Behaviour  --  how the content is PLACED (pictures and objects)"
-    ws.Columns(COL_S_BEHAVIOUR).ColumnWidth = 18
+    ws.Cells(SPEC_HEADER_ROW, COL_SPEC_BEHAVIOUR).Value = "Behaviour  --  how the content is PLACED (pictures and objects)"
+    ws.Columns(COL_SPEC_BEHAVIOUR).ColumnWidth = 18
 
     ' WHAT IT RENDERS AS. Read when the field is TAGGED, not when it is written
     ' -- at tag time a bar is two anonymous rectangles and nothing else can say
     ' which is which.
-    ws.Cells(SPEC_HEADER_ROW, COL_S_RENDERS).Value = _
+    ws.Cells(SPEC_HEADER_ROW, COL_SPEC_RENDERS).Value = _
         "Renders as  --  what the field IS on the slide. A '" & RENDER_PROGRESS & _
         "' is tagged as a PAIR: the bar and its track."
-    ws.Columns(COL_S_RENDERS).ColumnWidth = 16
+    ws.Columns(COL_SPEC_RENDERS).ColumnWidth = 16
 
     ' Blank is filled with Text rather than left empty. Every field that existed
     ' before this column is text, and a blank meaning "unknown" would make every
@@ -315,27 +315,27 @@ Public Function WriteSpecSheet(ws As Object) As String
     ' something else picks it from the dropdown.
     Dim rr As Long
     rr = SPEC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(rr, COL_S_FIELDID).Value)) <> ""
-        If Trim(CStr(ws.Cells(rr, COL_S_RENDERS).Value)) = "" Then
-            ws.Cells(rr, COL_S_RENDERS).Value = RENDER_TEXT
+    Do While Trim(CStr(ws.Cells(rr, COL_SPEC_FIELDID).Value)) <> ""
+        If Trim(CStr(ws.Cells(rr, COL_SPEC_RENDERS).Value)) = "" Then
+            ws.Cells(rr, COL_SPEC_RENDERS).Value = RENDER_TEXT
         End If
         rr = rr + 1
     Loop
-    ws.Cells(SPEC_HEADER_ROW, COL_S_GLOBAL).Value = "GLOBAL RULES  --  added to EVERY field's prompt. Edit freely."
-    If Trim(CStr(ws.Cells(SPEC_GLOBAL_ROW, COL_S_GLOBAL).Value)) = "" Then
-        ws.Cells(SPEC_GLOBAL_ROW, COL_S_GLOBAL).Value = "'" & DefaultGlobalRules()
+    ws.Cells(SPEC_HEADER_ROW, COL_SPEC_GLOBAL).Value = "GLOBAL RULES  --  added to EVERY field's prompt. Edit freely."
+    If Trim(CStr(ws.Cells(SPEC_GLOBAL_ROW, COL_SPEC_GLOBAL).Value)) = "" Then
+        ws.Cells(SPEC_GLOBAL_ROW, COL_SPEC_GLOBAL).Value = "'" & DefaultGlobalRules()
     End If
-    ws.Columns(COL_S_GLOBAL).ColumnWidth = 60
-    ws.Columns(COL_S_GLOBAL).WrapText = True
+    ws.Columns(COL_SPEC_GLOBAL).ColumnWidth = 60
+    ws.Columns(COL_SPEC_GLOBAL).WrapText = True
     ws.Rows(SPEC_GLOBAL_ROW).RowHeight = 90
 
     ' 8pt, matching every other sheet the tools write.
     ws.Cells.Font.Size = 8
     ws.Cells.VerticalAlignment = -4160        ' xlTop
-    ws.Columns(COL_S_FIELDID).ColumnWidth = 20
-    ws.Columns(COL_S_KIND).ColumnWidth = 16
+    ws.Columns(COL_SPEC_FIELDID).ColumnWidth = 20
+    ws.Columns(COL_SPEC_KIND).ColumnWidth = 16
     Dim c As Long
-    For c = COL_S_PURPOSE To COL_S_DONOT
+    For c = COL_SPEC_PURPOSE To COL_SPEC_DONOT
         ws.Columns(c).ColumnWidth = 46
         ws.Columns(c).WrapText = True
     Next c
@@ -346,13 +346,13 @@ End Function
 Private Sub SeedRow(ws As Object, r As Long, fieldId As String, kind As String, _
                     purpose As String, voice As String, length As String, _
                     ownJob As String, doNot As String)
-    ws.Cells(r, COL_S_FIELDID).Value = fieldId
-    ws.Cells(r, COL_S_KIND).Value = kind
-    ws.Cells(r, COL_S_PURPOSE).Value = "'" & purpose
-    ws.Cells(r, COL_S_VOICE).Value = "'" & voice
-    ws.Cells(r, COL_S_LENGTH).Value = "'" & length
-    ws.Cells(r, COL_S_OWNJOB).Value = "'" & ownJob
-    ws.Cells(r, COL_S_DONOT).Value = "'" & doNot
+    ws.Cells(r, COL_SPEC_FIELDID).Value = fieldId
+    ws.Cells(r, COL_SPEC_KIND).Value = kind
+    ws.Cells(r, COL_SPEC_PURPOSE).Value = "'" & purpose
+    ws.Cells(r, COL_SPEC_VOICE).Value = "'" & voice
+    ws.Cells(r, COL_SPEC_LENGTH).Value = "'" & length
+    ws.Cells(r, COL_SPEC_OWNJOB).Value = "'" & ownJob
+    ws.Cells(r, COL_SPEC_DONOT).Value = "'" & doNot
 End Sub
 
 ' Looks a field up. Found=False when there is no row -- the caller falls back to
@@ -369,24 +369,24 @@ Public Function LookupGuidance(ws As Object, fieldId As String) As FieldGuidance
     ' Read regardless of whether the field has a row of its own: the global
     ' rules apply to every field, including the ones running unguided.
     On Error Resume Next
-    g.GlobalRules = Trim(CStr(ws.Cells(SPEC_GLOBAL_ROW, COL_S_GLOBAL).Value))
+    g.GlobalRules = Trim(CStr(ws.Cells(SPEC_GLOBAL_ROW, COL_SPEC_GLOBAL).Value))
     On Error GoTo 0
 
     Dim r As Long
     r = SPEC_FIRST_ROW
     On Error Resume Next
-    Do While Trim(CStr(ws.Cells(r, COL_S_FIELDID).Value)) <> ""
-        If StrComp(Trim(CStr(ws.Cells(r, COL_S_FIELDID).Value)), fieldId, vbTextCompare) = 0 Then
+    Do While Trim(CStr(ws.Cells(r, COL_SPEC_FIELDID).Value)) <> ""
+        If StrComp(Trim(CStr(ws.Cells(r, COL_SPEC_FIELDID).Value)), fieldId, vbTextCompare) = 0 Then
             g.Found = True
-            g.Kind = Trim(CStr(ws.Cells(r, COL_S_KIND).Value))
-            g.Purpose = Trim(CStr(ws.Cells(r, COL_S_PURPOSE).Value))
-            g.Voice = Trim(CStr(ws.Cells(r, COL_S_VOICE).Value))
-            g.Length = Trim(CStr(ws.Cells(r, COL_S_LENGTH).Value))
-            g.OwnJob = Trim(CStr(ws.Cells(r, COL_S_OWNJOB).Value))
-            g.DoNot = Trim(CStr(ws.Cells(r, COL_S_DONOT).Value))
-            g.Allowed = Trim(CStr(ws.Cells(r, COL_S_ALLOWED).Value))
+            g.Kind = Trim(CStr(ws.Cells(r, COL_SPEC_KIND).Value))
+            g.Purpose = Trim(CStr(ws.Cells(r, COL_SPEC_PURPOSE).Value))
+            g.Voice = Trim(CStr(ws.Cells(r, COL_SPEC_VOICE).Value))
+            g.Length = Trim(CStr(ws.Cells(r, COL_SPEC_LENGTH).Value))
+            g.OwnJob = Trim(CStr(ws.Cells(r, COL_SPEC_OWNJOB).Value))
+            g.DoNot = Trim(CStr(ws.Cells(r, COL_SPEC_DONOT).Value))
+            g.Allowed = Trim(CStr(ws.Cells(r, COL_SPEC_ALLOWED).Value))
                 ' Per ROW, unlike GlobalRules which comes from a fixed cell.
-                g.Behaviour = Trim(CStr(ws.Cells(r, COL_S_BEHAVIOUR).Value))
+                g.Behaviour = Trim(CStr(ws.Cells(r, COL_SPEC_BEHAVIOUR).Value))
             Exit Do
         End If
         r = r + 1
@@ -483,11 +483,11 @@ Public Function ApplyControlledValidation(regWs As Object, specWs As Object, Opt
     Set vocab = CreateObject("Scripting.Dictionary")
     Dim r As Long
     r = SPEC_FIRST_ROW
-    Do While Trim(CStr(specWs.Cells(r, COL_S_FIELDID).Value)) <> ""
+    Do While Trim(CStr(specWs.Cells(r, COL_SPEC_FIELDID).Value)) <> ""
         Dim allowed As String
-        allowed = Trim(CStr(specWs.Cells(r, COL_S_ALLOWED).Value))
+        allowed = Trim(CStr(specWs.Cells(r, COL_SPEC_ALLOWED).Value))
         If allowed <> "" Then
-            vocab(UCase(Trim(CStr(specWs.Cells(r, COL_S_FIELDID).Value)))) = allowed
+            vocab(UCase(Trim(CStr(specWs.Cells(r, COL_SPEC_FIELDID).Value)))) = allowed
         End If
         r = r + 1
     Loop
@@ -645,7 +645,7 @@ Public Function ApplyBehaviourValidation(ws As Object) As String
 
     Dim lastRow As Long
     lastRow = SPEC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(lastRow, COL_S_FIELDID).Value)) <> ""
+    Do While Trim(CStr(ws.Cells(lastRow, COL_SPEC_FIELDID).Value)) <> ""
         lastRow = lastRow + 1
     Loop
     If lastRow <= SPEC_FIRST_ROW Then
@@ -654,7 +654,7 @@ Public Function ApplyBehaviourValidation(ws As Object) As String
     End If
 
     Dim rng As Object
-    Set rng = ws.Range(ws.Cells(SPEC_FIRST_ROW, COL_S_BEHAVIOUR), ws.Cells(lastRow - 1, COL_S_BEHAVIOUR))
+    Set rng = ws.Range(ws.Cells(SPEC_FIRST_ROW, COL_SPEC_BEHAVIOUR), ws.Cells(lastRow - 1, COL_SPEC_BEHAVIOUR))
 
     On Error Resume Next
     Err.Clear
@@ -695,10 +695,10 @@ Public Function RendersAsFor(specWs As Object, fieldId As String, Optional ByRef
 
     Dim r As Long
     r = SPEC_FIRST_ROW
-    Do While Trim(CStr(specWs.Cells(r, COL_S_FIELDID).Value)) <> ""
-        If UCase(Trim(CStr(specWs.Cells(r, COL_S_FIELDID).Value))) = want Then
+    Do While Trim(CStr(specWs.Cells(r, COL_SPEC_FIELDID).Value)) <> ""
+        If UCase(Trim(CStr(specWs.Cells(r, COL_SPEC_FIELDID).Value))) = want Then
             Dim raw As String
-            raw = Trim(CStr(specWs.Cells(r, COL_S_RENDERS).Value))
+            raw = Trim(CStr(specWs.Cells(r, COL_SPEC_RENDERS).Value))
             If raw = "" Then Exit Function
 
             Select Case LCase(raw)
@@ -730,7 +730,7 @@ Public Function ApplyRendersValidation(ws As Object) As String
 
     Dim lastRow As Long
     lastRow = SPEC_FIRST_ROW
-    Do While Trim(CStr(ws.Cells(lastRow, COL_S_FIELDID).Value)) <> ""
+    Do While Trim(CStr(ws.Cells(lastRow, COL_SPEC_FIELDID).Value)) <> ""
         lastRow = lastRow + 1
     Loop
     If lastRow <= SPEC_FIRST_ROW Then
@@ -739,7 +739,7 @@ Public Function ApplyRendersValidation(ws As Object) As String
     End If
 
     Dim rng As Object
-    Set rng = ws.Range(ws.Cells(SPEC_FIRST_ROW, COL_S_RENDERS), ws.Cells(lastRow - 1, COL_S_RENDERS))
+    Set rng = ws.Range(ws.Cells(SPEC_FIRST_ROW, COL_SPEC_RENDERS), ws.Cells(lastRow - 1, COL_SPEC_RENDERS))
 
     On Error Resume Next
     Err.Clear

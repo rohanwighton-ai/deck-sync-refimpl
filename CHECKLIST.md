@@ -156,14 +156,13 @@ fact that it existed and when.
       verified before/after sheet count. Full original content recoverable from
       `OneDrive\Claude\backups\PRE-MODERNISATION-AUDIT-20260819-1843\
       register-wide.xlsx` indefinitely.
-- [ ] **`COL_S_` is defined in two different modules for two different sheets** —
-      `Sources.bas` (`COL_S_ID`, `COL_S_LABEL`, …, for the *Sources* sheet) and
-      `FieldSpec.bas` (`COL_S_FIELDID`, `COL_S_KIND`, …, for the *Field Spec* sheet).
-      Scoped correctly by module today (no cross-reference found), but it's the exact
-      "one word doing two jobs" shape that's cost this project real defects before.
-      Worth a rename (`COL_SRC_*` / `COL_SPEC_*`) while doing a surgical pass anyway,
-      even though nothing is currently broken. *Source: `vba/Sources.bas:31-37`,
-      `vba/FieldSpec.bas:30-114`.*
+- [x] **`COL_S_` naming collision — RENAMED.** `Sources.bas`'s seven constants
+      (`COL_S_ID` etc.) are now `COL_SRC_*`; `FieldSpec.bas`'s eleven (`COL_S_
+      FIELDID` etc.) are now `COL_SPEC_*`. Pure rename, every reference across
+      `ExcelOutput.bas`, `DraftingUI.bas`, and `tests/TestRunner.bas` updated
+      alongside the two declaring modules — confirmed zero `COL_S_` references
+      remain anywhere in `vba/`. Full suite 268/268, no behaviour change. **DONE
+      2026-08-19.**
 - [ ] **Confirm no legacy long-register/`Status`/`ALL`-period structure remains in the
       live workbook.** Grepped the shipped VBA (`DeckRegistry.bas`, `ExcelOutput.bas`) —
       nothing references those constructs anymore, so the code side is clean. The open
