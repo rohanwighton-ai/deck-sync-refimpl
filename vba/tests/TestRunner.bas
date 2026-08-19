@@ -1718,6 +1718,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "FieldWiring_MissingDetailCapsTheNamedListNotTheCount", r
+    If TestMatches("FieldWiring_CoverageSummaryLineHasCountsNotNames", filterPattern) Then
+        r = Test_FieldWiring_CoverageSummaryLineHasCountsNotNames()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FieldWiring_CoverageSummaryLineHasCountsNotNames", r
     If TestMatches("FieldWiring_TemplateIsCheckedSeparatelyFromInstances", filterPattern) Then
         r = Test_FieldWiring_TemplateIsCheckedSeparatelyFromInstances()
     Else
@@ -12789,6 +12795,49 @@ Private Function Test_FieldWiring_MissingDetailCapsTheNamedListNotTheCount() As 
         gaps(i).Delete
     Next i
     Test_FieldWiring_MissingDetailCapsTheNamedListNotTheCount = result
+End Function
+
+' COUNTS SURVIVE, NAMES DO NOT -- Rohan's choice, 2026-08-19, once
+' BlockingText's full field/slide detail turned out not to fit alongside
+' the three other sections sharing its dialog (see RibbonUI.
+' OfferMarkingForUnwiredFields's header for the full story). Proves this
+' is genuinely a DIFFERENT, shorter answer, not BlockingText renamed.
+Private Function Test_FieldWiring_CoverageSummaryLineHasCountsNotNames() As String
+    Dim result As String
+
+    Dim a As Object, b As Object
+    Set a = NewTaggedSlide("summary-probe", "SP001")
+    Set b = NewTaggedSlide("summary-probe", "SP002")
+
+    Dim s1 As Object
+    Set s1 = a.Shapes.AddTextbox(1, 40, 40, 200, 30)
+    s1.Tags.Add "role", "PROBLEM_BODY"
+    ' SP002 deliberately carries nothing -- SP001-only makes PROBLEM_BODY
+    ' partially covered, the case whose name (SP002) must NOT appear here.
+
+    Dim r As FieldWiringResult
+    r = FieldWiring.ScanFieldWiring("summary-probe", FieldsCollection("PROBLEM_BODY"), Nothing)
+
+    Dim summaryLine As String
+    summaryLine = FieldWiring.CoverageSummaryLine(r)
+
+    result = result & Assert(summaryLine <> "", "a genuine gap produces a non-empty summary")
+    result = result & Assert(InStr(summaryLine, "1 partially covered") > 0, _
+        "the COUNT is present, got '" & summaryLine & "'")
+    result = result & Assert(InStr(summaryLine, "PROBLEM_BODY") = 0, _
+        "the field NAME is not, got '" & summaryLine & "'")
+    result = result & Assert(InStr(summaryLine, "SP002") = 0, _
+        "and neither is the slide key, got '" & summaryLine & "'")
+    ' NOT a "shorter than BlockingText" assertion -- for a single trivial
+    ' gap the two happen to land near the same length (both are short),
+    ' so that comparison isn't the real claim. The real claim, proven
+    ' above, is that no field name or slide key leaks in; the length
+    ' advantage only shows up once there are enough gaps that
+    ' BlockingText's per-field enumeration grows and this doesn't.
+
+    a.Delete
+    b.Delete
+    Test_FieldWiring_CoverageSummaryLineHasCountsNotNames = result
 End Function
 
 ' THE ONE THAT MATTERS FOR NEW SLIDES. GatherInstances excludes the template by

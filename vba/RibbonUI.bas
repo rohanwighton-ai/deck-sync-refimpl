@@ -1234,8 +1234,18 @@ Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) A
                         ' Discover Fields, which is where a person goes when
                         ' they mean to tag something, rather than mid-sync when
                         ' they meant to publish.
+                        ' COUNTS ONLY (FieldWiring.CoverageSummaryLine), NOT
+                        ' BlockingText's full field/slide detail -- Rohan,
+                        ' 2026-08-19: "folded [into this shared dialog], I
+                        ' think", choosing this over un-folding back to a
+                        ' separate dialog once the two turned out not to fit
+                        ' together (see the header above
+                        ' OfferMarkingForUnwiredFields's caller for the full
+                        ' story: the OTHER three sections in this combined
+                        ' summary already use most of the shared 900-char
+                        ' budget on their own).
                         unwiredNote = unwiredNote & "Slide type '" & types(i) & "': " & _
-                            FieldWiring.BlockingText(wiring) & vbCrLf
+                            FieldWiring.CoverageSummaryLine(wiring) & vbCrLf
                     End If
                 End If
             End If
@@ -1315,19 +1325,20 @@ Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) A
         ' writes survives to the saved file, because later calls in the
         ' same chain overwrite the sheet first.
         '
-        ' CAPPED TO 350, NOT THE SHARED 900. This section shares its dialog
-        ' with three others (DraftingUI.AppendCollected folds it in) --
-        ' capping it against the FULL REPORT_CAP does nothing to stop the
-        ' COMBINED report from exceeding that same ceiling once the other
-        ' sections are added, which is exactly what happened live the same
-        ' night: this section alone fit under 900, and the OUTER CapReport
-        ' call in SyncNowChainCore (wrapping all four sections together)
-        ' still truncated mid-word, with ITS OWN default Run Log notice.
-        ' 350 leaves real headroom for the other three sections plus that
-        ' outer call's own mustKeep tail, inside the shared 900-char dialog.
+        ' EVEN A 350-CHAR CAP ON THIS SECTION WASN'T ENOUGH, live-confirmed
+        ' the same night: the other three sections in this combined dialog
+        ' already use most of the shared 900-char budget on their own, so
+        ' the OUTER CapReport call (SyncNowChainCore) chopped straight
+        ' through this section regardless of how tightly it was capped on
+        ' its own -- the cut isn't section-aware. Rohan's call, given that:
+        ' names removed (FieldWiring.CoverageSummaryLine instead of
+        ' BlockingText -- see the header above where unwiredNote is built),
+        ' counts kept. A summary this short should never need the cap
+        ' below in practice; it stays on as a safety net, not the primary
+        ' defence, for a deck registering many slide types at once.
         DraftingUI.AppendCollected _
             "The register is not fully wired for this deck:" & vbCrLf & vbCrLf & _
-            CapReport(unwiredNote, "", "[shortened -- not every gap is listed here]", 350), _
+            CapReport(unwiredNote, "", "[shortened -- not every gap is listed here]", 200), _
             "Field Coverage"
     End If
 End Function

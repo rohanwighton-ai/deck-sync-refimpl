@@ -635,3 +635,42 @@ Public Function BlockingText(r As FieldWiringResult) As String
     End If
     BlockingText = s
 End Function
+
+' COUNTS ONLY, NO NAMES -- for a dialog that has to share its budget with
+' other content, not read it alone. Rohan, 2026-08-19, choosing this over
+' BlockingText's full field/slide detail once the two turned out not to
+' fit together: "folded [into the combined 'Set up my quarter' summary],
+' I think" -- confirmed live the same night that BlockingText's full
+' output, however tightly capped on its own, still gets chopped by the
+' OUTER cap wrapping that combined dialog's other three sections, because
+' those alone already use most of the shared character budget. This
+' trades the field/slide NAMES for something that reliably fits instead
+' of something that reliably gets cut mid-word.
+Public Function CoverageSummaryLine(r As FieldWiringResult) As String
+    Dim parts As String
+    If r.UnmarkedCount > 0 Then
+        parts = AddCommaPart(parts, r.UnmarkedCount & " not on any slide")
+    End If
+    If r.TemplateUnmarkedCount > 0 Then
+        parts = AddCommaPart(parts, r.TemplateUnmarkedCount & " missing from the template")
+    End If
+    If r.PartialCount > 0 Then
+        parts = AddCommaPart(parts, r.PartialCount & " partially covered")
+    End If
+    If r.CaseMismatchCount > 0 Then
+        parts = AddCommaPart(parts, r.CaseMismatchCount & " spelled differently on the slide")
+    End If
+    If r.OrphanCount > 0 Then
+        parts = AddCommaPart(parts, r.OrphanCount & " progress bar part(s) with no bar")
+    End If
+    If parts = "" Then Exit Function
+    CoverageSummaryLine = "field(s): " & parts & "."
+End Function
+
+Private Function AddCommaPart(existing As String, addition As String) As String
+    If existing = "" Then
+        AddCommaPart = addition
+    Else
+        AddCommaPart = existing & ", " & addition
+    End If
+End Function
