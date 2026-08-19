@@ -1242,11 +1242,16 @@ Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) A
         End If
     Next i
 
-    ' STILL LOGGED IN FULL -- the Run Log is where the detail persists past
-    ' the moment the modal below gets dismissed.
-    If unwiredNote <> "" And Not wb Is Nothing Then
-        WorkbookBridge.WriteRunLog wb, "Fields with nothing to write into", unwiredNote
-    End If
+    ' NOT ALSO LOGGED HERE. WorkbookBridge.WriteRunLog clears the WHOLE
+    ' sheet on every call ("REPLACED each run, not appended" -- its own
+    ' header), and this chain calls it several more times after this point
+    ' (drafting sheet rebuild, Field Spec/Sources validation, Lobby
+    ' rebuild) -- confirmed live 2026-08-19: a call here was gone from the
+    ' saved file by the time the run finished, silently, because a LATER
+    ' call in the same chain overwrote it first. Claiming "full detail is
+    ' in the Run Log" here would have been a promise this code cannot
+    ' keep -- the modal below is the only place this information is ever
+    ' actually shown, so it is written to say exactly that.
 
     ' A MODAL HERE AGAIN, DELIBERATELY REVERSING THE 2026-08-14 REMOVAL --
     ' see that date's comment, still directly above this function's own
@@ -1276,9 +1281,38 @@ Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) A
     ' Still never blocks: OfferMarkingForUnwiredFields returns True either
     ' way, same as before this change -- this is a notification, not a gate.
     If unwiredNote <> "" Then
+        ' A HARD SAFETY CAP, ON TOP OF FieldWiring's OWN PER-FIELD CAP.
+        ' MissingDetail already bounds each field's named slide list to 6
+        ' keys (see its own header), which handles the realistic case --
+        ' but a deck with MANY distinct incomplete fields could still add
+        ' up past MsgBox's real, undocumented ~1024-character limit, which
+        ' truncates silently, mid-word, with no indication. Cut at a LINE
+        ' boundary here, never mid-word, and say plainly what got left
+        ' off -- the same "counted in full, listed in part" shape
+        ' FieldSpec.ApplyControlledValidation already established, applied
+        ' here because this modal earned the same defect the hard way
+        ' (confirmed live 2026-08-19: an uncapped version cut off
+        ' mid-token, "...1_K1008, 4_").
+        Const MAX_MODAL_LINES As Long = 20
+        Dim noteLines() As String
+        noteLines = Split(unwiredNote, vbCrLf)
+        Dim shownNote As String
+        Dim lineCount As Long
+        lineCount = UBound(noteLines) - LBound(noteLines) + 1
+        If lineCount > MAX_MODAL_LINES Then
+            Dim lineIdx As Long
+            For lineIdx = LBound(noteLines) To LBound(noteLines) + MAX_MODAL_LINES - 1
+                shownNote = shownNote & noteLines(lineIdx) & vbCrLf
+            Next lineIdx
+            shownNote = shownNote & "... and " & (lineCount - MAX_MODAL_LINES) & _
+                " more line(s) not shown here."
+        Else
+            shownNote = unwiredNote
+        End If
+
         MsgBox "The register is not fully wired for this deck:" & vbCrLf & vbCrLf & _
-            unwiredNote & vbCrLf & _
-            "Full detail is also in the Run Log. Sync will continue -- this is a notice, not a block.", _
+            shownNote & vbCrLf & vbCrLf & _
+            "Sync will continue -- this is a notice, not a block.", _
             vbExclamation, TITLE
     End If
 End Function

@@ -1706,6 +1706,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "FieldWiring_MissingDetailNamesTheSlides", r
+    If TestMatches("FieldWiring_MissingDetailCapsTheNamedListNotTheCount", filterPattern) Then
+        r = Test_FieldWiring_MissingDetailCapsTheNamedListNotTheCount()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FieldWiring_MissingDetailCapsTheNamedListNotTheCount", r
     If TestMatches("FieldWiring_TemplateIsCheckedSeparatelyFromInstances", filterPattern) Then
         r = Test_FieldWiring_TemplateIsCheckedSeparatelyFromInstances()
     Else
@@ -12667,6 +12673,45 @@ Private Function Test_FieldWiring_MissingDetailNamesTheSlides() As String
     a.Delete
     b.Delete
     Test_FieldWiring_MissingDetailNamesTheSlides = result
+End Function
+
+' THE NAMED LIST IS BOUNDED, THE COUNT IS NOT. Confirmed live 2026-08-19: an
+' uncapped version of this list, concatenated into a MsgBox alongside every
+' other gap on a real 43-slide deck, cut off silently mid-word -- the exact
+' failure class FieldSpec.ApplyControlledValidation was already fixed for.
+' 7 missing slides (one more than MAX_NAMED_MISSING_KEYS) proves the cap
+' actually engages, not just that it exists in the code and never fires.
+Private Function Test_FieldWiring_MissingDetailCapsTheNamedListNotTheCount() As String
+    Dim result As String
+
+    Dim carrier As Object
+    Set carrier = NewTaggedSlide("cap-probe", "CARRIER")
+    Dim sc As Object
+    Set sc = carrier.Shapes.AddTextbox(1, 40, 40, 200, 30)
+    sc.Tags.Add "role", "PROBLEM_BODY"
+
+    Dim gaps(1 To 7) As Object
+    Dim i As Long
+    For i = 1 To 7
+        Set gaps(i) = NewTaggedSlide("cap-probe", "GAP" & i)
+    Next i
+
+    Dim r As FieldWiringResult
+    r = FieldWiring.ScanFieldWiring("cap-probe", FieldsCollection("PROBLEM_BODY"), Nothing)
+
+    result = result & Assert(r.PartialCount = 1, "still one partially-covered field, got " & r.PartialCount)
+    result = result & Assert(InStr(r.MissingDetail, "GAP1") > 0, _
+        "the first missing slide is still named, got '" & r.MissingDetail & "'")
+    result = result & Assert(InStr(r.MissingDetail, "and 1 more") > 0, _
+        "7 missing, cap is 6, so exactly 1 is left unnamed -- got '" & r.MissingDetail & "'")
+    result = result & Assert(InStr(r.MissingDetail, "GAP7") = 0, _
+        "the 7th name itself is NOT listed (that is the point of the cap), got '" & r.MissingDetail & "'")
+
+    carrier.Delete
+    For i = 1 To 7
+        gaps(i).Delete
+    Next i
+    Test_FieldWiring_MissingDetailCapsTheNamedListNotTheCount = result
 End Function
 
 ' THE ONE THAT MATTERS FOR NEW SLIDES. GatherInstances excludes the template by

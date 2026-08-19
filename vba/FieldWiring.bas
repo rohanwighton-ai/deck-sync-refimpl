@@ -406,17 +406,37 @@ Public Function ScanFieldWiring(slideType As String, fields As Collection, _
                 Dim carriers As Long
                 carriers = 0
                 Dim missingKeys As String
+                Dim missingCount As Long
                 missingKeys = ""
+                missingCount = 0
+
+                ' NAMED, BUT BOUNDED. A deck with many gaps on one field
+                ' (the realistic case -- see MissingDetail's own header)
+                ' can have dozens of missing slide keys; listing every one
+                ' is how a modal downstream ends up silently mid-word
+                ' truncated (MsgBox's own real, undocumented ~1024-char
+                ' limit -- confirmed live 2026-08-19, same failure class
+                ' FieldSpec.ApplyControlledValidation was already fixed
+                ' for). The COUNT stays exact regardless; only the NAMED
+                ' list is capped.
+                Const MAX_NAMED_MISSING_KEYS As Long = 6
 
                 Dim k As Variant
                 For Each k In rolesByKey.Keys
                     If CarriesField(rolesByKey(k), fieldName) Then
                         carriers = carriers + 1
                     Else
-                        If missingKeys <> "" Then missingKeys = missingKeys & ", "
-                        missingKeys = missingKeys & CStr(k)
+                        missingCount = missingCount + 1
+                        If missingCount <= MAX_NAMED_MISSING_KEYS Then
+                            If missingKeys <> "" Then missingKeys = missingKeys & ", "
+                            missingKeys = missingKeys & CStr(k)
+                        End If
                     End If
                 Next k
+                If missingCount > MAX_NAMED_MISSING_KEYS Then
+                    missingKeys = missingKeys & ", and " & _
+                        (missingCount - MAX_NAMED_MISSING_KEYS) & " more"
+                End If
 
                 ' THE NEAR-MISS. `PROJECT_PROGRESS` on the register against a
                 ' shape tagged `Project_Progress` passes this check (it
