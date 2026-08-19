@@ -8724,28 +8724,23 @@ Private Function Test_BatchOnboardFlow_BuildBatchPlanFindsCorrespondenceAndHarve
     Dim plan As BatchOnboardPlan
     plan = BatchOnboardFlow.BuildBatchPlan(templateSld, otherSlides)
 
-    result = result & Assert(plan.FieldCount = 2, "2 candidate fields found on the template, got " & plan.FieldCount)
+    ' FIX-LIST BL follow-up, 2026-08-19: BuildBatchPlan now excludes a
+    ' chrome candidate (identical on every other slide being onboarded)
+    ' outright, rather than including it flagged as Decoration -- Rohan's
+    ' own ask was to shrink the reviewable list, not just label it, since a
+    ' flagged-but-still-present 87-row grid is still 87 rows. "Same
+    ' Everywhere" is expected to be gone entirely; only "Q1 2026" (genuinely
+    ' varies across the other two slides) should remain.
+    result = result & Assert(plan.FieldCount = 1, "chrome excluded, only the varying field remains, got " & plan.FieldCount)
 
-    ' Identify which field index corresponds to which shape by its
-    ' template value, since discovery/enumeration order isn't guaranteed.
-    Dim identicalFieldIdx As Long, varyingFieldIdx As Long
-    identicalFieldIdx = 0: varyingFieldIdx = 0
+    Dim varyingFieldIdx As Long
+    varyingFieldIdx = 0
     Dim fi As Long
     For fi = 1 To plan.FieldCount
-        Dim tv As String
-        tv = plan.HarvestedText(CStr(fi) & "|0")
-        If tv = "Same Everywhere" Then identicalFieldIdx = fi
-        If tv = "Q1 2026" Then varyingFieldIdx = fi
+        If plan.HarvestedText(CStr(fi) & "|0") = "Q1 2026" Then varyingFieldIdx = fi
     Next fi
 
-    result = result & Assert(identicalFieldIdx > 0, "found the field whose template value is 'Same Everywhere'")
-    result = result & Assert(varyingFieldIdx > 0, "found the field whose template value is 'Q1 2026'")
-
-    If identicalFieldIdx > 0 Then
-        result = result & Assert(plan.FieldSuggestIdentical(identicalFieldIdx), "the identical-everywhere field is suggested as Decoration")
-        result = result & Assert(plan.HarvestedText(CStr(identicalFieldIdx) & "|1") = "Same Everywhere", "correspondence found on other1 for the identical field")
-        result = result & Assert(plan.HarvestedText(CStr(identicalFieldIdx) & "|2") = "Same Everywhere", "correspondence found on other2 for the identical field")
-    End If
+    result = result & Assert(varyingFieldIdx > 0, "the varying field ('Q1 2026') survived the chrome filter")
     If varyingFieldIdx > 0 Then
         result = result & Assert(Not plan.FieldSuggestIdentical(varyingFieldIdx), "the varying field is suggested as a real Field, not Decoration")
         result = result & Assert(plan.HarvestedText(CStr(varyingFieldIdx) & "|1") = "Q2 2026", "correspondence found on other1 for the varying field, got '" & plan.HarvestedText(CStr(varyingFieldIdx) & "|1") & "'")
@@ -10208,17 +10203,34 @@ Private Function Test_BatchOnboardFlow_CommitBatchTagsLinksAndVerifies() As Stri
     Dim otherSlides(1 To 1) As Object
     Set otherSlides(1) = other1
 
+    ' BuildBatchPlanFromMarkedFields, not BuildBatchPlan -- FIX-LIST BL
+    ' follow-up (2026-08-19) made BuildBatchPlan's own auto-discovery
+    ' exclude an identical-everywhere candidate outright (see that
+    ' function's own header), which is exactly right for cutting an
+    ' 87-row grid down, but leaves no field here to override. A human who
+    ' EXPLICITLY MARKED this shape gets no such filtering -- marking is
+    ' itself the consent a chrome-heuristic exists to substitute for when
+    ' nobody has looked yet. Commit/tagging mechanics are this test's
+    ' actual subject, not which path found the field.
+    Dim marked As Collection
+    Set marked = New Collection
+    marked.Add tShapeA
+    Dim markedNames As Object, markedTypes As Object, markedVolatility As Object
+    Set markedNames = CreateObject("Scripting.Dictionary"): markedNames(1) = "Overall Status Field"
+    Set markedTypes = CreateObject("Scripting.Dictionary"): markedTypes(1) = "text"
+    Set markedVolatility = CreateObject("Scripting.Dictionary"): markedVolatility(1) = "variable"
+
+    Dim matchErr As String
     Dim plan As BatchOnboardPlan
-    plan = BatchOnboardFlow.BuildBatchPlan(templateSld, otherSlides)
+    plan = BatchOnboardFlow.BuildBatchPlanFromMarkedFields(templateSld, marked, markedNames, markedTypes, markedVolatility, otherSlides, matchErr)
+    result = result & Assert(matchErr = "", "no match error, got '" & matchErr & "'")
     result = result & Assert(plan.FieldCount = 1, "1 candidate field found, got " & plan.FieldCount)
 
     ' The harvested text ("Overall Status") is deliberately identical on
-    ' both slides -- confirms BuildBatchPlan's own classification correctly
-    ' suggests this as decoration (Include defaults to False) before this
-    ' test explicitly overrides it, exactly as a human reviewing the grid
-    ' and choosing to keep it would. Commit/tagging mechanics are this
-    ' test's actual subject, not the classification default itself (that's
-    ' BuildBatchPlanFindsCorrespondenceAndHarvestsAcrossSlides's job).
+    ' both slides -- confirms the shared correspondence engine still
+    ' correctly suggests this as decoration (Include defaults to False)
+    ' even for an explicitly marked field, before this test overrides it,
+    ' exactly as a human reviewing the grid and choosing to keep it would.
     result = result & Assert(plan.FieldSuggestIdentical(1), "identical harvested text is correctly suggested as decoration")
     result = result & Assert(Not plan.FieldInclude(1), "decoration defaults to excluded before the override below")
     plan.FieldInclude(1) = True
@@ -10326,9 +10338,31 @@ Private Function Test_BatchOnboardFlow_CommitBatchWithGroupedFieldsAtScale() As 
         Set otherFieldB(i) = oFieldB
     Next i
 
+    ' BuildBatchPlanFromMarkedFields, not BuildBatchPlan -- same reason as
+    ' CommitBatchTagsLinksAndVerifies above (FIX-LIST BL follow-up,
+    ' 2026-08-19): auto-discovery now excludes an identical-everywhere
+    ' candidate outright, but this test's actual subject is grouped-shape
+    ' correspondence/commit AT SCALE, which needs the chrome sibling
+    ' present-but-deselected to prove a group can carry a real field and a
+    ' decoration field side by side without breaking either one's tagging.
+    Dim marked As Collection
+    Set marked = New Collection
+    marked.Add tFieldA
+    marked.Add tFieldB
+    marked.Add tSibling
+    Dim markedNames As Object, markedTypes As Object, markedVolatility As Object
+    Set markedNames = CreateObject("Scripting.Dictionary")
+    markedNames(1) = "Project Number": markedNames(2) = "Status": markedNames(3) = "Card Chrome Sibling"
+    Set markedTypes = CreateObject("Scripting.Dictionary")
+    markedTypes(1) = "text": markedTypes(2) = "text": markedTypes(3) = "text"
+    Set markedVolatility = CreateObject("Scripting.Dictionary")
+    markedVolatility(1) = "variable": markedVolatility(2) = "variable": markedVolatility(3) = "variable"
+
+    Dim matchErr As String
     Dim plan As BatchOnboardPlan
-    plan = BatchOnboardFlow.BuildBatchPlan(templateSld, otherSlides)
-    result = result & Assert(plan.FieldCount = 3, "3 candidate fields found (fieldA, grouped fieldB, grouped sibling decoration), got " & plan.FieldCount)
+    plan = BatchOnboardFlow.BuildBatchPlanFromMarkedFields(templateSld, marked, markedNames, markedTypes, markedVolatility, otherSlides, matchErr)
+    result = result & Assert(matchErr = "", "no match error, got '" & matchErr & "'")
+    result = result & Assert(plan.FieldCount = 3, "3 marked fields found (fieldA, grouped fieldB, grouped sibling decoration), got " & plan.FieldCount)
 
     ' Identify each field's index by its template value -- discovery order
     ' isn't guaranteed, same idiom BuildBatchPlanFindsCorrespondenceAnd

@@ -2081,13 +2081,29 @@ End Function
 ' Builds the full BatchOnboardPlan by discovering the template's candidate
 ' fields via Discovery + Onboarding.IsCandidateField (every text/picture
 ' shape on the slide), then delegating to BuildBatchPlanFromCandidates for
-' the actual cross-slide correspondence/harvesting. Kept for the tests that
-' already exercise it directly; the live "Bulk Onboard Type" ribbon entry
-' point uses BuildBatchPlanFromMarkedFields instead (see that function's own
-' header) -- Discovery-based auto-enumeration produced an 87-row, unreviewable
-' grid on Rohan's real deck (60-90 candidate shapes/slide), so the live flow
-' now requires a human to click each field shape first rather than walking
-' every shape on the slide.
+' the actual cross-slide correspondence/harvesting. The live "Bulk Onboard
+' Type" ribbon entry point uses BuildBatchPlanFromMarkedFields instead --
+' Discovery-based auto-enumeration produced an 87-row, unreviewable grid on
+' Rohan's real deck (60-90 candidate shapes/slide, 2026-07-26), so the live
+' flow requires a human to click each field shape first.
+'
+' CHROME-FILTERED, 2026-08-19. Rohan: "can its results be sensibly filtered
+' by shapes that can actually hold readable data?" Reuses TemplateAudit's
+' own cross-slide comparison (identical text on every other slide being
+' onboarded => chrome, excluded; varies or absent elsewhere => kept) rather
+' than a second, independently-tuned heuristic -- TemplateAudit did not
+' exist yet when this was first tried and abandoned. Pictures and devices
+' are exempt; neither has comparable TEXT to judge chrome by. Confirmed
+' architecturally isolated from routine sync before building this: this
+' whole module is gated on `Not hasTypes` in RibbonUI.bas ("a configured
+' deck never sees this"), so nothing here can ever run during a normal
+' quarterly "Set up my quarter."
+'
+' Still not the live ribbon entry point -- kept alongside
+' BuildBatchPlanFromMarkedFields as a second option, not a replacement, per
+' Rohan's own framing ("is part of it of any use"). Wiring an actual choice
+' between the two into the ribbon flow is a separate decision, not made
+' here.
 Public Function BuildBatchPlan(templateSld As Object, otherSlides() As Object) As BatchOnboardPlan
     Dim allCandidates() As Candidate
     Dim allShapes() As Object
@@ -2105,6 +2121,26 @@ Public Function BuildBatchPlan(templateSld As Object, otherSlides() As Object) A
         Exit Function
     End If
 
+    ' Every OTHER slide's text, collected once (not once per candidate) --
+    ' same "discover once, not per field" discipline BuildBatchPlanFromCandidates
+    ' already follows below this function.
+    Dim otherTexts() As Object
+    Dim oLo As Long, oHi As Long, hasOthers As Boolean
+    On Error Resume Next
+    oLo = LBound(otherSlides): oHi = UBound(otherSlides)
+    hasOthers = (Err.Number = 0)
+    On Error GoTo 0
+    Dim instanceCount As Long
+    instanceCount = 0
+    If hasOthers Then
+        instanceCount = oHi - oLo + 1
+        ReDim otherTexts(oLo To oHi)
+        Dim oi As Long
+        For oi = oLo To oHi
+            Set otherTexts(oi) = TemplateAudit.CollectSlideTexts(otherSlides(oi))
+        Next oi
+    End If
+
     Dim templateCandidates() As Candidate
     Dim templateShapes() As Object
     Dim n As Long
@@ -2112,11 +2148,29 @@ Public Function BuildBatchPlan(templateSld As Object, otherSlides() As Object) A
     Dim i As Long
     For i = aLo To aHi
         If Onboarding.IsCandidateField(allCandidates(i)) Then
-            n = n + 1
-            ReDim Preserve templateCandidates(1 To n)
-            ReDim Preserve templateShapes(1 To n)
-            templateCandidates(n) = allCandidates(i)
-            Set templateShapes(n) = allShapes(i)
+            Dim keep As Boolean
+            keep = True
+
+            If allCandidates(i).ShapeType <> "picture" And allCandidates(i).ShapeType <> Discovery.SHAPE_TYPE_DEVICE Then
+                Dim candText As String
+                candText = TemplateAudit.NormaliseText(TemplateAudit.ShapeText(allShapes(i)))
+                If candText <> "" And hasOthers Then
+                    Dim seenOn As Long
+                    seenOn = 0
+                    For oi = oLo To oHi
+                        If otherTexts(oi).Exists(candText) Then seenOn = seenOn + 1
+                    Next oi
+                    keep = TemplateAudit.IsLikelyProjectData(TemplateAudit.Classify(seenOn, instanceCount))
+                End If
+            End If
+
+            If keep Then
+                n = n + 1
+                ReDim Preserve templateCandidates(1 To n)
+                ReDim Preserve templateShapes(1 To n)
+                templateCandidates(n) = allCandidates(i)
+                Set templateShapes(n) = allShapes(i)
+            End If
         End If
     Next i
 

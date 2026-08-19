@@ -147,7 +147,12 @@ End Function
 ' inspection, and a shape can satisfy it and still raise on TextRange (a
 ' picture with a caption frame, a chart, a table cell). A raise here would
 ' kill an audit that is supposed to be the safest thing on the toolbar.
-Private Function ShapeText(shp As Object) As String
+'
+' PUBLIC since 2026-08-19, for BatchOnboardFlow.BuildBatchPlan's chrome
+' filter -- reusing this cross-slide comparison rather than a second,
+' independently-tuned one is the whole point (see that function's own
+' header).
+Public Function ShapeText(shp As Object) As String
     On Error Resume Next
     ShapeText = shp.TextFrame.TextRange.Text
     On Error GoTo 0
@@ -158,7 +163,9 @@ End Function
 ' space or a line break far more often than they differ in meaning, and a
 ' comparison that treats "Project Closed " as different from "Project Closed"
 ' would report chrome as project data on almost every row.
-Private Function NormaliseText(raw As String) As String
+'
+' PUBLIC since 2026-08-19 -- see ShapeText's own header, same reason.
+Public Function NormaliseText(raw As String) As String
     Dim s As String
     s = raw
     s = Replace(s, vbCr, " ")
@@ -173,7 +180,9 @@ End Function
 ' Every normalised text string present anywhere on `sld`, as a Dictionary
 ' used as a set. Recurses groups, because real decks stack fields inside
 ' groups (a lesson already paid for -- see AGENTS.md / the discovery walk).
-Private Function CollectSlideTexts(sld As Object) As Object
+'
+' PUBLIC since 2026-08-19 -- see ShapeText's own header, same reason.
+Public Function CollectSlideTexts(sld As Object) As Object
     Dim texts As Object
     Set texts = CreateObject("Scripting.Dictionary")
 
