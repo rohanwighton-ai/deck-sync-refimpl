@@ -354,33 +354,52 @@ End Function
 ' REFUSES rather than silently discarding, 2026-08-16 -- found auditing this
 ' exact class of bug in DiscoverUI.bas the same day. SummaryText's own
 ' warning ("Re-running this REPLACES that sheet, decisions included") used to
-' be the ONLY protection, and it is shown to the human AFTER this Sub had
-' already cleared the sheet -- by the time anyone reads "copy them out
-' first", there is nothing left to copy. Returns "" on success, "!..." on
-' refusal, same convention as DiscoverUI.BuildDiscoverySheet; the caller must
-' check it instead of treating a call to this as unconditional success.
-Public Function WriteAuditGrid(ws As Object, rows() As AuditRow, rowCount As Long) As String
+' be the ONLY protection, then a straight refusal replaced it (2026-08-15 --
+' "copy them out first"). FIX-LIST item P5, 2026-08-19: a refusal stops
+' silent loss but still means the audit can only ever be worked in one
+' sitting, which was the actual complaint. **Now carries every decision
+' forward by shape identity instead**, the way `Drafting.WriteDraftingSheet`
+' carries a person's drafts across a rebuild rather than either destroying
+' them or blocking the rebuild entirely.
+'
+' Returns "" always now (nothing left to refuse) -- `carriedCount` and
+' `orphanedCount` are ByRef so the caller can report what happened, the same
+' convention as `FieldSpec.ApplyControlledValidation`'s `outOfVocabulary`.
+Public Function WriteAuditGrid(ws As Object, rows() As AuditRow, rowCount As Long, _
+                               Optional ByRef carriedCount As Long, _
+                               Optional ByRef orphanedCount As Long) As String
+    carriedCount = 0
+    orphanedCount = 0
+
+    ' Read every prior decision BEFORE anything is cleared, keyed by shape
+    ' identity -- (shape name, group path, text) together, not shape name
+    ' alone. Text is part of the key deliberately: a decision was made about
+    ' what a shape SAID, and if the template's text has since changed, that
+    ' decision may no longer apply to carry forward blindly.
+    Dim priorDecisions As Object
+    Set priorDecisions = CreateObject("Scripting.Dictionary")
+
     Dim priorLastRow As Long
     priorLastRow = AUDIT_FIRST_ROW - 1
     Do While Trim(CStr(ws.Cells(priorLastRow + 1, COL_SHAPE).Value)) <> ""
         priorLastRow = priorLastRow + 1
     Loop
 
-    If priorLastRow >= AUDIT_FIRST_ROW Then
-        Dim pendingCount As Long
-        pendingCount = 0
-        Dim pr As Long
-        For pr = AUDIT_FIRST_ROW To priorLastRow
-            If Trim(CStr(ws.Cells(pr, COL_DECISION).Value)) <> "" Then pendingCount = pendingCount + 1
-        Next pr
-        If pendingCount > 0 Then
-            WriteAuditGrid = "!The '" & AUDIT_SHEET_NAME & "' sheet still has " & pendingCount & _
-                " decision(s) recorded (field/chrome/drop) from the LAST audit, not yet acted on. " & _
-                "Copy them out first -- re-running this would REPLACE that sheet and discard them, " & _
-                "which is exactly what this refusal exists to prevent."
-            Exit Function
+    Dim pr As Long
+    For pr = AUDIT_FIRST_ROW To priorLastRow
+        Dim priorDecision As String
+        priorDecision = Trim(CStr(ws.Cells(pr, COL_DECISION).Value))
+        If priorDecision <> "" Then
+            ' Stored text carries a leading apostrophe (forced-text guard
+            ' below) -- stripped here so the key matches a freshly-read
+            ' AuditRow's own Text, which never has one.
+            Dim priorText As String
+            priorText = CStr(ws.Cells(pr, COL_TEXT).Value)
+            If Left(priorText, 1) = "'" Then priorText = Mid(priorText, 2)
+            priorDecisions(AuditRowKey(CStr(ws.Cells(pr, COL_SHAPE).Value), _
+                                        CStr(ws.Cells(pr, COL_GROUP).Value), priorText)) = priorDecision
         End If
-    End If
+    Next pr
 
     ws.Cells.Clear
 
@@ -390,6 +409,9 @@ Public Function WriteAuditGrid(ws As Object, rows() As AuditRow, rowCount As Lon
     ws.Cells(AUDIT_HEADER_ROW, COL_VERDICT).Value = "Guess"
     ws.Cells(AUDIT_HEADER_ROW, COL_SEEN).Value = "On how many other slides"
     ws.Cells(AUDIT_HEADER_ROW, COL_DECISION).Value = "Decide: field / chrome / drop"
+
+    Dim seenKeys As Object
+    Set seenKeys = CreateObject("Scripting.Dictionary")
 
     Dim i As Long
     For i = 1 To rowCount
@@ -404,10 +426,39 @@ Public Function WriteAuditGrid(ws As Object, rows() As AuditRow, rowCount As Lon
         ws.Cells(r, COL_TEXT).Value = "'" & rows(i).Text
         ws.Cells(r, COL_VERDICT).Value = rows(i).Verdict
         ws.Cells(r, COL_SEEN).Value = rows(i).SeenOn & " of " & rows(i).InstanceCount
-        ws.Cells(r, COL_DECISION).Value = ""
+
+        Dim key As String
+        key = AuditRowKey(rows(i).ShapeName, rows(i).GroupPath, rows(i).Text)
+        seenKeys(key) = True
+        If priorDecisions.Exists(key) Then
+            ws.Cells(r, COL_DECISION).Value = priorDecisions(key)
+            carriedCount = carriedCount + 1
+        Else
+            ws.Cells(r, COL_DECISION).Value = ""
+        End If
     Next i
 
+    ' Named, not silently dropped -- a prior decision whose shape/text no
+    ' longer appears in this rebuild (renamed, retyped, or the shape itself
+    ' is gone) genuinely cannot be carried forward. Counted so the caller can
+    ' say so, the same "say when it did nothing, and why" rule
+    ' ApplyControlledValidation already follows.
+    Dim k As Variant
+    For Each k In priorDecisions.Keys
+        If Not seenKeys.Exists(CStr(k)) Then orphanedCount = orphanedCount + 1
+    Next k
+
     WriteAuditGrid = ""
+End Function
+
+' The shape's identity for carrying a decision across a rebuild -- not a
+' shape ID PowerPoint assigns (this project's own AGENTS.md already records
+' that auto-generated shape names keep resolving after a rename, so a raw
+' name alone is not a safe identity key on its own), but name + group path +
+' text together, which is exactly what a person is looking at when they type
+' a decision next to a row.
+Private Function AuditRowKey(shapeName As String, groupPath As String, text As String) As String
+    AuditRowKey = shapeName & "|" & groupPath & "|" & text
 End Function
 
 ' What the human sees in the dialog. Counts and a pointer, never the list --
@@ -428,9 +479,10 @@ Public Function SummaryText(slideType As String, subjectLabel As String, tracked
         s = s & "The full list is on the '" & AUDIT_SHEET_NAME & "' sheet of the paired" & vbCrLf & _
             "workbook, most-likely-project-data first, with a column to record" & vbCrLf & _
             "your decision on each: field / chrome / drop." & vbCrLf & vbCrLf & _
-            "Re-running this REPLACES that sheet. If you have recorded decisions" & vbCrLf & _
-            "not yet acted on, it will refuse rather than discard them -- copy" & vbCrLf & _
-            "them out and clear the column yourself to proceed." & vbCrLf & vbCrLf
+            "Re-running this REBUILDS that sheet -- any decision you've already" & vbCrLf & _
+            "recorded carries forward automatically onto the matching row." & vbCrLf & _
+            "Only a decision whose shape or text has actually changed since" & vbCrLf & _
+            "won't carry, and you'll be told exactly how many, if any." & vbCrLf & vbCrLf
     End If
 
     If instanceCount = 0 Then

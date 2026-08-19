@@ -2175,7 +2175,7 @@ Private Sub AuditFieldsCore()
     ' paired workbook still gets the counts -- the audit reads the DECK, so
     ' refusing outright would withhold an answer it already has.
     Dim wroteGrid As Boolean
-    Dim gridRefusal As String
+    Dim carriedCount As Long, orphanedCount As Long
     Dim workbookPath As String
     workbookPath = DeckRegistry.GetWorkbookPath(pres)
     If workbookPath <> "" And rowCount > 0 Then
@@ -2184,24 +2184,25 @@ Private Sub AuditFieldsCore()
         If Not wb Is Nothing Then
             Dim ws As Object
             Set ws = WorkbookBridge.GetOrAddWorksheet(wb, TemplateAudit.AUDIT_SHEET_NAME)
-            ' WriteAuditGrid now REFUSES rather than silently discarding
-            ' recorded field/chrome/drop decisions from a prior, not-yet-
-            ' acted-on audit -- check its result instead of assuming success.
-            Dim writeResult As String
-            writeResult = TemplateAudit.WriteAuditGrid(ws, rows, rowCount)
-            If Left(writeResult, 1) = "!" Then
-                gridRefusal = Mid(writeResult, 2)
-            Else
-                wroteGrid = True
-            End If
+            ' WriteAuditGrid now CARRIES every recorded field/chrome/drop
+            ' decision forward by shape identity instead of refusing to
+            ' rebuild over them (FIX-LIST P5) -- report what happened rather
+            ' than checking for a refusal that no longer exists.
+            TemplateAudit.WriteAuditGrid ws, rows, rowCount, carriedCount, orphanedCount
+            wroteGrid = True
         End If
     End If
 
     Dim report As String
     report = TemplateAudit.SummaryText(slideType, subjectLabel, trackedCount, rowCount, likelyDataCount, comparisonCount)
-    If gridRefusal <> "" Then
-        report = report & vbCrLf & vbCrLf & "GRID NOT UPDATED: " & gridRefusal
-    ElseIf rowCount > 0 And Not wroteGrid Then
+    If wroteGrid And carriedCount > 0 Then
+        report = report & vbCrLf & vbCrLf & "Carried " & carriedCount & " prior decision(s) forward."
+    End If
+    If wroteGrid And orphanedCount > 0 Then
+        report = report & vbCrLf & vbCrLf & orphanedCount & " prior decision(s) could NOT be carried forward " & _
+            "(that shape's text has changed, or the shape itself is gone) -- check the sheet's history if you need them."
+    End If
+    If rowCount > 0 And Not wroteGrid Then
         report = report & vbCrLf & vbCrLf & "COULD NOT WRITE THE LIST: no paired workbook was reachable, so only the counts above are available."
     End If
 

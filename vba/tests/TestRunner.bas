@@ -843,12 +843,21 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
-    If TestMatches("TemplateAudit_RefusesToDiscardPendingDecisions", filterPattern) Then
-        r = Test_TemplateAudit_RefusesToDiscardPendingDecisions()
+    If TestMatches("TemplateAudit_CarriesMatchingDecisionsForward", filterPattern) Then
+        r = Test_TemplateAudit_CarriesMatchingDecisionsForward()
     Else
         r = TEST_SKIPPED
     End If
-    AppendResult report, "TemplateAudit_RefusesToDiscardPendingDecisions", r
+    AppendResult report, "TemplateAudit_CarriesMatchingDecisionsForward", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("TemplateAudit_OrphanedDecisionIsCountedNotCarried", filterPattern) Then
+        r = Test_TemplateAudit_OrphanedDecisionIsCountedNotCarried()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "TemplateAudit_OrphanedDecisionIsCountedNotCarried", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -5717,8 +5726,8 @@ Private Function Test_TemplateAudit_NoComparisonSlidesStillLists() As String
     Dim s2 As String
     s2 = TemplateAudit.SummaryText("q", "slide 1", 5, 3, 1, 4)
     result = result & Assert(InStr(s2, "no other slides to compare") = 0, "the UNKNOWN caveat is ABSENT when comparisons exist")
-    result = result & Assert(InStr(s2, "REPLACES that sheet") > 0, "summary warns the sheet gets replaced")
-    result = result & Assert(InStr(s2, "refuse") > 0, "and that a re-run with pending decisions refuses rather than discarding them")
+    result = result & Assert(InStr(s2, "REBUILDS that sheet") > 0, "summary explains the sheet gets rebuilt")
+    result = result & Assert(InStr(s2, "carries forward") > 0, "and that a prior decision carries forward automatically (FIX-LIST P5)")
 
     Test_TemplateAudit_NoComparisonSlidesStillLists = result
 End Function
@@ -5758,13 +5767,13 @@ Private Function Test_TemplateAudit_RewriteLeavesNoStaleRows(stagingDir As Strin
     Test_TemplateAudit_RewriteLeavesNoStaleRows = result
 End Function
 
-' THE REAL BUG THIS FIXES: found 2026-08-16 auditing every .Clear in the repo
-' after the same-shape defect in DiscoverUI.bas. SummaryText's own warning
-' fired AFTER WriteAuditGrid had already cleared the sheet -- by the time a
-' person read "copy them out first", there was nothing left to copy. Proves
-' the refusal actually fires, and that it leaves the pending decision
-' completely untouched, not just that it returns a string.
-Private Function Test_TemplateAudit_RefusesToDiscardPendingDecisions() As String
+' FIX-LIST P5, 2026-08-19: a refusal (this test's own former name) stopped
+' silent loss but meant the audit could only ever be worked in one sitting.
+' WriteAuditGrid now CARRIES a decision forward instead, keyed by shape
+' identity (name + group path + text) -- proves a decision on a row that
+' survives unchanged into the next run reaches the matching new row, without
+' the caller doing anything special.
+Private Function Test_TemplateAudit_CarriesMatchingDecisionsForward() As String
     Dim result As String
 
     Dim xl As Object
@@ -5776,33 +5785,72 @@ Private Function Test_TemplateAudit_RefusesToDiscardPendingDecisions() As String
     Set ws = wb.Worksheets(1)
 
     Dim first(1 To 2) As AuditRow
-    first(1).ShapeName = "A": first(1).Text = "first": first(1).Verdict = "CHECK -- on 1 of 2 other slide(s)"
-    first(2).ShapeName = "B": first(2).Text = "second": first(2).Verdict = "CHECK -- on 1 of 2 other slide(s)"
-    Dim r1 As String
-    r1 = TemplateAudit.WriteAuditGrid(ws, first, 2)
-    result = result & Assert(r1 = "", "the first, clean write succeeds, got '" & r1 & "'")
+    first(1).ShapeName = "A": first(1).GroupPath = "": first(1).Text = "first": first(1).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    first(2).ShapeName = "B": first(2).GroupPath = "": first(2).Text = "second": first(2).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    TemplateAudit.WriteAuditGrid ws, first, 2
 
-    ' A PERSON RECORDS A DECISION -- not yet acted on.
-    ws.Cells(3, 6).Value = "field"
+    ' A PERSON RECORDS A DECISION on row A.
+    ws.Cells(2, 6).Value = "field"
 
-    Dim second(1 To 1) As AuditRow
-    second(1).ShapeName = "C": second(1).Text = "third": second(1).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    ' Re-run with the SAME two rows, same order -- as an unchanged template
+    ' would produce.
+    Dim second(1 To 2) As AuditRow
+    second(1).ShapeName = "A": second(1).GroupPath = "": second(1).Text = "first": second(1).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    second(2).ShapeName = "B": second(2).GroupPath = "": second(2).Text = "second": second(2).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    Dim carried As Long, orphaned As Long
     Dim r2 As String
-    r2 = TemplateAudit.WriteAuditGrid(ws, second, 1)
-    result = result & Assert(Left(r2, 1) = "!", "a re-run with a pending decision REFUSES, got '" & r2 & "'")
-    result = result & Assert(InStr(r2, "1 decision") > 0, "the refusal names how many, got '" & r2 & "'")
+    r2 = TemplateAudit.WriteAuditGrid(ws, second, 2, carried, orphaned)
 
-    ' NOTHING WAS TOUCHED. The original grid, decision included, must survive
-    ' a refused call exactly as it was -- that is the whole point.
-    result = result & Assert(ws.Cells(2, 1).Value = "A", "row A survives the refused call")
-    result = result & Assert(ws.Cells(3, 1).Value = "B", "row B survives the refused call")
-    result = result & Assert(ws.Cells(3, 6).Value = "field", "the recorded decision itself survives, got '" & CStr(ws.Cells(3, 6).Value) & "'")
-    result = result & Assert(Trim(CStr(ws.Cells(4, 1).Value & "")) = "", "the second run's row C was NOT written -- the refusal happened before any write")
+    result = result & Assert(r2 = "", "carrying forward never refuses, got '" & r2 & "'")
+    result = result & Assert(carried = 1, "exactly one decision carried, got " & carried)
+    result = result & Assert(orphaned = 0, "nothing orphaned when everything survives unchanged, got " & orphaned)
+    result = result & Assert(ws.Cells(2, 6).Value = "field", _
+        "row A's decision reached the rebuilt sheet without being retyped, got '" & CStr(ws.Cells(2, 6).Value) & "'")
+    result = result & Assert(Trim(CStr(ws.Cells(3, 6).Value & "")) = "", "row B, never decided, is still blank")
 
     wb.Close False
     xl.Quit
 
-    Test_TemplateAudit_RefusesToDiscardPendingDecisions = result
+    Test_TemplateAudit_CarriesMatchingDecisionsForward = result
+End Function
+
+' The other half: a decision whose shape TEXT has genuinely changed since
+' must NOT be carried forward onto a row that no longer matches what the
+' decision was actually made about -- and it must be counted, not silently
+' dropped, so a person can tell something needs a fresh look.
+Private Function Test_TemplateAudit_OrphanedDecisionIsCountedNotCarried() As String
+    Dim result As String
+
+    Dim xl As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Dim wb As Object
+    Set wb = xl.Workbooks.Add
+    Dim ws As Object
+    Set ws = wb.Worksheets(1)
+
+    Dim first(1 To 1) As AuditRow
+    first(1).ShapeName = "A": first(1).GroupPath = "": first(1).Text = "old text": first(1).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    TemplateAudit.WriteAuditGrid ws, first, 1
+    ws.Cells(2, 6).Value = "chrome"
+
+    ' Same shape NAME, but the template's text on it has changed -- the
+    ' decision was made about "old text" and must not silently attach itself
+    ' to different content just because the shape name matches.
+    Dim second(1 To 1) As AuditRow
+    second(1).ShapeName = "A": second(1).GroupPath = "": second(1).Text = "completely different text": second(1).Verdict = "CHECK -- on 1 of 2 other slide(s)"
+    Dim carried As Long, orphaned As Long
+    TemplateAudit.WriteAuditGrid ws, second, 1, carried, orphaned
+
+    result = result & Assert(carried = 0, "nothing carries when the text genuinely changed, got " & carried)
+    result = result & Assert(orphaned = 1, "the un-carryable decision is counted, got " & orphaned)
+    result = result & Assert(Trim(CStr(ws.Cells(2, 6).Value & "")) = "", _
+        "the new row must NOT inherit a decision made about different text, got '" & CStr(ws.Cells(2, 6).Value) & "'")
+
+    wb.Close False
+    xl.Quit
+
+    Test_TemplateAudit_OrphanedDecisionIsCountedNotCarried = result
 End Function
 
 ' ---------------------------------------------------------------------
