@@ -85,6 +85,11 @@ Public Const CAP_RETIRE_SLIDES As String = "Retire slides with no row"
 Public Const CAP_DISCOVER_FIELDS As String = "Tag fields on this slide"
 Public Const CAP_REPOINT_WORKBOOK As String = "Change which workbook this deck uses"
 
+' The standing formatting-consistency check (FormattingAudit.bas) -- built
+' and tested 2026-08-19, wired here so it is reachable at all. Read-only,
+' same "safe to run at any time" class as CAP_DISCOVER_FIELDS above.
+Public Const CAP_CHECK_FORMATTING As String = "Check field formatting"
+
 ' MISSING ENTIRELY UNTIL 2026-08-16, and this is the SAME bug this file's own
 ' header describes fixing once already: "Readiness offered 'Create Template
 ' Slide' as a remedy for a button the toolbar has never carried." It had been
@@ -283,6 +288,8 @@ Public Sub ShowToolbar()
         "Use to DELETE every slide whose key the register no longer lists, after naming each one by index and key. It never creates. Last quarter's saved deck is where they still exist."
     AddButton bar, CAP_DISCOVER_FIELDS, "RibbonUI.DiscoverFieldsOnSlide", 1758, _
         "Use to tag fields on the slide you are looking at: writes a grid of its shapes into the workbook, you mark what to track, and it tags them. Safe to re-run -- existing marks are kept."
+    AddButton bar, CAP_CHECK_FORMATTING, "RibbonUI.CheckFormatting", 472, _
+        "Use to compare every field's formatting (font size, shape type) against every other real slide with the same field, and name whichever ones disagree. Writes nothing."
 
     ' ---------------------------------------------------------------------
     ' WHY THIS IS A BUTTON, AND WHY IT IS NOT THE "REBUILD MY SHEETS" CLASS

@@ -348,6 +348,21 @@ Failed:
         RibbonUI.UnexpectedErrorText(CommandBarUI.CAP_DISCOVER_FIELDS, Err.Number, Err.Description, Err.Source)
 End Sub
 
+' The entry point for the standing formatting-consistency check (see
+' FormattingAudit.bas's own header) -- built and tested 2026-08-19 but never
+' wired to anything a person can press. Read-only: compares real slides
+' against each other, writes nothing.
+Public Sub CheckFormatting()
+    On Error GoTo Failed
+    Dim report As String
+    report = FormattingAudit.ScanFormattingOutliers(Application.ActivePresentation)
+    RibbonUI.ShowSyncResult CommandBarUI.CAP_CHECK_FORMATTING, report
+    Exit Sub
+Failed:
+    RibbonUI.ShowSyncResult CommandBarUI.CAP_CHECK_FORMATTING, _
+        RibbonUI.UnexpectedErrorText(CommandBarUI.CAP_CHECK_FORMATTING, Err.Number, Err.Description, Err.Source)
+End Sub
+
 Public Sub AddMissingSlides()
     On Error GoTo Failed
     SlideMembershipCore False
