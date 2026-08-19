@@ -25,22 +25,55 @@ laid down. This is an audit-then-fix pass, not a rebuild. **Never write to the l
 directly — work on a copy, real backup first, per this project's own standing rule.**
 
 ### Phase 0 — before touching anything
-- [ ] Get the real workbook's path (or confirm it's open in Excel) and take a fresh,
-      md5-verified backup, same convention as every `PRE-*` backup this session already
-      used.
-- [ ] Snapshot the live workbook's actual sheet list, column headers, and row counts as
-      the "before" baseline — nothing below can be verified without this.
+- [x] Get the real workbook's path and take a fresh, md5-verified backup, same
+      convention as every `PRE-*` backup this session already used. **DONE
+      2026-08-19 18:43** — Rohan: "just use the most developed file we have been
+      working on." Located via the known `OneDrive\Claude\backups` folder:
+      `OneDrive\Claude\3. Project Progress.pptx` (deck) + `OneDrive\Claude\
+      register-wide.xlsx` (register), both modified within the hour. Backed up to
+      `OneDrive\Claude\backups\PRE-MODERNISATION-AUDIT-20260819-1843\`, md5-verified
+      identical to the originals. PowerPoint was running with **zero presentations
+      open** (nothing at risk) — confirmed via `GetActiveObject` before touching
+      anything, not assumed.
+- [x] Snapshot the live workbook's actual sheet list, column headers, and row counts
+      as the "before" baseline. **DONE 2026-08-19** — opened read-only via Excel COM
+      (never through `/mnt/c` directly, per this project's own OneDrive-reads-lie
+      finding). **54 sheets total.** Full snapshot at
+      `[scratchpad]/register_snapshot.log` this session — not copied into the repo,
+      it's a point-in-time dump of Rohan's real data.
 
-### Phase 1 — concrete drift already found by reading the code tonight, needs checking against the live file
-- [ ] **`Drafting.bas`'s column layout has moved since FIX-LIST item P6 was written
-      (2026-08-13).** P6 states `COL_D_DRAFT=5(E)`, `COL_D_SUBMIT=6(F)`,
-      `COL_D_APPROVED=7(G)`. The code *right now* has `COL_D_DRAFT=6(F)`,
-      `COL_D_SUBMIT=7(G)`, `COL_D_APPROVED=8(H)` — `COL_D_SOURCES` was inserted as
-      column E since then. Check: does the live workbook's drafting sheets' actual
-      column layout match the CURRENT code, or the P6-era one? If a drafting sheet was
-      never rebuilt since the shift, its real columns could still disagree with what
-      every column-position constant now assumes. *Source: `vba/Drafting.bas:82-95`,
-      `FIX-LIST.md` item P6.*
+### Phase 1 — concrete drift already found by reading the code tonight, checked against the live file
+- [x] **`Drafting.bas`'s column layout — CHECKED, NOT drifted.** FIX-LIST item P6
+      (2026-08-13) describes `COL_D_DRAFT=5(E)/SUBMIT=6(F)/APPROVED=7(G)` — stale
+      relative to the code, which now has `COL_D_SOURCES=5(E)/DRAFT=6(F)/
+      SUBMIT=7(G)/APPROVED=8(H)`. **Verified live 2026-08-19: the current
+      `TPL_PROGRESS_BODY` sheet's own row-9 header text already reads "E SOURCES...
+      F AI DRAFT... G SUBMIT... H APPROVE" — the LIVE FILE already matches the
+      CURRENT code.** P6 was stale documentation only, not a live bug. Confirmed by
+      contrast: the archived `SAVED 0814-1911 PROGRESS_BODY` snapshot (13 cols, one
+      fewer) still carries the OLD D/E/F/G layout P6 describes — real, in-file
+      evidence of exactly when the migration happened, sitting right next to the
+      current sheet. *Source: `vba/Drafting.bas:82-95`, live header rows this
+      session.*
+- [ ] **NEW finding, not previously written anywhere: 21 `SAVED <timestamp> <field>`
+      archive sheets have accumulated in the live register** (14 Aug and 17 Aug
+      snapshots, e.g. `SAVED 0817-1929 HIGHLIGHTS_BODY`). This is a real, deliberate
+      mechanism — not orphaned debris (`Drafting.bas:466` creates them,
+      `WorkbookBridge.IsToolOwnedSheet`/`.bas:967` recognises them, tab-ordering
+      parks them last on purpose) — but nothing found yet caps or prunes them, and
+      the count only grows every time a field gets re-drafted. Check against "File-
+      per-quarter — the prune half (critical path #3)," elsewhere in this file, for
+      whether a retention policy already exists or still needs one. *Source: live
+      register snapshot, 2026-08-19.*
+- [ ] Two sheets with hex-suffixed names — `Review project-status-2D3D` (40 rows) and
+      `Review project-progress-A32C` (3 rows) — worth checking whether these are the
+      same accumulating-archive pattern as the `SAVED` sheets or something else
+      (a live review queue's working state, in which case leave them alone).
+      *Source: live register snapshot, 2026-08-19.*
+- [ ] The `Register` sheet itself (130 rows x 54 columns, the wide canonical surface
+      per `project_deck_sync_object_model` memory) hasn't had its own column headers
+      cross-checked against `DeckRegistry.bas`'s expectations yet — same class of
+      check as the `Drafting.bas` one above, just not done yet.
 - [ ] **`COL_S_` is defined in two different modules for two different sheets** —
       `Sources.bas` (`COL_S_ID`, `COL_S_LABEL`, …, for the *Sources* sheet) and
       `FieldSpec.bas` (`COL_S_FIELDID`, `COL_S_KIND`, …, for the *Field Spec* sheet).
