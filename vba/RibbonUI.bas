@@ -1314,9 +1314,20 @@ Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) A
         ' function's own WriteRunLog removal): nothing this function
         ' writes survives to the saved file, because later calls in the
         ' same chain overwrite the sheet first.
+        '
+        ' CAPPED TO 350, NOT THE SHARED 900. This section shares its dialog
+        ' with three others (DraftingUI.AppendCollected folds it in) --
+        ' capping it against the FULL REPORT_CAP does nothing to stop the
+        ' COMBINED report from exceeding that same ceiling once the other
+        ' sections are added, which is exactly what happened live the same
+        ' night: this section alone fit under 900, and the OUTER CapReport
+        ' call in SyncNowChainCore (wrapping all four sections together)
+        ' still truncated mid-word, with ITS OWN default Run Log notice.
+        ' 350 leaves real headroom for the other three sections plus that
+        ' outer call's own mustKeep tail, inside the shared 900-char dialog.
         DraftingUI.AppendCollected _
             "The register is not fully wired for this deck:" & vbCrLf & vbCrLf & _
-            CapReport(unwiredNote, "", "[shortened -- not every gap is listed here]"), _
+            CapReport(unwiredNote, "", "[shortened -- not every gap is listed here]", 350), _
             "Field Coverage"
     End If
 End Function
@@ -2580,10 +2591,27 @@ End Function
 ' OfferMarkingForUnwiredFields is the first one, 2026-08-19) cannot make
 ' that promise, so it says something true instead of reusing a claim that
 ' happens to be false for it.
+'
+' maxLen is ALSO OVERRIDABLE (0 = use the shared REPORT_CAP, unchanged for
+' every existing caller). Added the same night, live: a caller whose text
+' becomes ONE SECTION of a larger combined report (DraftingUI.
+' AppendCollected) still gets capped against the FULL 900-char REPORT_CAP
+' by default, which does nothing to stop the section BEFORE it plus the
+' sections after it from pushing the whole combined dialog over that same
+' ceiling again, one layer up -- confirmed live: the coverage section
+' alone was well under REPORT_CAP, and the OUTER CapReport call in
+' SyncNowChainCore (wrapping Start a Quarter + Roll Forward + Refresh
+' Drafting Sheets + this section together) still truncated mid-word, with
+' ITS OWN default Run Log notice, because nothing had reserved headroom
+' for the sections sharing the same dialog.
 Public Function CapReport(text As String, Optional mustKeep As String = "", _
-                          Optional noticeText As String = "") As String
+                          Optional noticeText As String = "", _
+                          Optional maxLen As Long = 0) As String
+    Dim cap As Long
+    cap = IIf(maxLen > 0, maxLen, REPORT_CAP)
+
     CapReport = text
-    If Len(text) <= REPORT_CAP Then Exit Function
+    If Len(text) <= cap Then Exit Function
 
     Dim notice As String
     If noticeText <> "" Then
@@ -2594,7 +2622,7 @@ Public Function CapReport(text As String, Optional mustKeep As String = "", _
     End If
 
     Dim room As Long
-    room = REPORT_CAP - Len(notice) - Len(mustKeep)
+    room = cap - Len(notice) - Len(mustKeep)
     If room < 200 Then room = 200      ' a floor, so a long tail cannot erase the body
 
     CapReport = Left$(text, room) & notice

@@ -8944,6 +8944,24 @@ Private Function Test_RibbonUI_CapReportKeepsTheQuestion() As String
     result = result & Assert(InStr(overridden, "Run Log") = 0, _
         "and the default Run Log claim does NOT also appear, got '" & Right$(overridden, 60) & "'")
 
+    ' THE CAP ITSELF IS OVERRIDABLE, NOT JUST THE NOTICE. 2026-08-19,
+    ' confirmed live: a section that fits comfortably under the shared
+    ' REPORT_CAP (900) on its own can still let the COMBINED dialog it
+    ' gets folded into (DraftingUI.AppendCollected -- several sections,
+    ' one MsgBox) exceed that same ceiling, because nothing reserved
+    ' headroom for the sections sharing the dialog. A caller that knows it
+    ' is one section of several needs a SMALLER budget than the whole
+    ' dialog gets, not the same one.
+    Dim text400 As String
+    text400 = String(400, "q")
+    result = result & Assert(RibbonUI.CapReport(text400) = text400, _
+        "400 chars is untouched against the default 900-char cap")
+    Dim smallCapped As String
+    smallCapped = RibbonUI.CapReport(text400, "", "[cut]", 200)
+    result = result & Assert(Len(smallCapped) < Len(text400), _
+        "the SAME 400-char text IS capped when a smaller maxLen is given, got length " & Len(smallCapped))
+    result = result & Assert(InStr(smallCapped, "[cut]") > 0, "and the override notice is used")
+
     Test_RibbonUI_CapReportKeepsTheQuestion = result
 End Function
 
