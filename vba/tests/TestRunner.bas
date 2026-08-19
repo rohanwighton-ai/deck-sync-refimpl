@@ -2015,6 +2015,33 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     AppendResult report, "DraftingUI_DistinctPinnedFieldsReadsOnlyTheLobby", r
     On Error GoTo 0
 
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("FormattingAudit_FlagsAFontSizeOutlierAgainstTheMode", filterPattern) Then
+        r = Test_FormattingAudit_FlagsAFontSizeOutlierAgainstTheMode()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FormattingAudit_FlagsAFontSizeOutlierAgainstTheMode", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("FormattingAudit_UniformFontSizeReportsNoOutlier", filterPattern) Then
+        r = Test_FormattingAudit_UniformFontSizeReportsNoOutlier()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FormattingAudit_UniformFontSizeReportsNoOutlier", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("FormattingAudit_ARoleSeenOnceHasNothingToCompareAgainst", filterPattern) Then
+        r = Test_FormattingAudit_ARoleSeenOnceHasNothingToCompareAgainst()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FormattingAudit_ARoleSeenOnceHasNothingToCompareAgainst", r
+    On Error GoTo 0
+
     RunAllTests = report
 End Function
 
@@ -14832,4 +14859,102 @@ Private Function Test_DraftingUI_DistinctPinnedFieldsReadsOnlyTheLobby() As Stri
         "a field never pinned in the Lobby must never appear -- this is the crawl fix")
 
     Test_DraftingUI_DistinctPinnedFieldsReadsOnlyTheLobby = result
+End Function
+
+' ---------------------------------------------------------------------
+' FormattingAudit
+' ---------------------------------------------------------------------
+
+' Helper: a blank slide tagged as a real (non-template) instance, with one
+' text shape tagged `role`, at `fontSize`.
+Private Function MakeStatusSlide(instanceKey As String, role As String, fontSize As Single) As Object
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "instance_key", instanceKey
+
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 800, 10, 80, 20)
+    shp.TextFrame.TextRange.Text = "x"
+    shp.TextFrame.TextRange.Font.Size = fontSize
+    shp.Tags.Add "role", role
+
+    Set MakeStatusSlide = sld
+End Function
+
+' The real defect this whole check exists for, reproduced directly:
+' three real slides, same role, two at one size and one genuinely
+' different -- the odd one out must be named, the other two must not be.
+' Instance keys deliberately share no underscore, so TemplateSlide.
+' CodeLetterOf resolves all three to the same letter ("F") and keeps them
+' in one comparison group -- see the letter-grouping note added to
+' FormattingAudit.bas's CollectSpecimens after PROJECT_NAME's real-deck
+' false-positive flood (P/K/S legitimately differ; comparing across all
+' three flags nearly everything).
+Private Function Test_FormattingAudit_FlagsAFontSizeOutlierAgainstTheMode() As String
+    Dim result As String
+
+    Dim slA As Object, slB As Object, slC As Object
+    Set slA = MakeStatusSlide("FMTAUDA", "FMTAUD_STATUS", 8.5)
+    Set slB = MakeStatusSlide("FMTAUDB", "FMTAUD_STATUS", 8.5)
+    Set slC = MakeStatusSlide("FMTAUDC", "FMTAUD_STATUS", 18)
+
+    Dim report As String
+    report = FormattingAudit.ScanFormattingOutliers(Application.ActivePresentation)
+
+    result = result & Assert(InStr(1, report, "FMTAUD_STATUS [F] on FMTAUDC", vbTextCompare) > 0, _
+        "the genuinely different slide is named in the report [" & report & "]")
+    result = result & Assert(InStr(1, report, "font size 18", vbTextCompare) > 0, _
+        "its actual (wrong) size is reported")
+    result = result & Assert(InStr(1, report, "usual: 8.5", vbTextCompare) > 0, _
+        "the mode it disagrees with is reported")
+    result = result & Assert(InStr(1, report, "FMTAUD_STATUS [F] on FMTAUDA", vbTextCompare) = 0, _
+        "a slide matching the mode must NOT be flagged")
+    result = result & Assert(InStr(1, report, "FMTAUD_STATUS [F] on FMTAUDB", vbTextCompare) = 0, _
+        "neither must the other slide matching the mode")
+
+    slA.Delete
+    slB.Delete
+    slC.Delete
+    Test_FormattingAudit_FlagsAFontSizeOutlierAgainstTheMode = result
+End Function
+
+' Two slides, genuinely uniform -- must never appear in the report at all,
+' not even as a clean/OK line. Silence IS the pass here. Same-letter
+' instance keys, so this genuinely exercises the 2+-specimen comparison
+' rather than passing vacuously because each landed in its own group.
+Private Function Test_FormattingAudit_UniformFontSizeReportsNoOutlier() As String
+    Dim result As String
+
+    Dim slA As Object, slB As Object
+    Set slA = MakeStatusSlide("FMTUNIA", "FMTAUD_UNIFORM", 8.5)
+    Set slB = MakeStatusSlide("FMTUNIB", "FMTAUD_UNIFORM", 8.5)
+
+    Dim report As String
+    report = FormattingAudit.ScanFormattingOutliers(Application.ActivePresentation)
+
+    result = result & Assert(InStr(1, report, "FMTAUD_UNIFORM", vbTextCompare) = 0, _
+        "two slides agreeing on size must not be reported [" & report & "]")
+
+    slA.Delete
+    slB.Delete
+    Test_FormattingAudit_UniformFontSizeReportsNoOutlier = result
+End Function
+
+' A role seen on exactly one real slide has no "usual" to differ from.
+' Must never be flagged, no matter how unusual its own size looks in
+' isolation -- there is nothing yet to call it an outlier AGAINST.
+Private Function Test_FormattingAudit_ARoleSeenOnceHasNothingToCompareAgainst() As String
+    Dim result As String
+
+    Dim slA As Object
+    Set slA = MakeStatusSlide("FMTSOLOA", "FMTAUD_SOLO", 99)
+
+    Dim report As String
+    report = FormattingAudit.ScanFormattingOutliers(Application.ActivePresentation)
+
+    result = result & Assert(InStr(1, report, "FMTAUD_SOLO", vbTextCompare) = 0, _
+        "a role seen on only one real slide must never be flagged [" & report & "]")
+
+    slA.Delete
+    Test_FormattingAudit_ARoleSeenOnceHasNothingToCompareAgainst = result
 End Function
