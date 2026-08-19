@@ -2487,12 +2487,51 @@ into slide 27's problem. Slide 27's own fix is still the five-minute manual VBA 
 Window rename described in this session's chat — rename whatever currently squats on
 `Text 216a`, then rename the real `END_DATE` shape onto it.
 
-### D. `check_vba_static.py`'s reachability check is weaker than its name
+### D. FIXED 2026-08-19 — `check_vba_static.py`'s reachability check is weaker than its name
 
-It asks whether a procedure's NAME appears in another module, **not** whether anything
-reachable calls it. A chain of private orphans is invisible to it. Proven 2026-08-14:
+It asked whether a procedure's NAME appears in another module, **not** whether anything
+reachable calls it. A chain of private orphans was invisible to it. Proven 2026-08-14:
 commenting out the call to a wrapper left the callee's name still written inside the
 now-orphaned wrapper, and the checker stayed clean.
+
+**Fixed, deliberately narrow rather than a full call-graph rewrite** — the "reachability
+is reported, not enforced" design is itself deliberate (this project has already paid for
+a checker that reports maybes and gets ignored). The specific, provable gap: a direct call
+from `tests/TestRunner.bas` counted as proof a PERSON could reach a capability, which is
+exactly the disguise `CreateMissingSlides`/`RollForwardPeriod` wore the first two times this
+class of bug was found. Excluded test-only reachability from the "no caller anywhere"
+branch specifically (excluding it from the milder "used only inside its own module" branch
+too was tried first and produced 41 near-entirely-false notices — VBA has no module-
+internal-but-testable visibility, so most Public-for-testing functions would have been
+flagged as over-exposed for no real reason).
+
+**A second, deeper bug found sanity-checking the first fix's real output**: the
+"over-exposed" heuristic counted a function's own `FuncName = result` return-assignment
+lines as if they were calls, so any Function with an exit point already scored above the
+threshold before anything real called it. `BatchOnboardFlow.BuildBatchPlan` — genuinely zero
+callers anywhere, confirmed by grep — was landing in the milder bucket instead of the
+correct one. Fixed by excluding self-return-assignment lines from the count.
+
+Verified against the real corpus (this tool's own established testing convention, it has no
+unit-test suite of its own): 41 genuine "make it Private" notes, one genuine "tested but
+unreachable by a person" note (`BuildBatchPlan` — see the new item below). Made to fail
+first: reverted the self-return-assignment exclusion in a scratch copy, confirmed
+`BuildBatchPlan` reverts to the wrong bucket, restored the fix.
+
+### BL. FOUND 2026-08-19 fixing item D — `BatchOnboardFlow.BuildBatchPlan` is built, tested,
+### and has NO caller anywhere, including its own module
+
+The exact "tested unit behind a locked door" shape this project keeps finding by hand
+(`CreateMissingSlides`, `RollForwardPeriod`, the picture/progress-bar findings of
+2026-08-10) — this time found by the checker itself, the first time the fixed
+`check_vba_static.py` ran against the real corpus. `BuildBatchPlan(templateSld,
+otherSlides())` genuinely has zero callers anywhere in production code (confirmed by grep,
+not assumed) — it's called only from `tests/TestRunner.bas`. Its sibling,
+`BuildBatchPlanFromMarkedFields`, IS reachable (used within `BatchOnboardFlow.bas` itself),
+so this is not a case of the whole batch-onboarding mechanism being dead — just this one
+specific entry path into it. **Not fixed here** — needs Rohan's call on whether this is a
+capability that should get a real entry point, or dead code from an abandoned design
+direction.
 
 ### E. FIXED 2026-08-15 — the harvest prompt undercounted what it would write
 
