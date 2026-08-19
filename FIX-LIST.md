@@ -2441,7 +2441,8 @@ and dates; false wherever the slide shows a formatted view of a stored value. It
 refuses devices by name — numeric-contract fields need the same treatment: convert
 (`33%` -> `0.33`) or refuse, never write the string.
 
-### B. `OfferHarvestForSelectedSlides`'s prompt mislabels and truncates
+### B. FIXED 2026-08-15 (same night, doc never updated until 2026-08-19) —
+### `OfferHarvestForSelectedSlides`'s prompt mislabels and truncates
 
 Two defects in one dialog, both in `RibbonUI.bas`:
 
@@ -2454,6 +2455,20 @@ Two defects in one dialog, both in `RibbonUI.bas`:
 
 Neither is dangerous — the guards bound the write, not the text — but this project has
 already paid twice for approving a prompt that could not be fully read.
+
+**Checked 2026-08-19, found already fixed** — `1986c9a`, "Stop the harvest prompt calling
+successes refusals, and rename the other harvest," landed less than an hour after this item
+was written (00:45 the same night). Both halves confirmed still in place by reading the
+current code, not assumed from the doc:
+1. `collisions` now accumulates ONLY real collisions (`Harvest.PropagateTemplateTags`'s own
+   `.Collisions`, never `.Detail`) — the code's own comment names the exact former bug:
+   "mixing the two is what printed 16 successful stamps under a 'Refused' header."
+2. `CapReport(ask)` now caps the WHOLE assembled dialog text, not one part while another
+   grows unbounded, and the full plan is written to the Run Log sheet BEFORE any capping —
+   so a shortened dialog now says so explicitly ("[shortened -- the full list is on the Run
+   Log sheet]") instead of silently cutting a line mid-word with no notice.
+
+No code change needed here tonight — this entry itself was the only thing stale.
 
 ### C. Slide 27 carries a shape already named `Text 216a` that is not the date
 
