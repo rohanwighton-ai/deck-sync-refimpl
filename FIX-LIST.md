@@ -2447,6 +2447,16 @@ The 2026-08-15 rename pass (55 shapes, so 32 of 44 slides carry both `Text 212a`
 `END_DATE` will keep colliding until a human looks at it. Correct behaviour, still an
 open item.
 
+**Slide 27 itself is still open — this class of collision cannot be healed automatically,
+by design** (`Matching.bas`'s name tie-break needs the real slide's shape name to match
+the template's exactly, and the shipped add-in deliberately never renames a shape itself).
+2026-08-19: closed the door for every future template instead. `TemplateSlide.
+MakeTemplateFrom` now refuses (and deletes the half-built copy) if any two shapes on the
+resulting template share a name, so nothing built from a template from here on can drift
+into slide 27's problem. Slide 27's own fix is still the five-minute manual VBA Immediate
+Window rename described in this session's chat — rename whatever currently squats on
+`Text 216a`, then rename the real `END_DATE` shape onto it.
+
 ### D. `check_vba_static.py`'s reachability check is weaker than its name
 
 It asks whether a procedure's NAME appears in another module, **not** whether anything
