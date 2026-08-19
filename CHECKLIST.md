@@ -86,16 +86,14 @@ directly — work on a copy, real backup first, per this project's own standing 
       evidence of exactly when the migration happened, sitting right next to the
       current sheet. *Source: `vba/Drafting.bas:82-95`, live header rows this
       session.*
-- [ ] **NEW finding, not previously written anywhere: 21 `SAVED <timestamp> <field>`
-      archive sheets have accumulated in the live register** (14 Aug and 17 Aug
-      snapshots, e.g. `SAVED 0817-1929 HIGHLIGHTS_BODY`). This is a real, deliberate
-      mechanism — not orphaned debris (`Drafting.bas:466` creates them,
-      `WorkbookBridge.IsToolOwnedSheet`/`.bas:967` recognises them, tab-ordering
-      parks them last on purpose) — but nothing found yet caps or prunes them, and
-      the count only grows every time a field gets re-drafted. Check against "File-
-      per-quarter — the prune half (critical path #3)," elsewhere in this file, for
-      whether a retention policy already exists or still needs one. *Source: live
-      register snapshot, 2026-08-19.*
+- [x] **26 `SAVED <timestamp> <field>` archive sheets found accumulated in the live
+      register — since REMOVED, see "Cleanup done" below.** A real, deliberate
+      mechanism (`Drafting.bas:466` creates them, `WorkbookBridge.IsToolOwnedSheet`
+      recognises them), not orphaned debris — but nothing capped or pruned them.
+      **Still genuinely open, separate from the cleanup**: nothing stops the SAME
+      accumulation happening again from here — check against "File-per-quarter — the
+      prune half (critical path #3)," elsewhere in this file, for whether a real
+      retention policy exists yet or still needs building.
 - [x] **The two hex-suffixed `Review ...` sheets are NOT clutter — checked against
       `ReviewQueue.bas` and left alone.** `ReviewSheetNameFor` (`ReviewQueue.bas:220`)
       derives the hex tag from a hash of the SLIDE TYPE NAME, not a per-run
