@@ -12,10 +12,22 @@
 > number this doc names below; the file with the highest number isn't
 > necessarily the one actually registered live.
 
+> ## 19 AUG, NIGHT (continued) — `1_S004`'s `PROJECT_STATUS` badge was
+> bleeding text (18pt vs the deck's normal 8.5pt) into the money grid
+> above it. `FIX-LIST.md` item BJ. Fixed and verified on the real deck.
+> **A NEW STANDING ACTIVITY NAMED BY ROHAN: a field-by-field FORMATTING
+> check, now that field REACHABILITY (tagging/wiring, tonight's BG/BH/BI
+> work) is largely covered.** BJ is the first specimen of what that check
+> should catch — a value rendering correctly in principle but wrong in
+> practice, on one slide only, not caught by any wiring/tag/geometry
+> check because those all measure whether a field CAN receive a value,
+> not whether it LOOKS right once it has one. **STATUS: CURRENT,
+> supersedes every block below.**
+
 > ## 19 AUG, NIGHT — a real defect in `InjectPictureField` itself found by
 > actually looking at the rendered slide, fail-first tested, fixed, and
 > shipped. `addin151` is now the registered live build. `FIX-LIST.md` item
-> BI. **STATUS: CURRENT, supersedes every block below.**
+> BI. **STATUS: SUPERSEDED by the block above.**
 >
 > **Rohan: "open the deck and take a look."** Exported `3_P001` to PNG —
 > `DELIVERABLE1_PHOTO`'s card was blank, next to three siblings rendering

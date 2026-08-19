@@ -3119,3 +3119,35 @@ ratio matching the source image is a non-concern by design (all four
 placeholder images deliberately share one base aspect ratio) -- confirmed
 before spending any effort building aspect-preserving logic that was never
 needed.
+
+## Added and FIXED 2026-08-19 night — BJ, `1_S004`'s `PROJECT_STATUS` badge
+## bled its text into the money grid above it: an 18pt font on a
+## 79x20 box, where every other slide's same field renders at 8.5pt
+
+**BJ. Found spot-checking other real slides' card areas after BI, at
+Rohan's request ("check the other cards on real slides too") -- not the
+defect being hunted, a different one noticed along the way.**
+`1_S004`'s "Not Started" badge showed text visibly overflowing upward into
+the "SAAFE Cash $ AUD" box above it. Checked `PROJECT_STATUS`'s font size
+across 8 other real slides (P and K types, plus one other S type) before
+touching anything: every one of them renders at 8.5pt (one at 7pt) --
+`1_S004`'s tagged shape was set to 18pt, over double the next-largest.
+
+**Also structurally different from every other slide, not just the font
+size:** `1_S004`'s tagged `PROJECT_STATUS` shape is an AutoShape ("Shape
+7"); every other checked slide's tagged shape is a plain TextBox ("Text
+N"). An untagged plain-text duplicate sitting at the identical position
+with correctly-sized text was already there, unrelated and unedited --
+this fix touched only the tagged shape's font size, not the duplicate
+structure. **Worth a look in the field-by-field formatting check Rohan
+named as the next standing activity now that reachability is largely
+covered** -- this AutoShape-vs-TextBox difference may be why the font size
+drifted in the first place (a different default), and the untagged
+duplicate is dead weight that would go stale if `PROJECT_STATUS` ever
+changes on this project.
+
+**Fixed: `Font.Size = 8.5`, matching the dominant convention across the
+deck.** Proven on a copy first (exported and visually confirmed the bleed
+was gone), then applied identically to the real deck and reverified from
+the saved file's own bytes. Backup: `OneDrive\Claude\backups\3-Project-
+Progress.PRE-S004-FONTFIX-20260819-165132.pptx`.
