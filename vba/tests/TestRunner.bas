@@ -57,6 +57,13 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "Discovery_GroupRecursionFindsCandidates", r
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("Discovery_SvgGraphicIsACandidate", filterPattern) Then
+        r = Test_Discovery_SvgGraphicIsACandidate()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "Discovery_SvgGraphicIsACandidate", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -1844,6 +1851,18 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "InjectPrimitive_ExplicitTagStillWinsOverDeviceName", r
+    If TestMatches("InjectPrimitive_IsPictureShapeRecognisesSvgGraphic", filterPattern) Then
+        r = Test_InjectPrimitive_IsPictureShapeRecognisesSvgGraphic()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectPrimitive_IsPictureShapeRecognisesSvgGraphic", r
+    If TestMatches("InjectPicture_SvgSourceFillsAndStamps", filterPattern) Then
+        r = Test_InjectPicture_SvgSourceFillsAndStamps()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectPicture_SvgSourceFillsAndStamps", r
     If TestMatches("InjectPrimitive_FastPathActuallyFires", filterPattern) Then
         r = Test_InjectPrimitive_FastPathActuallyFires()
     Else
@@ -2203,6 +2222,50 @@ Private Function Test_Discovery_GroupRecursionFindsCandidates(fixturesDir As Str
 
     testPres.Close
     Test_Discovery_GroupRecursionFindsCandidates = result
+End Function
+
+' THE msoGraphic FIX'S DISCOVERY-SIDE HALF. IsCandidateLeafType's own
+' allowlist had the identical gap InjectPrimitive.IsPictureShape did --
+' found and fixed the same night, same root cause (2026-08-19). Without
+' this, an SVG-inserted shape would never even be offered as a taggable
+' candidate during "Tag fields on this slide," regardless of the
+' injection-side fix. Uses DiscoverSlide, the real public entry point --
+' IsCandidateLeafType itself is Private to Discovery.bas.
+Private Function Test_Discovery_SvgGraphicIsACandidate() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim svgPath As String
+    svgPath = MakeTestSvg(Environ("TEMP") & "\dssvg3.svg")
+    Dim shp As Object
+    Set shp = sld.Shapes.AddPicture(svgPath, msoFalse, msoTrue, 40, 40, 100, 100)
+
+    result = result & Assert(shp.Type = 28, "sanity: the seed shape is genuinely msoGraphic")
+
+    Dim candidates() As Candidate
+    candidates = Discovery.DiscoverSlide(sld)
+
+    Dim lo As Long, hi As Long, hasCandidates As Boolean
+    On Error Resume Next
+    lo = LBound(candidates)
+    hi = UBound(candidates)
+    hasCandidates = (Err.Number = 0)
+    On Error GoTo 0
+    result = result & Assert(hasCandidates, "DiscoverSlide returned at least one candidate")
+
+    Dim found As Boolean
+    Dim i As Long
+    If hasCandidates Then
+        For i = lo To hi
+            If candidates(i).Name = shp.Name Then found = True
+        Next i
+    End If
+    result = result & Assert(found, _
+        "the SVG-backed shape is offered as a candidate, not silently skipped")
+
+    sld.Delete
+    Test_Discovery_SvgGraphicIsACandidate = result
 End Function
 
 ' ---------------------------------------------------------------------
@@ -12111,6 +12174,32 @@ Private Sub PutLong(ByRef b() As Byte, at As Long, v As Long)
     b(at + 3) = (v \ 16777216) And &HFF
 End Sub
 
+' A minimal, self-contained SVG -- no dependency on a real deck's extracted
+' images, same reasoning MakeTestBitmap already follows for PNGs. Confirmed
+' live 2026-08-19 (see the two tests below) that PowerPoint's own
+' AddPicture reports Type=28 (msoGraphic) for a shape built from THIS
+' file, the same way it did for the real deck's SVG-backed deliverable
+' cards -- not assumed, checked against a real isolated probe first,
+' because a test built on an unverified assumption about Office's own
+' behaviour is exactly the "check that cannot fail" class this project
+' has been burned by before.
+Private Function MakeTestSvg(path As String) As String
+    Dim svg As String
+    svg = "<svg xmlns=""http://www.w3.org/2000/svg"" width=""100"" height=""100"">" & _
+          "<rect width=""100"" height=""100"" fill=""#003C23""/></svg>"
+
+    Dim fnum As Integer
+    fnum = FreeFile
+    On Error Resume Next
+    Kill path
+    On Error GoTo 0
+    Open path For Output As #fnum
+    Print #fnum, svg
+    Close #fnum
+
+    MakeTestSvg = path
+End Function
+
 ' A picture field: filled from a link, stamped, and silent on the second run.
 '
 ' The stamp is the whole design -- without it, idempotence would mean comparing
@@ -13994,6 +14083,80 @@ Private Function Test_InjectPrimitive_ExplicitTagStillWinsOverDeviceName() As St
 
     sld.Delete
     Test_InjectPrimitive_ExplicitTagStillWinsOverDeviceName = result
+End Function
+
+' THE msoGraphic FIX, DIRECTLY TESTED -- found live 2026-08-19 with no
+' automated coverage at all (a readiness audit caught the gap the same
+' night): IsPictureShape only checked msoPicture/msoLinkedPicture, missing
+' the type PowerPoint reports for SVG-inserted shapes entirely. Two real
+' PNG-sourced deliverable cards on the same real slide worked correctly;
+' two real SVG-sourced ones on the SAME slide, same row, tagged the
+' identical way, were completely invisible to the picture pipeline --
+' silently, with no error anywhere. Confirmed live before writing this
+' test (not assumed) that AddPicture on an SVG file reproduces Type=28 in
+' an isolated test presentation the same way it did on the real deck.
+'
+' Before the fix, `(shp.Type = msoPicture) Or (shp.Type = msoLinkedPicture)`
+' is False for Type=28 either way it is written -- this assertion would
+' have failed against the pre-fix code, deterministically, not by chance.
+Private Function Test_InjectPrimitive_IsPictureShapeRecognisesSvgGraphic() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    Dim svgPath As String
+    svgPath = MakeTestSvg(Environ("TEMP") & "\dssvg.svg")
+    Dim shp As Object
+    Set shp = sld.Shapes.AddPicture(svgPath, msoFalse, msoTrue, 40, 40, 100, 100)
+
+    result = result & Assert(shp.Type = 28, _
+        "sanity: PowerPoint itself reports Type=28 (msoGraphic) for this SVG shape, got " & shp.Type)
+    result = result & Assert(InjectPrimitive.IsPictureShape(shp), _
+        "IsPictureShape recognises an SVG-backed (msoGraphic) shape as a picture")
+
+    sld.Delete
+    Test_InjectPrimitive_IsPictureShapeRecognisesSvgGraphic = result
+End Function
+
+' THE END-TO-END WRITE, WITH AN SVG SOURCE -- the layer the readiness audit
+' flagged as proven only once, live, by hand, never by the suite.
+' InjectPicture_FillsStampsAndThenStaysSilent (above) already proves this
+' whole mechanism against a PNG; this proves the SAME mechanism against
+' the format that actually broke -- Fill.UserPicture's uncropped-frame
+' path, exercised with an .svg locator instead of a .bmp one.
+Private Function Test_InjectPicture_SvgSourceFillsAndStamps() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    Dim svgPath As String
+    svgPath = MakeTestSvg(Environ("TEMP") & "\dssvg2.svg")
+    Dim frame As Object
+    Set frame = sld.Shapes.AddPicture(svgPath, msoFalse, msoTrue, 100, 80, 200, 200)
+    frame.Tags.Add "role", "SVG_PHOTO"
+
+    result = result & Assert(frame.Type = 28, _
+        "sanity: the seed shape is genuinely msoGraphic, got " & frame.Type)
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectPictureField(sld, "SVG_PHOTO", "S30", svgPath)
+
+    result = result & Assert(r.Found, "the SVG-backed tagged shape is found by role")
+    result = result & Assert(r.Written, "the write succeeds against an SVG locator [" & r.ErrorMessage & "]")
+    result = result & Assert(r.Verified, "and is verified from the shape's own stamp")
+
+    Dim placed As Object
+    Set placed = ShapeTaggedRole(sld, "SVG_PHOTO")
+    result = result & Assert(Not placed Is Nothing, "the role tag survives the write")
+    If Not placed Is Nothing Then
+        result = result & Assert(InjectPrimitive.PictureSourceOf(placed) = "S30", _
+            "and carries the source stamp, got '" & InjectPrimitive.PictureSourceOf(placed) & "'")
+    End If
+
+    sld.Delete
+    Test_InjectPicture_SvgSourceFillsAndStamps = result
 End Function
 
 ' Measured live 2026-08-17: FindShapeByRoleTag's full walk cost ~4-5s per
