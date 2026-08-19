@@ -1614,6 +1614,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero", r
+    If TestMatches("RibbonUI_ApplyApprovedModalReflectsPersistFailure", filterPattern) Then
+        r = Test_RibbonUI_ApplyApprovedModalReflectsPersistFailure()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "RibbonUI_ApplyApprovedModalReflectsPersistFailure", r
     If TestMatches("ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed", filterPattern) Then
         r = Test_ReviewQueue_PendingApprovalsCountsTicksAndIgnoresConsumed()
     Else
@@ -9569,6 +9575,50 @@ Private Function Test_RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero() As String
         "a wrapper's handler still catches an error raised below it")
 
     Test_RibbonUI_WrapperHandlerSurvivesOnErrorGoToZero = result
+End Function
+
+' Kingsbury-hound integrity audit, 2026-08-19: ApplyApprovedCore's modal
+' ("summary") used to be built without ever reading PersistBothFiles' return,
+' so it printed "nothing pending -- deck and register both saved" even when
+' the save had just failed. ApplyApprovedCore itself can't be driven
+' headlessly (ends in a real MsgBox via ShowSyncResult), so this asserts
+' against BuildApplyApprovedSummary, the pure extraction of its modal-
+' building block (RibbonUI.bas, immediately after ApplyApprovedCore) -- same
+' technique this file already uses for UnexpectedErrorText.
+'
+' Two directions, so a check that always passes cannot look proven: the
+' FAILURE case is the real defect this fix closes; the SUCCESS control pins
+' the behaviour that must keep working (a check that only ever asserts
+' failure text would still pass if the success message were deleted too).
+Private Function Test_RibbonUI_ApplyApprovedModalReflectsPersistFailure() As String
+    Dim result As String
+
+    ' WRONG HYPOTHESIS under test: the modal can't tell success from failure
+    ' because it never looks at persistResult. Zero stale/refused/skipped is
+    ' exactly the branch that used to hardcode "nothing pending".
+    Dim failureText As String
+    failureText = vbCrLf & "---- NOT SAVED ----" & vbCrLf & _
+        "THE SAVE COULD NOT BE VERIFIED." & vbCrLf
+
+    Dim failSummary As String
+    failSummary = RibbonUI.BuildApplyApprovedSummary(failureText, 3, 0, 0, 0, 0, 0, "Q3F26", 2)
+
+    result = result & Assert(InStr(failSummary, "nothing pending") = 0, _
+        "a save that failed must not be reported as 'nothing pending', got '" & failSummary & "'")
+    result = result & Assert(InStr(failSummary, "NOT SAVED") > 0, _
+        "the modal must surface PersistBothFiles' own failure text, got '" & failSummary & "'")
+
+    ' CONTROL: the same zero-pending shape, but PersistBothFiles actually
+    ' succeeded -- must still read "nothing pending", so this check can't be
+    ' satisfied by simply deleting the success message.
+    Dim okSummary As String
+    okSummary = RibbonUI.BuildApplyApprovedSummary(vbCrLf & "Deck and workbook both saved." & vbCrLf, _
+        3, 0, 0, 0, 0, 0, "Q3F26", 2)
+
+    result = result & Assert(InStr(okSummary, "nothing pending") > 0, _
+        "a save that actually succeeded must still read 'nothing pending', got '" & okSummary & "'")
+
+    Test_RibbonUI_ApplyApprovedModalReflectsPersistFailure = result
 End Function
 
 ' Mimics the naive fix: handler at the top, then an ordinary guarded probe of

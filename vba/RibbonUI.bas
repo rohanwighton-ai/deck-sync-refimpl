@@ -1891,23 +1891,52 @@ Private Sub ApplyApprovedCore()
         End If
     Next i
 
-    fullReport = fullReport & PersistBothFiles(pres, wb)
+    ' CAPTURED, NOT JUST APPENDED. Kingsbury-hound integrity audit, 2026-08-19:
+    ' this return used to go ONLY into fullReport (the Run Log copy) -- the
+    ' modal's own summary below never read it, so "deck and register both
+    ' saved" printed even when PersistBothFiles had just returned
+    ' "---- NOT SAVED ----". A person closing PowerPoint on that message loses
+    ' every write this run just made, with nothing telling them to worry.
+    Dim persistResult As String
+    persistResult = PersistBothFiles(pres, wb)
+    fullReport = fullReport & persistResult
     WorkbookBridge.WriteRunLog wb, "Apply Approved -- full report", fullReport
 
     ' MODAL GETS A SUMMARY, NEVER THE ITEM LIST -- Rohan, 2026-08-18: the
     ' modal listing every published item by ID and character count was the
     ' actual complaint, not the count of items. Full per-item detail is
     ' still unconditionally in the Run Log, written above, unchanged.
+    ' Extracted to BuildApplyApprovedSummary so the persistResult branch can
+    ' be proven with a fail-first test -- ApplyApprovedCore itself ends in a
+    ' real ShowSyncResult MsgBox and can't run headless.
+    Dim summary As String
+    summary = BuildApplyApprovedSummary(persistResult, totalWritten, totalSkipped, totalStale, _
+        totalFailed, refusedTypes, skippedTypes, DeckRegistry.GetDeckPeriod(pres), hi - lo + 1)
+
+    ShowSyncResult CommandBarUI.STAGE_APPLY_APPROVED, summary
+End Sub
+
+Public Function BuildApplyApprovedSummary(persistResult As String, totalWritten As Long, _
+        totalSkipped As Long, totalStale As Long, totalFailed As Long, refusedTypes As Long, _
+        skippedTypes As Long, period As String, typeCount As Long) As String
     Dim summary As String
     summary = totalWritten & " written, " & totalSkipped & " not approved, " & _
         totalStale & " dropped as stale, " & totalFailed & " failed."
     If refusedTypes > 0 Then summary = summary & vbCrLf & refusedTypes & " type(s) refused -- see the Run Log."
     If skippedTypes > 0 Then summary = summary & vbCrLf & skippedTypes & " type(s) skipped -- see the Run Log."
 
-    ' POSITION + NEXT, so the modal orients rather than just reports.
-    summary = summary & vbCrLf & vbCrLf & "Position: " & DeckRegistry.GetDeckPeriod(pres) & ", " & _
-        (hi - lo + 1) & " slide type(s)."
-    If totalStale > 0 Then
+    summary = summary & vbCrLf & vbCrLf & "Position: " & period & ", " & typeCount & " slide type(s)."
+
+    ' SAVE FAILURE OUTRANKS EVERYTHING BELOW. Everything counted above
+    ' (written/skipped/stale/failed) describes what was decided in memory --
+    ' none of it is real until PersistBothFiles actually lands it on disk. A
+    ' stale-item nudge or a "read the Run Log" hint is the wrong headline if
+    ' this run's writes never made it past the object model.
+    If InStr(1, persistResult, "---- NOT SAVED ----", vbTextCompare) > 0 Then
+        summary = summary & vbCrLf & "Next: SAVE FAILED -- nothing from this run is on disk yet." & _
+            vbCrLf & Trim(persistResult) & _
+            vbCrLf & "Do not close without resolving this -- re-run Apply Approved once fixed."
+    ElseIf totalStale > 0 Then
         summary = summary & vbCrLf & "Next: press '" & CommandBarUI.CAP_SET_UP_QUARTER & _
             "' to refresh the " & totalStale & " stale item(s) with their current before-and-after."
     ElseIf refusedTypes > 0 Or skippedTypes > 0 Then
@@ -1916,8 +1945,8 @@ Private Sub ApplyApprovedCore()
         summary = summary & vbCrLf & "Next: nothing pending -- deck and register both saved."
     End If
 
-    ShowSyncResult CommandBarUI.STAGE_APPLY_APPROVED, summary
-End Sub
+    BuildApplyApprovedSummary = summary
+End Function
 
 ' Toolbar entry point. The real work is in SyncPreviewCore; this exists only to
 ' catch anything that escapes it.

@@ -453,6 +453,16 @@ REACHABLE_OTHERWISE = {
                        "(auto-discovery produced an unreviewable 87-row grid on "
                        "the real deck) -- kept for its own test coverage only, "
                        "per its own header comment, not an oversight",
+    # Kingsbury-hound integrity audit, 2026-08-19. Not a capability -- it's the
+    # modal-text builder extracted out of ApplyApprovedCore so the
+    # persistResult branch (does the modal actually surface a save failure?)
+    # can be asserted headlessly, same reason UnexpectedErrorText is Public.
+    # Its only real caller is ApplyApprovedCore in the same module; TestRunner
+    # is its other caller and doesn't count toward production reachability.
+    "BuildApplyApprovedSummary": "modal-text builder, made Public only so "
+                                  "TestRunner can assert the persistResult "
+                                  "branch headlessly -- same shape as "
+                                  "UnexpectedErrorText",
 }
 
 
