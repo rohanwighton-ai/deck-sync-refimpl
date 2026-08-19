@@ -286,10 +286,18 @@ just its own stated build steps, restated as a checklist.*
 
 *Source: `COLUMNS.md`, "Open."*
 
-- [ ] `PROJECT_STATUS` casing disagrees with the deck: slide reads `In progress`,
-      register/Field Spec read `In Progress`. Silent mismatch — settle against the
-      real deck, not the rig. (May already be moot post the 8-slide casing fix on
-      2026-08-15 — check before treating as open.)
+- [x] **`PROJECT_STATUS` casing — CHECKED tonight against the live register, NOT
+      moot.** Ran `FieldSpec.ApplyControlledValidation` for real (its own
+      established report-only mechanism — never rewrites, only applies dropdown
+      validation and reports drift). **17 values outside the declared vocabulary**
+      across 258 controlled cells: mostly casing (`In progress` vs `In Progress`),
+      but also a genuinely different, non-vocabulary value (`Not yet commenced`) that
+      isn't a casing issue at all. Real side effect: 258 cells now carry a live Excel
+      dropdown for the first time, so no NEW drift can accumulate — the 17 existing
+      ones were correctly left untouched. Full detail, including which fields
+      `DeriveStatusBadge` does and doesn't tolerate: `FIX-LIST.md` item BK. **DONE
+      2026-08-19** — quantified and recorded, not fixed (a person's call on whether
+      `Not yet commenced` should collapse to `Not Started` or stay distinct).
 - [ ] Which source is "the dedicated one" for `STRATEGIC_LINKAGES`, and who
       maintains it now the Family Tree is going. A work question, costs a minute.
 

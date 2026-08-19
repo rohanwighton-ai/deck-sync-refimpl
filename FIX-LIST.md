@@ -3161,3 +3161,48 @@ deck.** Proven on a copy first (exported and visually confirmed the bleed
 was gone), then applied identically to the real deck and reverified from
 the saved file's own bytes. Backup: `OneDrive\Claude\backups\3-Project-
 Progress.PRE-S004-FONTFIX-20260819-165132.pptx`.
+
+## Added 2026-08-19 night — BK, `PROJECT_STATUS`'s vocabulary drift is
+## real and quantified, confirmed against the live register, not fixed
+
+**BK. `COLUMNS.md`'s standing "Register field questions" item ("`PROJECT_
+STATUS` casing disagrees with the deck... may already be moot post the
+2026-08-15 casing fix, check before treating as open") was checked
+tonight, against the real register, and it is NOT moot.**
+
+Ran `FieldSpec.ApplyControlledValidation` for real (not read about it --
+called it directly via `Application.Run` against the live `register-wide.
+xlsx`), which is this project's own established mechanism for exactly this
+question: it never silently rewrites a controlled field, it only applies
+Excel dropdown validation and REPORTS what's outside the declared
+vocabulary ("left exactly as they are").
+
+**Real result: 17 values outside `PROJECT_STATUS`'s declared vocabulary**
+(`In Progress,Not Started,Project Closed`, from `FieldSpec.bas`'s own
+seeded `COL_S_ALLOWED`) **across 258 controlled cells checked.** Two
+distinct kinds of drift, not one:
+1. **Casing** -- `In progress` (lowercase p) instead of `In Progress`,
+   confirmed on at least 2_P003/2_P004/1_P005/1_P006/1_P007 (Q3F26) and
+   more not shown (the function's own report caps at 5 examples by
+   design, count is exact).
+2. **A genuinely different value, not just casing** -- `Not yet commenced`
+   appears at least once, which isn't in the 3-item vocabulary at all
+   (distinct from `Not Started`, not merely differently capitalised). This
+   is a real semantic question, not a typo fix -- may be a deliberate
+   distinct state someone typed before the vocabulary was locked to 3
+   values, and only a person can say whether it should collapse to `Not
+   Started` or stay its own thing.
+
+**Real, positive side effect from running this**: 258 cells across both
+controlled columns now carry a live Excel dropdown for the first time,
+which stops any NEW drift even though it correctly left the 17 existing
+offenders untouched. Confirmed saved.
+
+**Not fixed. `DeriveStatusBadge` (see `SyncOperations.bas`) already
+tolerates the casing half** -- its `PROJECT_STATUS`/`SCHEDULE_STATUS`
+comparisons use `vbTextCompare`, so `In progress` still correctly resolves
+to the `In Progress` branch. It does NOT tolerate `Not yet commenced` --
+that value falls through every branch and refuses (returns `""`) rather
+than guessing, the same "refuse rather than draw a wrong bar" instinct as
+`ElapsedFraction`. **Whether that's the right behaviour for `Not yet
+commenced` specifically is Rohan's call, not resolved here.**
