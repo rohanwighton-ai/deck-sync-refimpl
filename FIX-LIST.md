@@ -2851,3 +2851,31 @@ re-tested against the real deck before moving to the next fix, so each
 claimed fix was actually verified rather than assumed. Full suite run
 for real after every code change; final state **258 passed / 0 failed /
 0 skipped**. `addin150` is the current live build.
+
+## Added and FIXED 2026-08-19 — BF, the comprehensive readiness audit's own
+## test-coverage gap: zero tests existed for tonight's msoGraphic fix or the
+## SVG picture pipeline it unblocked
+
+**BF. THE 6-LAYER READINESS AUDIT (run at Rohan's request after item BE,
+"ensure these items are what drives us from hereon in") named its own
+Layers 5&6 finding explicitly: zero tests reference `msoGraphic`,
+`IsPictureShape`, or `IsCandidateLeafType`, and zero tests name
+`DELIVERABLE`.** Item BC's fix (`msoGraphic` added to both checks) and
+the whole SVG-sourced picture path it unblocked had shipped and gone
+live across five add-in builds with no regression coverage at all --
+correct today, unprotected against tomorrow.
+
+Closed by adding `TestRunner.MakeTestSvg` (mirrors `MakeTestBitmap`'s
+self-contained-file pattern) and three tests: `IsPictureShape`
+recognises an SVG-inserted `msoGraphic` shape; `Discovery.DiscoverSlide`
+offers it as a taggable candidate; `InjectPrimitive.InjectPictureField`
+writes and verifies through a real SVG locator end-to-end. Confirmed
+live first, before writing any assertion around it: an isolated COM
+probe (`Shapes.AddPicture` on a bare self-contained SVG) reproduced
+`Type=28`, matching item BC's original finding rather than assuming it
+still held.
+
+Full suite: **261 passed / 0 failed / 0 skipped** (258 prior + 3 new),
+and each of the three new tests independently reconfirmed passing on a
+filtered re-run rather than trusted from the combined count alone.
+Commit `9a0bf6f`.

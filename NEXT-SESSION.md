@@ -12,11 +12,64 @@
 > number this doc names below; the file with the highest number isn't
 > necessarily the one actually registered live.
 
+> ## 19 AUG, AFTERNOON — a 6-layer readiness audit run at Rohan's request
+> ("ensure these items are what drives us from hereon in"), and its own
+> test-coverage gap (item BF) closed same session. **STATUS: CURRENT,
+> supersedes every block below.**
+>
+> **The BD/BE field-coverage notification below prompted a bigger
+> question: is the system actually READY, not just does one notification
+> work.** Rohan: "I want you to shape the big picture with me... not keep
+> running into obvious bits of it." Ran a comprehensive 6-layer audit (data
+> completeness, structural wiring, shape-type recognition, case/naming,
+> write-success, diff-correctness) via a forked agent rather than another
+> reactive one-fix-at-a-time pass.
+>
+> **Headline finding: the "16 fields missing from template" alarm BD/BE
+> surfaced is fully explained by 11 fields that have literally never had
+> register data** — `HIGHLIGHTS_BODY`, `STRATEGIC_LINKAGES`, `SECTOR`,
+> `TRL`, `DELIVERABLES_BODY`, `SAAFE_CASH`, `TOTAL_INKIND`,
+> `SCHEDULE_STATUS`, `SUBTITLE_B`, `INDUSTRY_PARTNER`,
+> `TERTIARY_INSTITUTION`. Not a wiring defect — three of the audit's
+> layers (1, 2, 4) triangulated to the same conclusion independently, so
+> confidence is high. Rohan's own framing crystallised the design tension
+> this resolves: **"required" has to mean "the register actually has data
+> there," not "every field exists on every slide."**
+>
+> **Rohan's instruction: these audit findings now drive priority from
+> here on, but the 11-fields question is separate "recipe work" to go
+> through together AFTER the test-coverage gap closes.** The audit itself
+> named that gap explicitly (Layers 5&6: zero tests reference
+> `msoGraphic`/`IsPictureShape`/`IsCandidateLeafType`, zero tests name
+> `DELIVERABLE`) — meaning item BC's fix and the whole SVG picture
+> pipeline had shipped live with no regression coverage.
+>
+> **Gap closed same session — FIX-LIST item BF.** Added
+> `TestRunner.MakeTestSvg` plus three tests covering `IsPictureShape` on
+> an SVG-inserted `msoGraphic` shape, `Discovery` offering it as a
+> candidate, and a full `InjectPictureField` write/verify cycle through a
+> real SVG locator. Live-probed first (`Shapes.AddPicture` on a bare SVG
+> really does report `Type=28`) before writing any assertion around it.
+> Full suite **261 passed / 0 failed / 0 skipped** (258 + 3 new), each new
+> test individually reconfirmed on a filtered re-run. Committed and pushed
+> (`9a0bf6f`). No new add-in build needed — test-only change, nothing in
+> the shipped `.ppam` moved; `addin150` remains the current live build.
+>
+> **NOT YET DONE: the "recipe work" conversation about the 11 fields**,
+> explicitly deferred by Rohan until test coverage closed — that
+> condition is now met, this is the next conversation to have, not a
+> silent backlog item.
+>
+> **Also not yet re-confirmed:** whether the register-value-aware redesign
+> of `ScanFieldWiring` floated earlier in the day (before the audit
+> pivot) is still wanted, or whether the audit's 11-fields finding
+> replaces the need for it.
+
 > ## 19 AUG, MIDDAY (~09:00-13:45) — a real field-coverage notification
 > built, tested, and proven live end to end across FIVE add-in builds
 > (`addin146`-`addin150`) before it actually worked right. `addin150` is
-> now the registered live build. **STATUS: CURRENT, supersedes every
-> block below.**
+> now the registered live build. **STATUS: SUPERSEDED by the block
+> above.**
 >
 > **Rohan asked a plain question that started this: "if the excel
 > register is not complete as per slide type we actually get a
