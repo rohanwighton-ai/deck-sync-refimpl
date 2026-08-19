@@ -439,6 +439,20 @@ REACHABLE_OTHERWISE = {
     "ToolbarNames": "read by tests and by HideToolbar",
     "ResolveRegisterSheet": "resolver used by publish and drafting",
     "DraftingPromptFor": "prompt builder used by the drafting sheet",
+    # FIX-LIST BL, 2026-08-19. Checked, not assumed: BuildBatchPlan's own
+    # header comment (BatchOnboardFlow.bas) documents this as a deliberate
+    # retirement, not an oversight -- "kept for the tests that already
+    # exercise it directly; the live 'Bulk Onboard Type' ribbon entry point
+    # uses BuildBatchPlanFromMarkedFields instead" after Discovery-based
+    # auto-enumeration produced an unreviewable 87-row grid on the real deck
+    # (2026-07-26). The shared correspondence engine it delegates to
+    # (BuildBatchPlanFromCandidates) is exercised in production via its
+    # sibling; this front end is kept only so its own regression coverage
+    # doesn't rot if it's ever revived.
+    "BuildBatchPlan": "superseded 2026-07-26 by BuildBatchPlanFromMarkedFields "
+                       "(auto-discovery produced an unreviewable 87-row grid on "
+                       "the real deck) -- kept for its own test coverage only, "
+                       "per its own header comment, not an oversight",
 }
 
 
