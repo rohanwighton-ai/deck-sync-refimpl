@@ -2680,7 +2680,7 @@ in a sibling walker P3 never touched. Fixed the same way as the 2026-08-10 fix:
 test the shape's own tag, then always recurse, instead of `If msoGroup Then
 recurse Else test`.
 
-Same audit found `Discovery.IsPicture` (`vba/Discovery.bas`) duplicating
+Same audit found `Discovery.bas`'s `IsPicture` function duplicating
 `InjectPrimitive.IsPictureShape`'s body verbatim rather than calling it, the one
 holdout after `BatchOnboardFlow.bas` already called the shared function directly.
 Deduped to the shared function; no behaviour change, just one fewer place the two
@@ -2964,3 +2964,94 @@ register columns for them were built and proven only on the
 `register-wide.xlsx`. Tagging their template shapes without that backing
 would create fields the register cannot drive. Not done here; needs its
 own register-authoring pass first, not a mechanical backfill.
+
+## Added and FIXED 2026-08-19 evening — BH, DELIVERABLE1-4_PHOTO's register
+## gap closed for real, PROJECT_PHOTO's camouflage gap closed, both proven
+## with actual images on the real deck's template AND its live 3_P001 slide
+
+**BH. Rohan's choice, offered as ranked options: close BG's two remaining
+gaps (`DELIVERABLE1-4_PHOTO`'s missing register infrastructure,
+`PROJECT_PHOTO`'s template camouflage) by porting the ALREADY-BUILT
+placeholder mechanism from the test-copy register to the real one, end to
+end, rather than leaving them empty or half-wired.** Register-side: added
+Field Spec rows 52-55 (`DELIVERABLE1_PHOTO`..`4_PHOTO`, mirroring
+`PROJECT_PHOTO` row 51's own pattern exactly -- `Kind=Static`,
+`Behaviour=Fit inside`, `Renders=Picture`), 4 new `Register` columns, and
+Sources rows S12-S15 -- honestly labelled `TEST/PLACEHOLDER`, matching
+`PROJECT_PHOTO`'s own existing S11 row's "Rohan to replace with the real
+photo" convention rather than disguising them as real citations. Confirmed
+first, not assumed: `PROJECT_PHOTO` already had a real Field Spec row,
+register column AND a populated `3_P001`/Q1F27 register value (`S11`) --
+only `DELIVERABLE1-4_PHOTO` needed the infrastructure built.
+
+**Placeholder images moved from the scratch test folder to
+`OneDrive\Claude\images\`, matching where `S11`'s own placeholder already
+lived** -- not left depending on `deck-sync-test-deliverables\`, which is
+disposable scratch space.
+
+**Tagged all 4 `DELIVERABLE*_PHOTO` shapes on TWO real slides, not one:**
+the template (`slide44`, so future onboarding carries them forward) AND
+the real, live `3_P001` slide itself (so today's deck actually shows them
+-- template tags do not retroactively apply to an instance that predates
+the tagging). Confirmed live: `3_P001`'s own picture shapes sit at
+IDENTICAL positions to the template's, confirming the template really was
+cloned from a slide just like this one.
+
+**A real near-miss caught by copy-first discipline, again.** The first
+`Application.Run "InjectPrimitive.InjectPictureField", ...` attempt failed
+with a misleading "Sub or function not defined" -- not a missing function,
+but VBA refusing to expose a Function whose return type is a custom `Type`
+(`InjectResult`) across the `Application.Run` COM boundary. A throwaway
+wrapper Sub was written (`vba/tools/InjectPictureProbe.bas`, unused in the
+end, kept as a documented dead end) before abandoning that route.
+
+**`PROJECT_PHOTO` is genuinely cropped; all four `DELIVERABLE*_PHOTO`
+shapes are not** -- checked live via `PictureFormat.CropLeft/Right/Top/
+Bottom` rather than assumed. That distinction matters because
+`InjectPictureField`'s own two branches are NOT interchangeable: an
+uncropped frame is fed via `Fill.UserPicture` in place; a cropped one MUST
+be rebuilt (`Fill.UserPicture` and cropping are mutually exclusive --
+probed and documented at length in `InjectPrimitive.bas` already, "two
+passes of arithmetic did not fix it, because the arithmetic was never the
+problem"). Since the real function couldn't be called directly, its EXACT
+documented sequence was hand-replicated rather than reinvented: capture
+Left/Top/Width/Height/ZOrderPosition and the crop values from the old
+shape BEFORE anything changes, `AddPicture` at the old position with
+`-1,-1` size, `LockAspectRatio = False` FIRST (the step five earlier
+attempts in this codebase's own history missed), apply the captured crop
+values verbatim, THEN apply the captured Width/Height, re-tag `role` and
+`picsrc`, delete the old shape, restore z-order. Verified live: every
+shape's final Width/Height matched its pre-injection value exactly, on
+both slides, both `PROJECT_PHOTO` (rebuilt) and all four `DELIVERABLE*`
+fields (fed in place).
+
+**One real, pre-existing gap surfaced and confirmed harmless for THIS
+case, not silently assumed:** `Fill.UserPicture` stretches to the shape's
+exact box -- it does not implement `Field Spec`'s own `Fit inside` vs
+`Fill the frame` distinction as separate scaling behaviour; that
+distinction currently exists only in the Field Spec's prose, not in code.
+Confirmed with Rohan directly rather than left as a silent risk: the
+placeholder deliverable images share one base aspect ratio by design, so
+no distortion occurs here -- but a real deliverable image with a different
+aspect ratio than its shape would stretch, and nothing in the injector
+would catch it.
+
+**A real OneDrive save hiccup, twice, both recovered without data loss --
+matches this project's own documented Office/OneDrive save-quirk
+history.** The real deck is cloud-hosted (`FullName` resolves to a
+`d.docs.live.net` URL, not a bare local path). Both times `Presentation.
+Save` failed on the first attempt with a generic "An error occurred while
+PowerPoint was saving the file" -- once recovered by reattaching and
+retrying `Save` directly (succeeded second try), once the reported failure
+turned out to be cosmetic: the save had actually already gone through,
+confirmed by reopening cold and reading the saved bytes. Neither is a
+`.ppam`/VBA problem; both are the known cloud-save contention class this
+project has hit before.
+
+**Proven from the saved file's own bytes, in fresh processes, on every
+target -- register (copy, then real) and both slides (copy, then real,
+tagged, then injected).** Nothing here trusted an in-process readback.
+Backups taken before each real write: `OneDrive\Claude\backups\register-
+wide.PRE-DELIVERABLE-PHOTO-FIELDS-20260819-154008.xlsx`, `...3-Project-
+Progress.PRE-DELIVERABLE-TAGGING-20260819-154228.pptx`, `...3-Project-
+Progress.PRE-PICTURE-INJECTION-20260819-155430.pptx`.

@@ -12,12 +12,48 @@
 > number this doc names below; the file with the highest number isn't
 > necessarily the one actually registered live.
 
+> ## 19 AUG, LATE EVENING — `DELIVERABLE1-4_PHOTO`'s missing register
+> infrastructure built for real, and `PROJECT_PHOTO`'s template camouflage
+> gap closed, with actual placeholder images proven live on BOTH the
+> template AND the real `3_P001` slide. `FIX-LIST.md` item BH. No new
+> add-in build — deck/register data only; `addin150` still current.
+> **STATUS: CURRENT, supersedes every block below.**
+>
+> **Rohan's choice from three ranked options: port the already-built
+> placeholder mechanism to the real register end to end, not leave it
+> empty or half-wired.** Added `DELIVERABLE1-4_PHOTO`'s Field Spec rows,
+> register columns, and Sources rows (S12-S15, honestly labelled
+> TEST/PLACEHOLDER, same convention as `PROJECT_PHOTO`'s own existing
+> S11). Tagged all 4 shapes on both `slide44` (template) AND the real
+> `3_P001` slide itself — template tags don't retroactively reach an
+> instance that predates them. Then fed real images into all 10 shapes
+> (5 fields × 2 slides) via a hand-replicated but exact copy of
+> `InjectPictureField`'s own two branches (uncropped: fed in place;
+> `PROJECT_PHOTO`, genuinely cropped: rebuilt, template's own crop values
+> applied verbatim, `LockAspectRatio` off first). Couldn't call the real
+> function directly — `Application.Run` refuses across a custom-Type
+> return value, a genuine finding worth remembering.
+>
+> **Two live incidents worth knowing about, both harmless in the end:**
+> the real deck's `Presentation.Save` failed twice with a generic OneDrive
+> error (it's cloud-hosted — `FullName` resolves to a `d.docs.live.net`
+> URL) — once fixed by retrying, once the reported failure was cosmetic
+> and the save had already gone through, confirmed by reopening cold and
+> reading the saved bytes. And mid-session: Rohan flagged the pace of
+> screen-visible COM operations outpacing what he could actually track —
+> slowed down, checked in between steps from then on
+> (`feedback_pace_for_visible_screen_ops` memory).
+>
+> **Full breakdown of the crop-detection, the `Fill.UserPicture` aspect-
+> ratio gap Rohan confirmed harmless for this specific case, and all
+> three pre-write backups: `FIX-LIST.md` item BH.**
+
 > ## 19 AUG, EVENING — six of the 11 audit-flagged fields tagged live on the
 > REAL deck's template slide (not a copy): `SAAFE_CASH`, `TOTAL_INKIND`,
 > `INDUSTRY_PARTNER`, `TERTIARY_INSTITUTION`, `DELIVERABLES_BODY`,
 > `PROJECT_PHOTO`. No new add-in build — this is a deck-data change, not a
-> VBA code change; `addin150` is still current. **STATUS: CURRENT,
-> supersedes every block below.**
+> VBA code change; `addin150` is still current. **STATUS: SUPERSEDED by
+> the block above.**
 >
 > **Rohan: "put each of those fields through the same drafting gates... one
 > at a time," then "you do it, I'll just review after."** Probing the real
