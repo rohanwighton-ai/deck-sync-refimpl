@@ -1253,9 +1253,9 @@ Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) A
     ' keep -- the modal below is the only place this information is ever
     ' actually shown, so it is written to say exactly that.
 
-    ' A MODAL HERE AGAIN, DELIBERATELY REVERSING THE 2026-08-14 REMOVAL --
-    ' see that date's comment, still directly above this function's own
-    ' definition, for the full reasoning that removed it.
+    ' A NOTICE HERE AGAIN, DELIBERATELY REVERSING THE 2026-08-14 MODAL
+    ' REMOVAL -- see that date's comment, still directly above this
+    ' function's own definition, for the full reasoning that removed it.
     '
     ' That removal was correct for what it fixed: the modal fired on EVERY
     ' press with the SAME 21 names (MS1_LABEL..MS7_DONE), which were never
@@ -1275,45 +1275,49 @@ Private Function OfferMarkingForUnwiredFields(pres As Object, TITLE As String) A
     ' complete as per slide type we actually get a notification for which
     ' field and which slides."
     '
+    ' FOLDED INTO THE CHAIN'S ONE COMBINED DIALOG, NOT A SEPARATE MsgBox.
+    ' A standalone MsgBox here was the first version of this fix, and it
+    ' was wrong on two counts, both found live the same night: (1) it
+    ' pushed "Set up my quarter" from LOBBY-DESIGN.md section 6's documented
+    ' ~2-modal target back up to 3; (2) AppEvents.cls's mApp_SheetChange
+    ' handler runs INSIDE this PowerPoint VBA project (WithEvents on
+    ' Excel.Application, but the handler code is PowerPoint's), so ANY
+    ' modal left open here blocks PowerPoint's single VBA thread from
+    ' servicing that handler -- editing an Approve-column tick in Excel
+    ' while this dialog sat open would hit the exact "source application
+    ' may be busy" stall Rohan saw. DraftingUI.AppendCollected folds this
+    ' into the SAME summary StartQuarter/RollForwardUI/RefreshDraftingSheets
+    ' already build (moved to run inside that collecting window -- see
+    ' SyncNowChainCore), same technique those three already use to become
+    ' one dialog instead of three.
+    '
     ' ONE MODAL FOR EVERYTHING, not one per slide type -- `unwiredNote`
     ' already accumulates across the whole loop above before anything is
     ' shown, same reasoning BlockingText's own per-type labelling relies on.
     ' Still never blocks: OfferMarkingForUnwiredFields returns True either
     ' way, same as before this change -- this is a notification, not a gate.
     If unwiredNote <> "" Then
-        ' A HARD SAFETY CAP, ON TOP OF FieldWiring's OWN PER-FIELD CAP.
-        ' MissingDetail already bounds each field's named slide list to 6
-        ' keys (see its own header), which handles the realistic case --
-        ' but a deck with MANY distinct incomplete fields could still add
-        ' up past MsgBox's real, undocumented ~1024-character limit, which
-        ' truncates silently, mid-word, with no indication. Cut at a LINE
-        ' boundary here, never mid-word, and say plainly what got left
-        ' off -- the same "counted in full, listed in part" shape
-        ' FieldSpec.ApplyControlledValidation already established, applied
-        ' here because this modal earned the same defect the hard way
-        ' (confirmed live 2026-08-19: an uncapped version cut off
-        ' mid-token, "...1_K1008, 4_").
-        Const MAX_MODAL_LINES As Long = 20
-        Dim noteLines() As String
-        noteLines = Split(unwiredNote, vbCrLf)
-        Dim shownNote As String
-        Dim lineCount As Long
-        lineCount = UBound(noteLines) - LBound(noteLines) + 1
-        If lineCount > MAX_MODAL_LINES Then
-            Dim lineIdx As Long
-            For lineIdx = LBound(noteLines) To LBound(noteLines) + MAX_MODAL_LINES - 1
-                shownNote = shownNote & noteLines(lineIdx) & vbCrLf
-            Next lineIdx
-            shownNote = shownNote & "... and " & (lineCount - MAX_MODAL_LINES) & _
-                " more line(s) not shown here."
-        Else
-            shownNote = unwiredNote
-        End If
-
-        MsgBox "The register is not fully wired for this deck:" & vbCrLf & vbCrLf & _
-            shownNote & vbCrLf & vbCrLf & _
-            "Sync will continue -- this is a notice, not a block.", _
-            vbExclamation, TITLE
+        ' REUSES THE ESTABLISHED CAP, NOT A NEW ONE. CapReport is this
+        ' project's own "ONE PLACE THAT KNOWS ABOUT THE LIMIT" (its own
+        ' header: fixed this exact MsgBox-truncates-near-1024-characters
+        ' defect four times already before settling here). A first version
+        ' of this fix invented a separate line-based cap instead of
+        ' checking for this one first -- found and corrected the same
+        ' night, live: 20 lines still truncated mid-word, because
+        ' CapReport's own header already explains why (character budget,
+        ' not line count). Reusing it instead of a second, slightly
+        ' different answer to the same question.
+        '
+        ' NOTICE OVERRIDDEN, not the default. CapReport's built-in notice
+        ' says "the full list is on the Run Log sheet" -- true for its
+        ' other callers, false for this one (see the comment above this
+        ' function's own WriteRunLog removal): nothing this function
+        ' writes survives to the saved file, because later calls in the
+        ' same chain overwrite the sheet first.
+        DraftingUI.AppendCollected _
+            "The register is not fully wired for this deck:" & vbCrLf & vbCrLf & _
+            CapReport(unwiredNote, "", "[shortened -- not every gap is listed here]"), _
+            "Field Coverage"
     End If
 End Function
 
@@ -1470,8 +1474,6 @@ Private Sub SyncNowChainCore()
     ' the two never fire on the same press -- pressing again picks up the rest.
     If Not OfferHarvestForSelectedSlides(pres, TITLE) Then Exit Sub
 
-    If Not OfferMarkingForUnwiredFields(pres, TITLE) Then Exit Sub
-
     ' THE PLAN USED TO BE A MODAL HERE, AND IT IS GONE. 2026-08-14.
     '
     ' It listed the five stages and asked "Go ahead?" -- pressing the button IS
@@ -1511,6 +1513,27 @@ Private Sub SyncNowChainCore()
     ' before the next dialog in the chain, which is PowerPoint's. FIX-LIST P1.
     DraftingUI.BringPowerPointToFront
     DraftingUI.RefreshDraftingSheets
+
+    ' MOVED HERE, INSIDE THE COLLECTING WINDOW, 2026-08-19 -- see this
+    ' function's own header for why (folds into one dialog instead of a
+    ' separate MsgBox, and closes the cross-app busy-block window). Runs
+    ' after the sheets refresh rather than before OfferHarvest above for no
+    ' functional reason (ScanFieldWiring reads slide tags and register
+    ' column names, neither of which RefreshDraftingSheets changes) --
+    ' placed last so the completeness check reads as the final word on
+    ' "is this quarter's setup actually done."
+    '
+    ' EndCollecting CALLED ON THIS EXIT TOO, even though
+    ' OfferMarkingForUnwiredFields never actually returns False today (it
+    ' is a notification, not a gate -- see its own header). BeginCollecting
+    ' resets the buffer on the NEXT run regardless, so this was never a
+    ' data-loss risk -- but skipping it would leave mCollecting stuck True
+    ' until then, which is exactly the "fail closed" guarantee this
+    ' module's own header states for every other exit from this window.
+    If Not OfferMarkingForUnwiredFields(pres, TITLE) Then
+        DraftingUI.EndCollecting
+        Exit Sub
+    End If
 
     Dim staged As String
     staged = DraftingUI.EndCollecting()
@@ -2550,13 +2573,25 @@ End Function
 ' to a list they can only partly see, with no visible thing being agreed to.
 ' Not duplicated when the text fits: under the cap the tail is already there and
 ' the function returns early.
-Public Function CapReport(text As String, Optional mustKeep As String = "") As String
+' noticeText is OVERRIDABLE (default unchanged for every existing caller) --
+' the default notice promises the Run Log has the rest, which is true only
+' when THIS call is the last thing to write there before the workbook
+' saves. A caller inside a longer chain (RibbonUI.
+' OfferMarkingForUnwiredFields is the first one, 2026-08-19) cannot make
+' that promise, so it says something true instead of reusing a claim that
+' happens to be false for it.
+Public Function CapReport(text As String, Optional mustKeep As String = "", _
+                          Optional noticeText As String = "") As String
     CapReport = text
     If Len(text) <= REPORT_CAP Then Exit Function
 
     Dim notice As String
-    notice = vbCrLf & vbCrLf & "[shortened -- the full list is on the '" & _
-        WorkbookBridge.RUN_LOG_SHEET_NAME & "' sheet in the workbook]"
+    If noticeText <> "" Then
+        notice = vbCrLf & vbCrLf & noticeText
+    Else
+        notice = vbCrLf & vbCrLf & "[shortened -- the full list is on the '" & _
+            WorkbookBridge.RUN_LOG_SHEET_NAME & "' sheet in the workbook]"
+    End If
 
     Dim room As Long
     room = REPORT_CAP - Len(notice) - Len(mustKeep)

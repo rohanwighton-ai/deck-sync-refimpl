@@ -573,6 +573,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "DraftingUI_ChainBlockHeaderLabelsTheField", r
+    If TestMatches("DraftingUI_AppendCollectedFoldsIntoTheSameReport", filterPattern) Then
+        r = Test_DraftingUI_AppendCollectedFoldsIntoTheSameReport()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "DraftingUI_AppendCollectedFoldsIntoTheSameReport", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -8925,6 +8931,19 @@ Private Function Test_RibbonUI_CapReportKeepsTheQuestion() As String
     result = result & Assert(Len(plain) < 2000 And InStr(plain, "[shortened") > 0, _
         "a report with no must-keep tail is still capped and announced")
 
+    ' THE NOTICE ITSELF IS OVERRIDABLE. 2026-08-19: the default notice
+    ' claims "the full list is on the Run Log sheet" -- true for the
+    ' callers above, false for a caller inside a longer chain whose Run
+    ' Log write gets overwritten before the workbook saves
+    ' (OfferMarkingForUnwiredFields). Proves the override actually
+    ' replaces the claim rather than sitting alongside it.
+    Dim overridden As String
+    overridden = RibbonUI.CapReport(String(2000, "z"), "", "[shortened -- see elsewhere]")
+    result = result & Assert(InStr(overridden, "[shortened -- see elsewhere]") > 0, _
+        "a custom notice is used when given, got '" & Right$(overridden, 60) & "'")
+    result = result & Assert(InStr(overridden, "Run Log") = 0, _
+        "and the default Run Log claim does NOT also appear, got '" & Right$(overridden, 60) & "'")
+
     Test_RibbonUI_CapReportKeepsTheQuestion = result
 End Function
 
@@ -10496,6 +10515,46 @@ Private Function Test_DraftingUI_ChainBlockHeaderLabelsTheField() As String
     result = result & Assert(h1 <> h2, "two different fields produce two different headers, got '" & h1 & "' and '" & h2 & "'")
 
     Test_DraftingUI_ChainBlockHeaderLabelsTheField = result
+End Function
+
+' PROVES AppendCollected ACTUALLY FOLDS IN, not just that it compiles.
+' 2026-08-19: RibbonUI.OfferMarkingForUnwiredFields used to show its own
+' separate MsgBox before this chain's BeginCollecting even started --
+' pushed "Set up my quarter" from LOBBY-DESIGN.md section 6's ~2-modal
+' target back up to 3, and widened the window during which AppEvents.cls's
+' cross-app SheetChange handler could hit PowerPoint mid-modal (that
+' handler runs inside THIS VBA project despite watching Excel's events --
+' a modal here blocks it same as any other PowerPoint modal would).
+' AppendCollected is how a caller OUTSIDE DraftingUI.bas (Say itself is
+' Private) joins the same collected-into-one-dialog mechanism instead of
+' inventing a parallel one.
+Private Function Test_DraftingUI_AppendCollectedFoldsIntoTheSameReport() As String
+    Dim result As String
+
+    DraftingUI.BeginCollecting
+    DraftingUI.AppendCollected "11 field(s) missing.", "Field Coverage"
+    Dim combined As String
+    combined = DraftingUI.EndCollecting()
+
+    result = result & Assert(InStr(combined, "-- Field Coverage --") > 0, _
+        "the caption becomes a header, same shape Say() itself produces, got '" & combined & "'")
+    result = result & Assert(InStr(combined, "11 field(s) missing.") > 0, _
+        "and the actual text survives, got '" & combined & "'")
+
+    ' EndCollecting ALSO STOPS COLLECTING -- a second call with nothing
+    ' appended must come back empty, not carry over the previous report.
+    ' The not-collecting branch of AppendCollected (falls back to a live
+    ' MsgBox) is not exercised here -- an automated run cannot click
+    ' through a modal -- that remains a live-keyboard proof, same
+    ' limitation ChainBlockHeader's own test above already states for
+    ' this exact chain.
+    DraftingUI.BeginCollecting
+    Dim emptyReport As String
+    emptyReport = DraftingUI.EndCollecting()
+    result = result & Assert(emptyReport = "", _
+        "a fresh collecting window with nothing appended ends empty, got '" & emptyReport & "'")
+
+    Test_DraftingUI_AppendCollectedFoldsIntoTheSameReport = result
 End Function
 
 ' The archive is the first half of file-per-quarter, and the half trusted to be

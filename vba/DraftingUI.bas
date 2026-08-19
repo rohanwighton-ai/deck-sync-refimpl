@@ -74,6 +74,25 @@ Public Function EndCollecting() As String
     mCollecting = False
 End Function
 
+' Lets a stage that isn't a DraftingUI.Say caller fold its own message in
+' too. Same collecting/not-collecting split Say() itself makes, exposed so
+' RibbonUI.OfferMarkingForUnwiredFields doesn't have to duplicate this
+' module's private mCollecting/mReport state, or invent a second answer to
+' "how do several stages become one dialog" (LOBBY-DESIGN.md section 6,
+' the "less modals is safer, not just tidier" list this book's own
+' cross-app SheetChange handler gives a second, technical reason for).
+' 2026-08-19: the coverage-check notice used to fire its own separate
+' MsgBox BEFORE this chain's BeginCollecting even started, which pushed
+' "Set up my quarter" from the documented 2-modal target back up to 3.
+Public Sub AppendCollected(text As String, caption As String)
+    If mCollecting Then
+        If mReport <> "" Then mReport = mReport & vbCrLf & vbCrLf
+        mReport = mReport & "-- " & ChainBlockHeader(caption, mChainField) & " --" & vbCrLf & text
+    Else
+        MsgBox text, vbExclamation, caption
+    End If
+End Sub
+
 ' PUBLIC AND PURE, so this is testable without a live presentation or the
 ' mCollecting/mChainField state that only exists mid-chain. Say() is the only
 ' real caller; the label logic does not need to live inside it to be correct.
