@@ -298,6 +298,15 @@ just its own stated build steps, restated as a checklist.*
       `DeriveStatusBadge` does and doesn't tolerate: `FIX-LIST.md` item BK. **DONE
       2026-08-19** — quantified and recorded, not fixed (a person's call on whether
       `Not yet commenced` should collapse to `Not Started` or stay distinct).
+- [x] **All 17 normalized to the declared vocabulary, real register, verified.**
+      Rohan: "let's just have one way of writing it through." 8 `In progress` ->
+      `In Progress`, 8 `Not started` -> `Not Started`, 1 `Not yet commenced` ->
+      `Not Started`. A real case-sensitivity bug was caught building the fix itself
+      (PowerShell hashtable lookups are case-insensitive by default, silently
+      rewrote 112 already-correct cells on the first attempt) — full account in
+      `FIX-LIST.md` item BK. Proven on a copy, applied to the real register with a
+      fresh backup, reverified from the saved file: 0 remaining out-of-vocabulary.
+      **DONE 2026-08-19.**
 - [ ] Which source is "the dedicated one" for `STRATEGIC_LINKAGES`, and who
       maintains it now the Family Tree is going. A work question, costs a minute.
 

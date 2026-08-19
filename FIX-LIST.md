@@ -3206,3 +3206,32 @@ that value falls through every branch and refuses (returns `""`) rather
 than guessing, the same "refuse rather than draw a wrong bar" instinct as
 `ElapsedFraction`. **Whether that's the right behaviour for `Not yet
 commenced` specifically is Rohan's call, not resolved here.**
+
+**RESOLVED, same session.** Rohan: *"let's just have one way of writing it
+through."* All 17 normalized to the declared vocabulary exactly -- 8
+`In progress` -> `In Progress`, 8 `Not started` -> `Not Started`, 1
+`Not yet commenced` -> `Not Started` (his explicit call, not a guess).
+
+**A real bug caught building the fix, not the fix itself.** The exact
+offender list was first pulled with PowerShell's `-contains`, which is
+CASE-INSENSITIVE by default -- it silently hid every casing mismatch and
+reported only 1 offender instead of 17, the opposite of the 17
+`ApplyControlledValidation` had already correctly reported. Cross-checked
+against that authoritative count rather than trusting the smaller number,
+found the tool mismatch, redid it with `-ccontains`. **The exact same bug
+class, self-inflicted, minutes later**: the first normalize script used a
+PowerShell hashtable for its old-value/new-value map, whose key lookups
+are ALSO case-insensitive by default -- `$map.ContainsKey("In Progress")`
+matched the key `"In progress"` and silently rewrote all 112 already-
+correct cells too (harmlessly, since the case-insensitive value lookup
+happened to return the same text back, but not what was intended, and not
+something to wave through). Caught by checking the change count (112)
+against the expected count (17) before trusting the log, not by any
+special insight -- fixed with an explicit ordinal (case-sensitive) string
+comparison, re-tested on a copy, re-verified `112 -> 17`.
+
+Proven on a copy first, then applied to the real register with a fresh
+backup taken immediately before
+(`OneDrive\Claude\backups\PRE-STATUS-NORMALIZE-20260819-1940\`), then
+reverified from the saved file in a fresh process: 0 remaining
+out-of-vocabulary, `1_K010`'s `Q3F26` row confirmed reading `Not Started`.
