@@ -2879,3 +2879,88 @@ Full suite: **261 passed / 0 failed / 0 skipped** (258 prior + 3 new),
 and each of the three new tests independently reconfirmed passing on a
 filtered re-run rather than trusted from the combined count alone.
 Commit `9a0bf6f`.
+
+## Added and FIXED 2026-08-19 evening — BG, six of the 11 audit-flagged
+## fields tagged live on the REAL template slide (slide44), not a copy
+
+**BG. THE 11 FIELDS THE READINESS AUDIT FLAGGED AS "NEVER POPULATED" TURNED
+OUT TO ALREADY HAVE FIELD SPEC ROWS AND REGISTER COLUMNS -- WHAT THEY
+LACKED WAS A SHAPE TAGGED ON THE REAL TEMPLATE.** Probed the live register
+(`register-wide.xlsx`) and the live deck's actual registered template
+(slide44, SlideID 303, resolved via the old-mechanism `CustomDocumentProperties`
+fallback since the registry-slide shape for `DeckSyncType:project-progress`
+was never written on this real deck) rather than trust `COLUMNS.md`/
+`CHECKLIST.md`, which were both stale on this point. Zero of the 11 had a
+role tag anywhere on the real template.
+
+Split cleanly into four groups by what was actually missing:
+- **Group A** (`SAAFE_CASH`, `TOTAL_INKIND`, `INDUSTRY_PARTNER`,
+  `TERTIARY_INSTITUTION`) plus `DELIVERABLES_BODY` and `PROJECT_PHOTO`:
+  the shape already existed on slide44 with the SOURCE project's real
+  content sitting on it untagged (a fossil of `MakeTemplateFrom`'s own
+  documented limit -- "untagged content is NOT touched, and cannot be").
+  Pure tagging work, tagged all six for real.
+- `HIGHLIGHTS_BODY`: shapes exist (three bullet groups) but `InjectPrimitive.
+  bas` only ever writes one field into one shape -- no one-into-many
+  mechanism exists. Needs real code, not a tag.
+- `SUBTITLE_B`/`SECTOR`/`TRL`: spec'd to concatenate into `SUBTITLE_A`'s one
+  shape; no many-into-one mechanism exists either. Same class of gap,
+  mirrored.
+- `SCHEDULE_STATUS`: feeds a `STATUS_BADGE` concept that depends on the
+  already-known `Kind=Derived` gap (`CHECKLIST.md`, "confirmed NOT built").
+- `STRATEGIC_LINKAGES`: its own Field Spec says "NO SHAPE on the
+  project-progress slide" -- not a gap on this slide type by design.
+
+**Tagging alone is not the whole of `MakeTemplateFrom`'s own safety
+contract, and this closes only half of it for the six real ones.** Every
+already-tagged text field on this template carries `<<FIELD>>` placeholder
+text, replacing the source project's real value, specifically so a slide
+cloned from the template cannot silently carry another project's data
+looking correct (`TemplateSlide.bas`'s own docstring: "the worst shape a
+reporting-tool defect can take"). Replicated that for the five text
+fields -- tag write via `shp.Tags.Add "role", <name>`, then
+`shp.TextFrame.TextRange.Text = "<<" & name & ">>"`, matching
+`TemplateSlide.PlaceholderFor` exactly.
+
+**`PROJECT_PHOTO` cannot get the same placeholder treatment, and this is a
+real, currently-unclosed gap, not an oversight.** `InjectPrimitive`
+(the function `MakeTemplateFrom` itself calls to blank a field) refuses on
+any shape with `HasTextFrame = False` -- confirmed live, the placeholder
+write on `Picture 235` failed with "the specified value is out of range."
+A picture shape simply has nowhere to put `<<PROJECT_PHOTO>>` text. The
+tag is real and correct, but the template's picture shape still shows the
+source project's real photo, untagged-content-camouflage exactly as
+`TemplateSlide.bas` describes it -- just for a Kind the module's own
+blanking step was never built to reach. No existing mechanism in this
+codebase addresses it (checked: this is the first picture field ever
+tagged on this specific template). Left open, named here rather than
+silently accepted.
+
+**A real near-miss, caught only because of copy-first discipline.** The
+first attempt at `DELIVERABLES_BODY` matched a decorative underline
+connector 2pt away from the real text box -- both untagged, both within a
+3pt position tolerance, and the connector's empty text passed a check that
+only tested `HasTextFrame`, not `HasText`. Caught on the copy, before the
+real deck was touched; fixed by also requiring non-empty existing text
+(and, separately, allowing picture-type shapes through that same filter
+for `PROJECT_PHOTO`, since a picture has no text to check). The real deck
+never carried the bad tag.
+
+**Every write proven from the saved file's own bytes, in a fresh process,
+not an in-process readback** -- each of the six fields: written on a
+scratch copy, reopened cold and verified, then the identical write applied
+to the real deck (`C:\Users\rohan\OneDrive\Claude\3. Project
+Progress.pptx`), reopened cold again and reverified. Backup taken before
+the first real-deck write: `OneDrive\Claude\backups\3-Project-Progress.
+PRE-GROUPA-TAGGING-20260819-151035.pptx`.
+
+**`DELIVERABLE1_PHOTO..DELIVERABLE4_PHOTO` turned out NOT to be ready for
+this same treatment, discovered before any write was attempted.** Checked
+the real Field Spec sheet directly: `PROJECT_PHOTO` has a real row (51) and
+a real `Register` column. The four `DELIVERABLE*_PHOTO` fields have
+**neither** -- last session's Field Spec rows, Sources rows (S12-S15) and
+register columns for them were built and proven only on the
+`deck-sync-test-deliverables` copy, never brought over to the real
+`register-wide.xlsx`. Tagging their template shapes without that backing
+would create fields the register cannot drive. Not done here; needs its
+own register-authoring pass first, not a mechanical backfill.

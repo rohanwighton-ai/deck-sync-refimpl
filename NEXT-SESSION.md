@@ -12,6 +12,79 @@
 > number this doc names below; the file with the highest number isn't
 > necessarily the one actually registered live.
 
+> ## 19 AUG, EVENING — six of the 11 audit-flagged fields tagged live on the
+> REAL deck's template slide (not a copy): `SAAFE_CASH`, `TOTAL_INKIND`,
+> `INDUSTRY_PARTNER`, `TERTIARY_INSTITUTION`, `DELIVERABLES_BODY`,
+> `PROJECT_PHOTO`. No new add-in build — this is a deck-data change, not a
+> VBA code change; `addin150` is still current. **STATUS: CURRENT,
+> supersedes every block below.**
+>
+> **Rohan: "put each of those fields through the same drafting gates... one
+> at a time," then "you do it, I'll just review after."** Probing the real
+> register and the real template slide (slide44, SlideID 303) first — not
+> trusting `COLUMNS.md`/`CHECKLIST.md`, both stale — found all 11 fields
+> already had Field Spec rows and register columns. The actual gap: zero
+> had a shape tagged on the real template. Full breakdown, including why
+> `HIGHLIGHTS_BODY`/`SUBTITLE_B`/`SECTOR`/`TRL`/`SCHEDULE_STATUS`/
+> `STRATEGIC_LINKAGES` are NOT simple tagging jobs (three need injector
+> features that don't exist, one needs the known `Kind=Derived` gap, one
+> isn't meant to render on this slide type) — **`FIX-LIST.md` item BG**.
+>
+> **Six fields WERE ready — shapes already existed on slide44 carrying the
+> source project's real, untagged content (a fossil of `MakeTemplateFrom`'s
+> own documented limit: it only blanks fields tagged AT THE TIME it runs).**
+> Tagged all six, and for the five text fields also replaced the shape's
+> text with `<<FIELD>>`, matching every other tagged field on this slide —
+> not just adding the tag, closing the actual camouflage risk
+> `TemplateSlide.bas`'s docstring names explicitly ("the worst shape a
+> reporting-tool defect can take").
+>
+> **`PROJECT_PHOTO` could NOT get the placeholder-text half of that
+> treatment — a real, still-open gap, not an oversight.** `InjectPrimitive`
+> refuses to write into any shape with `HasTextFrame = False`; confirmed
+> live, the placeholder write on `Picture 235` failed cleanly. The tag is
+> correct; the template's photo still shows the source project's real
+> image, camouflaged exactly the way the module warns about, for a Kind
+> its own blanking step doesn't reach. No mechanism in this codebase
+> addresses it yet — named, not silently accepted.
+>
+> **A real near-miss, caught by copy-first discipline, not luck.** The
+> first `DELIVERABLES_BODY` attempt tagged a decorative underline connector
+> 2pt from the real text box — both untagged, both within the position
+> tolerance used, the connector's empty text slipping past a check that
+> only tested `HasTextFrame` and not `HasText`. Found on the copy before
+> the real deck was touched. Fixed the matcher, redid it clean.
+>
+> **Every one of the six: written on a copy, reopened cold and verified
+> from the saved bytes, then the identical write applied to the real deck,
+> reopened cold and reverified again** — never trusted an in-process
+> readback. Backup taken before the first real-deck write: `OneDrive\
+> Claude\backups\3-Project-Progress.PRE-GROUPA-TAGGING-20260819-151035.
+> pptx`.
+>
+> **`DELIVERABLE1_PHOTO..DELIVERABLE4_PHOTO` are NOT ready for this same
+> treatment — discovered before any write was attempted, not after.**
+> Checked the real Field Spec sheet directly: `PROJECT_PHOTO` has a real
+> row and register column; the four `DELIVERABLE*_PHOTO` fields have
+> **neither**. Last session's Field Spec rows, Sources rows, and register
+> columns for them were built and proven only on the
+> `deck-sync-test-deliverables` copy register, never brought to the real
+> `register-wide.xlsx`. Needs a register-authoring pass first — tagging
+> their template shapes now would create fields the register can't drive.
+>
+> **STILL NOT DONE, unchanged:** `HIGHLIGHTS_BODY`'s one-into-many injector
+> feature, the `SUBTITLE_B`/`SECTOR`/`TRL` many-into-one composite feature,
+> the `Kind=Derived`/`STATUS_BADGE` mechanism `SCHEDULE_STATUS` depends on,
+> and the `DELIVERABLE1-4_PHOTO` register-authoring pass just found above.
+> Rohan's own ranking when offered these as combinations: do the cheap
+> proven backfill (this block), then stop and check in before picking the
+> next one.
+>
+> **THE ACTUAL PROJECT PRIORITY, UNCHANGED, REPEATED HERE SO IT DOESN'T GET
+> BURIED:** Scenario 1's unaided close is still the real blocker and
+> nothing tonight moved it — this was field-readiness work, downstream of
+> it, per the same-session `deck-sync-pm` audit's own framing.
+
 > ## 19 AUG, AFTERNOON — a 6-layer readiness audit run at Rohan's request
 > ("ensure these items are what drives us from hereon in"), and its own
 > test-coverage gap (item BF) closed same session. **STATUS: CURRENT,
