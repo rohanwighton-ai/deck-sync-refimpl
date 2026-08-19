@@ -2337,15 +2337,23 @@ twice on 13 Aug for exactly this reason.
 
 **Fix:** offer the set per field, or exclude fields whose Renders-as implies slots.
 
-### P5. Re-running the Template Audit REPLACES the sheet, decisions included
+### P5. FIXED 2026-08-19 — Re-running the Template Audit REPLACES the sheet, decisions included
 
-The dialog says so — *"Re-running this REPLACES that sheet, decisions included"* — which is
-honest, and still wrong. The audit's whole purpose is to record field/chrome/drop
-decisions against 50 items; losing them on re-run means the work can only ever be done in
-one sitting. Same shape as the Discover Fields grid (item 3) which rebuilds from scratch
-and loses marks.
+The dialog said so — *"Re-running this REPLACES that sheet, decisions included"* — which was
+honest, and still wrong. A 2026-08-15 interim fix stopped the silent loss by refusing to
+rebuild over pending decisions, but that still meant the audit could only ever be worked in
+one sitting — the actual complaint. Same shape as the Discover Fields grid (item 3), which
+still rebuilds from scratch and loses marks (not touched by this fix).
 
-**Fix:** carry decisions across by shape ID, the way `WriteDraftingSheet` carries drafts.
+**Fixed as originally proposed: `TemplateAudit.WriteAuditGrid` now carries decisions across
+by shape identity** (name + group path + text together — a decision was made about what a
+shape SAID, so a genuinely changed text correctly does not inherit it), the same pattern
+`Drafting.WriteDraftingSheet` already uses to carry drafts across a rebuild rather than
+blocking it. `carriedCount`/`orphanedCount` are new ByRef outputs so a person is told
+exactly how many decisions carried and how many couldn't (shape/text gone), rather than
+either silently losing them or being blocked outright. New tests prove both halves, made to
+fail first (temporarily dropped text from the identity key, confirmed the orphan test fails
+on the right assertions before restoring it). Full suite 269/269.
 
 ### P6. `PROGRESS_BODY` has more approvals than submitted text — CONFIRMED, not a miscount
 

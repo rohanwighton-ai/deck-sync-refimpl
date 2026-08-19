@@ -173,9 +173,9 @@ fact that it existed and when.
       `HIGHLIGHTS_BODY` needs slot columns like the milestones, not a single column.
       Check whether the live workbook already has a wrongly-added single
       `HIGHLIGHTS_BODY` column from a past Yes on this bundled prompt.
-- [ ] `FIX-LIST` P5 — re-running Template Audit replaces the sheet, decisions included.
-      Check the live workbook's Template Audit sheet for any sign this has already
-      cost a round of lost decisions.
+- [x] **`FIX-LIST` P5 — FIXED.** `TemplateAudit.WriteAuditGrid` now carries decisions
+      forward by shape identity instead of refusing to rebuild over them — full detail
+      in `FIX-LIST.md` item P5. Full suite 269/269. **DONE 2026-08-19.**
 
 ### Explicitly OUT of scope tonight
 - [ ] Sheet-name migration to `01_FIELD_SPEC`-style numbered names. Already ruled on in
