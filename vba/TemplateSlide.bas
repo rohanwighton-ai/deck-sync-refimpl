@@ -174,6 +174,24 @@ Public Function MakeTemplateFrom(sourceSld As Object, slideType As String) As Ma
         Next r
     End If
 
+    ' --- Refuse a template that already carries a name collision -----------
+    ' The one guarantee this operation can actually make (see
+    ' FindDuplicateShapeName's own header) -- checked here, on the COPY,
+    ' after duplication so it also catches a collision introduced by the
+    ' duplicate itself, not just one inherited from the source.
+    Dim collidingName As String
+    collidingName = FindDuplicateShapeName(newSld.Shapes)
+    If collidingName <> "" Then
+        newSld.Delete
+        result.Ok = False
+        result.Reason = "two shapes on this slide are both named '" & collidingName & "' -- " & _
+            "refusing to register a template where a shape name is ambiguous. Rename one of " & _
+            "them on the SOURCE slide (Text 216a on real slide 27 is exactly this problem) and " & _
+            "try again. Copy removed."
+        MakeTemplateFrom = result
+        Exit Function
+    End If
+
     ' --- Keep it out of the presented deck ---------------------------------
     ' Hidden, not deleted-at-export: the template has to stay in the file
     ' (it is what gets cloned) but must never appear in a slideshow or a
@@ -279,6 +297,55 @@ End Function
 ' Returns "" rather than guessing when there is no letter to read. "" means
 ' "no opinion, use the type's unlettered template", which is what keeps today's
 ' single-template decks working unchanged.
+' THE PROMISE THIS PROJECT CAN ACTUALLY KEEP. `Matching.bas`'s name tie-break
+' (see its own header, `fdee2e6`) needs a real slide's shape name to match the
+' template's exactly -- and nothing in the shipped add-in ever renames a
+' shape, by design (the alternative is guessing which shape is which and
+' risking a silent wrong answer, worse than refusing). So the add-in cannot
+' promise "any instance heals itself." What it CAN promise is "nothing built
+' from a clean template drifts into this" -- but only if the template itself
+' is verified clean at the one moment that matters: when it is created.
+'
+' FIX-LIST item C (slide 27's `Text 216a` collision) is exactly the failure
+' this closes off at the source: a shape squatting on a name another field
+' needs. That collision was never possible to prevent on an already-drifted
+' instance; it is entirely possible to prevent on every template made from
+' here on.
+'
+' Recurses into groups (the same reason FormattingAudit.CollectSpecimens
+' does) -- a colliding name inside a group is exactly as capable of stealing
+' the name InjectPrimitive's rebuild path needs as a top-level shape.
+' Returns the first repeated name found, or "" if every name is unique.
+' Blank names (an unnamed placeholder) are not a collision with each other --
+' PowerPoint does not use "" as an addressing key the way a real name is used
+' here, and requiring every shape to carry a distinct name would fail
+' templates this project does not touch.
+Private Function FindDuplicateShapeName(shapesColl As Object) As String
+    Dim seen As Object
+    Set seen = CreateObject("Scripting.Dictionary")
+    FindDuplicateShapeName = FindDuplicateShapeNameCore(shapesColl, seen)
+End Function
+
+Private Function FindDuplicateShapeNameCore(shapesColl As Object, ByRef seen As Object) As String
+    Dim shp As Object
+    For Each shp In shapesColl
+        If shp.Type = msoGroup Then
+            Dim inGroup As String
+            inGroup = FindDuplicateShapeNameCore(shp.GroupItems, seen)
+            If inGroup <> "" Then
+                FindDuplicateShapeNameCore = inGroup
+                Exit Function
+            End If
+        ElseIf Trim$(shp.Name) <> "" Then
+            If seen.Exists(shp.Name) Then
+                FindDuplicateShapeNameCore = shp.Name
+                Exit Function
+            End If
+            seen.Add shp.Name, True
+        End If
+    Next shp
+End Function
+
 Public Function CodeLetterOf(instanceKey As String) As String
     Dim s As String
     s = Trim(instanceKey)

@@ -299,6 +299,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("TemplateSlide_RefusesATemplateWithCollidingShapeNames", filterPattern) Then
+        r = Test_TemplateSlide_RefusesATemplateWithCollidingShapeNames()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "TemplateSlide_RefusesATemplateWithCollidingShapeNames", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("TemplateSlide_ExcludedFromGatherAndNeverFlagged", filterPattern) Then
         r = Test_TemplateSlide_ExcludedFromGatherAndNeverFlagged()
     Else
@@ -3371,6 +3380,41 @@ Private Function Test_TemplateSlide_MakeTemplateProducesKeylessMarkedCopy() As S
     End If
 
     Test_TemplateSlide_MakeTemplateProducesKeylessMarkedCopy = result
+End Function
+
+' THE GUARD THIS PROJECT CAN ACTUALLY KEEP -- proven to fire, not just exist.
+' FIX-LIST item C (real slide 27's `Text 216a` collision) can never be healed
+' automatically -- the matcher refuses to guess which shape is which rather
+' than risk a silent wrong answer. What CAN be guaranteed is that a slide
+' carrying this exact problem never becomes a template in the first place,
+' so nothing built from here forward inherits it. Forces the precise
+' collision by hand (two fields' shapes sharing one name) rather than
+' trusting PowerPoint's own auto-naming to happen to produce one.
+Private Function Test_TemplateSlide_RefusesATemplateWithCollidingShapeNames() As String
+    Dim result As String
+
+    Dim sourceSld As Object
+    Set sourceSld = NewOnboardedSlide("tmpl-collide-1", "rec-collide-1")
+
+    Dim beforeCount As Long
+    beforeCount = Application.ActivePresentation.Slides.count
+
+    Dim titleShp As Object, statusShp As Object
+    Set titleShp = FindShapeByRole(sourceSld, "Title")
+    Set statusShp = FindShapeByRole(sourceSld, "Status")
+    statusShp.Name = titleShp.Name
+
+    Dim mr As MakeTemplateResult
+    mr = TemplateSlide.MakeTemplateFrom(sourceSld, "tmpl-collide-1")
+
+    result = result & Assert(Not mr.Ok, "MakeTemplateFrom refuses a source slide with two shapes sharing a name")
+    result = result & Assert(InStr(1, mr.Reason, titleShp.Name, vbTextCompare) > 0, _
+        "the refusal names the colliding shape name, got '" & mr.Reason & "'")
+    result = result & Assert(Application.ActivePresentation.Slides.count = beforeCount, _
+        "the half-built copy was removed rather than left behind -- expected " & beforeCount & _
+        " slides, got " & Application.ActivePresentation.Slides.count)
+
+    Test_TemplateSlide_RefusesATemplateWithCollidingShapeNames = result
 End Function
 
 ' The load-bearing exclusion. Every consequence of a template slide flows
