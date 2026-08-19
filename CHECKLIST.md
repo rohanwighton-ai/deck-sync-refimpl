@@ -15,6 +15,37 @@
       2026-08-16** — 33 modules imported clean, build stamped `2026-08-16
       11:02`, Rohan confirmed `addin104` loaded and `addin102` unticked.
 
+### STATUS_BADGE built (`61bd2b7`) and its shape retagged on the real deck
+Rohan: "retag the badge shapes on the real deck." Confirmed first that PROJECT_STATUS
+has no other reader (not harvested from a slide anywhere, not special-cased in
+`FieldWiring.bas`) before touching anything — retagging its shape doesn't strand any
+other mechanism.
+
+- [x] **Retagged all 42 real `PROJECT_STATUS`-tagged shapes to `STATUS_BADGE`** (41
+      real project slides + the one template, slide 44) — proven on a throwaway copy
+      first, then applied to the real deck, then verified in a fresh reopen: 42
+      `STATUS_BADGE`, 0 `PROJECT_STATUS` remaining, template placeholder text updated
+      to `<<STATUS_BADGE>>`. **DONE 2026-08-19.**
+- [ ] **The visible badge TEXT on all 42 shapes still shows the OLD raw
+      `PROJECT_STATUS` value** (e.g. "In Progress") — only the TAG changed tonight.
+      Nothing has actually computed and written the new derived word yet, because
+      tonight's `DeriveStatusBadge` code isn't in any built `.ppam` — the Save-As step
+      is still the confirmed-manual one. **Next real "1. Set up my quarter" / sync,
+      once a fresh add-in build is made and loaded, is what actually refreshes these
+      42 shapes to their correct derived word.** Until then the deck is correctly
+      *tagged* but not yet correctly *displayed*.
+- [ ] **Real, foreseeable side effect for next session, not yet handled**: `PROJECT_
+      STATUS` (the underlying data field, still real and still set in the Register)
+      now has ZERO shapes tagged anywhere on the deck — nothing special-cases this in
+      `FieldWiring.bas`'s coverage check the way Derived/device-owned columns are
+      excluded. The next field-coverage notice will very likely report `PROJECT_
+      STATUS` as "0/42 wired," which is now expected and correct (it feeds
+      `STATUS_BADGE`'s computation rather than being displayed itself), not a real
+      gap. Worth adding the same kind of exclusion `MilestoneDevice.
+      IsColumnForThisDevice` already has for device-owned columns, if the noise turns
+      out to actually bother anyone — not built yet, deliberately, since it's
+      speculative until it's confirmed annoying in practice.
+
 ## Workbook modernisation — surgical pass, started 2026-08-19 18:37, budget until 02:00
 
 Rohan's framing: the Q3F26 harvest-and-rebuild plan (see chat, not yet written up as its
