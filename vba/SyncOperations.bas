@@ -80,16 +80,23 @@ End Type
 ' own header: a stored copy of a computed value is exactly the drift a
 ' Derived field exists to prevent.
 '
-' ONE NAMED FIELD, NOT A GENERAL DERIVED MECHANISM. The only Derived field
-' that exists is this one, so PlanRoutineSync below looks for this exact
-' tag rather than reading the Field Spec at sync time to discover Derived
-' fields generally -- the same way the first device was reached by name,
-' before MILESTONE_TIMELINE ever generalised anything about devices. If a
-' second Derived field is ever added, THAT is the moment to replace this
-' with a real Field-Spec-driven walk; building the general mechanism now,
-' for one case, would be exactly the kind of speculative generality this
-' project has already paid for once.
+' A SECOND DERIVED FIELD ARRIVED (STATUS_BADGE, 2026-08-19) -- THIS IS THE
+' MOMENT THIS COMMENT ITSELF CALLED FOR. It used to say "the only Derived
+' field that exists is this one... if a second is ever added, THAT is the
+' moment to replace this with a real mechanism." PlanRoutineSync below now
+' loops over a small list of known derived tags (see the loop's own header)
+' instead of a single hardcoded TIMELINE_ELAPSED block -- still not a
+' Field-Spec-driven discovery walk (each derived field's VALUE computation
+' is genuinely different -- date math vs. a status lookup -- so there is
+' nothing left to generalise there), but the shape-finding/injection/
+' bookkeeping around it is shared instead of copy-pasted a second time.
 Public Const TIMELINE_ELAPSED_TAG As String = "TIMELINE_ELAPSED"
+
+' STATUS_BADGE -- see DeriveStatusBadge's own header for the derivation
+' rule (Rohan wrote it directly onto the live Field Spec sheet, addressed
+' to "Claude Code" by name; this constant and DeriveStatusBadge are that
+' request, built).
+Public Const STATUS_BADGE_TAG As String = "STATUS_BADGE"
 
 ' TEST-ONLY HOOK, same shape and same reason as ReviewQueue.
 ' mTestForceInjectCrash (its comment carries the full history). Error 50290
@@ -136,6 +143,98 @@ Public Function ElapsedFraction(startText As String, endText As String) As Strin
 
 BadDate:
     ElapsedFraction = ""
+End Function
+
+' THE STATUS BADGE. Rohan wrote this derivation rule directly onto the live
+' Field Spec sheet's STATUS_BADGE row (row 49, 2026-08-19), addressed to
+' "Claude Code" by name -- the priority order and wording below are his,
+' transcribed exactly, not reinterpreted:
+'
+'   PRIORITY ORDER, highest wins. Show exactly ONE word, never two joined.
+'   1. PROJECT_STATUS = Not Started              -> "Not Started"
+'   2. PROJECT_STATUS = Project Closed            -> "Project Closed"
+'   3. In Progress AND SCHEDULE_STATUS = Delayed  -> "Delayed"
+'   4. In Progress AND SCHEDULE_STATUS = At Risk  -> "At Risk"
+'   5. In Progress AND anything else              -> "In Progress"
+'   Rationale: schedule health is meaningless before a project starts or
+'   after it closes, so lifecycle stage wins outright at both ends.
+'
+' "ONE WORD" means one label, not literally one English word -- the point
+' (Rohan's own wording) is that the badge never shows two things joined
+' together, not that "Project Closed" is somehow one word.
+'
+' UNVERIFIED, PER ROHAN'S OWN FLAG ON THE SHEET, NOT SILENTLY RESOLVED HERE:
+' whether SCHEDULE_STATUS is meaningful per-project or per-milestone-row is
+' still open against the source tracker. This function reads it as ONE
+' value per project, because that is the only shape the Register actually
+' stores it in today (one SCHEDULE_STATUS column, confirmed live 2026-08-19)
+' -- not a resolution of the open question, just the only input available.
+'
+' PROJECT_STATUS is Kind=Controlled (FieldSpec.bas, fixed vocabulary), so an
+' unrecognised value here means the vocabulary and this derivation have
+' drifted apart, not a case to guess a badge for. Refuses rather than
+' invents a sixth word -- the same "refuse rather than draw a wrong bar"
+' instinct as ElapsedFraction immediately above.
+Public Function DeriveStatusBadge(projectStatus As String, scheduleStatus As String) As String
+    Dim ps As String, ss As String
+    ps = Trim(projectStatus)
+    ss = Trim(scheduleStatus)
+
+    If StrComp(ps, "Not Started", vbTextCompare) = 0 Then
+        DeriveStatusBadge = "Not Started"
+        Exit Function
+    End If
+
+    If StrComp(ps, "Project Closed", vbTextCompare) = 0 Then
+        DeriveStatusBadge = "Project Closed"
+        Exit Function
+    End If
+
+    If StrComp(ps, "In Progress", vbTextCompare) = 0 Then
+        If StrComp(ss, "Delayed", vbTextCompare) = 0 Then
+            DeriveStatusBadge = "Delayed"
+        ElseIf StrComp(ss, "At Risk", vbTextCompare) = 0 Then
+            DeriveStatusBadge = "At Risk"
+        Else
+            DeriveStatusBadge = "In Progress"
+        End If
+        Exit Function
+    End If
+
+    DeriveStatusBadge = ""
+End Function
+
+' THE DERIVED-FIELD LIST. Small and explicit on purpose -- see the comment
+' on TIMELINE_ELAPSED_TAG above for why this isn't a Field-Spec-driven
+' discovery walk. Adding a third derived field means adding its tag here
+' and a Case to ComputeDerivedValue below; nothing else changes.
+Public Function DerivedFieldTags() As Variant
+    DerivedFieldTags = Array(TIMELINE_ELAPSED_TAG, STATUS_BADGE_TAG)
+End Function
+
+' One place that knows how to compute EACH derived field's value from the
+' row it was given. Returns "" for "cannot be computed from what's here" --
+' the caller (PlanRoutineSync) already treats "" as skip, the same refusal
+' shape ElapsedFraction and DeriveStatusBadge both already use on their own.
+Public Function ComputeDerivedValue(fieldId As String, rowValues As Object) As String
+    Select Case fieldId
+        Case TIMELINE_ELAPSED_TAG
+            Dim startVal As String, endVal As String
+            startVal = "": endVal = ""
+            If rowValues.Exists("START_DATE") Then startVal = CStr(rowValues("START_DATE"))
+            If rowValues.Exists("END_DATE") Then endVal = CStr(rowValues("END_DATE"))
+            ComputeDerivedValue = ElapsedFraction(startVal, endVal)
+
+        Case STATUS_BADGE_TAG
+            Dim psVal As String, ssVal As String
+            psVal = "": ssVal = ""
+            If rowValues.Exists("PROJECT_STATUS") Then psVal = CStr(rowValues("PROJECT_STATUS"))
+            If rowValues.Exists("SCHEDULE_STATUS") Then ssVal = CStr(rowValues("SCHEDULE_STATUS"))
+            ComputeDerivedValue = DeriveStatusBadge(psVal, ssVal)
+
+        Case Else
+            ComputeDerivedValue = ""
+    End Select
 End Function
 
 Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collection, dataRows As Object, _
@@ -332,44 +431,45 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                 End If
             Next devTag
 
-            ' THE ELAPSED-TIME BAR. See ElapsedFraction's own header. Computed
-            ' here, at sync time, from START_DATE/END_DATE already present in
-            ' this row -- never read from or written to a register column of
-            ' its own.
-            If Not changedVerified.Exists(TIMELINE_ELAPSED_TAG) Then
-                Dim elapsedShp As Object
-                ' Another whole-slide shape walk -- trapped like the scan above.
-                On Error Resume Next
-                Err.Clear
-                Set elapsedShp = InjectPrimitive.FindShapeByRoleTag(instanceSlide, TIMELINE_ELAPSED_TAG)
-                planErrNum = Err.Number: planErrDesc = Err.Description: planErrSrc = Err.Source
-                On Error GoTo 0
-                If planErrNum <> 0 Then
-                    ReviewQueue.LogAndReraiseCrash logWs, runStamp, "SyncOperations.PlanRoutineSync", _
-                        key, TIMELINE_ELAPSED_TAG, "locating the elapsed-time bar", _
-                        planErrNum, planErrDesc, planErrSrc
-                End If
-                If Not elapsedShp Is Nothing Then
-                    Dim startVal As String, endVal As String
-                    startVal = ""
-                    endVal = ""
-                    If rowValues.Exists("START_DATE") Then startVal = CStr(rowValues("START_DATE"))
-                    If rowValues.Exists("END_DATE") Then endVal = CStr(rowValues("END_DATE"))
-
-                    Dim frac As String
-                    frac = ElapsedFraction(startVal, endVal)
-                    If frac <> "" Then
-                        Dim re As InjectResult
-                        re = GuardedPlanProbe(instanceSlide, key, TIMELINE_ELAPSED_TAG, frac, dryRun, rowValues, logWs, runStamp, srcWs)
-                        If re.Found And (re.Written Or re.WouldChange) Then
-                            changedVerified(TIMELINE_ELAPSED_TAG) = re.Verified
-                            changedError(TIMELINE_ELAPSED_TAG) = re.ErrorMessage
-                            changedCurrent(TIMELINE_ELAPSED_TAG) = re.CurrentValue
-                            changedNew(TIMELINE_ELAPSED_TAG) = frac
+            ' DERIVED FIELDS -- computed here, at sync time, from whatever
+            ' source columns each one needs (see ComputeDerivedValue), never
+            ' read from or written to a register column of their own. One
+            ' shared loop over DerivedFieldTags() rather than a block per
+            ' field -- see TIMELINE_ELAPSED_TAG's own comment for why this
+            ' changed 2026-08-19.
+            Dim derivedTag As Variant
+            For Each derivedTag In DerivedFieldTags()
+                Dim derivedTagStr As String
+                derivedTagStr = CStr(derivedTag)
+                If Not changedVerified.Exists(derivedTagStr) Then
+                    Dim derivedShp As Object
+                    ' Another whole-slide shape walk -- trapped like the scan above.
+                    On Error Resume Next
+                    Err.Clear
+                    Set derivedShp = InjectPrimitive.FindShapeByRoleTag(instanceSlide, derivedTagStr)
+                    planErrNum = Err.Number: planErrDesc = Err.Description: planErrSrc = Err.Source
+                    On Error GoTo 0
+                    If planErrNum <> 0 Then
+                        ReviewQueue.LogAndReraiseCrash logWs, runStamp, "SyncOperations.PlanRoutineSync", _
+                            key, derivedTagStr, "locating the " & derivedTagStr & " shape", _
+                            planErrNum, planErrDesc, planErrSrc
+                    End If
+                    If Not derivedShp Is Nothing Then
+                        Dim derivedVal As String
+                        derivedVal = ComputeDerivedValue(derivedTagStr, rowValues)
+                        If derivedVal <> "" Then
+                            Dim dre As InjectResult
+                            dre = GuardedPlanProbe(instanceSlide, key, derivedTagStr, derivedVal, dryRun, rowValues, logWs, runStamp, srcWs)
+                            If dre.Found And (dre.Written Or dre.WouldChange) Then
+                                changedVerified(derivedTagStr) = dre.Verified
+                                changedError(derivedTagStr) = dre.ErrorMessage
+                                changedCurrent(derivedTagStr) = dre.CurrentValue
+                                changedNew(derivedTagStr) = derivedVal
+                            End If
                         End If
                     End If
                 End If
-            End If
+            Next derivedTag
 
             n = n + 1
             ReDim Preserve actions(1 To n)

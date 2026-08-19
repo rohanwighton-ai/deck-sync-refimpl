@@ -162,6 +162,24 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("SyncOperations_DeriveStatusBadge", filterPattern) Then
+        r = Test_SyncOperations_DeriveStatusBadge()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "SyncOperations_DeriveStatusBadge", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("SyncOperations_BothDerivedFieldsReachableThroughPlanRoutineSync", filterPattern) Then
+        r = Test_SyncOperations_BothDerivedFieldsReachableThroughPlanRoutineSync()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "SyncOperations_BothDerivedFieldsReachableThroughPlanRoutineSync", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("SyncOperations_Case3NewRecord", filterPattern) Then
         r = Test_SyncOperations_Case3NewRecord()
     Else
@@ -2769,6 +2787,115 @@ Private Function Test_SyncOperations_Case3NewRecord() As String
     result = result & Assert(actions(1).Values("Title") = "Brand New", "Values carries the row's data")
 
     Test_SyncOperations_Case3NewRecord = result
+End Function
+
+' Every branch of Rohan's own priority table, transcribed onto the live
+' Field Spec sheet's STATUS_BADGE row and reproduced exactly in
+' SyncOperations.DeriveStatusBadge's own header. Each PROJECT_STATUS='In
+' Progress' case pairs with a DISTRACTING SCHEDULE_STATUS on the two rows
+' where PROJECT_STATUS alone must win outright (Not Started, Project
+' Closed) -- proving lifecycle stage actually overrides schedule health,
+' not just that it happens to agree with it.
+Private Function Test_SyncOperations_DeriveStatusBadge() As String
+    Dim result As String
+
+    result = result & Assert(SyncOperations.DeriveStatusBadge("Not Started", "Delayed") = "Not Started", _
+        "Not Started wins outright over a distracting schedule status, got '" & _
+        SyncOperations.DeriveStatusBadge("Not Started", "Delayed") & "'")
+    result = result & Assert(SyncOperations.DeriveStatusBadge("Project Closed", "At Risk") = "Project Closed", _
+        "Project Closed wins outright over a distracting schedule status, got '" & _
+        SyncOperations.DeriveStatusBadge("Project Closed", "At Risk") & "'")
+    result = result & Assert(SyncOperations.DeriveStatusBadge("In Progress", "Delayed") = "Delayed", _
+        "In Progress + Delayed schedule -> Delayed, got '" & _
+        SyncOperations.DeriveStatusBadge("In Progress", "Delayed") & "'")
+    result = result & Assert(SyncOperations.DeriveStatusBadge("In Progress", "At Risk") = "At Risk", _
+        "In Progress + At Risk schedule -> At Risk, got '" & _
+        SyncOperations.DeriveStatusBadge("In Progress", "At Risk") & "'")
+    result = result & Assert(SyncOperations.DeriveStatusBadge("In Progress", "On Track") = "In Progress", _
+        "In Progress + On Track schedule -> In Progress, got '" & _
+        SyncOperations.DeriveStatusBadge("In Progress", "On Track") & "'")
+    result = result & Assert(SyncOperations.DeriveStatusBadge("In Progress", "Complete") = "In Progress", _
+        "In Progress + Complete schedule -> In Progress (per Rohan's rule 5), got '" & _
+        SyncOperations.DeriveStatusBadge("In Progress", "Complete") & "'")
+    result = result & Assert(SyncOperations.DeriveStatusBadge("In Progress", "") = "In Progress", _
+        "In Progress + no schedule status -> In Progress, got '" & _
+        SyncOperations.DeriveStatusBadge("In Progress", "") & "'")
+    result = result & Assert(SyncOperations.DeriveStatusBadge("in progress", "delayed") = "Delayed", _
+        "case-insensitive on both inputs, got '" & SyncOperations.DeriveStatusBadge("in progress", "delayed") & "'")
+
+    ' PROJECT_STATUS is Kind=Controlled -- an unrecognised value means the
+    ' vocabulary and this derivation have drifted apart. Refuse, don't guess.
+    result = result & Assert(SyncOperations.DeriveStatusBadge("Bogus Status", "On Track") = "", _
+        "an unrecognised PROJECT_STATUS refuses rather than guesses, got '" & _
+        SyncOperations.DeriveStatusBadge("Bogus Status", "On Track") & "'")
+
+    Test_SyncOperations_DeriveStatusBadge = result
+End Function
+
+' THE REFACTOR THIS TEST EXISTS TO PROVE: TIMELINE_ELAPSED had NO unit test
+' at all before tonight (proven live on the real deck, never at this level)
+' -- so replacing its single hardcoded block with a shared loop over
+' DerivedFieldTags() carried real regression risk nothing here would have
+' caught. One slide, two derived-field shapes, one register row: proves
+' BOTH TIMELINE_ELAPSED and STATUS_BADGE are still found, computed, and
+' written correctly through the same shared loop -- not just that the new
+' field works, but that generalising the old one didn't break it.
+Private Function Test_SyncOperations_BothDerivedFieldsReachableThroughPlanRoutineSync() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "project-progress"
+    sld.Tags.Add "instance_key", "3_P001"
+
+    Dim elapsedShp As Object
+    Set elapsedShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 20)
+    elapsedShp.TextFrame.TextRange.Text = "0"
+    elapsedShp.Tags.Add "role", SyncOperations.TIMELINE_ELAPSED_TAG
+
+    Dim badgeShp As Object
+    Set badgeShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 100, 200, 20)
+    badgeShp.TextFrame.TextRange.Text = "placeholder"
+    badgeShp.Tags.Add "role", SyncOperations.STATUS_BADGE_TAG
+
+    Dim instances(1 To 1) As Object
+    Set instances(1) = sld
+    Dim order As New Collection
+    order.Add "3_P001"
+
+    Dim rows As Object
+    Set rows = CreateObject("Scripting.Dictionary")
+    Dim fields As Object
+    Set fields = CreateObject("Scripting.Dictionary")
+    fields("START_DATE") = Format(Date - 50, "dd mmm yyyy")
+    fields("END_DATE") = Format(Date + 50, "dd mmm yyyy")
+    fields("PROJECT_STATUS") = "In Progress"
+    fields("SCHEDULE_STATUS") = "At Risk"
+    Set rows("3_P001") = fields
+
+    Dim actions() As SyncAction
+    actions = SyncOperations.PlanRoutineSync(instances, order, rows)
+
+    result = result & Assert(UBound(actions) = 1, "one action produced, got " & (UBound(actions) - LBound(actions) + 1))
+    result = result & Assert(actions(1).Kind = "in_place_correction", _
+        "both derived shapes started wrong, so this must be a correction, got '" & actions(1).Kind & "'")
+
+    result = result & Assert(actions(1).ChangedFieldVerified.Exists(SyncOperations.TIMELINE_ELAPSED_TAG), _
+        "TIMELINE_ELAPSED reached through the shared derived-field loop")
+    result = result & Assert(CDbl(actions(1).ChangedFieldNew(SyncOperations.TIMELINE_ELAPSED_TAG)) > 0, _
+        "TIMELINE_ELAPSED computed a real fraction, got '" & actions(1).ChangedFieldNew(SyncOperations.TIMELINE_ELAPSED_TAG) & "'")
+    result = result & Assert(elapsedShp.TextFrame.TextRange.Text <> "0", _
+        "the elapsed shape's text actually changed, got '" & elapsedShp.TextFrame.TextRange.Text & "'")
+
+    result = result & Assert(actions(1).ChangedFieldVerified.Exists(SyncOperations.STATUS_BADGE_TAG), _
+        "STATUS_BADGE reached through the same shared derived-field loop")
+    result = result & Assert(actions(1).ChangedFieldNew(SyncOperations.STATUS_BADGE_TAG) = "At Risk", _
+        "STATUS_BADGE computed the right word for In Progress + At Risk, got '" & _
+        actions(1).ChangedFieldNew(SyncOperations.STATUS_BADGE_TAG) & "'")
+    result = result & Assert(badgeShp.TextFrame.TextRange.Text = "At Risk", _
+        "the badge shape's text was actually written, got '" & badgeShp.TextFrame.TextRange.Text & "'")
+
+    Test_SyncOperations_BothDerivedFieldsReachableThroughPlanRoutineSync = result
 End Function
 
 ' FIX-LIST R. The row dictionary below holds ONLY MS1_LABEL/MS1_DATE/MS1_DONE

@@ -237,6 +237,24 @@ Public Function WriteSpecSheet(ws As Object) As String
             "N/A -- this field is never drafted; SyncOperations.ElapsedFraction computes it directly from START_DATE and END_DATE at sync time."
         r = r + 1: added = added + 1
     End If
+    ' THE STATUS BADGE. Kind = Derived, same class as TIMELINE_ELAPSED above --
+    ' computed fresh every sync from PROJECT_STATUS/SCHEDULE_STATUS, never
+    ' drafted, never a register column of its own. Rohan wrote the real
+    ' derivation rule directly onto the live Field Spec sheet's row (a
+    ' priority table combining lifecycle stage and schedule health into one
+    ' word), addressed to "Claude Code" by name -- this SeedRow default won't
+    ' touch that row (SeedRow only fires when the FieldID is missing), it
+    ' only gives a FRESH workbook the same field with equivalent guidance.
+    ' Full logic: SyncOperations.DeriveStatusBadge.
+    If Not existing.Exists("STATUS_BADGE") Then
+        SeedRow ws, r, "STATUS_BADGE", "Derived", _
+            "The single status word shown in the header bar. Combines lifecycle stage (PROJECT_STATUS) with schedule health (SCHEDULE_STATUS) so the badge never shows two things at once.", _
+            "N/A -- computed, never drafted.", _
+            "N/A.", _
+            "N/A.", _
+            "N/A -- this field is never drafted; SyncOperations.DeriveStatusBadge computes it directly from PROJECT_STATUS and SCHEDULE_STATUS at sync time."
+        r = r + 1: added = added + 1
+    End If
     If Not existing.Exists("PROJECT_STATUS") Then
         SeedRow ws, r, "PROJECT_STATUS", "Controlled", _
             "The project's current state, from a fixed vocabulary.", _
