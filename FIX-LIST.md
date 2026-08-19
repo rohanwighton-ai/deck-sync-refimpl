@@ -2518,7 +2518,7 @@ unreachable by a person" note (`BuildBatchPlan` — see the new item below). Mad
 first: reverted the self-return-assignment exclusion in a scratch copy, confirmed
 `BuildBatchPlan` reverts to the wrong bucket, restored the fix.
 
-### BL. FOUND 2026-08-19 fixing item D — `BatchOnboardFlow.BuildBatchPlan` is built, tested,
+### BL. RESOLVED 2026-08-19, same session — `BatchOnboardFlow.BuildBatchPlan` is built, tested,
 ### and has NO caller anywhere, including its own module
 
 The exact "tested unit behind a locked door" shape this project keeps finding by hand
@@ -2529,9 +2529,17 @@ otherSlides())` genuinely has zero callers anywhere in production code (confirme
 not assumed) — it's called only from `tests/TestRunner.bas`. Its sibling,
 `BuildBatchPlanFromMarkedFields`, IS reachable (used within `BatchOnboardFlow.bas` itself),
 so this is not a case of the whole batch-onboarding mechanism being dead — just this one
-specific entry path into it. **Not fixed here** — needs Rohan's call on whether this is a
-capability that should get a real entry point, or dead code from an abandoned design
-direction.
+specific entry path into it.
+
+**Resolved, not by adding a button — `BuildBatchPlan`'s own header comment already
+explains it, read rather than assumed.** *"Kept for the tests that already exercise it
+directly; the live 'Bulk Onboard Type' ribbon entry point uses `BuildBatchPlanFromMarkedFields`
+instead"* — Discovery-based auto-enumeration produced an unreviewable 87-row grid on the
+real deck (2026-07-26), so the marked-fields flow replaced it deliberately. Not dead code
+from neglect; a design that was tried and explicitly rejected for a documented reason.
+Building a button for it would have resurrected a rejected UX. Added to
+`check_vba_static.py`'s `REACHABLE_OTHERWISE` list with the reason instead, so the checker
+stops flagging a deliberate decision as if it were an oversight.
 
 ### E. FIXED 2026-08-15 — the harvest prompt undercounted what it would write
 
