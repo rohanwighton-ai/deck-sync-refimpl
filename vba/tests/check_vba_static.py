@@ -467,6 +467,7 @@ def check_unreachable_capabilities(files: list[Path], root: Path) -> list[str]:
     # a literal, because that is the thing being verified.
     wired: set[str] = set()
     bodies: dict[str, str] = {}
+    test_files: set[str] = set()
     public_procs: list[tuple[str, str, int]] = []
 
     pub_re = re.compile(r"^Public\s+(?:Sub|Function)\s+(\w+)")
@@ -476,6 +477,8 @@ def check_unreachable_capabilities(files: list[Path], root: Path) -> list[str]:
         name = path.name
         raw = path.read_text(errors="replace")
         bodies[name] = "\n".join(code_only(l) for l in raw.splitlines())
+        if path.parent.name == "tests":
+            test_files.add(name)
         if name == "CommandBarUI.bas":
             for action in addbtn_re.findall(raw):
                 wired.add(action.rsplit(".", 1)[-1])
@@ -492,28 +495,93 @@ def check_unreachable_capabilities(files: list[Path], root: Path) -> list[str]:
             "check would pass by seeing nothing. Fix the pattern before trusting it."
         ]
 
+    # FIX-LIST D, 2026-08-19. A call from tests/TestRunner.bas used to count as
+    # evidence a capability is "reachable" -- but this check exists specifically
+    # to catch CAPABILITIES A PERSON CANNOT REACH (see the module header: both
+    # CreateMissingSlides and RollForwardPeriod were "built, tested, and had no
+    # toolbar button"). A direct unit-test call is exactly that failure, wearing
+    # the one disguise this check was blind to: unit tests reach a function by
+    # calling it directly, which is a real reference in the text, so the old
+    # `bodies.items()` scan counted it as proof a PERSON could reach it too. A
+    # checker whose evidence is drawn from the same place it is meant to catch
+    # tests behind -- the same shape as a verifier sharing state with the writer
+    # it is checking.
+    #
+    # ONLY THE "NO CALLER ANYWHERE" BRANCH BELOW USES THIS DISTINCTION. VBA has
+    # no module-internal-but-directly-testable visibility, so a great many
+    # legitimately-fine functions are Public for the sole reason that
+    # TestRunner.bas needs to call them directly -- excluding tests from the
+    # "used only inside its own module" branch too was tried first and produced
+    # 41 new notices, nearly all of them exactly that pattern, not a real
+    # over-exposure. A checker that reports maybes trains you to ignore it (this
+    # file's own docstring); that would have been self-inflicted.
+
     findings = []
     for mod, proc, lineno in public_procs:
         if proc in REACHABLE_OTHERWISE or proc in wired:
             continue
-        called_elsewhere = any(
-            other != mod and re.search(rf"\b{re.escape(proc)}\b", text)
+        # PRODUCTION ONLY. Reachable from some other real module -> genuinely
+        # fine, skip entirely, same as before. A test-only reference must NOT
+        # skip here, or the distinction below is never reached -- that was the
+        # actual bug in this fix's first attempt: it restored `bodies.items()`
+        # (tests included) at exactly this gate, so any function a test called
+        # directly still exited the loop before the new branch could ever see it.
+        called_elsewhere_production = any(
+            other != mod and other not in test_files and re.search(rf"\b{re.escape(proc)}\b", text)
             for other, text in bodies.items()
         )
-        if called_elsewhere:
+        if called_elsewhere_production:
             continue
 
         # Distinguished deliberately. "Unreachable" and "over-exposed" need
         # different fixes, and reporting the wrong one is how a checker stops
         # being read: a helper used ten lines below its own declaration is not a
-        # missing button, it is a missing Private.
+        # missing button, it is a missing Private. Checked against OWN module's
+        # text regardless of test status -- a function genuinely called by its
+        # own module's production code is over-exposed either way, not
+        # unreachable, whether or not a test ALSO happens to call it.
+        #
+        # A FUNCTION'S OWN RETURN-VALUE ASSIGNMENT IS NOT A USE. Found sanity-
+        # checking BuildBatchPlan (BatchOnboardFlow.bas): `FuncName = result` /
+        # `Set FuncName = result` matches `\bFuncName\b` too, so a Function with
+        # even one exit point already scores 2 (the declaration plus its own
+        # return line) before anything real calls it -- BuildBatchPlan has
+        # genuinely ZERO callers anywhere, even in its own module (confirmed:
+        # `grep -n "BuildBatchPlan("` outside the declaration and its two
+        # `BuildBatchPlan = ...` lines finds nothing), and was still landing in
+        # the milder "over-exposed, make it Private" bucket instead of the
+        # correct "no caller anywhere" one. Excluded here rather than left as a
+        # known gap, because this directly determines which of the two findings
+        # a real orphan gets -- the whole point of the distinction two comments
+        # up.
+        self_return_re = re.compile(rf"^(?:Set\s+)?{re.escape(proc)}\s*=", re.IGNORECASE)
         own = bodies[mod]
-        uses_in_own = len(re.findall(rf"\b{re.escape(proc)}\b", own))
+        uses_in_own = sum(
+            1 for line in own.splitlines()
+            if re.search(rf"\b{re.escape(proc)}\b", line) and not self_return_re.match(line.strip())
+        )
         if uses_in_own > 1:
             findings.append(
                 f"vba/{mod}:{lineno}: Public {proc} is used only inside its own module "
                 f"-- make it Private, or wire it to a button if it is meant to be a "
                 f"capability."
+            )
+            continue
+
+        # THE ACTUAL FIX-LIST D GAP. Nothing in ANY production module --
+        # including its own -- calls this by name, and no button fires it. If a
+        # test still does, that is "built, tested, and had no toolbar button" --
+        # the exact CreateMissingSlides/RollForwardPeriod shape this check
+        # exists to catch, not proof a person can reach the capability.
+        called_from_tests = any(
+            other in test_files and re.search(rf"\b{re.escape(proc)}\b", text)
+            for other, text in bodies.items()
+        )
+        if called_from_tests:
+            findings.append(
+                f"vba/{mod}:{lineno}: Public {proc} has no button and no caller in any "
+                f"production module -- only a test calls it directly. Built and tested, "
+                f"but unreachable by a person (feedback_tested_unit_behind_locked_door)."
             )
         else:
             findings.append(
