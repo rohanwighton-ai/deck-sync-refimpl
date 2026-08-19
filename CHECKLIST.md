@@ -15,6 +15,59 @@
       2026-08-16** — 33 modules imported clean, build stamped `2026-08-16
       11:02`, Rohan confirmed `addin104` loaded and `addin102` unticked.
 
+## Workbook modernisation — surgical pass, started 2026-08-19 18:37, budget until 02:00
+
+Rohan's framing: the Q3F26 harvest-and-rebuild plan (see chat, not yet written up as its
+own doc) is NOT ready to start. Before that, the live drafting-sheet workbook needs a
+**surgical, bit-by-bit** pass against what the CODE currently requires of it — we now know
+those requirements precisely, which we didn't when most of the workbook's structure was
+laid down. This is an audit-then-fix pass, not a rebuild. **Never write to the live file
+directly — work on a copy, real backup first, per this project's own standing rule.**
+
+### Phase 0 — before touching anything
+- [ ] Get the real workbook's path (or confirm it's open in Excel) and take a fresh,
+      md5-verified backup, same convention as every `PRE-*` backup this session already
+      used.
+- [ ] Snapshot the live workbook's actual sheet list, column headers, and row counts as
+      the "before" baseline — nothing below can be verified without this.
+
+### Phase 1 — concrete drift already found by reading the code tonight, needs checking against the live file
+- [ ] **`Drafting.bas`'s column layout has moved since FIX-LIST item P6 was written
+      (2026-08-13).** P6 states `COL_D_DRAFT=5(E)`, `COL_D_SUBMIT=6(F)`,
+      `COL_D_APPROVED=7(G)`. The code *right now* has `COL_D_DRAFT=6(F)`,
+      `COL_D_SUBMIT=7(G)`, `COL_D_APPROVED=8(H)` — `COL_D_SOURCES` was inserted as
+      column E since then. Check: does the live workbook's drafting sheets' actual
+      column layout match the CURRENT code, or the P6-era one? If a drafting sheet was
+      never rebuilt since the shift, its real columns could still disagree with what
+      every column-position constant now assumes. *Source: `vba/Drafting.bas:82-95`,
+      `FIX-LIST.md` item P6.*
+- [ ] **`COL_S_` is defined in two different modules for two different sheets** —
+      `Sources.bas` (`COL_S_ID`, `COL_S_LABEL`, …, for the *Sources* sheet) and
+      `FieldSpec.bas` (`COL_S_FIELDID`, `COL_S_KIND`, …, for the *Field Spec* sheet).
+      Scoped correctly by module today (no cross-reference found), but it's the exact
+      "one word doing two jobs" shape that's cost this project real defects before.
+      Worth a rename (`COL_SRC_*` / `COL_SPEC_*`) while doing a surgical pass anyway,
+      even though nothing is currently broken. *Source: `vba/Sources.bas:31-37`,
+      `vba/FieldSpec.bas:30-114`.*
+- [ ] **Confirm no legacy long-register/`Status`/`ALL`-period structure remains in the
+      live workbook.** Grepped the shipped VBA (`DeckRegistry.bas`, `ExcelOutput.bas`) —
+      nothing references those constructs anymore, so the code side is clean. The open
+      question is whether the live FILE still carries dead sheets/columns from before
+      the wide-sheet, roll-forward object model (see `project_deck_sync_object_model`
+      memory) that nothing reads anymore and could be archived out.
+- [ ] `FIX-LIST` P4 — the "17 fields need columns" prompt is all-or-nothing, but
+      `HIGHLIGHTS_BODY` needs slot columns like the milestones, not a single column.
+      Check whether the live workbook already has a wrongly-added single
+      `HIGHLIGHTS_BODY` column from a past Yes on this bundled prompt.
+- [ ] `FIX-LIST` P5 — re-running Template Audit replaces the sheet, decisions included.
+      Check the live workbook's Template Audit sheet for any sign this has already
+      cost a round of lost decisions.
+
+### Explicitly OUT of scope tonight
+- [ ] Sheet-name migration to `01_FIELD_SPEC`-style numbered names. Already ruled on in
+      `NEXT-SESSION.md`: "a migration, not a tidy-up... do it as its own session, suite
+      green before and after — not alongside anything else." Don't bundle it in here.
+
 ## The actual finish line
 
 - [ ] **Item 10 of `TRACKER.md`'s own 10-item list — "one real quarter produced,
