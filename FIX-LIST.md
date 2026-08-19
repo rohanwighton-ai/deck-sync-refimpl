@@ -3055,3 +3055,67 @@ Backups taken before each real write: `OneDrive\Claude\backups\register-
 wide.PRE-DELIVERABLE-PHOTO-FIELDS-20260819-154008.xlsx`, `...3-Project-
 Progress.PRE-DELIVERABLE-TAGGING-20260819-154228.pptx`, `...3-Project-
 Progress.PRE-PICTURE-INJECTION-20260819-155430.pptx`.
+
+## Added and FIXED 2026-08-19 late evening — BI, `Fill.UserPicture` silently
+## no-ops on `msoGraphic` (SVG) shapes -- a real defect in `InjectPictureField`
+## itself, found only by actually looking at the rendered slide
+
+**BI. RENDERED, DID NOT JUST TRUST THE TAG.** Rohan: "open the deck and take
+a look." Exported `3_P001` to PNG and looked at it -- `DELIVERABLE1_PHOTO`'s
+card rendered blank/white next to three correctly-rendered siblings, despite
+BH's own byte-level checks (role tag, `picsrc` stamp, geometry) all passing.
+First theory, WRONG: chased it as a colour bug in the placeholder SVG file
+(white-on-white via a stray Office theme CSS class) -- fixed the file,
+re-fed it, still blank. **Second theory, confirmed live:** fed a
+deliberately distinct, unmistakable "MARKER" image (solid red, huge white
+text) into `DELIVERABLE2_PHOTO` -- a card that WAS rendering correctly -- via
+`Fill.UserPicture`. It reported success. The rendered card did not change
+at all. `Fill.UserPicture` does not touch an `msoGraphic` (type=28,
+SVG-backed) shape's actual content; it silently does nothing while
+reporting success and letting the `picsrc` tag update regardless.
+
+**This is a real defect in the shipped `InjectPrimitive.InjectPictureField`
+function, not just tonight's scratch scripts.** Its "uncropped" branch calls
+`Fill.UserPicture` unconditionally with no distinction between `msoPicture`
+(type=13, proven to work -- see the function's own probed comment, which
+correctly scoped its claim to "type 13" and never claimed type 28) and
+`msoGraphic`. The existing sibling test
+(`Test_InjectPicture_SvgSourceFillsAndStamps`) never caught this because it
+only asserts the role tag and `picsrc` stamp -- both written unconditionally
+right after the `Fill.UserPicture` call regardless of whether the call
+actually did anything. Exactly this project's own named failure class:
+"reports success without confirming the effect."
+
+**New regression test written BEFORE the fix, confirmed to fail against the
+unfixed code first.** `Test_InjectPicture_SvgGraphicIsRebuiltNotFedInPlace`
+-- since a shape's rendered picture content can't be inspected from VBA, it
+checks the one thing that genuinely differs between the two code paths: a
+rebuilt shape (delete + fresh `AddPicture`) gets a new `Shape.Id`; an
+in-place `Fill.UserPicture` feed keeps the same one. Ran it against the
+unfixed function first: **FAIL, "same shape Id (3) means Fill.UserPicture
+ran and silently did nothing"** -- proof the test is actually sensitive to
+the bug, not just a check that happens to pass either way.
+
+**Fix: `msoGraphic` shapes now always take the rebuild branch, regardless of
+crop.** One added condition (`isGraphic = (shp.Type = msoGraphic)`,
+OR'd into the uncropped-branch guard) -- the rebuild branch already existed
+and was already proven correct (it's the same path `PROJECT_PHOTO`'s crop
+handling uses). Full suite after the fix: **262 passed, 0 failed, 0
+skipped** (261 prior + this one new test, now passing).
+
+**Real deck re-fixed for real, not just the code.** `DELIVERABLE1_PHOTO`
+and `DELIVERABLE2_PHOTO` had never actually been written on either the
+template or `3_P001` all evening (BH's claimed success was the tag/stamp
+only) -- re-ran the injection on both real slides with the fixed logic,
+re-exported and looked at `3_P001` again: all four deliverable cards render
+correctly now, `PROJECT_PHOTO` unaffected (it was already on the rebuild
+path via its own crop). `addin151` built (the actual `.ppam` "Save As"
+click is a confirmed-permanent manual step, per this file's `build_ppam.ps1`
+header -- Rohan did it), registered `AutoLoad`, `addin150` disabled.
+
+**One thing Rohan corrected me on directly:** `PROJECT_PHOTO`'s crop/fill
+behaviour is intentional and correct as-is; the deliverable cards' aspect
+ratio matching the source image is a non-concern by design (all four
+placeholder images deliberately share one base aspect ratio) -- confirmed
+before spending any effort building aspect-preserving logic that was never
+needed.

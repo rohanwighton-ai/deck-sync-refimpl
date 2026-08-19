@@ -12,12 +12,52 @@
 > number this doc names below; the file with the highest number isn't
 > necessarily the one actually registered live.
 
+> ## 19 AUG, NIGHT — a real defect in `InjectPictureField` itself found by
+> actually looking at the rendered slide, fail-first tested, fixed, and
+> shipped. `addin151` is now the registered live build. `FIX-LIST.md` item
+> BI. **STATUS: CURRENT, supersedes every block below.**
+>
+> **Rohan: "open the deck and take a look."** Exported `3_P001` to PNG —
+> `DELIVERABLE1_PHOTO`'s card was blank, next to three siblings rendering
+> correctly, despite BH's byte-level checks (tag, `picsrc`, geometry) all
+> having passed. Chased it as a colour bug in the placeholder SVG first —
+> wrong, fixed the file, still blank. Confirmed the real cause live: fed a
+> deliberately unmistakable "MARKER" image into a CORRECTLY-rendering card
+> via `Fill.UserPicture` — reported success, the card did not change at
+> all. **`Fill.UserPicture` silently does nothing on `msoGraphic` (SVG,
+> type=28) shapes** — a real defect in the shipped `InjectPrimitive.
+> InjectPictureField`, not just tonight's scratch scripts; its uncropped
+> branch called `Fill.UserPicture` with no distinction from `msoPicture`,
+> and the existing sibling test never caught it because it only checks the
+> tag/stamp, both written unconditionally regardless of whether the fill
+> did anything.
+>
+> **New regression test, proven to fail against the unfixed code first**
+> (`Test_InjectPicture_SvgGraphicIsRebuiltNotFedInPlace` — a rebuilt shape
+> gets a new `Shape.Id`, an in-place feed doesn't, since content itself
+> can't be inspected from VBA). Fix: `msoGraphic` shapes now always take
+> the already-proven rebuild branch, regardless of crop. Full suite after:
+> **262 passed, 0 failed, 0 skipped**.
+>
+> **Real deck actually fixed, not just the code** — `DELIVERABLE1_PHOTO`/
+> `DELIVERABLE2_PHOTO` had never really been written all evening (BH's
+> claimed success was tag/stamp only); re-injected on both the template
+> and `3_P001` with the fix, re-exported and looked again: all four
+> deliverable cards render correctly now. `addin151` built (the `.ppam`
+> Save As click is a confirmed-permanent manual step — Rohan did it),
+> registered `AutoLoad`, `addin150` disabled. Full detail: `FIX-LIST.md`
+> item BI.
+>
+> **One correction from Rohan, folded in before any wasted effort:**
+> `PROJECT_PHOTO`'s crop/fill is intentional; deliverable-card aspect ratio
+> isn't a concern since all four placeholders share one aspect by design.
+
 > ## 19 AUG, LATE EVENING — `DELIVERABLE1-4_PHOTO`'s missing register
 > infrastructure built for real, and `PROJECT_PHOTO`'s template camouflage
 > gap closed, with actual placeholder images proven live on BOTH the
 > template AND the real `3_P001` slide. `FIX-LIST.md` item BH. No new
 > add-in build — deck/register data only; `addin150` still current.
-> **STATUS: CURRENT, supersedes every block below.**
+> **STATUS: SUPERSEDED by the block above.**
 >
 > **Rohan's choice from three ranked options: port the already-built
 > placeholder mechanism to the real register end to end, not leave it

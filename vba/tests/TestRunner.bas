@@ -1863,6 +1863,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "InjectPicture_SvgSourceFillsAndStamps", r
+    If TestMatches("InjectPicture_SvgGraphicIsRebuiltNotFedInPlace", filterPattern) Then
+        r = Test_InjectPicture_SvgGraphicIsRebuiltNotFedInPlace()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectPicture_SvgGraphicIsRebuiltNotFedInPlace", r
     If TestMatches("InjectPrimitive_FastPathActuallyFires", filterPattern) Then
         r = Test_InjectPrimitive_FastPathActuallyFires()
     Else
@@ -14157,6 +14163,61 @@ Private Function Test_InjectPicture_SvgSourceFillsAndStamps() As String
 
     sld.Delete
     Test_InjectPicture_SvgSourceFillsAndStamps = result
+End Function
+
+' Found live 2026-08-19: Fill.UserPicture reports success on an msoGraphic
+' (type=28, SVG-backed) shape but silently changes NOTHING -- confirmed by
+' feeding a deliberately distinct marker image into an already-filled SVG
+' shape and finding the original content still rendering afterward. The
+' sibling test above (SvgSourceFillsAndStamps) never caught this because it
+' only checks the role tag and the picsrc stamp, both of which get written
+' unconditionally right after the Fill.UserPicture call regardless of
+' whether the call did anything -- "reports success without confirming the
+' effect", the exact class this project has been burned by before.
+'
+' A shape's picture content cannot be inspected from VBA directly, so this
+' checks the one thing that DOES differ between the two code paths: a
+' rebuilt shape (delete + AddPicture) gets a brand-new Shape.Id; an
+' in-place Fill.UserPicture feed keeps the same Id. Same shape Id after the
+' call means the fill silently no-opped.
+Private Function Test_InjectPicture_SvgGraphicIsRebuiltNotFedInPlace() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    Dim svgPath As String
+    svgPath = MakeTestSvg(Environ("TEMP") & "\dssvg3.svg")
+
+    ' Seed shape already carries a picture (a plain AddPicture, uncropped)
+    ' -- matching the real scenario: an untagged msoGraphic shape that
+    ' already has SOME image on it before this field is ever injected.
+    Dim frame As Object
+    Set frame = sld.Shapes.AddPicture(svgPath, msoFalse, msoTrue, 100, 80, 200, 200)
+    frame.Tags.Add "role", "SVG_PHOTO2"
+    result = result & Assert(frame.Type = 28, _
+        "sanity: the seed shape is genuinely msoGraphic, got " & frame.Type)
+
+    Dim idBefore As Long
+    idBefore = frame.Id
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectPictureField(sld, "SVG_PHOTO2", "S31", svgPath)
+
+    result = result & Assert(r.Found, "the SVG-backed tagged shape is found by role")
+    result = result & Assert(r.Written, "the write is reported as succeeding [" & r.ErrorMessage & "]")
+
+    Dim placed As Object
+    Set placed = ShapeTaggedRole(sld, "SVG_PHOTO2")
+    result = result & Assert(Not placed Is Nothing, "the role tag survives the write")
+    If Not placed Is Nothing Then
+        result = result & Assert(placed.Id <> idBefore, _
+            "an msoGraphic shape must be REBUILT to actually change its image -- " & _
+            "same shape Id (" & placed.Id & ") means Fill.UserPicture ran and silently did nothing")
+    End If
+
+    sld.Delete
+    Test_InjectPicture_SvgGraphicIsRebuiltNotFedInPlace = result
 End Function
 
 ' Measured live 2026-08-17: FindShapeByRoleTag's full walk cost ~4-5s per

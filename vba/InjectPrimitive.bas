@@ -1099,7 +1099,20 @@ Public Function InjectPictureField(sld As Object, identityTag As String, _
     Dim isCropped As Boolean
     isCropped = (cL > 0.01) Or (cR > 0.01) Or (cT > 0.01) Or (cB > 0.01)
 
-    If Not isCropped Then
+    ' msoGraphic (SVG-backed) shapes MUST also take the rebuild branch below,
+    ' regardless of crop. Found live 2026-08-19: Fill.UserPicture reports
+    ' success on a type=28 shape but silently changes nothing -- confirmed by
+    ' feeding a deliberately distinct marker image into an already-filled SVG
+    ' shape and finding the ORIGINAL content still on screen afterward. The
+    ' comment above this branch ("probed against real PowerPoint... it works
+    ' on a picture shape (type 13)") was accurate and specific -- it never
+    ' claimed type 28, and nothing here had actually verified that case until
+    ' tonight. See Test_InjectPicture_SvgGraphicIsRebuiltNotFedInPlace, which
+    ' failed against this exact branch before this line existed.
+    Dim isGraphic As Boolean
+    isGraphic = (shp.Type = msoGraphic)
+
+    If Not isCropped And Not isGraphic Then
         ' FED IN PLACE. Nothing about the shape changes but its image.
         On Error Resume Next
         Err.Clear
