@@ -12,10 +12,91 @@
 > number this doc names below; the file with the highest number isn't
 > necessarily the one actually registered live.
 
+> ## 19 AUG, MIDDAY (~09:00-13:45) — a real field-coverage notification
+> built, tested, and proven live end to end across FIVE add-in builds
+> (`addin146`-`addin150`) before it actually worked right. `addin150` is
+> now the registered live build. **STATUS: CURRENT, supersedes every
+> block below.**
+>
+> **Rohan asked a plain question that started this: "if the excel
+> register is not complete as per slide type we actually get a
+> notification for which field and which slides... that should be clear
+> on the field spec, shouldn't it?"** Investigated first, not assumed:
+> the 2026-08-16 "Field Coverage Matrix" (`CHECKLIST.md`) was never real
+> code — touched zero lines outside that doc, built by hand into a
+> throwaway test workbook. `FIX-LIST.md` items BD and BE have the full
+> story; summarised here.
+>
+> **BD (first pass):** `FieldWiring.RolesByInstance`/`RoleTagsOnSlide`
+> were doing a live, uncached shape-tag walk on every "Set up my
+> quarter" press — now route through `ShapeAddressBook`'s shared
+> per-slide cache first, same one `InjectPrimitive.FindShapeByRoleTag`
+> already uses. A consolidated `MsgBox` was added, naming fields and
+> (for partial coverage) the specific missing slide keys.
+>
+> **BE (four more real rounds, each found by pressing the actual
+> button, not by re-reading the code):**
+> 1. Windows `MsgBox`'s real ~1024-char limit truncated the message
+>    mid-word — the same failure class `FieldSpec.
+>    ApplyControlledValidation` was already fixed for, reproduced here.
+> 2. The modal claimed "full detail is in the Run Log" — false;
+>    `WorkbookBridge.WriteRunLog` clears the whole sheet on every call,
+>    and several more calls happen later in the same chain.
+> 3. The standalone modal pushed "Set up my quarter" from
+>    `LOBBY-DESIGN.md`'s documented ~2-modal target back up to 3 — and
+>    investigating why that mattered surfaced a real, previously
+>    undocumented structural risk: `AppEvents.cls`'s Excel-watching
+>    handler actually runs inside PowerPoint's own VBA project, so any
+>    modal open in PowerPoint can block it from servicing an Excel
+>    Approve-tick edit ("source application may be busy" — Rohan hit
+>    this live, mid-session, though that specific instance was caused by
+>    external COM automation, not this mechanism).
+> 4. Folding all four chain sections into one dialog still weren't
+>    enough on its own — the other three sections already used most of
+>    the shared 900-char budget, so capping the coverage section alone
+>    (even down to 350 chars) didn't stop the *outer* cap from chopping
+>    it anyway. Asked Rohan directly: richer detail in its own dialog, or
+>    a short summary kept folded? **"Folded, I think."** Coverage detail
+>    is now counts-only (`FieldWiring.CoverageSummaryLine`) — no field
+>    names, no slide keys. `BlockingText` (the full detail) still exists
+>    for whatever surfaces it next, since the Run Log can't.
+>
+> **Proven live after EVERY round**, not just the last — five real
+> add-in builds, each registered `AutoLoad` in place of the last, each
+> re-tested against the real deck before moving on. Full suite run for
+> real after every code change (not just compiled): final state **258
+> passed / 0 failed / 0 skipped**. `addin150` is the current live build,
+> `addin145`-`149` all disabled in sequence.
+>
+> **A genuinely useful side-question, answered plainly:** Rohan asked
+> whether the cross-app busy-block "was going to be a problem," and
+> separately whether timers/retries were worth building to work around
+> it. Answered directly rather than building speculative machinery: no,
+> a retry mechanism would be busy work — the Office-native "busy" dialog
+> already IS the retry mechanism, and nothing in this add-in's own code
+> runs before that stall happens (the COM call blocks before any VBA
+> gets control), so there is nothing to usefully intercept. The real,
+> already-applied mitigation is fewer/shorter modals, not new machinery.
+>
+> **STILL NOT DONE, CARRIED FORWARD FROM THE MORNING BLOCK BELOW:**
+> applying the deliverable-field tagging/register/Sources/Field Spec work
+> to the REAL deck/register (only proven on the copy). Docs (`FIX-LIST.
+> md`, this file) are now current through BE; `COLUMNS.md`/`CHECKLIST.md`
+> were updated in the morning block and remain current.
+>
+> **THE ACTUAL PROJECT PRIORITY, UNCHANGED BY ANY OF TODAY'S WORK,
+> REPEATED HERE SO IT DOESN'T GET BURIED UNDER A "SUPERSEDED" HEADING:**
+> a `deck-sync-pm` audit this same session was explicit that field
+> coverage and picture fields are both downstream of the real blocker —
+> **Scenario 1's unaided close.** Rohan reviews the Q1F27 roll-forward,
+> ticks APPROVE, publishes, with no Claude in the loop. Open since 15
+> Aug. Nothing today moved it, and it is not something a Claude session
+> can move — it can only get out of the way.
+
 > ## 19 AUG, EARLY MORNING (~06:00-08:30) — deliverable-picture-field
 > mechanism built and PROVEN LIVE (on a copy, not yet applied to the real
 > deck), three real defects found and fixed, `addin145` now the registered
-> live build. **STATUS: CURRENT, supersedes every block below.**
+> live build. **STATUS: SUPERSEDED by the block above.**
 >
 > **DELIVERABLE1_PHOTO..DELIVERABLE4_PHOTO, PROVEN LIVE END TO END, NOT YET
 > APPLIED TO THE REAL DECK/REGISTER.** Same mechanism as `PROJECT_PHOTO`

@@ -2784,3 +2784,70 @@ static checks clean, compile clean, **255 passed / 0 failed / 0 skipped**.
 Three new tests, cache-is-used and case-preservation both fail-first
 proven the same way `FastPathActuallyFires` was. **Not yet deployed to a
 live add-in build** -- `addin145` predates this commit.
+
+## Added 2026-08-19 (still morning) — BE, the BD modal turned out to need
+## three more real rounds before it actually worked live
+
+**BE. BD's notification looked right in code and still broke three
+separate ways once actually pressed against the real, messy 45-slide
+deck** -- each one caught by watching it live, not by re-reading the
+code, and each one a genuine defect, not a restyling:
+
+1. **Silent mid-word truncation.** Windows `MsgBox`'s real, undocumented
+~1024-character limit -- the same failure class `FieldSpec.
+ApplyControlledValidation` was already fixed for -- reproduced here
+because the new modal never got the same treatment. Fixed two ways:
+`FieldWiringResult.MissingDetail` caps each field's named slide list to 6
+keys (count stays exact, "+N more" covers the rest); `RibbonUI.CapReport`
+(this project's established "one place that knows about the limit," not
+a second answer to the same question) got the call, with its notice
+overridden.
+
+2. **A false claim.** The modal said "full detail is also in the Run
+Log" -- untrue, because `WorkbookBridge.WriteRunLog` clears the whole
+sheet on every call ("REPLACED each run, not appended"), and several
+more calls happen later in the same chain. Confirmed live: the entry was
+gone from the saved file by the time the run finished. Dropped the claim
+rather than leave a promise the code can't keep.
+
+3. **A modal-count regression, and a real (if narrow) structural risk
+found investigating it.** BD's notification fired as its own standalone
+`MsgBox`, called before `DraftingUI.BeginCollecting` -- pushing "Set up
+my quarter" from `LOBBY-DESIGN.md` section 6's documented ~2-modal
+target back up to 3. Investigating why that mattered found something not
+previously documented: `AppEvents.cls`'s `mApp_SheetChange` handler
+watches Excel's events via `WithEvents`, but the handler code runs
+*inside this PowerPoint-hosted VBA project* -- so any modal left open in
+PowerPoint blocks its single VBA thread from servicing that call, and
+ticking an Approve-column cell in Excel while one is open would hit
+"source application may be busy," no external automation required.
+Fixed by exposing `DraftingUI.AppendCollected` (mirrors `Say()`'s own
+collecting-branch behaviour, which is `Private` to `DraftingUI.bas`) and
+moving the notification inside the same collecting window
+`StartQuarter`/`RollForwardUI`/`RefreshDraftingSheets` already share --
+back to 2 modals.
+
+**Then a fourth found live, folding those four sections into one
+dialog**: even individually capped, the coverage section still got
+chopped by the *outer* `CapReport` call wrapping all four sections
+together, because the other three already used most of the shared
+900-char budget on their own -- capping one section against the *full*
+shared ceiling does nothing to stop the *combined* text from exceeding
+that same ceiling. `CapReport` gained an optional `maxLen` (0 = the
+shared `REPORT_CAP`, unchanged for every other caller) -- and even a
+350-char section-level cap still weren't enough headroom. Asked Rohan
+directly: richer detail in its own dialog (back to 3) or a short summary
+kept folded (stays at 2). **"Folded, I think."** New `FieldWiring.
+CoverageSummaryLine` gives counts only ("11 not on any slide, 16 missing
+from the template, 7 partially covered") -- `BlockingText`, the full
+detail, is untouched and available if a future persistent view (a real
+Field Coverage sheet, the thing `CHECKLIST.md`'s one-off never became)
+ever needs it.
+
+**Proven live end to end, five add-in builds (`addin146`-`addin150`),
+not just the last one** -- each round rebuilt, redeployed
+(`AutoLoad` moved forward each time, prior build disabled), and
+re-tested against the real deck before moving to the next fix, so each
+claimed fix was actually verified rather than assumed. Full suite run
+for real after every code change; final state **258 passed / 0 failed /
+0 skipped**. `addin150` is the current live build.
