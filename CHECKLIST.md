@@ -169,10 +169,13 @@ fact that it existed and when.
       question is whether the live FILE still carries dead sheets/columns from before
       the wide-sheet, roll-forward object model (see `project_deck_sync_object_model`
       memory) that nothing reads anymore and could be archived out.
-- [ ] `FIX-LIST` P4 — the "17 fields need columns" prompt is all-or-nothing, but
-      `HIGHLIGHTS_BODY` needs slot columns like the milestones, not a single column.
-      Check whether the live workbook already has a wrongly-added single
-      `HIGHLIGHTS_BODY` column from a past Yes on this bundled prompt.
+- [x] **`FIX-LIST` P4 — FIXED.** A fourth Renders-as value (`Slots`) now excludes a
+      multi-shape field from the bundled column prompt, same rule as Derived fields —
+      full detail in `FIX-LIST.md` item P4. `HIGHLIGHTS_BODY` itself set to `Slots` on
+      the real register (its single existing column is pre-existing, not from this
+      prompt — Field Spec confirms it was never referenced by injection code, so
+      nothing is fed wrong data by it sitting there dormant). Full suite 270/270.
+      **DONE 2026-08-19.**
 - [x] **`FIX-LIST` P5 — FIXED.** `TemplateAudit.WriteAuditGrid` now carries decisions
       forward by shape identity instead of refusing to rebuild over them — full detail
       in `FIX-LIST.md` item P5. Full suite 269/269. **DONE 2026-08-19.**

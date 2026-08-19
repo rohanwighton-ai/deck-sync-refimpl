@@ -2325,17 +2325,24 @@ caught, so the fix discriminates rather than blanket-suppressing). Made to fail 
 the fix stashed, the test doesn't even COMPILE (references a result field that doesn't
 exist yet) — as strong a "make it fail" proof as this gets. `check_vba_static.py` clean.
 
-### P4. The 17-column prompt is ALL-OR-NOTHING across a mixed set
+### P4. FIXED 2026-08-19 — The 17-column prompt is ALL-OR-NOTHING across a mixed set
 
 "17 field(s) on the Field Spec have no column in the register. Add a column for each?"
-Sixteen are uncontroversial (`INDUSTRY_CASH`, `START_DATE`, `PROJECT_LEAD` …). One is
+Sixteen were uncontroversial (`INDUSTRY_CASH`, `START_DATE`, `PROJECT_LEAD` …). One was
 `HIGHLIGHTS_BODY`, which **must not** get a single column — it is three shapes per slide
 and needs slot columns like the milestones.
 
-So a real architectural decision is made, silently, by a Yes on a bundled prompt. Declined
+So a real architectural decision was made, silently, by a Yes on a bundled prompt. Declined
 twice on 13 Aug for exactly this reason.
 
-**Fix:** offer the set per field, or exclude fields whose Renders-as implies slots.
+**Fixed exactly as the second option proposed: a fourth Renders-as value, `Slots`.**
+`FieldSpec.RENDER_SLOTS`, recognised by `RendersAsFor` and offered in the real Excel
+dropdown (`ApplyRendersValidation`) — confirmed `RendersAsFor` has zero callers outside
+`FieldSpec.bas` itself before adding a case, so the change carries no blast radius into
+injection code. `ExcelOutput.MissingRegisterColumns` now excludes any field marked `Slots`
+from the bundled list, the same rule already applied to Derived fields. **`HIGHLIGHTS_BODY`
+itself set to `Slots` on the live Field Spec sheet**, confirmed saved. New tests prove the
+exclusion, made to fail first. Full suite 270/270.
 
 ### P5. FIXED 2026-08-19 — Re-running the Template Audit REPLACES the sheet, decisions included
 
