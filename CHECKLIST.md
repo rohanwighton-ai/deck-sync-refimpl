@@ -65,15 +65,68 @@ directly — work on a copy, real backup first, per this project's own standing 
       per-quarter — the prune half (critical path #3)," elsewhere in this file, for
       whether a retention policy already exists or still needs one. *Source: live
       register snapshot, 2026-08-19.*
-- [ ] Two sheets with hex-suffixed names — `Review project-status-2D3D` (40 rows) and
-      `Review project-progress-A32C` (3 rows) — worth checking whether these are the
-      same accumulating-archive pattern as the `SAVED` sheets or something else
-      (a live review queue's working state, in which case leave them alone).
-      *Source: live register snapshot, 2026-08-19.*
-- [ ] The `Register` sheet itself (130 rows x 54 columns, the wide canonical surface
-      per `project_deck_sync_object_model` memory) hasn't had its own column headers
-      cross-checked against `DeckRegistry.bas`'s expectations yet — same class of
-      check as the `Drafting.bas` one above, just not done yet.
+- [x] **The two hex-suffixed `Review ...` sheets are NOT clutter — checked against
+      `ReviewQueue.bas` and left alone.** `ReviewSheetNameFor` (`ReviewQueue.bas:220`)
+      derives the hex tag from a hash of the SLIDE TYPE NAME, not a per-run
+      timestamp — one permanent sheet per type, cleared and rewritten on every
+      "Review changes" run, never accumulating. So there will only ever be as many
+      of these as there are registered slide types. **One real thing worth Rohan's
+      attention, not deleted**: `Review project-status-2D3D` is still marked `OPEN`
+      from **2026-08-10** (9+ days), with a genuine un-actioned pending change
+      (`1_P006`'s `ABOUT_BODY`). Either it's still worth reviewing, or it's stale
+      relative to newer edits and safe to let a fresh "Review changes" run overwrite
+      it — Rohan's call, not touched either way. `Review project-progress-A32C` is
+      `CONSUMED` (2026-08-18) — already actioned, nothing to do.
+- [x] **The `Register` sheet's 54 columns — cross-checked against every FieldID on
+      the `Field Spec` sheet. Clean, with one real, good finding.** 52 of the Field
+      Spec's 52 listed FieldIDs match a Register column 1:1 — no orphans, no
+      unexplained gaps. The two apparent "missing" columns are both deliberate:
+      `TIMELINE_ELAPSED` is `Kind=Derived` (`FieldSpec.bas:231`, "fresh every sync
+      from START_DATE/END_DATE, never drafted, never a register column" — by
+      design). **`STATUS_BADGE` is also `Kind=Derived` but genuinely UNBUILT** — its
+      Field Spec row (row 49) carries a fully-written derivation rule (combines
+      `PROJECT_STATUS` + `SCHEDULE_STATUS` into one badge word, 5-branch priority
+      table, one flagged `UNVERIFIED` edge case about `SCHEDULE_STATUS`'s "Complete"
+      branch) with a note addressed directly to future work: *"the Field Spec has no
+      dedicated Derivation column yet — that is on Claude Code's pile, deliberately
+      NOT added here to avoid colliding with what they build."* Not yet referenced
+      anywhere in `FieldSpec.bas`/`InjectPrimitive.bas`/`SyncOperations.bas` — real,
+      specified, unbuilt work, separate from tonight's BJ fix (which only touched
+      the badge's font size, not its logic). *Source: live Field Spec row 49,
+      2026-08-19.*
+
+### Cleanup done — 26 `SAVED` archive sheets removed, live register only
+Rohan: "get rid of old stuff like those tabs, keeping what you want as systemic
+timestamps in repo memory." Full content of every one of these sheets already lives
+untouched in the Phase-0 backup — nothing here needed to be transcribed, only the
+fact that it existed and when.
+
+**Manifest, before deletion** (14 from 2026-08-14 ~19:10-19:11, in the pre-migration
+13-column layout; 12 from 2026-08-17 ~18:55-19:29, in the current 14-column layout):
+
+| Field | Timestamps archived |
+|---|---|
+| ABOUT_BODY | 0814-1910, 0817-1855 |
+| KEY_EVENTS_BODY | 0814-1911, 0817-1857 |
+| STRATEGIC_ALIGNMENT_BODY | 0814-1911, 0817-1858 |
+| PROBLEM_BODY | 0814-1911, 0817-1900 |
+| PROGRESS_BODY | 0814-1911, 0817-1904 |
+| HIGHLIGHTS_BODY | 0814-1911, 0817-1929 |
+| STRATEGIC_LINKAGES | 0814-1911, 0817-1929 |
+| DELIVERABLES_BODY | 0814-1911, 0817-1929 |
+| MS2_LABEL | 0814-1911, 0817-1929 |
+| MS3_LABEL | 0814-1911, 0817-1929 |
+| MS4_LABEL | 0814-1911, 0817-1929 |
+| MS5_LABEL | 0814-1911, 0817-1929 |
+| MS6_LABEL | 0814-1911, 0817-1929 |
+
+- [x] Tested on a throwaway copy first — 54 sheets to 28, reopened clean, `Register`
+      untouched at 130x54, every live/working sheet intact. **DONE 2026-08-19.**
+- [x] Applied to the real working file (`register-wide.xlsx`), full backup already
+      taken in Phase 0 immediately before. **DONE 2026-08-19** — see commit for the
+      verified before/after sheet count. Full original content recoverable from
+      `OneDrive\Claude\backups\PRE-MODERNISATION-AUDIT-20260819-1843\
+      register-wide.xlsx` indefinitely.
 - [ ] **`COL_S_` is defined in two different modules for two different sheets** —
       `Sources.bas` (`COL_S_ID`, `COL_S_LABEL`, …, for the *Sources* sheet) and
       `FieldSpec.bas` (`COL_S_FIELDID`, `COL_S_KIND`, …, for the *Field Spec* sheet).
