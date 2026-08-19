@@ -118,7 +118,10 @@ def main():
         (r'ai draft|copilot writes', 'COL_D_DRAFT'),
         (r'tick|approv', 'COL_D_APPROVED'),
         (r'submit|what gets sent|this publishes', 'COL_D_SUBMIT'),
-        (r'original|what the slide says', 'COL_D_CURRENT'),
+        # 'original'/'what the slide says' removed 2026-08-20 along with
+        # COL_D_CURRENT itself -- the drafting sheet no longer has an
+        # ORIGINAL column (see Drafting.bas's DRAFT_LAYOUT_VERSION header).
+        (r'reported last time|what was reported', 'COL_D_PREV'),
     ]
     col_claim = re.compile(r'column\s+([A-L])\b', re.I)
 

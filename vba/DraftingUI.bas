@@ -1163,7 +1163,7 @@ Public Sub RefreshDraftingSheets()
         Dim tField As Double
         tField = Timing.StartClock()
         Dim fieldReport As String
-        fieldReport = Drafting.WriteDraftingSheet(ws, reg, fid, specWs, period, srcWs, seedIndex)
+        fieldReport = Drafting.WriteDraftingSheet(ws, reg, fid, specWs, period, srcWs, seedIndex, regWs)
         Timing.LogTiming wb, "WriteDraftingSheet", tField, 1, "field", fid
         ' Matched on the prefix WriteDraftingSheet returns, which is its contract
         ' for "nothing was changed" -- not on the prose after it, which is written
@@ -1277,7 +1277,7 @@ Public Sub RefreshDraftingSheets()
               "drafting sheets are ready.") & vbCrLf & vbCrLf & _
           "Your wording goes in column " & Chr$(64 + Drafting.COL_D_SUBMIT) & " (SUBMIT). Type Y in column " & _
               Chr$(64 + Drafting.COL_D_APPROVED) & " to approve." & vbCrLf & _
-          "Column " & Chr$(64 + Drafting.COL_D_CURRENT) & " is what the slide says now. " & _
+          "Column " & Chr$(64 + Drafting.COL_D_PREV) & " is what was reported last quarter. " & _
               "Copilot's prompt is in cell L2." & vbCrLf & _
           "Nothing reaches a slide until you publish and apply."
 

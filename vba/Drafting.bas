@@ -81,18 +81,25 @@ Option Explicit
 '   H notes back to the tool
 Public Const COL_D_ENTITY As Long = 1
 Public Const COL_D_NAME As Long = 2
-Public Const COL_D_CURRENT As Long = 3      ' C  ORIGINAL -- read this first
-Public Const COL_D_PREV As Long = 4         ' D  REPORTED LAST TIME -- see below
-Public Const COL_D_SOURCES As Long = 5      ' E  what you drafted FROM
-Public Const COL_D_DRAFT As Long = 6        ' F  AI draft, never published
-Public Const COL_D_SUBMIT As Long = 7       ' G  your text -- this publishes
-Public Const COL_D_APPROVED As Long = 8     ' H  the tick
-Public Const COL_D_CHARS As Long = 9
-Public Const COL_D_SUBCHARS As Long = 10
-Public Const COL_D_NOTES As Long = 11      ' K  notes back to the tool
-Public Const COL_D_LAYOUT As Long = 12
-Public Const COL_D_PROMPT As Long = 13
-Public Const COL_D_PERIOD As Long = 14
+' ORIGINAL ("what the slide says now") REMOVED, 2026-08-20 -- Rohan: the
+' drafting sheet's only job is giving the drafter enough to write THIS
+' quarter's words into SUBMIT; whether a field is already current is Sync's
+' question, decided by diffing SUBMIT against the register when applied, not
+' something the drafting sheet needs to track in parallel. For any field not
+' yet redrafted this quarter, ORIGINAL and PREV were the same text anyway (a
+' carried-forward, unedited value IS last quarter's value) -- the only case
+' they differed was a field already redrafted this quarter, and THAT
+' distinction belongs to Sync, not to a reference column here.
+Public Const COL_D_PREV As Long = 3         ' C  REPORTED LAST TIME -- see below
+Public Const COL_D_SOURCES As Long = 4      ' D  what you drafted FROM
+Public Const COL_D_DRAFT As Long = 5        ' E  AI draft, never published
+Public Const COL_D_SUBMIT As Long = 6       ' F  your text -- this publishes
+Public Const COL_D_APPROVED As Long = 7     ' G  the tick
+Public Const COL_D_SUBCHARS As Long = 8
+Public Const COL_D_NOTES As Long = 9       ' I  notes back to the tool
+Public Const COL_D_LAYOUT As Long = 10
+Public Const COL_D_PROMPT As Long = 11
+Public Const COL_D_PERIOD As Long = 12
 
 ' THE SHEET DECLARES WHICH LAYOUT IT WAS WRITTEN IN.
 '
@@ -116,7 +123,22 @@ Public Const COL_D_PERIOD As Long = 14
 ' notices the period changed, rather than being destroyed and looked up again
 ' from somewhere else. That is what makes the rollover safe: nothing has to be
 ' preserved across a gap, because no gap is opened.
-Public Const DRAFT_LAYOUT_VERSION As Long = 5
+' 6 removes ORIGINAL (COL_D_CURRENT) entirely, 2026-08-20 -- Rohan: the
+' drafting sheet's job is feeding the drafter what they need for THIS
+' quarter's words, not tracking whether a field is already current (that's
+' Sync's job, diffing SUBMIT against the register at apply time). PREV also
+' changes source: instead of ONLY ferrying SUBMIT sideways at a detected
+' transition, it now falls back to reading the register's stored-period row
+' when SUBMIT is empty (nothing was ever drafted this period) -- a hybrid,
+' not a full swap. Pure register-derived PREV was tried and reversed once
+' already (2026-08-14, see NEXT-SESSION.md): it cannot show text that was
+' typed but never published. The pure ferry has the opposite gap, proven
+' live today: it has nothing to carry when a period changes outside the
+' normal rollover flow (a direct property edit, here), so PREV goes blank
+' with real Q3F26 content sitting untouched in the register the whole time.
+' The hybrid keeps the ferry's win (survives unpublished work) and adds the
+' register as a safety net for exactly the gap that broke today.
+Public Const DRAFT_LAYOUT_VERSION As Long = 6
 
 ' The instruction block occupies rows 1-7, so the grid starts lower.
 '
@@ -207,13 +229,29 @@ Private Function ColumnInLayout(layoutVersion As Long, which As String) As Long
     Select Case layoutVersion
         Case DRAFT_LAYOUT_VERSION
             Select Case which
-                Case "CURRENT":  ColumnInLayout = COL_D_CURRENT
+                ' "CURRENT" absent on purpose -- layout 6 removed the ORIGINAL
+                ' column (2026-08-20). A layout-5 sheet's CURRENT is read via
+                ' Case 5 below, purely so its value can be discarded cleanly;
+                ' layout 6 never writes it.
                 Case "PREV":     ColumnInLayout = COL_D_PREV
                 Case "SOURCES":  ColumnInLayout = COL_D_SOURCES
                 Case "DRAFT":    ColumnInLayout = COL_D_DRAFT
                 Case "SUBMIT":   ColumnInLayout = COL_D_SUBMIT
                 Case "APPROVED": ColumnInLayout = COL_D_APPROVED
                 Case "NOTES":    ColumnInLayout = COL_D_NOTES
+            End Select
+
+        ' Layout 5: had ORIGINAL at C and REPORTED LAST TIME at D; layout 6
+        ' removed ORIGINAL and shifted everything else one column left.
+        Case 5
+            Select Case which
+                Case "CURRENT":  ColumnInLayout = 3
+                Case "PREV":     ColumnInLayout = 4
+                Case "SOURCES":  ColumnInLayout = 5
+                Case "DRAFT":    ColumnInLayout = 6
+                Case "SUBMIT":   ColumnInLayout = 7
+                Case "APPROVED": ColumnInLayout = 8
+                Case "NOTES":    ColumnInLayout = 11
             End Select
 
         ' Layout 4: as layout 5 but with no REPORTED LAST TIME column, so
@@ -261,6 +299,7 @@ End Function
 Public Function LayoutStampColumn(ByVal layoutVersion As Long) As Long
     Select Case layoutVersion
         Case DRAFT_LAYOUT_VERSION: LayoutStampColumn = COL_D_LAYOUT
+        Case 5:                    LayoutStampColumn = 12      ' layout 5, frozen
         Case Else:                 LayoutStampColumn = 11      ' layouts 3 and 4
     End Select
 End Function
@@ -268,6 +307,7 @@ End Function
 Public Function PeriodStampColumn(ByVal layoutVersion As Long) As Long
     Select Case layoutVersion
         Case DRAFT_LAYOUT_VERSION: PeriodStampColumn = COL_D_PERIOD
+        Case 5:                    PeriodStampColumn = 14      ' layout 5, frozen
         Case Else:                 PeriodStampColumn = 13      ' layouts 3 and 4
     End Select
 End Function
@@ -510,7 +550,8 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
                                    Optional guidance As Variant, _
                                    Optional periodStamp As String = "", _
                                    Optional srcWs As Object = Nothing, _
-                                   Optional familySeed As Long = -1) As String
+                                   Optional familySeed As Long = -1, _
+                                   Optional regWs As Object = Nothing) As String
     ' A REBUILD MUST NOT COST A PERSON THEIR WORK. Everything a human or an AI
     ' put on this sheet is carried across: the AI draft, the SUBMIT text they
     ' edited, the source IDs they assigned, and their notes. Only ORIGINAL and
@@ -820,8 +861,9 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Cells(DRAFT_INTRO_ROW, 1).Font.Bold = True
     ws.Cells(DRAFT_INTRO_ROW, 1).Font.Size = 9
 
-    ws.Cells(2, 1).Value = "STEP 1   Read column " & Chr$(64 + COL_D_CURRENT) & " -- what the slide says today. Column " & _
-                           Chr$(64 + COL_D_PREV) & " is what was reported last quarter: match its voice, do not repeat it."
+    ws.Cells(2, 1).Value = "STEP 1   Read column " & Chr$(64 + COL_D_PREV) & _
+                           " -- what was reported last quarter. Match its voice, do not repeat it. " & _
+                           "Whether this field is already current for THIS quarter is not tracked here -- Sync decides that when you publish."
     ' COLUMN G, NOT E. Step 5 below sends the tick to E, so this line named one
     ' column for two things inside a single instruction block -- and E is the tick,
     ' which is the consent gate. Stale since 3de4be8 moved SUBMIT to D and the tick
@@ -833,7 +875,7 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Cells(6, 1).Value = "STEP 5   Type  Y  in column " & Chr$(64 + COL_D_APPROVED) & ", save and CLOSE the file, then press '" & CommandBarUI.CAP_PUT_ON_SLIDES & "' again."
 
     ws.Cells(7, 1).Value = "Only column " & Chr$(64 + COL_D_SUBMIT) & " is published -- nothing the AI writes reaches a slide unless you have moved it there and ticked it. " & _
-                           "Column C is read-only: edit the register, not this sheet, to change what a slide says today."
+                           "Column " & Chr$(64 + COL_D_PREV) & " is read-only reference material, not a live view of the slide."
     ws.Cells(7, 1).Font.Italic = True
 
     Dim introRow As Long
@@ -847,11 +889,8 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ' nothing about where to type.
     ws.Cells(DRAFT_HEADER_ROW, COL_D_ENTITY).Value = "Project code"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_NAME).Value = "Project name"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_CURRENT).Value = _
-        Chr$(64 + COL_D_CURRENT) & "   ORIGINAL -- what the slide says now (read-only)"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_PREV).Value = _
         Chr$(64 + COL_D_PREV) & "   REPORTED LAST TIME -- for style and continuity (read-only)"
-    ws.Cells(DRAFT_HEADER_ROW, COL_D_CHARS).Value = "Chars"
     ' EVERY COLUMN LETTER IS DERIVED, NEVER TYPED. These were literals -- "D
     ' SOURCES", "E AI DRAFT", "J NOTES" -- and adding one column at position 4
     ' made all six of them name the wrong column while still reading as correct.
@@ -892,6 +931,21 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     End If
     r = DRAFT_FIRST_ROW
 
+    ' THE HYBRID'S REGISTER SIDE, READ ONCE PER SHEET, 2026-08-20. Only
+    ' needed when the period actually changed, and only as a FALLBACK for
+    ' rows whose SUBMIT has nothing to ferry -- the primary path is still the
+    ' ferry itself (see below), which is what preserves text that was typed
+    ' but never published. sheetPeriod is the OLD stamp (read above, before
+    ' this rewrite), so this is genuinely "what that field said last time",
+    ' not a guess at period ordering -- there isn't any here, on purpose.
+    Dim priorReg As Sheet
+    Dim havePriorReg As Boolean
+    havePriorReg = False
+    If periodChanged And Not (regWs Is Nothing) And sheetPeriod <> "" Then
+        priorReg = ExcelOutput.ReadSheetForPeriod(regWs, sheetPeriod)
+        havePriorReg = True
+    End If
+
     Dim k As Variant
     For Each k In reg.InstanceOrder
         Dim key As String
@@ -924,11 +978,8 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
             '
             ' Rohan asked "is that the old q?" about this exact hazard in
             ' RibbonUI earlier the same day. It was safe there. It was not here.
-            Dim current As String
             Dim projName As String
-            current = ""
             projName = ""
-            If vals.Exists(fieldId) Then current = CStr(vals(fieldId))
             If vals.Exists("PROJECT_NAME") Then projName = CStr(vals("PROJECT_NAME"))
 
             ' KEEP THE ROW THIS PROJECT ALREADY HAS. A new project takes the next
@@ -945,15 +996,6 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
 
             ws.Cells(r, COL_D_ENTITY).Value = key
             ws.Cells(r, COL_D_NAME).Value = "'" & projName
-            ' THE DELIMITER IS STORAGE, NOT SOMETHING A PERSON SHOULD READ.
-            ' The register stores line breaks as "||". Column C was writing that
-            ' straight out, so a human comparing text saw "a||b" and -- worse --
-            ' so did Copilot, which then learns to emit "||" in its drafts.
-            ' Rendered as real breaks here. Safe to copy from: publish re-encodes
-            ' vbLf back to "||", so a value copied out of C and into SUBMIT makes
-            ' the round trip intact.
-            ws.Cells(r, COL_D_CURRENT).Value = "'" & Replace(current, "||", vbLf)
-            ws.Cells(r, COL_D_CHARS).Value = Len(current)
             ' ================================================================
             ' THE PERSON'S COLUMNS ARE NOT WRITTEN HERE. THAT IS THE FIX.
             ' ================================================================
@@ -968,26 +1010,37 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
             ' quarter must not be republishable as this quarter's. That decision
             ' is per ROW and the register already answers it -- exactly the same
             ' rule the old carry used, applied to a clear instead of a copy.
+            ' THE HYBRID. Rohan, 2026-08-20: pure ferry-only broke live when a
+            ' period was set outside the normal rollover flow (nothing to
+            ' ferry, PREV went blank with real prior content sitting in the
+            ' register the whole time). Pure register-derived was tried and
+            ' reversed once already, 2026-08-14 (see NEXT-SESSION.md) -- it
+            ' cannot show text that was typed but never published. This keeps
+            ' both: ferry SUBMIT sideways when there is something to ferry
+            ' (survives unpublished work); fall back to the register's
+            ' stored-period row when SUBMIT is empty (survives an irregular
+            ' period change like today's).
+            Dim registerPrev As String
+            registerPrev = ""
+            If havePriorReg Then
+                If priorReg.Rows.Exists(key) Then
+                    If priorReg.Rows(key).Exists(fieldId) Then
+                        registerPrev = CStr(priorReg.Rows(key)(fieldId))
+                    End If
+                End If
+            End If
+
             If Not isNewRow Then
                 restored = restored + 1
 
-                ' THE FERRY. The quarter turned, so the last thing the outgoing
-                ' quarter's pass does is carry its SUBMIT one column sideways
-                ' into REPORTED LAST TIME, and hand the working columns to the
-                ' new quarter empty.
-                '
-                ' The text is not looked up from anywhere afterwards, which is
-                ' what makes this cheap: the sheet already holds it, and the
-                ' update already knows the period changed. Nothing has to know
-                ' which quarter precedes which -- and quarter labels are free
-                ' text with no ordering, so nothing could have known.
-                '
-                ' It survives unpublished work too. A draft that never reached a
-                ' slide is still what this project said last time, which is
-                ' exactly the style-and-narrative material the next draft wants.
                 If periodChanged Then
-                    ws.Cells(r, COL_D_PREV).Value = "'" & _
-                        Replace(CStr(ws.Cells(r, COL_D_SUBMIT).Value), "||", vbLf)
+                    Dim existingSubmit As String
+                    existingSubmit = CStr(ws.Cells(r, COL_D_SUBMIT).Value)
+                    If Trim(existingSubmit) <> "" Then
+                        ws.Cells(r, COL_D_PREV).Value = "'" & Replace(existingSubmit, "||", vbLf)
+                    ElseIf havePriorReg Then
+                        ws.Cells(r, COL_D_PREV).Value = "'" & Replace(registerPrev, "||", vbLf)
+                    End If
 
                     ws.Cells(r, COL_D_DRAFT).ClearContents
                     ws.Cells(r, COL_D_SUBMIT).ClearContents
@@ -997,6 +1050,13 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
                     ws.Cells(r, COL_D_NOTES).ClearContents
                     ferried = ferried + 1
                 End If
+            ElseIf havePriorReg And registerPrev <> "" Then
+                ' A brand-new row has nothing to ferry, but the entity may
+                ' already have a real prior-period value for this field (e.g.
+                ' a field just tagged on an existing project) -- give it the
+                ' same reference material as every other row instead of
+                ' leaving it blank for no reason.
+                ws.Cells(r, COL_D_PREV).Value = "'" & Replace(registerPrev, "||", vbLf)
             End If
             written = written + 1
         End If
@@ -1010,37 +1070,35 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     r = appendAt
 
     ' 8pt throughout. At 11pt three text columns of 350+ characters do not fit
-    ' on a screen together, and the whole point of ORIGINAL / AI / SUBMIT is
+    ' on a screen together, and the whole point of PREV / AI / SUBMIT is
     ' reading them side by side.
     ws.Cells.Font.Size = 8
     ws.Cells(DRAFT_INTRO_ROW, 1).Font.Size = 9
 
     ws.Columns(COL_D_ENTITY).ColumnWidth = 11
     ws.Columns(COL_D_NAME).ColumnWidth = 30
-    ws.Columns(COL_D_CURRENT).ColumnWidth = 52
     ws.Columns(COL_D_PREV).ColumnWidth = 52
-    ws.Columns(COL_D_CHARS).ColumnWidth = 6
     ws.Columns(COL_D_SOURCES).ColumnWidth = 14
     ws.Columns(COL_D_DRAFT).ColumnWidth = 52
     ws.Columns(COL_D_SUBMIT).ColumnWidth = 52
     ws.Columns(COL_D_SUBCHARS).ColumnWidth = 6
     ws.Columns(COL_D_APPROVED).ColumnWidth = 9
     ws.Columns(COL_D_NOTES).ColumnWidth = 24
-    ws.Columns(COL_D_CURRENT).WrapText = True
+    ws.Columns(COL_D_PREV).WrapText = True
     ws.Columns(COL_D_DRAFT).WrapText = True
     ws.Columns(COL_D_SUBMIT).WrapText = True
     ws.Columns(COL_D_NOTES).WrapText = True
 
     ' SUBMIT is the only column that reaches a slide, so it is the only one
-    ' that looks like an input. ORIGINAL and AI DRAFT are shaded as reference.
-    ws.Columns(COL_D_CURRENT).Interior.Color = RGB(242, 242, 242)
+    ' that looks like an input. PREV and AI DRAFT are shaded as reference.
+    ws.Columns(COL_D_PREV).Interior.Color = RGB(242, 242, 242)
     ws.Columns(COL_D_DRAFT).Interior.Color = RGB(242, 242, 242)
     ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_SUBMIT), _
              ws.Cells(r - 1, COL_D_SUBMIT)).Interior.Color = RGB(255, 249, 219)
     ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_APPROVED), _
              ws.Cells(r - 1, COL_D_APPROVED)).Interior.Color = RGB(255, 249, 219)
 
-    ' Top-align, or a 500-character ORIGINAL centres itself against a one-line
+    ' Top-align, or a 500-character PREV centres itself against a one-line
     ' SUBMIT and the two stop reading as the same row.
     ws.Cells.VerticalAlignment = -4160          ' xlTop
 
@@ -1060,7 +1118,7 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     Set xlApp = ws.Application
     ws.Activate
     xlApp.ActiveWindow.FreezePanes = False
-    ws.Cells(DRAFT_FIRST_ROW, COL_D_CURRENT).Select
+    ws.Cells(DRAFT_FIRST_ROW, COL_D_PREV).Select
     xlApp.ActiveWindow.FreezePanes = True
     On Error GoTo 0
 
@@ -1689,7 +1747,7 @@ Private Sub ApplyDraftingLook(ws As Object, lastRow As Long, fieldId As String, 
 
     ' --- the body: role colour per column ----------------------------
     ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_ENTITY), ws.Cells(lastRow, COL_D_NAME)).Interior.Color = RGB(245, 244, 238)
-    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_CURRENT), ws.Cells(lastRow, COL_D_CURRENT)).Interior.Color = RGB(226, 226, 221)
+    ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_PREV), ws.Cells(lastRow, COL_D_PREV)).Interior.Color = RGB(226, 226, 221)
     ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_SOURCES), ws.Cells(lastRow, COL_D_SOURCES)).Interior.Color = FAMLIGHT
     ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_DRAFT), ws.Cells(lastRow, COL_D_DRAFT)).Interior.Color = RGB(250, 238, 205)
     ws.Range(ws.Cells(DRAFT_FIRST_ROW, COL_D_SUBMIT), ws.Cells(lastRow, COL_D_SUBMIT)).Interior.Color = RGB(255, 252, 235)

@@ -705,7 +705,7 @@ Public Function DescribeSheet(sheetName As String) As String
         ' pointing a person at the SOURCES and AI DRAFT columns. A sentence cannot
         ' fail a test; the constants can.
         DescribeSheet = "Drafting sheet for " & Mid(sheetName, 5) & _
-            ". Read column " & Chr$(64 + Drafting.COL_D_CURRENT) & _
+            ". Read column " & Chr$(64 + Drafting.COL_D_PREV) & _
             ", type new wording in " & Chr$(64 + Drafting.COL_D_SUBMIT) & _
             ", put Y in " & Chr$(64 + Drafting.COL_D_APPROVED) & _
             ". Instructions are on the sheet."

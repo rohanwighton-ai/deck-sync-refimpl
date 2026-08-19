@@ -5013,7 +5013,7 @@ Private Function Test_WorkbookBridge_IndexExplainsEachSheet() As String
     ' no diagnostic.
     Dim curCol As String, subCol As String, apprCol As String
     Dim draftCol As String, srcCol As String
-    curCol = Chr$(64 + Drafting.COL_D_CURRENT)
+    curCol = Chr$(64 + Drafting.COL_D_PREV)
     subCol = Chr$(64 + Drafting.COL_D_SUBMIT)
     apprCol = Chr$(64 + Drafting.COL_D_APPROVED)
     draftCol = Chr$(64 + Drafting.COL_D_DRAFT)
@@ -5022,7 +5022,7 @@ Private Function Test_WorkbookBridge_IndexExplainsEachSheet() As String
     result = result & Assert(InStr(d, "column " & curCol) > 0 _
         And InStr(d, "wording in " & subCol) > 0 _
         And InStr(d, "Y in " & apprCol) > 0, _
-        "the drafting index names ORIGINAL, SUBMIT and the tick by their real columns -- got '" & d & "'")
+        "the drafting index names PREV, SUBMIT and the tick by their real columns -- got '" & d & "'")
     result = result & Assert(InStr(d, "wording in " & draftCol) = 0, _
         "and does NOT send a person to the AI draft column, which never publishes -- got '" & d & "'")
 
@@ -5185,50 +5185,65 @@ End Function
 
 ' ONE PROJECT'S TEXT MUST NEVER APPEAR AGAINST ANOTHER PROJECT.
 '
-' VBA's Dim does not scope to a loop, so `current` was procedure-scoped and kept
-' the PREVIOUS entity's value whenever the register had none for this field. The
-' first project with a value had its text copied into column C for every project
-' after it. Found 2026-08-09 on the first real run of a new field: one project
-' had STRATEGIC_ALIGNMENT_BODY, forty showed its 1,113 characters, and the three
-' rows above it were blank -- which is the signature of exactly this bug.
-'
-' Column C is what a person and Copilot are both told to stay close to, so the
-' failure is silent and it attributes a real paragraph to the wrong project.
+' Originally guarded COL_D_CURRENT ("ORIGINAL") against exactly this: VBA's Dim
+' does not scope to a loop, so a procedure-scoped variable kept the PREVIOUS
+' entity's value whenever the register had none for this field, and the first
+' project with a value had its text copied into column C for every project
+' after it (found 2026-08-09, one project had STRATEGIC_ALIGNMENT_BODY, forty
+' showed its 1,113 characters). ORIGINAL is gone (2026-08-20), but the SAME
+' risk shape now lives in the hybrid PREV's register-fallback lookup
+' (`registerPrev`, Drafting.bas) -- a per-entity read inside a loop is exactly
+' the pattern that bug lived in, so this is retargeted at that mechanism
+' rather than deleted.
 '
 ' The fixture deliberately puts the value in the MIDDLE: an entity before it
 ' proves nothing leaks backwards, and two after prove nothing leaks forwards.
 Private Function Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty() As String
     Dim result As String
 
-    Dim xl As Object, wb As Object, ws As Object
+    Dim xl As Object, wb As Object, ws As Object, rws As Object
     Set xl = CreateObject("Excel.Application")
     xl.Visible = False
     xl.DisplayAlerts = False
     Set wb = xl.Workbooks.Add()
     Set ws = wb.Worksheets(1)
+    Set rws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
 
-    Dim reg As Sheet
-    Set reg.Rows = CreateObject("Scripting.Dictionary")
-    Set reg.Fields = New Collection
-    Set reg.InstanceOrder = New Collection
+    rws.Cells(1, 1).Value = ExcelOutput.INSTANCE_ID_HEADER
+    rws.Cells(1, 2).Value = "Quarter"
+    rws.Cells(1, 3).Value = "PROJECT_NAME"
+    rws.Cells(1, 4).Value = "ABOUT_BODY"
 
     Dim ids As Variant
     ids = Array("P-BEFORE", "P-HAS", "P-AFTER1", "P-AFTER2")
-    Dim i As Long
+    Dim i As Long, r0 As Long
+    r0 = 2
     For i = LBound(ids) To UBound(ids)
-        Dim vals As Object
-        Set vals = CreateObject("Scripting.Dictionary")
-        vals("PROJECT_NAME") = "Name " & CStr(ids(i))
-        ' ONLY the middle entity carries the field.
-        If CStr(ids(i)) = "P-HAS" Then vals("ABOUT_BODY") = "ONLY-P-HAS-SHOULD-SHOW-THIS"
-        reg.Rows.Add CStr(ids(i)), vals
-        reg.InstanceOrder.Add CStr(ids(i))
+        ' PRIOR period (Q3F26): only the middle entity carries the field.
+        ' This is what the fallback should surface into PREV.
+        rws.Cells(r0, 1).Value = CStr(ids(i))
+        rws.Cells(r0, 2).Value = "Q3F26"
+        rws.Cells(r0, 3).Value = "Name " & CStr(ids(i))
+        If CStr(ids(i)) = "P-HAS" Then rws.Cells(r0, 4).Value = "ONLY-P-HAS-SHOULD-SHOW-THIS"
+        r0 = r0 + 1
+        ' CURRENT period (Q4F26): every entity present, field blank -- so
+        ' they appear on the drafting sheet with nothing yet drafted.
+        rws.Cells(r0, 1).Value = CStr(ids(i))
+        rws.Cells(r0, 2).Value = "Q4F26"
+        rws.Cells(r0, 3).Value = "Name " & CStr(ids(i))
+        r0 = r0 + 1
     Next i
-    reg.Fields.Add "ABOUT_BODY"
 
-    Drafting.WriteDraftingSheet ws, reg, "ABOUT_BODY", Empty, "Q4F26"
+    ' Build once for Q3F26 (stamps the sheet), then rebuild for Q4F26 -- the
+    ' genuine transition the fallback watches for. Nobody types into SUBMIT,
+    ' so every row goes through the register-fallback path, not the ferry.
+    Dim regQ3 As Sheet, regQ4 As Sheet
+    regQ3 = ExcelOutput.ReadSheetForPeriod(rws, "Q3F26")
+    regQ4 = ExcelOutput.ReadSheetForPeriod(rws, "Q4F26")
+    Drafting.WriteDraftingSheet ws, regQ3, "ABOUT_BODY", Empty, "Q3F26", , , rws
+    Drafting.WriteDraftingSheet ws, regQ4, "ABOUT_BODY", Empty, "Q4F26", , , rws
 
-    ' Read column C back per entity, by matching column A rather than by row
+    ' Read column back per entity, by matching column A rather than by row
     ' offset -- the header block's height is not this test's business.
     Dim seen As Object
     Set seen = CreateObject("Scripting.Dictionary")
@@ -5236,7 +5251,7 @@ Private Function Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty() As String
     For r = 1 To 200
         Dim ent As String
         ent = Trim(CStr(ws.Cells(r, Drafting.COL_D_ENTITY).Value))
-        If ent <> "" Then seen(ent) = Trim(CStr(ws.Cells(r, Drafting.COL_D_CURRENT).Value))
+        If ent <> "" Then seen(ent) = Trim(CStr(ws.Cells(r, Drafting.COL_D_PREV).Value))
     Next r
 
     result = result & Assert(seen.Exists("P-HAS"), "the entity with a value is on the sheet")
@@ -7318,9 +7333,13 @@ Private Function Test_Drafting_LayoutStampIsFoundNotAssumed() As String
 
     ' And the stamps' own columns, per layout.
     result = result & Assert(Drafting.PeriodStampColumn(4) = 13, "layout 4 keeps its period in 13")
-    result = result & Assert(Drafting.PeriodStampColumn(5) = 14, "layout 5 keeps its period in 14")
+    result = result & Assert(Drafting.PeriodStampColumn(5) = 14, "layout 5 keeps its period in 14 -- frozen now that 6 is current")
     result = result & Assert(Drafting.LayoutStampColumn(4) = 11, "layout 4 keeps its version in 11")
-    result = result & Assert(Drafting.LayoutStampColumn(5) = 12, "layout 5 keeps its version in 12")
+    result = result & Assert(Drafting.LayoutStampColumn(5) = 12, "layout 5 keeps its version in 12 -- frozen now that 6 is current")
+    result = result & Assert(Drafting.PeriodStampColumn(Drafting.DRAFT_LAYOUT_VERSION) = Drafting.COL_D_PERIOD, _
+        "the CURRENT layout's period column is derived, not a literal")
+    result = result & Assert(Drafting.LayoutStampColumn(Drafting.DRAFT_LAYOUT_VERSION) = Drafting.COL_D_LAYOUT, _
+        "the CURRENT layout's version column is derived, not a literal")
 
     Test_Drafting_LayoutStampIsFoundNotAssumed = result
 End Function
@@ -10738,11 +10757,6 @@ Private Function Test_Drafting_QuarterTurnFerriesSubmitIntoReportedLastTime() As
     result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_PREV).Value) = "P001 last quarter", _
         "REPORTED LAST TIME SURVIVES A SECOND REBUILD, got '" & _
         CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_PREV).Value) & "'")
-
-    ' 5. ORIGINAL still comes from the register, not from the ferry.
-    result = result & Assert(InStr(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_CURRENT).Value), "register one") > 0, _
-        "ORIGINAL still reads the register, got '" & _
-        CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_CURRENT).Value) & "'")
 
     wb.Close False
     xl.Quit

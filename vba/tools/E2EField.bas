@@ -1284,3 +1284,32 @@ Public Function RenameSlideType(deckPath As String, oldType As String, newType A
     pres.Close
     RenameSlideType = r
 End Function
+
+' Drives DraftingUI.RefreshDraftingSheets against an opened deck, for the
+' consolidated working copy rebuild, 2026-08-20 -- the same function "1. Set
+' up my quarter" calls, run headlessly here so the sheets match the deck's
+' now-corrected Q4F26 period without going through the whole button chain
+' (which also runs StartQuarter/RollForwardUI, neither wanted here since the
+' period was already fixed directly and the register already holds the
+' target period's rows).
+Public Function RunRefreshDraftingSheets(deckPath As String) As String
+    Dim pres As Object
+    Set pres = Application.Presentations.Open(deckPath, msoFalse, msoFalse, msoTrue)
+    pres.Windows(1).Activate
+
+    Dim r As String
+    r = "deck: " & deckPath & vbCrLf & "period: " & DeckRegistry.GetDeckPeriod(pres) & vbCrLf
+
+    On Error Resume Next
+    DraftingUI.RefreshDraftingSheets
+    If Err.Number <> 0 Then
+        r = r & "*** RefreshDraftingSheets RAISED: " & Err.Number & " " & Err.Description & vbCrLf
+    Else
+        r = r & "RefreshDraftingSheets completed without raising." & vbCrLf
+    End If
+    On Error GoTo 0
+
+    r = r & "pres.Saved after refresh: " & pres.Saved & vbCrLf
+    pres.Close
+    RunRefreshDraftingSheets = r
+End Function

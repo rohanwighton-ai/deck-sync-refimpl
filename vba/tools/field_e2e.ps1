@@ -12,7 +12,7 @@ param(
     [string]$DeckPath = "C:\Users\rohan\deck-sync-e2e\e2e-deck.pptx",
     [string]$RegisterPath = "C:\Users\rohan\deck-sync-e2e\register.xlsx",
     [string]$Period = "FY26Q4",
-    [ValidateSet("migrate","dryrun","apply","reseed","verifyharvest","deleteentities","draft","copyai","publish","timelinetest","discovertest","setperiod","setperiodvariant","readwide","repointworkbook","renameslidetype")][string]$Mode = "dryrun",
+    [ValidateSet("migrate","dryrun","apply","reseed","verifyharvest","deleteentities","draft","copyai","publish","timelinetest","discovertest","setperiod","setperiodvariant","readwide","repointworkbook","renameslidetype","refreshdrafting")][string]$Mode = "dryrun",
     [string]$Variant = "save",
     [string]$FieldId = "ABOUT_BODY",
     [string]$SheetName = "Register",
@@ -56,10 +56,10 @@ $modules = @(
     "Discovery.bas","InjectPrimitive.bas","Matching.bas","Resolve.bas",
     "SyncOperations.bas","Onboarding.bas","ExcelOutput.bas","Verification.bas",
     "SlideDuplication.bas","TemplateSlide.bas","TemplateAudit.bas","IdentityCheck.bas",
-    "TagMigration.bas","FieldWiring.bas","MilestoneDevice.bas","Register.bas","RegisterSeed.bas","PlaceholderCheck.bas","RunSync.bas","ReviewQueue.bas","Drafting.bas","FieldSpec.bas","Sources.bas","Timeline.bas",
+    "TagMigration.bas","FieldWiring.bas","MilestoneDevice.bas","PlaceholderCheck.bas","RunSync.bas","ReviewQueue.bas","Drafting.bas","FieldSpec.bas","Sources.bas",
     "DeckAdoption.bas","ResolveFields.bas","DeckRegistry.bas","WorkbookBridge.bas","Harvest.bas",
-    "OnboardFlow.bas","RibbonUI.bas","AdoptFlow.bas","BatchOnboardFlow.bas","CommandBarUI.bas","DraftingUI.bas","DiscoverUI.bas",
-    "DraftingLobby.bas","AppEvents.cls","ShapeAddressBook.bas","Timing.bas"
+    "RibbonUI.bas","AdoptFlow.bas","BatchOnboardFlow.bas","CommandBarUI.bas","DraftingUI.bas","DiscoverUI.bas",
+    "DraftingLobby.bas","AppEvents.cls","ShapeAddressBook.bas","Timing.bas","FormattingAudit.bas"
 )
 foreach ($m in $modules) {
     $srcPath = Join-Path $vbaSourceDir $m
@@ -140,6 +140,9 @@ try {
     } elseif ($Mode -eq "repointworkbook") {
         $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
             @([string]"E2EField.RepointWorkbookVariant",[string]$DeckPath,[string]$NewWorkbookPath,[string]$Variant))
+    } elseif ($Mode -eq "refreshdrafting") {
+        $report = $ppt.GetType().InvokeMember("Run",[System.Reflection.BindingFlags]::InvokeMethod,$null,$ppt,
+            @([string]"E2EField.RunRefreshDraftingSheets",[string]$DeckPath))
     } elseif ($Mode -eq "readwide") {
         # Read-only. -Entities carries the instance to print in full, because a
         # count alone has never been enough evidence on this project.

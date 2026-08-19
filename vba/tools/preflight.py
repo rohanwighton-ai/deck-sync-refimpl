@@ -29,6 +29,9 @@ RELS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 TAGS_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/tags"
 XL = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 DOC_REL = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+P_NS = "{http://schemas.openxmlformats.org/presentationml/2006/main}"
+A_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+REGISTRY_SLIDE_NAME = "DeckSyncRegistry"
 
 INSTANCE_TAG = "INSTANCE_KEY"     # PowerPoint uppercases tag names on save
 TEMPLATE_TAG = "IS_TEMPLATE"
@@ -56,17 +59,40 @@ def ok(msg: str) -> None:
 
 # --- deck ------------------------------------------------------------------
 
+def registry_slide_props(z: ZipFile) -> dict[str, str]:
+    """Shape NAME -> shape text, on the hidden slide named DeckSyncRegistry --
+    the REAL storage since 2026-08-16 (see DeckRegistry.bas's REGISTRY_SLIDE_NAME
+    comment). docProps/custom.xml is a read-only fallback now, for decks never
+    touched since the migration."""
+    for name in z.namelist():
+        if not re.fullmatch(r"ppt/slides/slide\d+\.xml", name):
+            continue
+        root = ET.fromstring(z.read(name))
+        cSld = root.find(f"{P_NS}cSld")
+        if cSld is None or cSld.get("name") != REGISTRY_SLIDE_NAME:
+            continue
+        shapes = {}
+        for sp in root.iter(P_NS + "sp"):
+            nvpr = sp.find(f"{P_NS}nvSpPr/{P_NS}cNvPr")
+            shpname = nvpr.get("name") if nvpr is not None else None
+            if shpname:
+                shapes[shpname] = "".join(t.text or "" for t in sp.iter(A_NS + "t"))
+        return shapes
+    return {}
+
+
 def deck_props(z: ZipFile) -> dict[str, str]:
-    if "docProps/custom.xml" not in z.namelist():
-        return {}
-    root = ET.fromstring(z.read("docProps/custom.xml"))
-    out = {}
-    for p in root:
-        name = p.get("name")
-        val = "".join(c.text or "" for c in p)
-        if name:
-            out[name] = val
-    return out
+    legacy = {}
+    if "docProps/custom.xml" in z.namelist():
+        root = ET.fromstring(z.read("docProps/custom.xml"))
+        for p in root:
+            name = p.get("name")
+            val = "".join(c.text or "" for c in p)
+            if name:
+                legacy[name] = val
+    # Registry slide wins; legacy custom.xml fills in only what's absent from
+    # it -- same priority as DeckRegistry.ReadStringProperty.
+    return {**legacy, **registry_slide_props(z)}
 
 
 def slide_indices(z: ZipFile) -> list[int]:
