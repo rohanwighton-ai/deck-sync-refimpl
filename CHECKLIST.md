@@ -974,47 +974,67 @@ built and tested on.
 - [ ] Step 5 — the deck surgery: make the `K` and `S` templates from real slides,
       on a copy, never the live deck.
 
-### Template parity — three real templates exist today, and they have already drifted
+### Template parity — CORRECTED 2026-08-20, ~20 min after first written. 46/47 are LIVE, not dormant.
 
-**Measured directly from the live deck, 2026-08-20, not assumed.** Three slides
-are tagged `IS_TEMPLATE=1` for `project-progress`: **44** (green, the one
-everything has been built and tested against), **46**, and **47** — neither 46
-nor 47 is registered under a letter, so `DeckRegistry.LookupTemplateForLetter`'s
-own fallback means every real project today clones from 44 regardless. **46 and
-47 are dormant, not live.** That is the fact this whole strategy leans on: the
-gap exists but is not currently hurting anyone, which is exactly the window to
-close it in, not a reason to leave it.
+**The paragraph this replaced was wrong, and a `feathers-hound` run caught it within
+twenty minutes of being committed (`b9b8415`).** It claimed 46/47 were "registered under
+no letter... dormant, not live," reasoned from `DeckRegistry.LookupTemplateForLetter`'s
+documented fallback behaviour. That reasoning was never checked against the actual
+registry data. It was wrong. **Read the file, not the theory** — the exact rule this
+project's own `CLAUDE.md` states, broken here by the session that also wrote it.
 
-**The actual gap, role-tag census across all three:**
+**What's actually true, verified independently twice (the hound, then re-derived by hand
+from the raw XML before this correction was written):** the hidden `DeckSyncRegistry`
+slide (slide45) contains real shapes named `DeckSyncTemplate:project-progress:K` →
+`305|Register` and `:S` → `306|Register`. SlideID 305 is `slide46.xml`, 306 is
+`slide47.xml` (confirmed from `presentation.xml`'s own `sldIdLst`). **46 and 47 are
+validly registered as the K and S templates, right now, on the real deck.** Nobody knows
+when this registration happened — it isn't mentioned in any commit message or doc found —
+but it is real and it is live.
+
+**The consequence is live risk, not a future one.** `CommandBarUI`'s real, wired "Add
+missing slides" button → `RunSync.CreateMissingSlides` → `TemplateSlide.CodeLetterOf`
+(derives the letter from any key like `1_K1099`) → `DeckRegistry.LookupTemplateForLetter`
+→ resolves straight to the stale slide46/47 → `SlideDuplication.DuplicateAndTag`, whose
+"how many fields are missing" check is scored **against the stale template's own field
+set**, not the deck's true 28-role set. **The next real K or S project onboarded through
+this button today would clone from a template missing 12-14 real fields and the tool
+would report it as fine** — this project's own named failure class, "reports success
+without confirming the effect," currently live and uncaught.
+
+**One field's real, already-collected data is being lost for all 43 current projects
+right now, independent of the K/S question.** `SAAFE_CASH` has genuine populated data in
+`Q4F26` for every one of the 43 real project rows — and **zero** real slides, including
+the exemplar `3_P001`, carry the tag to receive it. Confirmed from the register's own
+bytes. This is not a capability gap; real collected figures exist and are reaching no
+slide a person will ever look at.
+
+**The actual gap, role-tag census across all three templates:**
 
 | finding | detail |
 |---|---|
 | 14 roles on 44, absent from BOTH 46 and 47 | `DELIVERABLE1-4_PHOTO`, `DELIVERABLES_BODY`, `INDUSTRY_PARTNER`, `MILESTONE_TIMELINE`, `PROJECT_PHOTO`, `SAAFE_CASH`, `STATUS_BADGE`, `TERTIARY_INSTITUTION`, `TIMELINE_ELAPSED`, `TIMELINE_ELAPSED.rest`, `TOTAL_INKIND` |
-| 1 role went the OTHER way | `PROJECT_STATUS` is on 46/47, gone from 44 — the `STATUS_BADGE` retagging migration's own commit note says it touched "slide 44" only; 46/47 were never included and nobody flagged it |
-| leaked donor content, confirmed live | `47` carries an untagged shape reading "Research commenced," sitting OUTSIDE the milestone-timeline group (unlike the real `MS*_LABEL` shapes), matching no Field Spec row — the same untagged-camouflage pattern already found and fixed on 44 for `HIGHLIGHTS_BODY`/`PROJECT_PHOTO`. Found by Rohan asking "where does this fit" and correctly suspecting it didn't belong to any MECE list. Not yet deleted — confirm it is genuinely orphaned (not misread) before removing. |
-| 47's shape count differs structurally | 90 shapes vs. 71 (44) / 66 (46) — not just recolouring; likely other undiscovered structural drift beyond the role-tag census above |
+| Of those, 5 are ALSO missing from the exemplar `3_P001` itself | `SAAFE_CASH`, `TOTAL_INKIND`, `INDUSTRY_PARTNER`, `TERTIARY_INSTITUTION`, `DELIVERABLES_BODY` — FIX-LIST item BG only ever tagged the template (slide44) for these five; item BH later propagated the picture fields to both template and `3_P001`, but nothing did the same for these five text fields |
+| 1 role went the OTHER way | `PROJECT_STATUS` is on 46/47, gone from 44 — the `STATUS_BADGE` retagging migration's own commit note says it touched "slide 44" only |
+| leaked donor content, confirmed live | `47` carries an untagged shape reading "Research commenced," outside the milestone-timeline group, matching no Field Spec row. Not yet deleted — confirm genuinely orphaned before removing. |
+| 47's shape count differs structurally | 90 shapes vs. 71 (44) / 66 (46) — likely other undiscovered structural drift beyond the role-tag census |
+| `SCENARIOS.md`'s own account of this is also stale | claims specific slide numbers (45→K, 46→S) that predate the deck growing to 47 slides, and a letter-registration event that its own text says never reached the real deck — contradicted by the finding above. Needs its own correction, not done here. |
 
-**The strategy — three rules, while 44 is the only live template:**
+**The strategy, corrected — three rules, now that 46/47 are confirmed live:**
 
-1. **44 stays the single source of truth.** Every field-tagging or shape-creation
-   session works against 44 and 44 alone, same as tonight. Do not spend effort
-   keeping 46/47 current in lockstep — they cost nothing sitting behind the
-   fallback, and updating three templates for every single-field change would
-   triple tonight's build cost for a benefit nobody can see yet.
-2. **A parity census, like the one above, is a MANDATORY gate before EITHER 46
-   or 47 is ever registered under a letter — never optional, never assumed
-   clean.** Registering a template with a 14-role gap would silently ship real
-   projects missing money fields, both deliverable mechanisms, the milestone
-   timeline, and the industry partner/institution fields — exactly the
-   "worst shape a reporting-tool defect can take" `TemplateSlide.bas`'s own
-   docstring already warns about, just for a whole colour instead of one field.
-   Whoever picks up Scenario 3 step 5 runs this census FIRST, closes every gap
-   it finds, THEN registers the letter — never the other order.
-3. **This whole strategy retires itself the moment 46 or 47 is actually
-   activated.** Once a colour variant is live, it goes back under the same
-   discipline as 44 — every future change touches every LIVE template in the
-   same session, verified by the census, not by memory. Until then, "in
-   parity" means "44 is complete and correct," not "all three match."
+1. **Treat this as urgent, not deferred.** The original strategy's core premise (safe to
+   leave 46/47 alone because nothing depends on them) is false. Before the next real K or
+   S project is onboarded, either (a) close the 14-role gap on 46/47 to match 44, or (b)
+   remove the K/S registry entries on slide45 to force the documented safe fallback to 44
+   until the gap is closed. (b) is the cheap, fast mitigation; (a) is the real fix.
+2. **`SAAFE_CASH` is the one immediately actionable piece independent of the above** —
+   real data, zero reach, on every current project. Tagging it onto `3_P001` and 44 (and
+   46/47 once (a) or (b) above is decided) is a same-shape fix to the one already done for
+   the other Group A fields on 19 Aug.
+3. **Never again reason about registry/registration state from the code's documented
+   fallback behaviour alone.** Read the registry slide's actual shapes (slide45) or the
+   deck's actual role census before stating what is or isn't live. This paragraph exists
+   because that rule was broken while writing the paragraph it replaced.
 
 - [ ] Bring up a genuinely fresh deck + fresh register from nothing, unaided —
       the standing requirement, the tool has to travel with Rohan.
