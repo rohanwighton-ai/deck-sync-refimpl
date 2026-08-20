@@ -774,7 +774,12 @@ Public Function InjectSlotsField(sld As Object, identityTag As String, _
         If i <= segCount Then segVal = Trim(segments(LBound(segments) + i - 1))
 
         Dim one As InjectResult
-        one = InjectPrimitive(sld, slotTag, segVal, dryRun)
+        ' refuseBlankOverReal:=False -- see that parameter's own comment.
+        ' A slot beyond this quarter's item count is SUPPOSED to clear
+        ' whatever stale line sat there before; that is this function's
+        ' entire reason for existing (blank the unused slots rather than
+        ' leaving last quarter's text behind).
+        one = InjectPrimitive(sld, slotTag, segVal, dryRun, refuseBlankOverReal:=False)
 
         If currents <> "" Then currents = currents & LINE_BREAK_DELIMITER
         currents = currents & one.CurrentValue
@@ -881,7 +886,8 @@ Private Function InjectPictureVia(sld As Object, identityTag As String, _
 End Function
 ' ===========================================================================
 
-Public Function InjectPrimitive(sld As Object, identityTag As String, sourceValue As String, Optional dryRun As Boolean = False) As InjectResult
+Public Function InjectPrimitive(sld As Object, identityTag As String, sourceValue As String, Optional dryRun As Boolean = False, _
+                                Optional refuseBlankOverReal As Boolean = True) As InjectResult
     Dim result As InjectResult
     Dim shp As Object
 
@@ -926,6 +932,55 @@ Public Function InjectPrimitive(sld As Object, identityTag As String, sourceValu
         result.Written = False
         result.Verified = True
         result.ErrorMessage = ""
+        InjectPrimitive = result
+        Exit Function
+    End If
+
+    ' A BLANK REGISTER VALUE MUST NEVER SILENTLY ERASE REAL SLIDE CONTENT.
+    '
+    ' Confirmed live 2026-08-21: the first-ever real sync of STRATEGIC_
+    ' ALIGNMENT_BODY/PROBLEM_BODY/PROJECT_PROGRESS wrote a blank register
+    ' cell straight over real, human-authored slide content on 41+ slides --
+    ' because nothing had ever harvested that content back into the register
+    ' first, and this function had no guard against it. Restored from a
+    ' clean backup; this IS the fix. SyncOperations.PlanRoutineSync's
+    ' DERIVED-field loop already refuses to write "" (its own comment:
+    ' "" = don't write"); this is the ordinary field path's equivalent.
+    '
+    ' A blank sourceValue against a shape that already carries REAL content
+    ' -- not empty, not the untouched TemplateSlide.PlaceholderFor(identityTag)
+    ' marker -- is refused, not written. The field is flagged (Found=True,
+    ' WouldChange=True, Written=False) so it surfaces in the review queue
+    ' with an explanation, same shape as InjectRepeatingProgress's
+    ' count-mismatch refusal above -- silently skipping it would be just as
+    ' wrong as silently writing it, because either way nobody would know
+    ' this field needs attention.
+    '
+    ' Fires ahead of the dry-run check on purpose: a preview should show this
+    ' refusal too, not report a clean plan that then blanks the slide for
+    ' real on the next press.
+    ' OPT-OUT, NOT A LOOPHOLE: InjectSlotsField calls this per-slot with
+    ' refuseBlankOverReal:=False (below) -- a slot legitimately going from
+    ' filled to blank when this quarter has fewer items than slots is that
+    ' mechanism's own documented contract (Test_InjectField_
+    ' SlotsSplitsOneValueAcrossFixedShapes: "the unused third slot is
+    ' blanked, not left holding the stale line"), not the data-loss shape
+    ' this guard exists to catch. Found live 2026-08-21: the guard's first
+    ' version (no parameter, always on) broke exactly that test -- a slot
+    ' clear and a lost paragraph look identical from inside this function
+    ' alone, so the caller has to say which one this is.
+    Dim trimmedCurrent As String, trimmedSource As String
+    trimmedCurrent = Trim$(currentValue)
+    trimmedSource = Trim$(sourceValue)
+    If refuseBlankOverReal And trimmedSource = "" And trimmedCurrent <> "" And _
+       trimmedCurrent <> TemplateSlide.PlaceholderFor(identityTag) Then
+        result.Written = False
+        result.Verified = False
+        result.ErrorMessage = "REFUSED: the register holds nothing for " & identityTag & _
+            ", but the slide currently shows real content ('" & _
+            Left$(trimmedCurrent, 60) & IIf(Len(trimmedCurrent) > 60, "...", "") & _
+            "'). Writing blank here would erase it. Run Harvest first to pull this " & _
+            "slide's value into the register, or fill the register cell directly."
         InjectPrimitive = result
         Exit Function
     End If

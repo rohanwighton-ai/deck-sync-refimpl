@@ -85,6 +85,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("InjectPrimitive_RefusesBlankOverRealContent", filterPattern) Then
+        r = Test_InjectPrimitive_RefusesBlankOverRealContent()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectPrimitive_RefusesBlankOverRealContent", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("InjectPrimitive_AmbiguousTagRefusesToGuess", filterPattern) Then
         r = Test_InjectPrimitive_AmbiguousTagRefusesToGuess()
     Else
@@ -1357,6 +1366,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("RibbonUI_RealLinkedSlidesIsWholeDeckNotASelection", filterPattern) Then
+        r = Test_RibbonUI_RealLinkedSlidesIsWholeDeckNotASelection()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "RibbonUI_RealLinkedSlidesIsWholeDeckNotASelection", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("RibbonUI_ResolveTypeAnswerAcceptsNumberOrName", filterPattern) Then
         r = Test_RibbonUI_ResolveTypeAnswerAcceptsNumberOrName()
     Else
@@ -2515,6 +2533,77 @@ Private Function Test_InjectPrimitive_WritesAndVerifiesOnMismatch() As String
     result = result & Assert(shp.TextFrame.TextRange.Text = "new value", "shape text actually changed, got '" & shp.TextFrame.TextRange.Text & "'")
 
     Test_InjectPrimitive_WritesAndVerifiesOnMismatch = result
+End Function
+
+' THE FIX FOR THE 2026-08-21 DATA-LOSS INCIDENT. A blank register value used
+' to be written straight over real slide content with no guard at all --
+' the first-ever real sync of STRATEGIC_ALIGNMENT_BODY/PROBLEM_BODY/
+' PROJECT_PROGRESS did exactly that on 41+ real slides, verified by diffing
+' a pre-sync backup against the post-sync file. This proves the fix from
+' three angles: real content is protected, a genuinely blank shape still
+' accepts a blank write (nothing to protect), and the untouched
+' <<FIELDNAME>> placeholder is treated the same as blank (not "real
+' content" worth refusing over).
+Private Function Test_InjectPrimitive_RefusesBlankOverRealContent() As String
+    Dim result As String
+
+    ' Case 1: real content on the slide, blank register value -- refused.
+    Dim sld1 As Object
+    Set sld1 = NewBlankSlide()
+    Dim shp1 As Object
+    Set shp1 = sld1.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp1.TextFrame.TextRange.Text = "Real, human-authored paragraph."
+    shp1.Tags.Add "role", "demo_field"
+
+    Dim r1 As InjectResult
+    r1 = InjectPrimitive.InjectPrimitive(sld1, "demo_field", "")
+
+    result = result & Assert(r1.Found, "shape found by role tag")
+    result = result & Assert(Not r1.Written, "NOT written -- real content must survive a blank source value")
+    result = result & Assert(InStr(r1.ErrorMessage, "REFUSED") > 0, _
+        "refusal is reported, not silent, got '" & r1.ErrorMessage & "'")
+    result = result & Assert(shp1.TextFrame.TextRange.Text = "Real, human-authored paragraph.", _
+        "the real content is untouched, got '" & shp1.TextFrame.TextRange.Text & "'")
+
+    ' Case 2: shape is genuinely already blank -- nothing to protect, no-op.
+    Dim sld2 As Object
+    Set sld2 = NewBlankSlide()
+    Dim shp2 As Object
+    Set shp2 = sld2.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp2.TextFrame.TextRange.Text = ""
+    shp2.Tags.Add "role", "demo_field"
+
+    Dim r2 As InjectResult
+    r2 = InjectPrimitive.InjectPrimitive(sld2, "demo_field", "")
+
+    result = result & Assert(r2.Found, "shape found")
+    result = result & Assert(Not r2.Written, "no-op: nothing changed, blank stays blank")
+    result = result & Assert(r2.ErrorMessage = "", _
+        "an already-blank shape is not a refusal, got '" & r2.ErrorMessage & "'")
+
+    ' Case 3: shape still holds the untouched <<FIELDNAME>> placeholder --
+    ' that is not "real content" in the sense this guard protects; a blank
+    ' register value should still be allowed to land there (or rather,
+    ' compared against as equivalent-to-blank, not treated as content worth
+    ' saving).
+    Dim sld3 As Object
+    Set sld3 = NewBlankSlide()
+    Dim shp3 As Object
+    Set shp3 = sld3.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp3.TextFrame.TextRange.Text = TemplateSlide.PlaceholderFor("demo_field")
+    shp3.Tags.Add "role", "demo_field"
+
+    Dim r3 As InjectResult
+    r3 = InjectPrimitive.InjectPrimitive(sld3, "demo_field", "")
+
+    result = result & Assert(r3.Found, "shape found")
+    result = result & Assert(r3.Written, _
+        "the untouched placeholder IS overwritten by blank -- it is not real content worth " & _
+        "protecting, got Written=" & r3.Written & " error='" & r3.ErrorMessage & "'")
+    result = result & Assert(r3.ErrorMessage = "", _
+        "a placeholder overwrite is a genuine write, not a refusal, got '" & r3.ErrorMessage & "'")
+
+    Test_InjectPrimitive_RefusesBlankOverRealContent = result
 End Function
 
 Private Function Test_InjectPrimitive_AmbiguousTagRefusesToGuess() As String
@@ -8718,6 +8807,60 @@ End Function
 ' ---------------------------------------------------------------------
 ' RibbonUI
 ' ---------------------------------------------------------------------
+
+' THE ACTUAL FIX FOR THE 2026-08-21 DATA-LOSS INCIDENT'S SECOND HALF.
+' OfferHarvestAcrossDeck used to walk Application.ActiveWindow.Selection,
+' which in Normal view is exactly one slide -- so a whole-deck safety check
+' was silently checking 1 of 43 real slides, every press, with nothing
+' saying so. This proves the replacement (RealLinkedSlides) actually
+' returns every real, linked, non-template slide -- not a selection, not a
+' sample -- by planting one of each excluded kind (a template, an unlinked
+' slide) alongside a real linked one and checking membership, not a count
+' (the shared test presentation accumulates slides across the whole suite,
+' so an exact total would be fragile against test order).
+Private Function Test_RibbonUI_RealLinkedSlidesIsWholeDeckNotASelection() As String
+    Dim result As String
+
+    Dim realSld As Object
+    Set realSld = NewBlankSlide()
+    realSld.Tags.Add "slide_type", "rls-test-type"
+    realSld.Tags.Add "instance_key", "rls-real-1"
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    templateSld.Tags.Add "slide_type", "rls-test-type"
+    templateSld.Tags.Add "instance_key", "rls-template-1"
+    templateSld.Tags.Add "IS_TEMPLATE", "1"
+
+    Dim unlinkedSld As Object
+    Set unlinkedSld = NewBlankSlide()
+    ' No tags at all -- a decorative or not-yet-onboarded slide.
+
+    Dim found As Collection
+    Set found = RibbonUI.RealLinkedSlides(Application.ActivePresentation)
+
+    Dim hasReal As Boolean, hasTemplate As Boolean, hasUnlinked As Boolean
+    Dim s As Object
+    For Each s In found
+        If s.SlideID = realSld.SlideID Then hasReal = True
+        If s.SlideID = templateSld.SlideID Then hasTemplate = True
+        If s.SlideID = unlinkedSld.SlideID Then hasUnlinked = True
+    Next s
+
+    result = result & Assert(hasReal, "the real linked slide IS included")
+    result = result & Assert(Not hasTemplate, "the template is excluded, even though it carries the same slide_type")
+    result = result & Assert(Not hasUnlinked, "the untagged slide is excluded -- nothing to harvest into")
+
+    ' NOT JUST WHATEVER WAS SELECTED. This is the actual behavioural claim --
+    ' realSld is included in the whole-deck result regardless of PowerPoint's
+    ' current selection state, which the old Application.ActiveWindow.
+    ' Selection-based version could never guarantee (Normal view selects
+    ' exactly one slide, and nothing here ever selected realSld at all).
+    result = result & Assert(hasReal, _
+        "found without ever selecting it -- proves this is deck-wide, not selection-scoped")
+
+    Test_RibbonUI_RealLinkedSlidesIsWholeDeckNotASelection = result
+End Function
 
 Private Function Test_RibbonUI_ResolveTypeAnswerAcceptsNumberOrName() As String
     Dim result As String

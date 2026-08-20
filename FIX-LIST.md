@@ -4003,3 +4003,149 @@ treated as finished:**
   -- not run against the live register in this session on purpose, since
   that is exactly the kind of irreversible action this file's own
   standing rules say to confirm first.
+
+## INCIDENT, 2026-08-21 ~07:15 — a real sync blanked 117 fields of real
+## content across 41+ live slides. Restored, root-caused, fixed, verified
+## deployed. Full account below -- this is the most serious incident this
+## project has had.
+
+**What happened.** The first-ever real "Put it on the slides" sync of the
+night wrote 357 items, reported "0 not approved, 0 dropped as stale, 1
+failed" -- an apparently clean run. It wasn't: a field-by-field diff of a
+verified pre-sync backup against the post-sync file showed **117 of 122
+fields that held real, human-authored content were blanked** --
+`STRATEGIC_ALIGNMENT_BODY` (41), `PROBLEM_BODY` (41), `PROJECT_PROGRESS`
+(35). Full paragraphs and real percentages, gone, on 41+ real project
+slides. Caught because Rohan looked at the actual deck and said "look at
+the slides, they are trashed" -- not because anything in the tool flagged
+it.
+
+**Root cause, per an independent bloodhound (Fable model) investigation,
+NOT what I first assumed.** My own first theory -- "Harvest was never run
+first, so the register was genuinely empty" -- was wrong, and matters
+because the fix it points to (run Harvest before syncing) would not
+actually have prevented this:
+
+A DIFFERENT session, the day before (2026-08-20 morning), deliberately
+blanked 161 stale `Q4F26` register cells that were unedited carry-copies
+of `Q3F26` -- the right *intent* ("clean up so these read as not-yet-
+drafted"), but whatever wrote the blanks left **zero-length-string
+cells (`""`)**, not truly empty ones. VBA's `IsEmpty("")` is `False`, so
+every downstream check read these cells as genuine, intentional content:
+`ExcelOutput.ReadSheetForPeriod` includes them in a row's field
+dictionary (its own `Not IsEmpty(...)` guard), and -- this is the part
+that matters -- **`Harvest.HarvestSlide`'s own "skip if the register
+already has a value" check (`rowValues.Exists`) would have skipped every
+one of these 117 fields too.** Harvest was not skipped by circumstance;
+it was structurally disabled by the exact same collision. Running it
+first would have changed nothing.
+
+The write path itself had no equivalent protection. `SyncOperations.
+PlanRoutineSync`'s DERIVED-field loop already refuses to write `""`
+(comment: `"" = don't write`); the ordinary Given/Prose field path --
+what actually wrote these 117 fields -- had no such guard anywhere.
+`InjectPrimitive.bas` simply assigned `shp.TextFrame.TextRange.Text =
+sourceValue`, blank or not.
+
+Bloodhound's verdict: **DESIGN, triggered by an EVENT.** The event (the
+Aug 20 cleanup using the wrong emptiness) is bounded and dated. The
+design gap that let one bad data state destroy 117 fields with a green
+report has two parts: (1) the one-press "build, ask once, apply" flow's
+single consent gate is a *count* ("358 change(s) queued... apply them
+now?"), not a per-field before-and-after, and R13's own header already
+names count-only confirmation as the exact thing R13 exists to prevent;
+(2) two definitions of "empty" coexist in this codebase (structurally-
+absent vs. zero-length-string) and nothing anywhere can *display* the
+difference to a person, so Harvest's protection silently inverts on it.
+Also confirmed: `MILESTONE_TIMELINE`'s 41 similarly-first-ever writes
+were NOT destructive -- what was overwritten was cloned donor
+boilerplate from the earlier template-propagation work, not per-project
+content, verified by direct comparison against the pre-sync backup.
+
+**Immediate response, in order:**
+1. Both pre-sync backups (pptx + register) duplicated to a second,
+   separate location (`deck-sync-backups/PRE-real-sync-20260821-071027/`)
+   before touching anything further, verified byte-identical by hash.
+2. Live PowerPoint/Excel closed cleanly (Rohan's own session, no forced
+   quit), deck restored from the verified backup via file copy, hash-
+   verified, and independently re-read (not just trusted) to confirm real
+   content was actually back.
+3. Register deliberately NOT reverted -- its husk cells were identically
+   blank before and after the sync, so nothing was lost there, and
+   reverting it would undo other legitimate writes from the same run.
+
+**The actual fix -- two changes, both built, fail-first proven, and now
+DEPLOYED to the live add-in (see below):**
+
+- **`InjectPrimitive.bas`**: a blank `sourceValue` is refused, not
+  written, when the shape's current text is real (not empty, not the
+  untouched `<<FIELDNAME>>` placeholder) -- the ordinary field path's
+  missing counterpart to the derived loop's `"" = don't write` rule.
+  Refused writes surface in the review queue with an explanation
+  ("REFUSED: the register holds nothing for X, but the slide currently
+  shows real content...") rather than either silently writing or
+  silently skipping. **First version broke a genuinely different,
+  correct behaviour**: `InjectSlotsField` calls `InjectPrimitive` per
+  slot, and a slot legitimately clearing when this quarter has fewer
+  items than slots (`Test_InjectField_SlotsSplitsOneValueAcrossFixedShapes`'s
+  own words: "the unused third slot is blanked, not left holding the
+  stale line") is NOT the same shape as this incident -- caught by the
+  full suite, fixed with an `Optional refuseBlankOverReal As Boolean =
+  True` parameter that `InjectSlotsField` explicitly opts out of. Fail-
+  first proven twice: once for the guard itself (reproduced the exact
+  incident with the guard disabled), once implicitly by the slots test
+  regression and its fix.
+- **`RibbonUI.bas`**: `OfferHarvestForSelectedSlides` renamed
+  `OfferHarvestAcrossDeck` and rebuilt to walk every real, linked,
+  non-template slide in the presentation (new `RealLinkedSlides`
+  helper, `Public` for testability), not `Application.ActiveWindow.
+  Selection`. The old version's own comment said "in Normal view a
+  slide is ALWAYS selected" and reasoned that as fine -- it was checking
+  1 of 43 real slides on every press, silently, and the night this was
+  found nobody had ever multi-selected the deck first. Rohan: "make it
+  so I don't have to select slides for that... shouldn't it just check
+  register and/or deck?" Still silent on a steady-state deck (unchanged
+  dry-run-first design), so this adds no new invariant prompt. Fail-
+  first proven (inverted the template-exclusion filter, confirmed the
+  exact three expected failures, restored).
+
+Full suite: 290 passed, 0 failed, both fail-first provals done live.
+
+**Deployment -- and a THIRD finding, arguably as important as the
+first two.** Checking whether the fix was live at all surfaced that
+**no VBA source change from this entire session had ever reached the
+actual add-in Rohan runs.** The "Apply Approved" dialog during the
+incident itself showed `build: 2026-08-20 15:34` -- `addin155.ppam`,
+confirmed unchanged in the AddIns folder since the afternoon before.
+Every fix built tonight (this one, the `SUBTITLE_A` `DeckAdoption` fix,
+`KEY_EVENTS_HEADER`, the milestone prune) existed only in source files
+and in disposable test-harness presentations. This also fully explains
+`<<KEY_EVENTS_HEADER>>` showing on every slide -- not because
+`PROJECT_STATUS` was blank (an earlier, now-superseded theory in this
+same session), but because the code that even knows `KEY_EVENTS_HEADER`
+exists was never loaded.
+
+Rebuilt via `vba/tests/build_ppam.ps1` (all 34 production modules,
+stamped `2026-08-21 08:49`), Rohan did the one confirmed-non-automatable
+step (File > Save As > PowerPoint Add-in), saved as `addin156.ppam`.
+Registered and loaded via COM (`Application.AddIns`: `addin155.AutoLoad
+= False`, `addin156` added/`Loaded = True`/`AutoLoad = True`), **verified
+persisted across a real close-and-reopen**, not just the in-memory
+property -- and finally verified by triggering the live build-stamp
+dialog (`RibbonUI.ShowSyncResult`, the exact mechanism this codebase
+already had for "is this fix in, answerable from the screen") and
+having Rohan read it directly: **`addin156` confirmed live.**
+
+**Still open, not done tonight:**
+- The register still holds all ~158 husk cells (`STRATEGIC_ALIGNMENT_
+  BODY`/`PROBLEM_BODY`/`PROJECT_PROGRESS`/dormant `PROJECT_STATUS`).
+  They are now SAFE to sync against (the guard refuses rather than
+  destroys), but the underlying content is still genuinely missing from
+  the register -- a real Harvest pass (now deck-wide) or manual entry is
+  still needed to actually recover the data into the register itself,
+  not just protect the slides from losing it a second time.
+- The exact mechanism that minted zero-length-strings instead of true
+  Empty cells on 2026-08-20 was not identified (bloodhound: "the scratch
+  script wasn't preserved"). Worth naming if it recurs -- a bulk `Range
+  = array` assignment with `""` elements mints ZLS; a scalar `.Value =
+  ""` does not, per the same investigation's own note.

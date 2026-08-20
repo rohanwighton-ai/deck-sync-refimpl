@@ -908,32 +908,57 @@ End Function
 ' adoption skips every already-linked slide before it matches anything, so on a
 ' live deck -- where every slide is linked -- it harvests nothing at all.
 '
-' NOT A FOURTH BUTTON, and not an unconditional prompt either. In Normal view a
-' slide is ALWAYS selected, so "you have slides selected, harvest them?" would
-' fire on nearly every press, which is the invariant prompt this chain deleted
-' six of. The gate is a DRY RUN over the selected slides: if nothing would be
-' written, nothing is said. On a steady-state deck every field already holds a
-' value, so this is silent; it speaks only in the state it exists for, which is
-' the press after new fields have been tagged.
+' DECK-WIDE, NOT SELECTION-SCOPED -- changed 2026-08-21, see FIX-LIST for the
+' incident this closes. The original version walked only Application.
+' ActiveWindow.Selection, reasoned (its own comment, now wrong) as cheap
+' because "in Normal view a slide is ALWAYS selected... if nothing would be
+' written, nothing is said." That reasoning was correct about the SILENCE but
+' never examined the SCOPE: in Normal view the selection is exactly one
+' slide, so this offer was checking 1 of 43 real slides on every press,
+' silently, with nothing anywhere saying so. The night this was found, a
+' real sync wrote blank register values over real content on 41+ slides that
+' this check could have caught and never got the chance to, because nobody
+' had multi-selected the deck first (a slide-sorter-only action, done by
+' nobody that session). Rohan, 2026-08-21: "make it so I don't have to
+' select slides for that... shouldn't it just check register and/or deck?"
 '
-' The dry run costs one register read plus a shape walk per field per selected
-' slide. In Normal view that is one slide. In the slide sorter it is whatever
-' the person deliberately selected, which is the moment they have asked for it.
-Private Function OfferHarvestForSelectedSlides(pres As Object, TITLE As String) As Boolean
-    OfferHarvestForSelectedSlides = True
+' Still silent on a steady-state deck (the dry run below is unchanged --
+' nothing to harvest still means nothing is said), so this doesn't add a new
+' invariant prompt; it just stops depending on a UI selection state nothing
+' ever surfaced to the person pressing the button.
+'
+' The dry run now costs one register read plus a shape walk per field per
+' REAL (non-template) slide in the whole deck, every time this chain runs --
+' the same cost class ReviewQueue.BuildQueue already accepts for every
+' registered slide type, every press.
+' Every real, linked, non-template slide in the presentation -- the deck-wide
+' replacement for Application.ActiveWindow.Selection (see OfferHarvestAcrossDeck's
+' own header for why). Pulled out as its own function so the actual scope
+' change is directly testable: OfferHarvestAcrossDeck's remaining body is
+' gated behind an interactive MsgBox and can't be driven end-to-end from an
+' automated test (same constraint as DraftingUI.RollForwardUI's InputBox
+' picker), but the slide-gathering logic that fixes the incident can be
+' proven on its own.
+Public Function RealLinkedSlides(pres As Object) As Collection
+    Dim result As Collection
+    Set result = New Collection
+    Dim probe As Object
+    For Each probe In pres.Slides
+        Dim resolved As SlideInstance
+        resolved = Resolve.ResolveSlideInstance(probe)
+        If resolved.HasInstanceKey And Not resolved.IsTemplate Then
+            result.Add probe
+        End If
+    Next probe
+    Set RealLinkedSlides = result
+End Function
 
-    Dim sel As Object
-    On Error Resume Next
-    Set sel = Application.ActiveWindow.Selection
-    On Error GoTo 0
-    If sel Is Nothing Then Exit Function
+Private Function OfferHarvestAcrossDeck(pres As Object, TITLE As String) As Boolean
+    OfferHarvestAcrossDeck = True
 
-    Dim isSlides As Boolean
-    isSlides = False
-    On Error Resume Next
-    isSlides = (sel.Type = 1)                                ' ppSelectionSlides
-    On Error GoTo 0
-    If Not isSlides Then Exit Function
+    Dim allSlides As Collection
+    Set allSlides = RealLinkedSlides(pres)
+    If allSlides.count = 0 Then Exit Function
 
     Dim period As String
     period = DeckRegistry.GetDeckPeriod(pres)
@@ -964,7 +989,7 @@ Private Function OfferHarvestForSelectedSlides(pres As Object, TITLE As String) 
     Dim detail As String, devices As String, collisions As String
 
     Dim sld As Object
-    For Each sld In sel.SlideRange
+    For Each sld In allSlides
         Dim ws As Object, tpl As Object
         Set ws = SheetForSlide(pres, wb, sld)
         Set tpl = TemplateForSlide(pres, sld)
@@ -1040,7 +1065,7 @@ Private Function OfferHarvestForSelectedSlides(pres As Object, TITLE As String) 
     ' all -- VBA's MsgBox truncates SILENTLY, so the cap has to cover everything
     ' that reaches it.
     If MsgBox(CapReport(ask), vbYesNo + vbQuestion, TITLE) <> vbYes Then
-        OfferHarvestForSelectedSlides = False
+        OfferHarvestAcrossDeck = False
         Exit Function
     End If
 
@@ -1053,7 +1078,7 @@ Private Function OfferHarvestForSelectedSlides(pres As Object, TITLE As String) 
     ' the two, each pass's own guard still governs, so the worst case is doing
     ' less than was offered, never more.
     Dim stamped As Long, written As Long
-    For Each sld In sel.SlideRange
+    For Each sld In allSlides
         Set tpl = TemplateForSlide(pres, sld)
         If Not tpl Is Nothing Then
             Dim pWet As PropagateOutcome
@@ -1077,7 +1102,7 @@ Private Function OfferHarvestForSelectedSlides(pres As Object, TITLE As String) 
     End If
 
     ShowSyncResult TITLE, report
-    OfferHarvestForSelectedSlides = False
+    OfferHarvestAcrossDeck = False
 End Function
 
 ' The TEMPLATE slide for this slide's own type. Separate from SheetForSlide
@@ -1511,7 +1536,7 @@ Private Sub SyncNowChainCore()
     ' linked one, so on a selection containing both, linking first is the order
     ' that leaves nothing stranded. Adoption stops the chain when it runs, so
     ' the two never fire on the same press -- pressing again picks up the rest.
-    If Not OfferHarvestForSelectedSlides(pres, TITLE) Then Exit Sub
+    If Not OfferHarvestAcrossDeck(pres, TITLE) Then Exit Sub
 
     ' THE PLAN USED TO BE A MODAL HERE, AND IT IS GONE. 2026-08-14.
     '

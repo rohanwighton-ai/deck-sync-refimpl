@@ -6,6 +6,38 @@
 > handover surface: `NEXT-SESSION.md`'s CURRENT block points here first. Add to
 > it, tick it here, together — don't let it drift back into prose.
 
+## INCIDENT 2026-08-21 — real content blanked by a real sync, restored, root-caused, fixed, deployed. READ FIRST.
+
+**The most serious incident this project has had.** A real "Put it on the slides"
+sync blanked 117 fields of real, human-authored content across 41+ live slides
+(`STRATEGIC_ALIGNMENT_BODY`/`PROBLEM_BODY`/`PROJECT_PROGRESS`), reporting a clean
+run. Root cause (independent bloodhound/Fable investigation, not my first theory):
+a prior session's cleanup left zero-length-string cells instead of truly empty
+ones, which every downstream check — including `Harvest`'s own protection — read
+as real content. Full account: FIX-LIST.md, "INCIDENT, 2026-08-21."
+
+- [x] Deck restored from a verified pre-sync backup, real content confirmed back.
+- [x] Backups duplicated to a second location, hash-verified.
+- [x] Root cause found (DESIGN, triggered by an EVENT — not "harvest wasn't run,"
+      which would not have prevented this).
+- [x] Fix 1: `InjectPrimitive.bas` refuses to write a blank value over real slide
+      content. Fail-first proven, including a real regression it caused and fixed
+      (`InjectSlotsField`'s legitimate slot-clearing).
+- [x] Fix 2: Harvest coverage is deck-wide (`RibbonUI.RealLinkedSlides`), not
+      scoped to whatever's selected in PowerPoint (was silently checking 1 of 43
+      slides). Fail-first proven.
+- [x] **Found while verifying: no VBA change from this entire session had ever
+      reached the live add-in** — `addin155.ppam` was unchanged since the day
+      before. Rebuilt (`addin156.ppam`), deployed, verified persisted across a
+      real close/reopen, verified live via the build-stamp dialog with Rohan
+      reading it directly off his own screen.
+- [ ] **Still open**: the register's ~158 husk cells (zero-length-strings) are
+      safe now (guarded, not destructive) but still genuinely empty of real
+      content — a real Harvest pass or manual entry is needed to actually
+      recover the data into the register.
+- [ ] The exact mechanism that minted zero-length-strings instead of true Empty
+      cells on 2026-08-20 was not identified — worth naming if it recurs.
+
 ## The extraction-to-quality loop — Rohan's plan, 2026-08-20, PRIORITY
 
 **The real state, checked from `SRC_EXTRACTS` directly, not assumed:** across all 43
