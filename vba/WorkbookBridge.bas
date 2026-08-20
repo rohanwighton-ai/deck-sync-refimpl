@@ -761,13 +761,19 @@ Public Function LifespanOf(sheetName As String) As String
         LifespanOf = "PERMANENT -- grows each quarter"
     ElseIf Left(sheetName, 4) = "TPL_" Then
         LifespanOf = "Rebuilt each drafting round"
+    ElseIf sheetName = DraftingLobby.LOBBY_SHEET_NAME Then
+        LifespanOf = "Rebuilt each drafting round"
     ElseIf Left(sheetName, 11) = "Sync Review" Then
         LifespanOf = "One per run, then consumed"
     ElseIf sheetName = SYNC_LOG_SHEET_NAME Then
         LifespanOf = "Append-only history"
+    ElseIf sheetName = Timing.TIMING_SHEET_NAME Then
+        LifespanOf = "Append-only history"
     ElseIf sheetName = FieldSpec.SPEC_SHEET_NAME Then
         LifespanOf = "PERMANENT -- edit it freely"
     ElseIf sheetName = Sources.SOURCES_SHEET_NAME Then
+        LifespanOf = "PERMANENT -- accumulates, never rebuilt"
+    ElseIf sheetName = ShapeAddressBook.ADDRESS_BOOK_SHEET_NAME Then
         LifespanOf = "PERMANENT -- accumulates, never rebuilt"
     Else
         LifespanOf = "unknown"
@@ -983,6 +989,9 @@ Public Function IsToolOwnedSheet(sheetName As String) As Boolean
     If sheetName = TemplateAudit.AUDIT_SHEET_NAME Then IsToolOwnedSheet = True
     If sheetName = RUN_LOG_SHEET_NAME Then IsToolOwnedSheet = True
     If sheetName = SYNC_LOG_SHEET_NAME Then IsToolOwnedSheet = True
+    If sheetName = DraftingLobby.LOBBY_SHEET_NAME Then IsToolOwnedSheet = True
+    If sheetName = Timing.TIMING_SHEET_NAME Then IsToolOwnedSheet = True
+    If sheetName = ShapeAddressBook.ADDRESS_BOOK_SHEET_NAME Then IsToolOwnedSheet = True
     If Left(sheetName, Len("TPL_")) = "TPL_" Then IsToolOwnedSheet = True
     If Left(sheetName, Len("SRC_")) = "SRC_" Then IsToolOwnedSheet = True
     If Left(sheetName, Len("SAVED ")) = "SAVED " Then IsToolOwnedSheet = True

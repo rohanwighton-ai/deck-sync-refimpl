@@ -5150,6 +5150,28 @@ Private Function Test_WorkbookBridge_IndexExplainsEachSheet() As String
     result = result & Assert(InStr(WorkbookBridge.LifespanOf("Sync Log"), "Append") > 0, _
         "the log is marked append-only, got '" & WorkbookBridge.LifespanOf("Sync Log") & "'")
 
+    ' THREE REAL TOOL-OWNED SHEETS WERE NEVER TAUGHT TO THIS PAIR OF
+    ' FUNCTIONS -- found by an excel-hound audit, 2026-08-20. Each has its own
+    ' module and its own sheet-name constant; both sides read the constant
+    ' directly so this cannot drift the way the "Sync Review" prefix did.
+    result = result & Assert(WorkbookBridge.IsToolOwnedSheet(DraftingLobby.LOBBY_SHEET_NAME), _
+        "the Drafting Lobby is recognised as tool-owned")
+    result = result & Assert(InStr(WorkbookBridge.LifespanOf(DraftingLobby.LOBBY_SHEET_NAME), "Rebuilt") > 0, _
+        "the Lobby is deleted and rebuilt from scratch each drafting round (BuildLobbyFromScratch), got '" _
+        & WorkbookBridge.LifespanOf(DraftingLobby.LOBBY_SHEET_NAME) & "'")
+
+    result = result & Assert(WorkbookBridge.IsToolOwnedSheet(Timing.TIMING_SHEET_NAME), _
+        "the Timing sheet is recognised as tool-owned")
+    result = result & Assert(InStr(WorkbookBridge.LifespanOf(Timing.TIMING_SHEET_NAME), "Append") > 0, _
+        "Timing only ever appends a row (WriteTimingRow), never clears, got '" _
+        & WorkbookBridge.LifespanOf(Timing.TIMING_SHEET_NAME) & "'")
+
+    result = result & Assert(WorkbookBridge.IsToolOwnedSheet(ShapeAddressBook.ADDRESS_BOOK_SHEET_NAME), _
+        "the Shape Address Book is recognised as tool-owned")
+    result = result & Assert(InStr(WorkbookBridge.LifespanOf(ShapeAddressBook.ADDRESS_BOOK_SHEET_NAME), "PERMANENT") > 0, _
+        "the Address Book is a persistent, self-healing cache that is never wiped, got '" _
+        & WorkbookBridge.LifespanOf(ShapeAddressBook.ADDRESS_BOOK_SHEET_NAME) & "'")
+
     ' An unrecognised sheet must say so rather than be described wrongly --
     ' a confident description of somebody else's sheet is worse than none.
     result = result & Assert(InStr(WorkbookBridge.DescribeSheet("Bob's notes"), "not created by this tool") > 0, _
