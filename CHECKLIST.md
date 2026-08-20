@@ -43,6 +43,32 @@ prove the mechanism again on a narrow, already-well-tested slice. The mechanism 
 that matters is steps 1-2 actually running for real, at scale, which hasn't happened
 yet.
 
+## Before rebuilding the addin — standing checklist (Rohan, 2026-08-20)
+
+Run through this every time, not just when something feels off:
+
+- [ ] **Re-run "Refresh Drafting Sheets" on the working copy if Field Spec was
+      edited directly** (outside the button flow) since the sheets were last
+      refreshed. The row-2 AI-draft prompt is generated FROM Field Spec AT
+      REFRESH TIME — a direct edit (e.g. via COM) after the last refresh
+      leaves the prompt cell showing stale/generic text even though the
+      sheet's own columns are correct. Caught live 2026-08-20: the History
+      treatment column had the right values, but every prompt still said the
+      generic fallback until refresh ran again.
+- [ ] **Confirm `build_ppam.ps1`'s module list is current** — it went stale
+      once already this session (missing `FormattingAudit.bas`), which
+      silently blocked all COM compilation. No new `.bas` files were added
+      today, so the risk is low, but it costs nothing to check.
+- [ ] **Full VBA suite green** (`run_vba_tests.ps1`, no filter) — necessary,
+      not sufficient. It proves the code compiles and each unit behaves; it
+      does not prove a person's button press actually reaches the changed
+      code (see `feathers-hound` / the "tested unit behind a locked door"
+      pattern already burned this project twice).
+- [ ] **After building, verify the NEW addin is actually loaded** before
+      trusting any test against it — register it, then call a real function
+      through it (`Application.Run`), not just confirm the file exists or
+      `AddIns.Loaded = True`.
+
 ## Immediate — nothing else is real until this happens
 
 - [x] Build `addin104`: run `build_ppam.ps1`, Save As `addin104`, tick it, untick
