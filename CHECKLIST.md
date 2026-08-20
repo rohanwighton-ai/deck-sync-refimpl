@@ -992,7 +992,16 @@ slides plus the P/K/S templates:
 - `SAAFE_CASH`, `TOTAL_INKIND`, `INDUSTRY_PARTNER`, `TERTIARY_INSTITUTION`,
   `DELIVERABLES_BODY`, `START_DATE`, `END_DATE` — tag-only gaps, closed by geometry/content
   matching against an already-tagged reference, same discipline each time (refusal-guarded,
-  verified against saved bytes, never trusted from the writing session).
+  verified against saved bytes, never trusted from the writing session). **Correction, same
+  day**: this line originally claimed "plus P/K/S templates" for all seven — wrong for four
+  of them. That night's propagation batch targeted the 43 real slides only; `SAAFE_CASH`,
+  `INDUSTRY_PARTNER`, `TERTIARY_INSTITUTION` and `TIMELINE_ELAPSED` were never actually
+  checked on the K/S templates themselves, and K's `INDUSTRY_PARTNER` shape held a
+  hardcoded literal `"[TBC]"` string rather than a placeholder tag — unreachable by any
+  injector. Found by a later kennel pass and fixed (FIX-LIST item BQ). The lesson this
+  section already states applies to itself here: a claim of "closed... plus templates" is
+  exactly the kind of small-sample generalisation the rest of this section exists to warn
+  against, and it slipped through anyway.
 - `MILESTONE_TIMELINE` and `PROJECT_PHOTO` — these needed actual shape creation, not just
   tagging (genuinely absent from 41 real slides and from the K/S templates). Built on the
   P/K/S templates first (colour-corrected per type — the milestone device's internal
