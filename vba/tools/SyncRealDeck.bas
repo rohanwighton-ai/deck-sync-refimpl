@@ -97,8 +97,13 @@ Public Function SyncRealDeck(deckPath As String, Optional saveWhenDone As Boolea
         "Presentation dirty after sync: " & (Not pres.Saved) & vbCrLf
 
     If saveWhenDone Then
-        pres.Save
-        report = report & "SAVED to disk." & vbCrLf
+        Dim srProblem As String
+        srProblem = DeckRegistry.SaveDeckVerified(pres)
+        If srProblem = "" Then
+            report = report & "SAVED to disk (verified)." & vbCrLf
+        Else
+            report = report & "---- NOT SAVED ----" & vbCrLf & srProblem & vbCrLf
+        End If
     Else
         pres.Saved = msoTrue   ' discard: suppresses the close-time save prompt
         pres.Close

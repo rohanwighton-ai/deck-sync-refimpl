@@ -398,8 +398,18 @@ Public Function RunField(deckPath As String, registerPath As String, _
         "  slides matching the register: " & vMatch & vbCrLf & _
         "  mismatched:                   " & vMiss & vbCrLf
 
-    pres.Save
-    r = r & vbCrLf & "Deck saved." & vbCrLf
+    ' VERIFIED FROM THE FAR SIDE, not from pres.Saved. The block above is
+    ' labelled "VERIFIED BY RE-READING THE DECK" and re-reads the SAME open
+    ' presentation object -- that proves the write landed in memory, never
+    ' that it reached disk. SaveDeckVerified compares the file's own
+    ' DateLastModified via an independent FSO handle.
+    Dim savedProblem As String
+    savedProblem = DeckRegistry.SaveDeckVerified(pres)
+    If savedProblem = "" Then
+        r = r & vbCrLf & "Deck saved (verified from disk)." & vbCrLf
+    Else
+        r = r & vbCrLf & "---- NOT SAVED ----" & vbCrLf & savedProblem & vbCrLf
+    End If
 
     RunField = r
 End Function
@@ -515,13 +525,19 @@ Public Function ReseedFromSlides(deckPath As String, registerPath As String, _
         rowN = rowN + 1
     Loop
 
-    wb.Save
+    Dim regProblem As String
+    regProblem = WorkbookBridge.SaveWorkbookVerified(wb)
     CloseIfOwned wb, wasOpen
     pres.Saved = msoTrue
     pres.Close
 
-    r = r & vbCrLf & "reseeded: " & fixed & "   skipped: " & skipped & vbCrLf & _
-        "Register updated. Deck was opened READ-ONLY and not changed." & vbCrLf
+    r = r & vbCrLf & "reseeded: " & fixed & "   skipped: " & skipped & vbCrLf
+    If regProblem = "" Then
+        r = r & "Register updated (save verified from disk). Deck was opened " & _
+            "READ-ONLY and not changed." & vbCrLf
+    Else
+        r = r & "---- REGISTER NOT SAVED ----" & vbCrLf & regProblem & vbCrLf
+    End If
     ReseedFromSlides = r
 End Function
 
@@ -722,14 +738,22 @@ Public Function DeleteEntities(deckPath As String, registerPath As String, entit
                 removed = removed + 1
             End If
         Next rowN
-        wb.Save
+        Dim delRegProblem As String
+        delRegProblem = WorkbookBridge.SaveWorkbookVerified(wb)
     End If
     CloseIfOwned wb, wasOpen
 
     r = r & "Register rows removed: " & removed & vbCrLf
+    If delRegProblem <> "" Then r = r & "---- REGISTER NOT SAVED ----" & vbCrLf & _
+        delRegProblem & vbCrLf
 
-    pres.Save
-    r = r & "Deck saved." & vbCrLf
+    Dim delDeckProblem As String
+    delDeckProblem = DeckRegistry.SaveDeckVerified(pres)
+    If delDeckProblem = "" Then
+        r = r & "Deck saved (verified from disk)." & vbCrLf
+    Else
+        r = r & "---- DECK NOT SAVED ----" & vbCrLf & delDeckProblem & vbCrLf
+    End If
     DeleteEntities = r
 End Function
 

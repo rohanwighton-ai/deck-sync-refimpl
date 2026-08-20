@@ -104,8 +104,13 @@ Public Function HiddenFixCheck(deckPath As String, targetKey As String, Optional
         "  master template hidden:        " & templateHidden & "   (must be True)" & vbCrLf
 
     If saveWhenDone Then
-        pres.Save
-        report = report & vbCrLf & "SAVED to disk." & vbCrLf
+        Dim hfProblem As String
+        hfProblem = DeckRegistry.SaveDeckVerified(pres)
+        If hfProblem = "" Then
+            report = report & vbCrLf & "SAVED to disk (verified)." & vbCrLf
+        Else
+            report = report & vbCrLf & "---- NOT SAVED ----" & vbCrLf & hfProblem & vbCrLf
+        End If
     Else
         pres.Saved = msoTrue
         pres.Close
