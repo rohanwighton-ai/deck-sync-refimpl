@@ -1057,7 +1057,7 @@ as a first draft needing Rohan's (or the real source's) confirmation before they
 on: `1_K1001, 1_K1002, 1_K1003, 1_K1004, 1_K1005, 1_K1006, 1_K1007, 1_K1008, 1_K010,
 3_K016, 4_K017, 4_K021, 1_K022, 3_K023`.
 
-## Bold header line for PROGRESS_BODY/KEY_EVENTS_BODY — built on templates only, 2026-08-21
+## Bold header line for PROGRESS_BODY/KEY_EVENTS_BODY — CLOSED 2026-08-21
 
 Rohan's original ask, from earlier the same night: a dedicated bold header line
 (quarter on the left, project status on the right when not "In Progress") above
@@ -1072,29 +1072,40 @@ K `#F55A2D`, S `#C0A2F2` — matching the same per-type convention as the milest
 widget). The pre-existing body-bold bug is fixed alongside it (`Font.Bold = 0` on
 `PROGRESS_BODY`/`KEY_EVENTS_BODY`).
 
-**Update, 2026-08-21 — both fields now real, per Rohan's own clarification.**
+**Update, 2026-08-21 — both fields real, per Rohan's own clarification.**
 He rejected the computed-quarter design this section originally called for:
 *"progres sheader can just be 'Last reported quarter Q4F26' ... separate
 field thats either manually adjusted in rare nonexpected cases or for
 student projects takes a frozen quarter label when they report every six
 months."* So `PROGRESS_HEADER` is `Kind=Given` (plain, directly-editable
 register column, same pattern as `SECTOR`/`TRL`/`SUBTITLE_B`), not a
-computed derivation — populated `"Last reported quarter Q1F27"` across
-all 43 current rows, verified from the saved file. `KEY_EVENTS_HEADER` IS
-a real `Kind=Derived` field (`SyncOperations.DeriveKeyEventsHeader`: blank
-when `PROJECT_STATUS = "In Progress"`, otherwise shows it verbatim),
-wired into `DerivedFieldTags()`/`ComputeDerivedValue`, fail-first proven,
-full suite 286/286. See FIX-LIST item BR.
+computed derivation. `KEY_EVENTS_HEADER` IS a real `Kind=Derived` field
+(`SyncOperations.DeriveKeyEventsHeader`: blank when `PROJECT_STATUS = "In
+Progress"`, otherwise shows it verbatim), wired into `DerivedFieldTags()`/
+`ComputeDerivedValue`, fail-first proven, full suite 286/286.
 
-**Still not done**:
-- [ ] Not propagated to any of the 43 real slides — templates only. Both
-      shapes still hold `<<PROGRESS_HEADER>>`/`<<KEY_EVENTS_HEADER>>`
-      placeholder text on the real slides; needs the same clone-and-tag
-      pattern used for `MILESTONE_TIMELINE`/`PROJECT_PHOTO`.
-- [ ] The Field Spec's own prompt text for `PROGRESS_BODY`/`KEY_EVENTS_BODY`
-      still instructs the AI to open with a bold quarter/status line — now
-      duplicated by these dedicated header fields and needs removing before
-      either header goes live on real slides.
+**First default was wrong twice, both caught live by Rohan (FIX-LIST item
+BS)**: defaulted to `Q1F27` (computed from today's date) instead of the
+`Q4F26` he'd written directly in his own instruction — *"why Q1F27?!!"* —
+then, after fixing that, applied `Q4F26` uniformly to all 43 rows
+including the 13 S-project (student, six-monthly) rows he'd already told
+me report on a different cadence — *"hang on the s projects didnt report
+in q4 like I explained."* Final state, verified from the saved file:
+`"Last reported quarter Q4F26"` on the 30 P/K rows, blank on all 13
+S-project rows (Rohan fills these by hand — no data on disk says which
+quarter each last reported, so nothing here guesses one).
+
+**Propagated to all 43 real slides (FIX-LIST item BT)**: both header
+shapes cloned from the matching P/K/S template onto every real slide,
+`PROGRESS_BODY`/`KEY_EVENTS_BODY` shrunk by the same 12pt and un-bolded.
+Verified by parsing the saved `.pptx`'s own XML directly: 46/46 role tags
+for each header (43 real + 3 template), correct per-type colour on a
+sample P/K/S real slide each, 0 remaining bold runs in either body field.
+
+**Still not done**: the Field Spec's own prompt text for
+`PROGRESS_BODY`/`KEY_EVENTS_BODY` still instructs the AI to open with a
+bold quarter/status line — now duplicated by these dedicated header
+fields and needs removing.
 
 - [ ] Verify or correct the 14 inferred SECTOR/TRL values above against real source data.
 - [ ] Decide whether `SECTOR`/`TRL` need a lightweight provenance flag of their own —

@@ -3652,10 +3652,77 @@ found-but-blank `KEY_EVENTS_HEADER` shape untouched, not just that the
 pure function works in isolation. Full suite: 286 passed, 0 failed, 0
 skipped (285 -> 286: one new test, one extended).
 
-**Still open, not done in this pass**: neither header shape has been
-propagated from the 3 templates to the 43 real slides yet (same
-clone-and-tag pattern used for `MILESTONE_TIMELINE`/`PROJECT_PHOTO`
-earlier tonight), and the Field Spec's own prompt text for
-`PROGRESS_BODY`/`KEY_EVENTS_BODY` still instructs the AI to open with a
-bold quarter/status line -- now duplicated by these dedicated fields and
-needs removing before either goes live on real slides.
+**Still open, not done in this pass**: the Field Spec's own prompt text
+for `PROGRESS_BODY`/`KEY_EVENTS_BODY` still instructs the AI to open with
+a bold quarter/status line, now duplicated by these dedicated fields and
+needs removing.
+
+## Fixed 2026-08-21 — BS, PROGRESS_HEADER default was wrong-quarter AND
+## wrong for every S-project, both caught live by Rohan
+
+**Wrong quarter.** BR's PROGRESS_HEADER pass defaulted all 43 Q1F27 rows
+to `"Last reported quarter Q1F27"`, reasoning from today's date under an
+AU July-June fiscal year. Rohan had already written the correct value
+directly in his own instruction -- `"progres sheader can just be 'Last
+reported quarter Q4F26'"` -- and it got silently overridden by a computed
+guess instead of used. Asked directly rather than guess a second time;
+answer was Q4F26. Moved the field from the 43 Q1F27 rows to the 43 Q4F26
+rows.
+
+**Wrong for every S-project.** Applied `"Last reported quarter Q4F26"`
+uniformly across all 43 Q4F26 rows including the 13 S-series (student)
+projects -- directly contradicting what Rohan had ALREADY told me earlier
+the same conversation (six-monthly reporters, "not necessarily this
+quarter"). He caught it immediately: *"hang on the s projects didnt
+report in q4 like I explained."* Cleared `PROGRESS_HEADER` on all 13
+S-project rows rather than guess which quarter each actually last
+reported -- no data on disk says, and inventing one would be exactly the
+kind of unsourced fact `PROVENANCE.md`'s rule exists to prevent. Rohan
+fills these in by hand, which was the design from the start for exactly
+this case.
+
+**Both wrong in the same pass, both against something Rohan had already
+told me in the same conversation** -- a computed default overriding his
+literal example, and a uniform default overriding his own stated
+exception. Verified the fix from the saved file: 30/30 P/K rows correct,
+13/13 S-project rows blank, 0 stray values on any other quarter.
+
+## Propagated 2026-08-21 — BT, PROGRESS_HEADER/KEY_EVENTS_HEADER shapes
+## cloned from templates onto all 43 real slides
+
+Same clone-and-tag pattern used for `MILESTONE_TIMELINE`/`PROJECT_PHOTO`
+earlier tonight: for each real slide, clone the matching P/K/S template's
+`PROGRESS_HEADER`/`KEY_EVENTS_HEADER` shape, position it identically
+(confirmed all 3 templates already share identical geometry), tag it,
+then shrink `PROGRESS_BODY`/`KEY_EVENTS_BODY` by the same 12pt (bottom
+edge held fixed) and clear their bold flag -- the same body-bold bug
+fixed on templates only, per the earlier CHECKLIST entry, now fixed on
+the real slides too.
+
+**Instance-key naming isn't fully consistent**: 5 real slides
+(`P008`, `S009`, `S021`, `S022`, `S023`) carry a bare key with no leading
+number/underscore, unlike the `3_P001` pattern everywhere else --
+`_P`/`_K`/`_S` substring matching missed all 5 on the first pass (silent
+skip, not a crash). Fixed by matching the type letter against the end of
+the string instead (`P\d+$` etc.), re-ran the (idempotent) script, all 43
+picked up.
+
+**Save failed the first run** (`Presentation.Save : This presentation is
+read-only`) -- the script had opened with `ReadOnly=True`. Confirmed the
+live file's timestamp was unchanged before touching it again (no partial
+write landed), fixed the open call, re-ran clean.
+
+**Verified from the saved file's own XML, not the writing session's COM
+report**: parsed the pptx zip directly with Python -- 46/46 `PROGRESS_
+HEADER` and 46/46 `KEY_EVENTS_HEADER` role tags present (43 real + 3
+template), correct per-type colour confirmed on one P/K/S real slide
+each (`003C23`/`F55A2D`/`C0A2F2`), 0 remaining bold runs in `PROGRESS_
+BODY`/`KEY_EVENTS_BODY` across all 43 real slides. The bold-detection
+code path was positively proven first (found `b="1"` correctly on the
+deliberately-bold header shapes themselves) before trusting its "0
+found" result on the body text -- a check that only ever reports absence
+is worthless until something proves it can also report presence. First
+verification attempt scanned 0 real slides (tag lookup used lowercase
+`instance_key`/`role`; the actual XML stores tag names uppercase --
+`INSTANCE_KEY`/`ROLE`) -- caught before it was reported as a clean
+result, not after.
