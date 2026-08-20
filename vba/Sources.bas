@@ -299,6 +299,52 @@ Public Function SourceApplicability(ws As Object) As Object
     Set SourceApplicability = d
 End Function
 
+' WHICH SOURCES LOOK LIKE THEY NEED A FRESH VARIANT THIS QUARTER.
+'
+' Rohan, 2026-08-20: "can old sources be updated for the new quarter... via a form at
+' the start of the new quarter." A period-specific source (Applies to = a real period,
+' not All periods) that names a DIFFERENT period than the one just started is exactly
+' the case that compounds every quarter if nobody is told about it -- S01/S02/S03 were
+' three separate period-specific IDs for the same file, all tagged Q4F26, all about to
+' need fresh siblings for Q1F27 with nothing surfacing that.
+'
+' REPORTED, NEVER ENFORCED -- same posture as RefsForOtherPeriod immediately above, and
+' for the same reason. A source naming last period is not necessarily WRONG (its
+' "Applies to" tag might just not have been touched yet, or the document genuinely
+' hasn't changed) -- it is a prompt to check, not a refusal. Deciding whether a fresh
+' variant is actually needed, and adding it, stays a person's call.
+Public Function StalePeriodSources(srcWs As Object, currentPeriod As String) As String
+    If srcWs Is Nothing Then Exit Function
+    If Trim(currentPeriod) = "" Then Exit Function
+
+    Dim applic As Object
+    Set applic = SourceApplicability(srcWs)
+
+    Dim r As Long
+    r = SRC_FIRST_ROW
+    Dim stale As String
+    Dim n As Long
+    Do While Trim(CStr(srcWs.Cells(r, COL_SRC_ID).Value)) <> ""
+        Dim sid As String
+        sid = Trim(CStr(srcWs.Cells(r, COL_SRC_ID).Value))
+        Dim applies As String
+        applies = CStr(applic(UCase(sid)))
+        If StrComp(applies, APPLIES_ALL, vbTextCompare) <> 0 And _
+           StrComp(applies, currentPeriod, vbTextCompare) <> 0 Then
+            stale = stale & "  " & sid & " (""" & _
+                Trim(CStr(srcWs.Cells(r, COL_SRC_LABEL).Value)) & """) applies to " & _
+                applies & ", not " & currentPeriod & vbCrLf
+            n = n + 1
+        End If
+        r = r + 1
+    Loop
+
+    If n = 0 Then Exit Function
+    StalePeriodSources = n & " source(s) still tagged for a period other than " & _
+        currentPeriod & " -- may need a fresh variant added for this quarter (not " & _
+        "necessarily wrong, just worth checking):" & vbCrLf & stale
+End Function
+
 ' Which of the IDs cited by a drafting row belong to a DIFFERENT period than the
 ' one being published. Returns "" when every citation is either period-neutral
 ' or names this period.

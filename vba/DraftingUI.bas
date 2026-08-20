@@ -1044,6 +1044,15 @@ Public Sub RefreshDraftingSheets()
         Exit Sub
     End If
 
+    ' NEW-QUARTER SOURCE CHECK, 2026-08-20. Rohan asked whether old sources could
+    ' be flagged for a fresh variant at the start of a new quarter, rather than
+    ' the compounding-per-quarter drift staying invisible until someone notices
+    ' by hand (which is how S01/S02/S03 ended up three separate period-specific
+    ' IDs for the same file). Reported to the Run Log only, same posture as
+    ' srcValidation below -- informational, never blocking.
+    Dim staleSources As String
+    staleSources = Sources.StalePeriodSources(srcWs, period)
+
     ' THE SAME READ SYNC NOW USES. This called Register.ReadRegisterAllStatuses
     ' until 2026-08-05 -- the LONG register -- while Sync Now read the wide
     ' sheet. Two files, so nothing drafted here could reach a slide.
@@ -1259,7 +1268,7 @@ Public Sub RefreshDraftingSheets()
     tRunLogSave = Timing.StartClock()
     WorkbookBridge.WriteRunLog wb, _
         "Drafting sheets rebuilt for " & period, _
-        report & vbCrLf & valNote & vbCrLf & srcValidation & vbCrLf & lobbyNote
+        report & vbCrLf & valNote & vbCrLf & srcValidation & vbCrLf & staleSources & vbCrLf & lobbyNote
 
     ' THE REFUSAL GOES FIRST SO TRUNCATION EATS THE GUIDANCE, NOT THE WARNING.
     ' MsgBox caps near 1024 characters and truncates silently, so ordering is the

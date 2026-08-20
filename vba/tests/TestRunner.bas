@@ -1337,6 +1337,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("Sources_StalePeriodSourcesFlagsOnlyThePeriodSpecificOnes", filterPattern) Then
+        r = Test_Sources_StalePeriodSourcesFlagsOnlyThePeriodSpecificOnes()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "Sources_StalePeriodSourcesFlagsOnlyThePeriodSpecificOnes", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("CommandBarUI_ShowToolbarIsIdempotent", filterPattern) Then
         r = Test_CommandBarUI_ShowToolbarIsIdempotent()
     Else
@@ -8218,6 +8227,60 @@ Private Function Test_Sources_RefsForOtherPeriodIsSilentOnNeutralAndUnknown() As
         "no period means no judgement, rather than every source being wrong")
 
     Test_Sources_RefsForOtherPeriodIsSilentOnNeutralAndUnknown = result
+End Function
+
+' THE NEW-QUARTER CHECK, PROVEN ON A REAL SHEET, NOT A DICTIONARY -- unlike the
+' two tests above, StalePeriodSources reads the Sources worksheet directly (it
+' has to: it's meant to run as part of a real rebuild, against real rows), so
+' this builds one for real rather than mocking the lookup.
+Private Function Test_Sources_StalePeriodSourcesFlagsOnlyThePeriodSpecificOnes() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+
+    Dim r As Long
+    r = Sources.SRC_FIRST_ROW
+    ws.Cells(r, Sources.COL_SRC_ID).Value = "S01"
+    ws.Cells(r, Sources.COL_SRC_LABEL).Value = "Q3 quarterly tracker"
+    ws.Cells(r, Sources.COL_SRC_APPLIES).Value = "Q3F26"
+    r = r + 1
+    ws.Cells(r, Sources.COL_SRC_ID).Value = "S02"
+    ws.Cells(r, Sources.COL_SRC_LABEL).Value = "Milestone file"
+    ws.Cells(r, Sources.COL_SRC_APPLIES).Value = Sources.APPLIES_ALL
+    r = r + 1
+    ws.Cells(r, Sources.COL_SRC_ID).Value = "S03"
+    ws.Cells(r, Sources.COL_SRC_LABEL).Value = "Q4 quarterly tracker"
+    ws.Cells(r, Sources.COL_SRC_APPLIES).Value = "Q4F26"
+
+    Dim got As String
+    got = Sources.StalePeriodSources(ws, "Q4F26")
+
+    result = result & Assert(InStr(got, "S01") > 0, _
+        "a source stamped for a DIFFERENT period than the one just started is flagged, got '" & got & "'")
+    result = result & Assert(InStr(got, "S02") = 0, _
+        "an All-periods source is never flagged, got '" & got & "'")
+    result = result & Assert(InStr(got, "S03") = 0, _
+        "a source already stamped for THIS period is not flagged, got '" & got & "'")
+
+    got = Sources.StalePeriodSources(ws, "Q3F26")
+    result = result & Assert(InStr(got, "S01") = 0, _
+        "checking against the period S01 actually belongs to leaves S01 unflagged, got '" & got & "'")
+    result = result & Assert(InStr(got, "S03") > 0, _
+        "but S03 (tagged Q4F26) is now the one out of step, got '" & got & "'")
+    result = result & Assert(Sources.StalePeriodSources(Nothing, "Q4F26") = "", _
+        "no Sources sheet means no judgement, not a crash")
+    result = result & Assert(Sources.StalePeriodSources(ws, "") = "", _
+        "no current period means no judgement, rather than everything flagged")
+
+    wb.Close False
+    xl.Quit
+
+    Test_Sources_StalePeriodSourcesFlagsOnlyThePeriodSpecificOnes = result
 End Function
 
 Private Function Test_CommandBarUI_ShowToolbarCreatesWiredButtons() As String
