@@ -68,6 +68,26 @@ Run through this every time, not just when something feels off:
       trusting any test against it — register it, then call a real function
       through it (`Application.Run`), not just confirm the file exists or
       `AddIns.Loaded = True`.
+- [ ] **`OneDrive\Claude\` is NOT the trusted location — copy the file into
+      `C:\Users\rohan\AppData\Roaming\Microsoft\AddIns\` first.** Got this
+      wrong live 2026-08-20: `File > Save As` lands the new `.ppam` in
+      `OneDrive\Claude\`, and `AddIns.Add(path)` registers it AT WHATEVER
+      PATH IT'S GIVEN — it does NOT auto-copy into the trusted folder the
+      way every prior addin (99-153) actually lives in. Registering straight
+      from `OneDrive\Claude\` "worked" (`Loaded = True`) but left it pointed
+      at a synced folder, not the real location. The fix took quitting
+      PowerPoint entirely to clear the mis-registered in-memory entry, a
+      manual `Copy-Item` into the AddIns folder, and re-adding from there.
+      After adding, also set `.Registered = -1` explicitly — it does not
+      default to matching every other addin's `Registered = True` state on
+      its own.
+- [ ] **`MsoTriState` enum names (`msoTrue`/`msoFalse`) fail to resolve in a
+      fresh PowerShell COM session** ("Unable to find type") — this is a
+      RECURRING gotcha (see also `reference_vba_office_gotchas` memory). Use
+      the raw integers instead: `-1` for True/Loaded/Registered, `0` for
+      False. A failed enum-type assignment does not throw a script-stopping
+      error by default, so it is easy to believe a `.Loaded = msoTrue` line
+      succeeded when it silently didn't.
 
 ## Immediate — nothing else is real until this happens
 
