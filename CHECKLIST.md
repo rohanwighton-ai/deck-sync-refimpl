@@ -1102,10 +1102,11 @@ Verified by parsing the saved `.pptx`'s own XML directly: 46/46 role tags
 for each header (43 real + 3 template), correct per-type colour on a
 sample P/K/S real slide each, 0 remaining bold runs in either body field.
 
-**Still not done**: the Field Spec's own prompt text for
-`PROGRESS_BODY`/`KEY_EVENTS_BODY` still instructs the AI to open with a
-bold quarter/status line — now duplicated by these dedicated header
-fields and needs removing.
+**Duplicate prompt instruction removed, 2026-08-21.** `PROGRESS_BODY`'s
+Purpose/Length/Behaviour no longer say to open with a quarter-labelled
+header; `KEY_EVENTS_BODY`'s Behaviour no longer says to open with a bold
+status line. Both now point at the dedicated header field by name and
+say not to repeat it. Verified from the saved file.
 
 - [ ] Verify or correct the 14 inferred SECTOR/TRL values above against real source data.
 - [ ] Decide whether `SECTOR`/`TRL` need a lightweight provenance flag of their own —

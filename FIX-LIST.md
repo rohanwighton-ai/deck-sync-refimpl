@@ -3789,3 +3789,23 @@ every DONE flag blank), `P008`/`S023` confirmed untouched.
 **Still open**: `P008` and `S023` have no importable data at all --
 `S023` additionally needs the genuine milestone-selection judgement call
 before it can carry any MS data.
+
+## Fixed 2026-08-21 — BW, PROGRESS_BODY/KEY_EVENTS_BODY prompt text
+## still told the AI to draft the bold header line the new dedicated
+## fields now own
+
+Follow-up from BR/BT: once `PROGRESS_HEADER`/`KEY_EVENTS_HEADER` existed
+as real fields, the Field Spec rows for the two body fields still carried
+the old instruction to open with a bold quarter/status line -- drafting
+against the unedited prompt would have produced the header twice, once
+in the dedicated shape and once again inside the body text.
+
+`PROGRESS_BODY`: removed "Opens with a header carrying the quarter
+label..." from Purpose, "after the quarter-labelled header" from Length,
+and "Quarter-labelled header line in bold, then bullets" from Behaviour.
+`KEY_EVENTS_BODY`: removed "A status label line in bold, then bullets"
+from Behaviour. Both Behaviour cells now name the field that owns the
+header (`PROGRESS_HEADER`/`KEY_EVENTS_HEADER`) and say explicitly not to
+repeat it, so the next person reading the spec sees why it isn't
+mentioned rather than assuming an oversight. Verified from the saved
+file.
