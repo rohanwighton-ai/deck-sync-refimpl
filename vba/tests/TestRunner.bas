@@ -5476,6 +5476,17 @@ Private Function Test_FieldSpec_DefaultGlobalRulesStatesAllFourTreatments() As S
     result = result & Assert(InStr(rules, "column J") = 0, "the NOTES reference is no longer a hardcoded letter")
     result = result & Assert(InStr(rules, "sole source of truth") > 0, "the no-invention rule survives the rewrite")
 
+    ' FRESH's arc-continuation clause, added 2026-08-20 (softened same session
+    ' before reaching the live register -- Rohan flagged the first draft's
+    ' narrative language as risking invented drama in Commonwealth-program
+    ' reporting). Asserted here so a future rewrite of this block can't
+    ' silently drop either half, the same way this test already guards the
+    ' other three treatments.
+    result = result & Assert(InStr(rules, "pick it up rather than restate it cold") > 0, _
+        "FRESH's continue-the-thread clause survives -- a fresh quarter may pick up a real thread rather than restart cold")
+    result = result & Assert(InStr(rules, "never about inventing one") > 0, _
+        "the clause stays understated -- reporting must not be pushed to manufacture a narrative that isn't there")
+
     Test_FieldSpec_DefaultGlobalRulesStatesAllFourTreatments = result
 End Function
 

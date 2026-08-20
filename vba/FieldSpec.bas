@@ -544,6 +544,17 @@ End Function
 ' each field's declared History treatment (COL_SPEC_HISTORY) pick which one
 ' applies -- caught by Claude (chat) reviewing the first rewrite before it
 ' propagated into thirteen fields' worth of individually-tailored prompts.
+'
+' FRESH extended 2026-08-20 (same night): the original wording only asked for
+' non-repetition and closed loops -- functional continuity, not narrative
+' continuity. Rohan's own framing: a fresh quarter should be free to continue
+' a real thread already in progress, not read as a cold restart every time.
+' Deliberately understated, not "always frame as a story" -- this is
+' Commonwealth-program reporting, most of it plainly factual, and the first
+' draft of this clause used narrative language (build-up, turning point,
+' resolution) that risked reading drama into milestone comments nobody
+' intended as one. Softened same session, before it ever reached the live
+' register: pick up a thread if it's genuinely there, never manufacture one.
 Public Function DefaultGlobalRules() As String
     ' Built as several statements, not one -- VBA caps a single continued
     ' statement at 25 physical lines, and the four treatment definitions
@@ -563,7 +574,11 @@ Public Function DefaultGlobalRules() As String
     s = s & HIST_FRESH & " -- this quarter gets its own words. Read REPORTED LAST" & vbCrLf & _
         "TIME to learn two things: what has already been reported (do not" & vbCrLf & _
         "report it again as if new), and what was left open or unresolved (say" & vbCrLf & _
-        "what happened to it). Match its register; reuse none of its sentences." & vbCrLf & vbCrLf
+        "what happened to it). Match its register; reuse none of its sentences. If a" & vbCrLf & _
+        "real thread genuinely carries from one quarter to the next, it's fine to" & vbCrLf & _
+        "pick it up rather than restate it cold -- but most reporting is not a story" & vbCrLf & _
+        "and should not be written like one. This is about not ignoring an obvious" & vbCrLf & _
+        "continuation, never about inventing one." & vbCrLf & vbCrLf
 
     s = s & HIST_PARTFROZEN & " -- items carried over from a previous quarter keep" & vbCrLf & _
         "their exact original wording, because they carry the quarter tag they" & vbCrLf & _
