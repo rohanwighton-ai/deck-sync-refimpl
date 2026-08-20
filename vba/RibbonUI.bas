@@ -434,7 +434,8 @@ Private Sub SlideMembershipCore(ByVal retireMode As Boolean)
                 refusals = refusals & "  " & types(i) & ": " & problem & vbCrLf
             Else
                 Dim q As ReviewQueueSet
-                q = ReviewQueue.BuildQueue(sheet, types(i), logWs)
+                q = ReviewQueue.BuildQueue(sheet, types(i), logWs, _
+                        WorkbookBridge.GetOrAddWorksheet(wb, FieldSpec.SPEC_SHEET_NAME))
 
                 If q.OrphanCount > 0 Then
                     orphanTotal = orphanTotal + q.OrphanCount
@@ -786,7 +787,8 @@ Private Function BuildAllQueuesCore(title As String, ByRef fullReport As String,
                     "REFUSED at period '" & DeckRegistry.GetDeckPeriod(pres) & "': " & problem & vbCrLf & vbCrLf
             Else
                 Dim q As ReviewQueueSet
-                q = ReviewQueue.BuildQueue(sheet, types(i), logWs)
+                q = ReviewQueue.BuildQueue(sheet, types(i), logWs, _
+                        WorkbookBridge.GetOrAddWorksheet(wb, FieldSpec.SPEC_SHEET_NAME))
                 totalQueued = totalQueued + q.Count
 
                 Dim reviewWs As Object

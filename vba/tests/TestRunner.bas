@@ -543,6 +543,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("ReviewQueue_ContentKindHonoursTheFieldSpecSheet", filterPattern) Then
+        r = Test_ReviewQueue_ContentKindHonoursTheFieldSpecSheet()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "ReviewQueue_ContentKindHonoursTheFieldSpecSheet", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("FieldSpec_ValidationRefusesAVocabularyNamedLikeAStructuralColumn", filterPattern) Then
         r = Test_FieldSpec_ValidationRefusesAVocabularyNamedLikeAStructuralColumn()
     Else
@@ -4842,6 +4851,61 @@ Private Function Test_FieldSpec_GlobalRulesProblemCatchesAStaleSeededCell() As S
     wb.Close False
     xl.Quit
     Test_FieldSpec_GlobalRulesProblemCatchesAStaleSeededCell = result
+End Function
+
+' The Field Spec sheet's `Kind` column is dropdown-validated and documented as
+' the owner's to set, and until 2026-08-20 ContentKindOf ignored it entirely,
+' answering from three hardcoded names. Batchability -- whether N writes can
+' become one click -- was therefore not actually controllable from the control
+' that claims to control it.
+Private Function Test_ReviewQueue_ContentKindHonoursTheFieldSpecSheet() As String
+    Dim result As String
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_SPEC_FIELDID).Value = "PROJECT_STATUS"
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_SPEC_KIND).Value = ReviewQueue.KIND_PROSE
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW + 1, FieldSpec.COL_SPEC_FIELDID).Value = "SOME_LOOKUP"
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW + 1, FieldSpec.COL_SPEC_KIND).Value = ReviewQueue.KIND_CONTROLLED
+
+    Dim kinds As Object
+    Set kinds = FieldSpec.KindMap(ws)
+
+    ' THE PROTECTIVE DIRECTION, and the one that was silently ignored. Marking
+    ' PROJECT_STATUS as Prose is how a person demands individual review of
+    ' every row. Before this fix the hardcoded table still said Controlled and
+    ' batching carried on regardless.
+    result = result & Assert(ReviewQueue.ContentKindOf("PROJECT_STATUS", kinds) = ReviewQueue.KIND_PROSE, _
+        "the sheet can take batchability AWAY from a hardcoded field, got '" & _
+        ReviewQueue.ContentKindOf("PROJECT_STATUS", kinds) & "'")
+
+    result = result & Assert(ReviewQueue.ContentKindOf("SOME_LOOKUP", kinds) = ReviewQueue.KIND_CONTROLLED, _
+        "the sheet can grant batchability to a field the table never named, got '" & _
+        ReviewQueue.ContentKindOf("SOME_LOOKUP", kinds) & "'")
+
+    ' NO SHEET => unchanged behaviour. Every pre-existing caller relies on this.
+    result = result & Assert(ReviewQueue.ContentKindOf("PROJECT_STATUS", Nothing) = ReviewQueue.KIND_CONTROLLED, _
+        "falls back to the built-in answer when no sheet is supplied, got '" & _
+        ReviewQueue.ContentKindOf("PROJECT_STATUS", Nothing) & "'")
+
+    ' THE DISCRIMINATOR. The live sheet holds 29 fields reading "Given", which
+    ' is not in the declared vocabulary. An unrecognised value must fall to the
+    ' NEVER-BATCHABLE end -- not to the built-in answer, which for this field
+    ' is Controlled. Written against PROJECT_STATUS deliberately: for any other
+    ' field the built-in is already Prose, so the two rules would agree and the
+    ' assertion would pass either way while proving nothing.
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_SPEC_KIND).Value = "Given"
+    Set kinds = FieldSpec.KindMap(ws)
+    result = result & Assert(ReviewQueue.ContentKindOf("PROJECT_STATUS", kinds) = ReviewQueue.KIND_PROSE, _
+        "a value outside the vocabulary falls to never-batchable, not to the built-in, got '" & _
+        ReviewQueue.ContentKindOf("PROJECT_STATUS", kinds) & "'")
+
+    wb.Close False
+    xl.Quit
+    Test_ReviewQueue_ContentKindHonoursTheFieldSpecSheet = result
 End Function
 
 ' Does the wide sheet have ANY row whose Instance ID is `instanceId`?

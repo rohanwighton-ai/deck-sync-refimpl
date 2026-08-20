@@ -274,12 +274,55 @@ End Function
 ' review; getting it wrong in the Controlled direction converts N unreviewed
 ' writes into one click, which is the exact failure R13 exists to prevent. So
 ' the absence of a label is never read as permission to batch.
-Public Function ContentKindOf(fieldId As String) As String
+' THE FIELD SPEC SHEET DECIDES THIS WHEN IT HAS AN ANSWER. It did not until
+' 2026-08-20, and that was a real defect: the sheet carried a person-editable,
+' dropdown-validated `Kind` column whose whole documented promise is "the code
+' owns the vocabulary, the sheet owns which value applies" -- while this
+' function ignored the sheet entirely and answered from three hardcoded field
+' names. Editing that column changed nothing for almost every field, silently,
+' and changed the WRONG thing for the three it did name: marking
+' PROJECT_STATUS as Prose to force individual review would have been ignored
+' and batching would have continued. A control that looks live and is
+' disconnected is worse than no control (FIX-LIST item 4).
+'
+' `kinds` is FieldSpec.KindMap's one-pass dictionary, passed in rather than
+' resolved per call -- see KindMap's own note on why.
+'
+' SAFETY, and the reason this is narrower than it looks. Both gates in
+' AssignBatches test only for KIND_CONTROLLED, so Prose and Static are
+' indistinguishable there: the only direction that can do harm is a field
+' wrongly BECOMING Controlled. So an unrecognised value is never trusted --
+' the live sheet holds 29 fields reading "Given", which is not in the declared
+' vocabulary at all -- and anything outside the vocabulary falls to Prose,
+' which is the never-batchable answer. A missing sheet or a missing row keeps
+' the built-in answer, so behaviour is unchanged wherever the sheet is silent.
+Public Function ContentKindOf(fieldId As String, Optional kinds As Object) As String
+    Dim builtIn As String
     Select Case UCase(Trim(fieldId))
-        Case "PROJECT_STATUS":  ContentKindOf = KIND_CONTROLLED
-        Case "PROJECT_NAME":    ContentKindOf = KIND_STATIC
-        Case "PROJECT_CODE":    ContentKindOf = KIND_STATIC
-        Case Else:              ContentKindOf = KIND_PROSE
+        Case "PROJECT_STATUS":  builtIn = KIND_CONTROLLED
+        Case "PROJECT_NAME":    builtIn = KIND_STATIC
+        Case "PROJECT_CODE":    builtIn = KIND_STATIC
+        Case Else:              builtIn = KIND_PROSE
+    End Select
+
+    ContentKindOf = builtIn
+    If kinds Is Nothing Then Exit Function
+
+    Dim key As String
+    key = UCase$(Trim(fieldId))
+    If Not kinds.Exists(key) Then Exit Function
+
+    Dim declared As String
+    declared = Trim(CStr(kinds(key)))
+    If declared = "" Then Exit Function
+
+    Select Case declared
+        Case KIND_CONTROLLED, KIND_PROSE, KIND_STATIC
+            ContentKindOf = declared
+        Case Else
+            ' Outside the vocabulary. Never inherit batchability from a value
+            ' nothing declares -- fall to the safe end, not the built-in.
+            ContentKindOf = KIND_PROSE
     End Select
 End Function
 
@@ -407,8 +450,13 @@ End Function
 ' mid-flight even if PowerPoint dies before any dialog appears. Passing
 ' Nothing keeps the Err.Source enrichment and only forgoes the log line
 ' (AppendLogLine's own Nothing guard), so existing callers are unchanged.
+' specWs is the Field Spec worksheet, and it decides batchability via
+' AssignBatches -> ContentKindOf. Optional so every existing caller and test
+' keeps working unchanged: omitted, the built-in three-field answer is used,
+' which is exactly what happened everywhere before 2026-08-20.
 Public Function BuildQueue(sheet As Sheet, slideType As String, _
-                           Optional logWs As Object = Nothing) As ReviewQueueSet
+                           Optional logWs As Object = Nothing, _
+                           Optional specWs As Object = Nothing) As ReviewQueueSet
     Dim q As ReviewQueueSet
     q.SlideType = slideType
     q.RunStamp = MakeRunStamp()
@@ -553,7 +601,7 @@ Public Function BuildQueue(sheet As Sheet, slideType As String, _
         Next i
     End If
 
-    AssignBatches q
+    AssignBatches q, specWs
 
     BuildQueue = q
 End Function
@@ -592,15 +640,21 @@ End Function
 ' Singletons never get a label. A "batch of one" is an individual review
 ' wearing a different word, and labelling it as a batch would inflate the count
 ' of things that look pre-agreed.
-Public Sub AssignBatches(ByRef q As ReviewQueueSet)
+Public Sub AssignBatches(ByRef q As ReviewQueueSet, Optional specWs As Object)
     If q.Count = 0 Then Exit Sub
+
+    ' One pass over Field Spec, not one per item per loop -- see KindMap.
+    ' Nothing when no sheet was supplied, which ContentKindOf reads as
+    ' "use the built-in answer", preserving the pre-2026-08-20 behaviour.
+    Dim kinds As Object
+    If Not specWs Is Nothing Then Set kinds = FieldSpec.KindMap(specWs)
 
     Dim groupCounts As Object
     Set groupCounts = CreateObject("Scripting.Dictionary")
 
     Dim i As Long
     For i = 1 To q.Count
-        If ContentKindOf(q.Items(i).FieldID) = KIND_CONTROLLED Then
+        If ContentKindOf(q.Items(i).FieldID, kinds) = KIND_CONTROLLED Then
             Dim gk As String
             gk = GroupKeyOf(q.Items(i))
             If groupCounts.Exists(gk) Then
@@ -617,7 +671,7 @@ Public Sub AssignBatches(ByRef q As ReviewQueueSet)
     nextLabel = 0
 
     For i = 1 To q.Count
-        If ContentKindOf(q.Items(i).FieldID) = KIND_CONTROLLED Then
+        If ContentKindOf(q.Items(i).FieldID, kinds) = KIND_CONTROLLED Then
             Dim k As String
             k = GroupKeyOf(q.Items(i))
             If CLng(groupCounts(k)) >= 2 Then

@@ -584,6 +584,39 @@ Public Function DefaultGlobalRules() As String
     DefaultGlobalRules = s
 End Function
 
+' Every field's declared Kind, read in ONE pass, keyed by upper-case FieldID.
+'
+' Built as a map rather than a per-field lookup on purpose. Its caller
+' (ReviewQueue.AssignBatches) asks for a kind twice per queue item inside two
+' loops; resolving each of those against the sheet directly would be the same
+' rescan-from-row-1-inside-a-loop shape this project has already paid to fix
+' twice (FIX-LIST items W and AB). One pass, then dictionary lookups.
+'
+' Returns an empty Dictionary rather than Nothing when the sheet cannot be
+' read, so a caller's fallback path is taken per field instead of the whole
+' mechanism failing at once.
+Public Function KindMap(ws As Object) As Object
+    Dim m As Object
+    Set m = CreateObject("Scripting.Dictionary")
+    Set KindMap = m
+
+    On Error GoTo Done
+    If ws Is Nothing Then Exit Function
+
+    Dim r As Long
+    Dim fid As String
+    r = SPEC_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(r, COL_SPEC_FIELDID).Value)) <> ""
+        fid = UCase$(Trim(CStr(ws.Cells(r, COL_SPEC_FIELDID).Value)))
+        If Not m.Exists(fid) Then
+            m.Add fid, Trim(CStr(ws.Cells(r, COL_SPEC_KIND).Value))
+        End If
+        r = r + 1
+    Loop
+
+Done:
+End Function
+
 ' Does the GLOBAL RULES cell still define what the prompts send a drafter to?
 '
 ' The cell is the owner's, deliberately: PromptFrom prefers it over
