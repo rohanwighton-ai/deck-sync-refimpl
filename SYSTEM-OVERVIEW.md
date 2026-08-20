@@ -45,10 +45,19 @@ order of work.
 | `START HERE` | A status report the add-in writes. | rebuilt |
 | `Field Spec` | **The recipes.** One row per field. | permanent, hand-edited |
 | `Sources` | What the writing is based on. One row per source, ever. | permanent, accumulates |
+| `SRC_EXTRACTS` | What a source SAID, pasted in — one column per source ID, one row per project. Read at drafting time; the Sources sheet only says *where it lives*. | permanent, accumulates |
 | `Register` | The content itself. One row per slide per quarter. | permanent, accumulates |
 | `TPL_<FIELD>` | A **drafting sheet** per field — the workspace. | rebuilt in place each run |
 | `Run Log` | What the last run did. | **replaced each run** — see `SCENARIOS.md`'s file-per-quarter section |
 | `Sync Log` | Durable record of every applied change. | **append-forever** — flagged in `CHECKLIST.md` as needing to fold into the file-per-quarter archive once that's built |
+
+**New-quarter source check, added 2026-08-20.** `Sources.StalePeriodSources` runs as
+part of every drafting-sheet rebuild and reports (to the Run Log, never blocking) any
+source whose `Applies to` names a *different* period than the one just started —
+exactly the pattern that let S01/S02/S03 quietly become three separate period-specific
+IDs for the same underlying file, all needing fresh siblings every quarter with nothing
+saying so. It only flags, never adds or deletes a source; deciding whether a fresh
+variant is actually needed is still a person's call.
 
 ## The drafting sheet — column layout, RE-VERIFIED 2026-08-16
 
