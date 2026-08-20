@@ -601,6 +601,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("ExcelOutput_PrunePeriodRemovesOnlyTheNamedPeriod", filterPattern) Then
+        r = Test_ExcelOutput_PrunePeriodRemovesOnlyTheNamedPeriod()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "ExcelOutput_PrunePeriodRemovesOnlyTheNamedPeriod", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("ExcelOutput_FindsExistingRegisters", filterPattern) Then
         r = Test_ExcelOutput_FindsExistingRegisters()
     Else
@@ -12378,6 +12387,81 @@ Private Function Test_ExcelOutput_PeriodRowsAndRollForward() As String
     xl.Quit
     Set wb = Nothing: Set xl = Nothing
     Test_ExcelOutput_PeriodRowsAndRollForward = result
+End Function
+
+' THE PRUNE HALF OF FILE-PER-QUARTER, built 2026-08-21 -- SCENARIOS.md called
+' this "not hygiene" and CHECKLIST.md's own comment at the call site said it
+' had to become a hard gate once built. This proves the destructive primitive
+' in isolation, on a register carrying THREE live periods at once (the same
+' shape the real register was in the night this was built -- Q3F26/Q4F26/
+' Q1F27 all live simultaneously), so the "only the named period, never
+' everything older" scope decision is actually exercised, not just claimed.
+Private Function Test_ExcelOutput_PrunePeriodRemovesOnlyTheNamedPeriod() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+
+    ws.Cells(1, 1).Value = ExcelOutput.INSTANCE_ID_HEADER
+    ws.Cells(1, 2).Value = ExcelOutput.QUARTER_HEADER
+    ws.Cells(1, 3).Value = "PROJECT_STATUS"
+
+    ' Three periods live at once, oldest to newest, deliberately NOT in
+    ' contiguous blocks (Q3F26's two rows are split by a Q4F26 row) -- a
+    ' prune keyed only on column value, not on row position, must still get
+    ' the right ones.
+    ws.Cells(2, 1).Value = "P001": ws.Cells(2, 2).Value = "Q3F26": ws.Cells(2, 3).Value = "In Progress"
+    ws.Cells(3, 1).Value = "P002": ws.Cells(3, 2).Value = "Q4F26": ws.Cells(3, 3).Value = "In Progress"
+    ws.Cells(4, 1).Value = "P002": ws.Cells(4, 2).Value = "Q3F26": ws.Cells(4, 3).Value = "In Progress"
+    ws.Cells(5, 1).Value = "P001": ws.Cells(5, 2).Value = "Q4F26": ws.Cells(5, 3).Value = "In Progress"
+    ws.Cells(6, 1).Value = "P001": ws.Cells(6, 2).Value = "Q1F27": ws.Cells(6, 3).Value = "In Progress"
+    ws.Cells(7, 1).Value = "P002": ws.Cells(7, 2).Value = "Q1F27": ws.Cells(7, 3).Value = "In Progress"
+
+    Dim rep As String
+    rep = ExcelOutput.PrunePeriod(ws, "Q4F26")
+    result = result & Assert(InStr(rep, "2") > 0, "reports 2 rows removed, got '" & rep & "'")
+
+    Dim sQ3 As Sheet, sQ4 As Sheet, sQ1 As Sheet
+    sQ3 = ExcelOutput.ReadSheetForPeriod(ws, "Q3F26")
+    sQ4 = ExcelOutput.ReadSheetForPeriod(ws, "Q4F26")
+    sQ1 = ExcelOutput.ReadSheetForPeriod(ws, "Q1F27")
+
+    result = result & Assert(sQ4.InstanceOrder.count = 0, _
+        "Q4F26 is gone entirely, got " & sQ4.InstanceOrder.count & " row(s)")
+    result = result & Assert(sQ3.InstanceOrder.count = 2, _
+        "Q3F26 -- OLDER than the pruned period -- is UNTOUCHED, got " & sQ3.InstanceOrder.count & _
+        " (this is the 'only the named period, never everything older' scope decision)")
+    result = result & Assert(sQ1.InstanceOrder.count = 2, _
+        "Q1F27 -- newer than the pruned period -- is untouched, got " & sQ1.InstanceOrder.count)
+
+    ' Header row and structural columns must survive a prune that empties
+    ' every OTHER row below them.
+    result = result & Assert(ws.Cells(1, 2).Value = ExcelOutput.QUARTER_HEADER, _
+        "header row survives, got '" & ws.Cells(1, 2).Value & "'")
+
+    ' Pruning a period with nothing in it is a no-op, not an error and not a
+    ' false claim of having removed something.
+    Dim rep2 As String
+    rep2 = ExcelOutput.PrunePeriod(ws, "Q4F26")
+    result = result & Assert(InStr(rep2, "Nothing to do") > 0, _
+        "pruning an already-empty period reports nothing to do, got '" & rep2 & "'")
+
+    ' A blank period name refuses rather than silently matching every row
+    ' that itself has a blank Quarter cell.
+    Dim caughtBlankRefusal As Boolean
+    On Error Resume Next
+    ExcelOutput.PrunePeriod ws, ""
+    caughtBlankRefusal = (Err.Number <> 0)
+    On Error GoTo 0
+    result = result & Assert(caughtBlankRefusal, "a blank period name is refused, not treated as a wildcard")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing: Set xl = Nothing
+    Test_ExcelOutput_PrunePeriodRemovesOnlyTheNamedPeriod = result
 End Function
 
 ' Slide.Parent is the Presentation, and a deck property reads through it.

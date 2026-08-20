@@ -408,16 +408,37 @@ just its own stated build steps, restated as a checklist.*
 - [ ] Which source is "the dedicated one" for `STRATEGIC_LINKAGES`, and who
       maintains it now the Family Tree is going. A work question, costs a minute.
 
-## File-per-quarter — the prune half (critical path #3)
+## File-per-quarter — the prune half (critical path #3) — BUILT 2026-08-21, not yet run live
 
-- [ ] Design + build the prune: drop the old period's rows from the live register
-      once it's archived.
+`ExcelOutput.PrunePeriod` built and unit-tested (FIX-LIST item CA): deletes a
+named period's rows from the live register, scoped to exactly that period
+(never everything older — the live register held 3 periods at once the night
+this was built, and a broader sweep would have silently touched the oldest
+one on an unrelated roll-forward). `DraftingUI.RollForwardUI`'s archive step
+is now a hard gate — no verified archive, no roll-forward, no prune — per
+Rohan's two explicit design calls: prune runs automatically right after a
+successful archive, scoped to only the period this roll-forward actually
+rolled out of. Confirmed with Rohan directly: this does NOT break a new
+quarter's ability to look back at the previous one — `RollForwardPeriod`
+already copies every column forward, live, in the same action, before
+archive or prune ever run.
+
+- [x] Design + build the prune: drop the old period's rows from the live register
+      once it's archived. — **Done.** See FIX-LIST item CA for the full account.
 - [ ] Retire `ParkSheetCopy` once the prune lands (load-bearing until then — do
       not delete early). *Source: `DOCUMENT-MAP.md` decision 6, "the live gap this
-      exposes."*
+      exposes."* **Still not done — deliberately.** The prune hasn't run live yet;
+      this should not move until it has and is trusted.
 - [ ] Sweep `Sync Log` into the same per-quarter archiving. *Source:
-      `SCENARIOS.md`'s file-per-quarter section.*
+      `SCENARIOS.md`'s file-per-quarter section.* **Still not done.** `Sync Log` has
+      no `Quarter` column to key a prune on — needs a real design decision, not a
+      fragile date-range guess.
 - [ ] Tests + one real keyboard run before the prune touches anything live.
+      **Half done** — `PrunePeriod` is unit-tested and fail-first proven in
+      isolation, but nobody has pressed the real "Roll Forward" button since this
+      landed. **The next genuine Roll Forward press against the live
+      `register-wide.xlsx` will now also prune** — worth running once, deliberately,
+      on a copy first.
 
 ## Win ledger — reviewed 2026-08-16, one open call for Rohan
 
@@ -1343,32 +1364,25 @@ underlying complaint (the crawl, the two-loop pattern) without touching that fun
 all. Revisit sheet-merging only if the Lobby alone doesn't fully address the sheet-count
 friction.
 
-## Dialog count across one full cycle — real friction, flagged 2026-08-16 (night), PRIORITY for next session
+## Dialog count across one full cycle — CLOSED 2026-08-21, was already fixed
 
-**Rohan's explicit call, same night, after living through the two-press review/approve
-cycle again for the elapsed bar: "that should all be one approval step, prioritise it
-after this."** Specifically: build-the-queue and apply-the-queue currently need two
-separate presses of "2. Put it on the slides" (rebuild, go tick Y in Excel, come back,
-press again to apply) — collapsing that into one step is the first thing to look at
-next, ahead of the other items below.
+Flagged 2026-08-16 (night) as PRIORITY, after Rohan's live *"too many message boxes
+and confirmations across that chain and excel takes ages"* and roughly 10-12 dialogs
+counted across one full cycle. **Checked the actual chain code before doing any work
+(FIX-LIST item BZ) — every candidate this item named was already fixed, across four
+separate sessions since this was written, and the doc was simply never updated:**
 
-Rohan, live, after running set-up-quarter through apply once tonight: *"too many
-message boxes and confirmations across that chain and excel takes ages."* Counted back
-through the transcript: roughly 10-12 separate dialogs in one full "set up quarter ->
-review -> approve -> apply" cycle (period confirm, deck-period result, roll-forward
-result, drafting-sheets-ready result, publish-drafts result x2, the unsaved-workbook
-save guard x2, the pending-approvals gate, the apply result), plus Excel's own
-flicker/slowness between them (see item U). Same underlying shape as the drafting-sheet
-double-approval question earlier the same night (`NEXT-SESSION.md`'s "night" block) —
-individually-justified gates, never looked at together as one sequence a person
-actually has to sit through every quarter. **Deliberately not sized or redesigned
-tonight** — touches the R13 safety model directly, which is exactly the kind of call
-that needs a clear head, not a last-thing-at-night one. Candidates for a real review:
-which of the two "unsaved workbook" guards could be one check run once at the start of
-the whole chain rather than twice mid-chain; whether the publish-drafts report needs to
-interrupt when it published nothing; whether roll-forward's own report needs to be a
-separate click when nothing else in the chain waits for acknowledgment before
-continuing.
+- The two-press build-then-apply requirement Rohan explicitly called out — collapsed
+  2026-08-18. One press builds, asks once with the real pre-ticked list in hand,
+  applies.
+- The unsaved-workbook guard — made silent 2026-08-19
+  (`WorkbookBridge.EnsureSavedQuietly`), only interrupts on a real save failure.
+- `StartQuarter`/`RollForwardUI`/`RefreshDraftingSheets`/field-coverage — folded into
+  one combined report dialog, shown only when there's something to report.
+- Three separate redundant modals deleted outright (2026-08-14, 2026-08-17).
+
+A steady-state cycle today is roughly 2-4 dialogs, not 10-12. Nothing built here —
+there was nothing left to build.
 
 ## Explicitly out of scope — from `TRACKER.md`, do not re-add without a reason
 

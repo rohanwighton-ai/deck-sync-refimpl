@@ -1074,3 +1074,75 @@ Public Function RollForwardPeriod(ws As Object, fromPeriod As String, toPeriod A
         "last period's text until you rewrite it -- which is what the drafting sheet" & vbCrLf & _
         "shows you in the ORIGINAL column."
 End Function
+
+' THE PRUNE HALF OF FILE-PER-QUARTER. SCENARIOS.md: "file-per-quarter deletes
+' work -- it is not hygiene." This is the destructive step the archive exists
+' to make safe -- see DraftingUI.RollForwardUI's own header, which is the
+' only caller and is what enforces the ordering: this must never run before
+' WorkbookBridge.ArchiveWorkbookForPeriod has verifiably succeeded for the
+' SAME period, and it must never run before RollForwardPeriod has already
+' copied that period's rows forward -- both preconditions are the caller's
+' responsibility, not this function's, because this function has no way to
+' confirm either from inside a single worksheet.
+'
+' SCOPE: only the exact period named, never "everything older than the
+' newest." A register can hold more than one stale period at once (it does,
+' tonight -- Q3F26 sitting alongside Q4F26 and Q1F27), and sweeping all of
+' them from a single roll-forward's prune step would silently touch periods
+' that call had nothing to do with. Older backlog periods need their own
+' deliberate pass, not a side effect of pruning the one this roll-forward
+' actually rolled out of.
+'
+' Deletes bottom-to-top. Deleting top-to-bottom while walking row numbers
+' shifts every row below the deleted one up by one, which either skips the
+' row that just moved into the deleted slot or double-deletes across two
+' iterations depending on direction -- this project has already paid once
+' for an off-by-one row-shift bug elsewhere (BatchOnboardFlow's grid code),
+' so rows are collected into a list FIRST, then deleted in descending order,
+' the same shape RollForwardPeriod above uses to collect its source rows
+' before writing any of them.
+Public Function PrunePeriod(ws As Object, period As String) As String
+    If Trim$(period) = "" Then
+        Err.Raise vbObjectError + 3, "ExcelOutput.PrunePeriod", _
+            "no period was named, so nothing can be safely identified to prune"
+    End If
+
+    Dim lastCol As Long
+    lastCol = LastUsedColumn(ws)
+
+    Dim cQuarter As Long
+    Dim c As Long
+    For c = 1 To lastCol
+        If StrComp(Trim$(CStr(ws.Cells(1, c).Value)), QUARTER_HEADER, vbTextCompare) = 0 Then cQuarter = c
+    Next c
+
+    If cQuarter = 0 Then
+        Err.Raise vbObjectError + 3, "ExcelOutput.PrunePeriod", _
+            "this sheet has no '" & QUARTER_HEADER & "' column, so it holds no periods to prune"
+    End If
+
+    Dim lastRow As Long
+    lastRow = LastUsedRow(ws)
+
+    Dim toDelete As Collection
+    Set toDelete = New Collection
+    Dim r As Long
+    For r = 2 To lastRow
+        If StrComp(Trim$(CStr(ws.Cells(r, cQuarter).Value)), period, vbTextCompare) = 0 Then
+            toDelete.Add r
+        End If
+    Next r
+
+    If toDelete.count = 0 Then
+        PrunePeriod = "Nothing to do: no rows found for " & period & "."
+        Exit Function
+    End If
+
+    Dim i As Long
+    For i = toDelete.count To 1 Step -1
+        ws.Rows(CLng(toDelete(i))).Delete
+    Next i
+
+    PrunePeriod = toDelete.count & " row(s) for " & period & " removed from the live register " & _
+        "(archived separately before this ran)."
+End Function

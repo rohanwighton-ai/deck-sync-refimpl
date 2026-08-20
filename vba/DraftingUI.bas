@@ -1841,28 +1841,47 @@ Public Sub RollForwardUI()
     ' FREEZE THE QUARTER BEING ROLLED OUT OF, BEFORE ANYTHING IS WRITTEN.
     '
     ' First half of file-per-quarter. It only CREATES a file, so it cannot damage
-    ' the register, and a failure here is reported and does not stop the run --
-    ' today's roll-forward only appends, so a missing archive loses nothing.
-    ' WHEN THE PRUNE IS BUILT THIS MUST BECOME A HARD GATE: `If archiveProblem <> ""
-    ' Then Say ... : Exit Sub`. Pruning the old period's rows without a verified
-    ' archive is the destructive step the archive exists to make safe.
+    ' the register on its own -- but THE PRUNE BELOW IS NOW BUILT, so a failed
+    ' archive can no longer be shrugged off: this is now the hard gate the
+    ' original version of this comment said it must become. No archive, no
+    ' prune, no roll-forward at all -- pruning the old period's rows without a
+    ' verified archive is the destructive step the archive exists to make safe,
+    ' and rolling forward without archiving first would leave this run one
+    ' retry away from that exact state.
     Dim archiveProblem As String
     archiveProblem = WorkbookBridge.ArchiveWorkbookForPeriod(wb, fromPeriod)
 
-    Dim outcome As String
-    outcome = ExcelOutput.RollForwardPeriod(regWs, fromPeriod, toPeriod)
-
-    If archiveProblem = "" Then
-        outcome = outcome & vbCrLf & vbCrLf & fromPeriod & " archived as its own file " & _
-            "beside the register."
-    Else
-        outcome = outcome & vbCrLf & vbCrLf & "ARCHIVE NOT WRITTEN -- the roll forward " & _
-            "still ran, and nothing was lost, because rolling forward only adds rows." & _
-            vbCrLf & archiveProblem
+    If archiveProblem <> "" Then
+        Say "Could not archive " & fromPeriod & " before rolling forward, so nothing was " & _
+            "changed -- rolling forward without a verified archive would leave this run one " & _
+            "retry away from pruning data that exists nowhere else." & vbCrLf & vbCrLf & _
+            archiveProblem, vbCritical, CAP
+        Exit Sub
     End If
 
-    ' Rolling forward writes a whole period's rows. Leaving them unsaved would
-    ' lose an entire quarter's worth of register on a crash, silently.
+    Dim outcome As String
+    outcome = ExcelOutput.RollForwardPeriod(regWs, fromPeriod, toPeriod)
+    outcome = outcome & vbCrLf & vbCrLf & fromPeriod & " archived as its own file beside the register."
+
+    ' THE PRUNE HALF, SCOPED TO EXACTLY THIS PERIOD -- see ExcelOutput.
+    ' PrunePeriod's own header for why only fromPeriod, never every period
+    ' older than the newest. Only runs after a confirmed successful copy --
+    ' RollForwardPeriod's own return string is "REFUSED: ..." or "Nothing to
+    ' do: ..." on anything other than a real copy, and pruning fromPeriod's
+    ' rows when nothing was actually carried forward would delete the only
+    ' live copy of data nothing just proved landed anywhere else.
+    If Left$(outcome, 8) <> "REFUSED:" And InStr(1, outcome, "Nothing to do:", vbTextCompare) <> 1 Then
+        Dim pruneOutcome As String
+        pruneOutcome = ExcelOutput.PrunePeriod(regWs, fromPeriod)
+        outcome = outcome & vbCrLf & vbCrLf & pruneOutcome
+    Else
+        outcome = outcome & vbCrLf & vbCrLf & "Roll forward did not copy any rows, so nothing " & _
+            "was pruned -- " & fromPeriod & "'s live rows are untouched."
+    End If
+
+    ' Rolling forward writes a whole period's rows, and pruning deletes them --
+    ' leaving either unsaved would risk a crash losing work or leaving the
+    ' live register in a half-pruned state. Save once, after both.
     Dim rollSaveProblem As String
     rollSaveProblem = WorkbookBridge.SaveWorkbookVerified(wb)
     If rollSaveProblem = "" Then

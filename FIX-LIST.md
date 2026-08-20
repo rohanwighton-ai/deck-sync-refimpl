@@ -3882,3 +3882,124 @@ forces every NEW code path that reads a shape's text to actually
 consult it -- a fourth site would need the same manual find-and-fix,
 not a mechanism that catches it automatically. Worth a real look if a
 fourth turns up.
+
+## Corrected 2026-08-21 — BZ, the "dialog count" CHECKLIST item was
+## stale, not open -- verified by reading the chain, not the doc
+
+Rohan asked to prioritise CHECKLIST.md's "Dialog count across one full
+cycle" item, flagged 2026-08-16 (night) as "PRIORITY for next session."
+Before writing anything, read `RibbonUI.PutItOnTheSlidesCore` and
+`SyncNowChainCore` directly rather than sizing the work from the doc's
+own description (the exact mistake this project's own CLAUDE.md already
+names: "NEVER SIZE OR SCOPE A CHANGE FROM A HANDOVER DOCUMENT. OPEN THE
+MODULE"). Every candidate the CHECKLIST item names was already fixed,
+dated in the code's own comments, all AFTER the CHECKLIST entry was
+written and never reflected back onto it:
+
+- The two-press build-then-apply requirement Rohan explicitly called out
+  ("that should all be one approval step") -- collapsed 2026-08-18. One
+  press now builds the queue, asks once with the real pre-ticked list in
+  hand, and applies.
+- The "unsaved workbook" guard -- made silent 2026-08-19
+  (`WorkbookBridge.EnsureSavedQuietly`). Only interrupts on a genuine
+  save failure now, never on the routine "had changes, saved them" case.
+- `StartQuarter`/`RollForwardUI`/`RefreshDraftingSheets`/the field-
+  coverage notice -- folded into ONE combined report dialog
+  (`DraftingUI.BeginCollecting`/`AppendCollected`/`EndCollecting`),
+  shown only when there is something to report.
+- Three separate redundant modals deleted outright: the "Go ahead?"
+  confirmation (2026-08-14), the `WhereAmI` redundant status re-check
+  (2026-08-17), the original three-way setup gate.
+
+A steady-state cycle today is roughly 2-4 dialogs, not the 10-12 Rohan
+counted on 2026-08-16. Nothing was built for this item because there
+was nothing left to build -- CHECKLIST.md corrected in place rather
+than "fixed" a second time.
+
+## Built 2026-08-21 — CA, the file-per-quarter PRUNE half, gated hard on
+## a verified archive per Rohan's explicit design calls
+
+`SCENARIOS.md`: "file-per-quarter deletes work -- it is not hygiene."
+The archive half (`WorkbookBridge.ArchiveWorkbookForPeriod`) was already
+live, tested, and non-destructive (creates a file, never touches the
+live register); the prune half was explicitly not built, and the code's
+own comment at the call site said so: *"WHEN THE PRUNE IS BUILT THIS
+MUST BECOME A HARD GATE... pruning the old period's rows without a
+verified archive is the destructive step the archive exists to make
+safe."*
+
+Before writing anything destructive, asked Rohan two scoping questions
+directly rather than guess a default for a mechanism that deletes real
+rows from the live register:
+1. **Timing** -- automatic, immediately after a successful archive
+   (his answer, the recommended option), not a separate button.
+2. **Scope** -- only the exact period this roll-forward's own
+   `fromPeriod` names, never every period older than the newest (his
+   answer). The live register held 3 periods at once the night this was
+   built (`Q3F26`/`Q4F26`/`Q1F27`) -- a "sweep everything older" design
+   would have silently touched `Q3F26` the first time this ran, from a
+   roll-forward that had nothing to do with `Q3F26`.
+
+Rohan also asked directly whether pruning breaks a new quarter's ability
+to look back at the previous one. It doesn't, and the answer is in the
+existing code, not something this fix changes: `ExcelOutput.
+RollForwardPeriod` already copies EVERY column, every row, from the old
+period into the new one's rows, live, in the SAME roll-forward action,
+BEFORE archive or prune run. Prune only ever removes a period's rows
+AFTER they have already been carried into the new period and already
+sit safely in the archive file -- nothing needed for "look back" is at
+risk at the point it is actually needed. (This also explains why
+`Q4F26` was missing all its `MS1-7` data earlier tonight, per FIX-LIST
+item BV: `RollForwardPeriod` copies unconditionally, so `Q4F26`'s rows
+evidently were not created by an actual Roll Forward press -- not a
+defect in roll-forward itself.)
+
+**Built:**
+- `ExcelOutput.PrunePeriod(ws, period)` -- deletes every row whose
+  `Quarter` cell matches `period` exactly, collecting row numbers first
+  and deleting bottom-to-top (same shape `RollForwardPeriod` already
+  uses to collect source rows before writing) so a shifting row index
+  can never skip or double-delete a row mid-loop. Refuses a blank
+  period rather than treating it as a wildcard that could match blank-
+  Quarter rows. Fail-first proven live: broke the scope filter so it
+  deleted every row regardless of period, confirmed the exact two
+  expected failures ("Q3F26 -- OLDER... UNTOUCHED, got 0", "Q1F27...
+  untouched, got 0"), restored, confirmed green.
+- `DraftingUI.RollForwardUI` -- the archive result is now a hard gate
+  (`If archiveProblem <> "" Then Say ... : Exit Sub`), exactly as the
+  comment it replaces said it must become. Prune only runs after
+  confirming `RollForwardPeriod`'s own return string reports a real
+  copy (not `"REFUSED:"` or `"Nothing to do:"`) -- pruning the source
+  period when nothing was actually proven to land in the new period
+  would delete the only live copy of that data.
+- New test `Test_ExcelOutput_PrunePeriodRemovesOnlyTheNamedPeriod`,
+  built against a 3-period register (matching the real register's own
+  shape) to actually exercise the scope decision, not just claim it.
+  Full suite: 288 passed, 0 failed.
+
+**Deliberately NOT done this session, and worth reading before this is
+treated as finished:**
+- **`Sync Log`'s per-period sweep is not built.** `SCENARIOS.md` calls
+  for it explicitly, but `Sync Log`'s own columns (`When`/`Run`/
+  `EntityCode`/`FieldID`/`Outcome`/`Change ID`) have no `Quarter`
+  column to key a prune on -- there is no reliable way to say which
+  logged change belongs to which period without a real design decision
+  (a date-range heuristic against period boundaries was considered and
+  rejected here as too fragile to build silently). `Sync Log` keeps
+  growing, unpruned, until this is designed properly.
+- **`ParkSheetCopy` is NOT retired.** `DOCUMENT-MAP.md` decision 6 and
+  this checklist both say explicitly not to remove it early -- it stays
+  load-bearing until the prune has actually run live and been trusted,
+  which has not happened yet.
+- **No real keyboard run against the live deck.** The checklist's own
+  requirement ("Tests + one real keyboard run before the prune touches
+  anything live") is only half satisfied -- the destructive primitive is
+  unit-tested in isolation, but nobody has pressed the real "Roll
+  Forward" button against a real or copied deck since this landed.
+  **This is a real behaviour change to a button already wired to the
+  live production register**: the next genuine Roll Forward press against
+  `register-wide.xlsx` will now also prune the period it rolled out of.
+  Worth running once, deliberately, on a copy before it happens for real
+  -- not run against the live register in this session on purpose, since
+  that is exactly the kind of irreversible action this file's own
+  standing rules say to confirm first.
