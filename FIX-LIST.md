@@ -3349,3 +3349,111 @@ the FIRST.
 **Where to start if built:** the six sites above are a ready-made seed
 corpus -- a hound built against this pattern should find them (and any
 siblings still lurking) as its first real test.
+
+## Added and FIXED 2026-08-20 afternoon — BM, a class-wide "second unguarded
+## Excel/PowerPoint handle" bug, found via a diagnostic script's own silent
+## write loss
+
+**Found live.** A PowerShell write script opened `register-wide.xlsx` with a
+fresh `CreateObject("Excel.Application")` while a PRIOR automation step
+(`field_e2e.ps1 -Mode refreshdrafting`) had left the same file open in a
+different Excel process. The second open silently succeeded (no error),
+the writes appeared to apply in memory, `.Save()` raised nothing -- and
+none of it reached disk. Read back via COM directly (bypassing the write
+script entirely): every field's History-treatment cell was blank. Classic
+"reports success without confirming the effect" (the project's own
+standing rule), one level removed -- the CHECK that would have caught it
+(reading the saved bytes back) was run, and still nearly missed it,
+because the first read used the SAME broken open pattern.
+
+**The fix, rolled out to every site with the same shape, not just the one
+that broke.** `WorkbookBridge.OpenOrGetWorkbook` already guarded
+PRODUCTION code (`RibbonUI`/`OnboardFlow`) against this exact class --
+matches by path against every already-open workbook first, opens fresh
+only if none match (FIX-LIST item AU is the same defect one layer up: the
+match itself silently failing on a cloud path). It gained a
+`wasAlreadyOpen` output param so a caller knows whether it owns the
+workbook it got back -- a caller that Closes/Quits a workbook it merely
+found already open would discard or kill whatever else had it open. Six
+functions in `vba/tools/E2EField.bas` and one in `AuditRealDeck.bas` that
+previously opened the register with a raw `CreateObject+Open`, bypassing
+the guard entirely, now route through it. Pure-observation tools
+(`ReadWidePeriod`, `PreviewRealDeck`, `VerifyRealDeck`, `HiddenFixCheck`,
+`SyncRealDeck`, `InProcessTimingProbe`) were deliberately left alone --
+they exist specifically to read disk truth, and reusing an already-open
+instance would trade that guarantee for a small speed gain that doesn't
+matter given these run as standalone cold-start scripts anyway.
+
+**A regression, caused and fixed the same session.** The fail-first test
+proving `wasAlreadyOpen` (`Test_WorkbookBridge_
+OpenOrGetWorkbookDetectsAnAlreadyOpenFile`) calls `OpenOrGetWorkbook`
+twice against a real temp file -- and `OpenOrGetWorkbook` has its own,
+pre-existing side effect: it calls `ShapeAddressBook.SetActiveWorkbook`
+on every resolve. The test closed its workbook and quit its Excel
+instance without resetting that cache to `Nothing`, leaving
+`ShapeAddressBook`'s module-level `mWb` pointed at a disposed COM object
+for the rest of the suite run. Ten unrelated tests
+(`InjectField`/`InjectPicture`/`FieldWiring`/`ReviewQueue`) then failed
+or errored with "no single shape found" / "The object invoked has
+disconnected from its clients" -- passing clean every time when run in
+isolation, which is what pointed at shared state rather than a logic
+break. Fixed with the same reset every OTHER test touching that cache
+already used (`ShapeAddressBook.SetActiveWorkbook Nothing`). Full suite
+green after: 278/278.
+
+**The addin-registration gotcha this did NOT catch**, because it's a
+PowerPoint `AddIns` collection issue, not an Excel-workbook one: `File >
+Save As` lands a freshly built `.ppam` in `OneDrive\Claude\`, which is
+NOT the trusted location every prior addin actually lives in
+(`C:\Users\rohan\AppData\Roaming\Microsoft\AddIns\`). `AddIns.Add(path)`
+registers AT WHATEVER PATH IT'S GIVEN rather than copying the file in --
+registering straight from `OneDrive\Claude\` silently "worked"
+(`Loaded=True`) while pointing at the wrong folder. Same underlying shape
+(a handle registered somewhere other than where everything else expects
+it to live), different surface. Full corrected workflow now in
+`CHECKLIST.md`'s "Before rebuilding the addin" checklist.
+
+## Added and FIXED 2026-08-20 evening — BN, investigated a backup for the
+## ordinary drafting-sheet rewrite, built a test instead
+
+**The question, from Rohan**: the parking mechanism (`ParkSheetCopy`,
+`SAVED HH:MM <field>` sheets) only fires on a layout migration or a
+period turnover -- never on the ordinary same-layout/same-period rewrite,
+which is the path that runs on every single "Set up my quarter" press.
+`Drafting.bas`'s own 2026-08-17 comment already flagged this as "still
+open, not decided." Is that backwards -- protecting the rare case and
+leaving the common one exposed?
+
+**Traced the actual row-write logic before answering.** The ordinary path
+writes ONLY `Project code` and `Project name` per row -- confirmed at
+`Drafting.bas`'s own header above the loop: "THE PERSON'S COLUMNS ARE NOT
+WRITTEN HERE. THAT IS THE FIX." `SOURCES`, `AI DRAFT`, `SUBMIT`,
+`APPROVE` and `NOTES` are never touched, never cleared, never read into
+memory and written back. So a backup on this path would protect against
+nothing that happens today -- only a FUTURE regression that made the
+ordinary path start touching those columns again.
+
+**Costed a naive "always park" fix and rejected it.** `ParkSheetCopy`
+does a full `Sheet.Copy` per field; doing that on every routine press
+across ~13 Prose fields adds real seconds to the most frequently-run path
+in the tool (the same class of cost item AB/W already paid for once this
+project, on a different function). Worse: since `PruneParked` caps at 2
+per field, making the ordinary path ALSO park would mean the workbook
+PERMANENTLY carries up to 26 `SAVED` tabs, cycling on every run, instead
+of the rare event it is today -- directly reintroducing the exact clutter
+found and cleaned from the live working register the same afternoon (26
+stray `SAVED` sheets, from two genuine layout-6→7 migrations, at
+`PruneParked`'s correct 2-per-field cap -- not a pruning bug).
+
+**Built the cheap thing instead**:
+`Test_Drafting_OrdinaryRewriteLeavesThePersonsColumnsUntouched`, which
+enforces the invariant Drafting.bas's comment only asserted in prose, at
+zero runtime cost, and would catch the actual risk (a future regression)
+before it ships rather than paying for a backup against a risk that
+isn't live. Fail-first proven: breaks with the exact expected failure
+("SUBMIT survives an ordinary rewrite untouched") when a deliberate
+`ws.Cells(r, COL_D_SUBMIT).Value = "..."` is added to the ordinary path,
+passes clean once reverted. `DOCUMENT-MAP.md` decision 6 updated with a
+pointer to this and to the four History treatments (item above this
+one's neighbour in `SYSTEM-OVERVIEW.md`) -- the open question that
+comment posed now has an answer, not just a fix.

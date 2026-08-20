@@ -83,40 +83,59 @@ short labelled excerpt per field removes the guess. Same technique the working `
 extract already uses (numbered subsections within one cell), just named as a rule here
 rather than left implicit.
 
-## The drafting sheet — column layout, RE-VERIFIED 2026-08-16
+## The drafting sheet — column layout, RE-VERIFIED 2026-08-20 (layout 7)
 
 *Source: re-derived from `Drafting.bas`'s `COL_D_*` constants directly, 2026-08-20 (layout
-6). The `ORIGINAL`/`COL_D_CURRENT` column this table used to show was removed the same
-day — the drafting sheet's job is feeding the drafter what they need to write THIS
-quarter's words, not tracking whether a field is already current, which is Sync's
-question at apply time. Per `DOCUMENT-MAP.md`'s own rule: this table is provided for
-orientation only. If it ever disagrees with `Drafting.bas`, the code wins — don't let
-this table calcify the same way the one it replaces did.*
+7, `DRAFT_LAYOUT_VERSION = 7`). Layout 7 swapped `SOURCES` and `REPORTED LAST TIME`
+(Rohan: REPORTED LAST TIME is itself a source, for voice/continuity, and reads better
+placed right after the sources it's one of) and relocated the generated Copilot prompt
+off its own column — it no longer exists as a separate column at all; it lives at row 2
+of `AI DRAFT`. Per `DOCUMENT-MAP.md`'s own rule: this table is provided for orientation
+only. If it ever disagrees with `Drafting.bas`, the code wins — don't let this table
+calcify the same way the layout-6 one it replaced did (that one went stale within a day).*
 
 | col | constant | what goes in it |
 |---|---|---|
 | A | `COL_D_ENTITY` | Project code — derived, do not edit |
 | B | `COL_D_NAME` | Project name — derived, do not edit |
-| C | `COL_D_PREV` | **REPORTED LAST TIME** — last quarter's text, for voice/narrative consistency only, never storage (see `DOCUMENT-MAP.md` decision 6). Sourced from the register's stored-prior-period row when nothing was ferried from an in-progress draft. |
-| D | `COL_D_SOURCES` | source IDs this row was drafted from, e.g. `S10, S12` |
-| E | `COL_D_DRAFT` | **AI DRAFT** — never published |
+| C | `COL_D_SOURCES` | source IDs this row was drafted from, e.g. `S10, S12` |
+| D | `COL_D_PREV` | **REPORTED LAST TIME** — last quarter's text. Itself a source: for voice and narrative continuity, never facts (see `DOCUMENT-MAP.md` decision 6). Sourced from the register's stored-prior-period row when nothing was ferried from an in-progress draft. How to actually USE it is per-field — see the History treatment column on `Field Spec`, below. |
+| E | `COL_D_DRAFT` | **AI DRAFT** — never published. Row 2 of this column holds the generated Copilot prompt (no longer a separate column). |
 | F | `COL_D_SUBMIT` | **your words — this is what publishes** |
 | G | `COL_D_APPROVED` | the tick |
-| I | `COL_D_NOTES` | notes back to the tool |
-| K2 | `COL_D_PROMPT` | the generated prompt for this field |
+| H | `COL_D_SUBCHARS` | character count, live formula |
+| I | `COL_D_NOTES` | notes for the person reviewing the sheet — nothing in the code reads this column, despite an earlier header calling it "back to the tool" |
+| J | `COL_D_LAYOUT` | internal layout-version stamp — do not edit |
+| K | `COL_D_PERIOD` | internal period stamp — do not edit |
 
 **A row publishes only when BOTH `SUBMIT` is non-empty AND `APPROVE` is `Y`.** Either
 alone is not consent.
 
+**The ordinary rewrite (same layout, same period) never touches C, E, F, G or I** — only
+`ENTITY`/`NAME` are written. Proven by
+`Test_Drafting_OrdinaryRewriteLeavesThePersonsColumnsUntouched`. A defensive backup
+(`SAVED HH:MM <field>` sheets) fires only on a real layout migration or a period
+turnover — those are the only two paths that touch a person's own columns.
+
 ## The recipes — `Field Spec` sheet
 
-*Source: `HANDOVER-Q4F26-DRAFTING.md` §5, still accurate as design intent — the sheet
-itself is the authoritative list of columns per `COLUMNS.md`'s own rule, this is only
-the reasoning.*
+*Source: `HANDOVER-Q4F26-DRAFTING.md` §5, updated 2026-08-20 with the History treatment
+columns added the same day — the sheet itself is the authoritative list of columns per
+`COLUMNS.md`'s own rule, this is only the reasoning.*
 
-One row per field: `FieldID`, `Kind` (`Prose` / `Controlled` / `Static`), `Purpose`,
-`Voice`, `Length`, `Own-job test`, `Do NOT`, `Allowed values` (Controlled only),
-`GLOBAL RULES`, `Behaviour`, `Renders as`.
+One row per field: `FieldID`, `Kind` (`Prose` / `Controlled` / `Static` / `Derived`),
+`Purpose`, `Voice`, `Length`, `Own-job test`, `Do NOT`, `Allowed values` (Controlled
+only), `GLOBAL RULES`, `Behaviour`, `Renders as`, **`History treatment`**, **`History
+notes`**.
+
+**History treatment** is a controlled value — `CARRY` / `FRESH` / `PART-FROZEN` /
+`DIFF` — declaring how a field should use `REPORTED LAST TIME` (see the drafting-sheet
+table above). The four definitions live in `GLOBAL RULES` (one shared cell, editable),
+not in code — same split as every other axis on this sheet: the code owns the
+vocabulary, the sheet owns which value applies and can edit what each one means.
+**History notes** is optional free text for a field with something genuinely its own to
+add beyond the treatment definition (e.g. `DELIVERABLES_BODY`'s "an unchanged
+interpretation is a correct outcome, not a skipped one"). Blank for most fields.
 
 **The recipes are the product.** If a recipe is good, drafting a field stops being a
 decision and becomes a transcription. See `project_deck_sync_recipes_are_the_product`

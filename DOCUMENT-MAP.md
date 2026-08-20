@@ -80,6 +80,19 @@ clear currently fires in the *only* copy rather than in a fresh one. Until file-
 lands, `ParkSheetCopy` is load-bearing and must not be removed — it is holding that gap
 shut. Once it lands, the park has nothing left to guard.
 
+**Elaborated 2026-08-20**: *how* to use REPORTED LAST TIME turned out to depend on the
+field — "for structure and narrative consistency" above is right for most fields but
+directly wrong for `DELIVERABLES_BODY` (whose own recipe forbids re-deciding an
+unchanged interpretation) and for the `MSn_LABEL` milestone circles (a compression
+decided once, not re-derived quarterly). See `FieldSpec.bas`'s four History treatments
+(`CARRY`/`FRESH`/`PART-FROZEN`/`DIFF`) and `SYSTEM-OVERVIEW.md`'s Field Spec section —
+this decision's "not storage, narrative consistency" framing is the `FRESH` case, not
+a universal one. Also confirmed the SAME evening: `ParkSheetCopy` only fires on a
+layout migration or a period turnover, never on the ordinary same-layout/same-period
+rewrite — deliberately, not by oversight, and now enforced by
+`Test_Drafting_OrdinaryRewriteLeavesThePersonsColumnsUntouched` rather than left as an
+unstated assumption.
+
 ---
 
 ## 1. The one rule that decides where a fact lives

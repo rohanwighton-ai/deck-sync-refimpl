@@ -12,6 +12,131 @@
 > number this doc names below; the file with the highest number isn't
 > necessarily the one actually registered live.
 
+> ## 20 AUG — a full day of mechanism work, ZERO real content drafted, and
+> a cold PM audit that said so plainly. **READ THIS BLOCK FIRST — it is
+> the honest state, not the confident one.**
+>
+> **The PM verdict (`deck-sync-pm` agent, cold, derived from the repo and
+> the live files — not from a summary): "Drifting."** Every one of today's
+> 15 commits is schema/mechanism/prompt work. The real deck
+> (`3. Project Progress.pptx`) was last written to at **07:48 this
+> morning**, before a single one of today's commits landed. The Sync Log's
+> last entry is from **2026-08-19 night** — nothing today at all. Zero
+> fields were drafted, approved or published today. Kelly meets Rohan
+> **tomorrow (21 Aug)** to review a system whose only activity today was
+> schema churn on a file that was never actually run end to end.
+> **The one real next action is Rohan's, not code: draft, approve and
+> publish 2-3 real Q4F26 fields through the mechanism, and look at the
+> resulting slide.** Nothing below substitutes for that.
+>
+> **What actually landed today (all on `main`, all tested):**
+> - **Layout 7**: `SOURCES` moved ahead of `REPORTED LAST TIME` (now framed
+>   explicitly as a source, for voice/continuity, never facts — Rohan's own
+>   framing), the Copilot prompt relocated off its own column into row 2 of
+>   `AI DRAFT`, `J`/`K` internal stamp columns labelled so they don't read
+>   as clutter. Fail-first proven layout 6→7 migration.
+> - **The four-treatment History model** (`CARRY`/`FRESH`/`PART-FROZEN`/
+>   `DIFF`), replacing a one-size global rule that had come to directly
+>   contradict `DELIVERABLES_BODY`'s own "never re-sift an unchanged value"
+>   recipe. Built after a genuine back-and-forth with the other Claude
+>   session (claude.ai chat) reviewing the first draft of the rule and
+>   catching the contradiction — see
+>   `C:\Users\rohan\OneDrive\Claude\PROMPT-REVIEW-RESPONSE-2026-08-20_1.md`
+>   for its full reasoning. `FieldSpec.bas` gained `COL_SPEC_HISTORY`/
+>   `COL_SPEC_HISTORY_NOTES`, `PromptFrom` no longer hardcodes a column
+>   letter (a real bug found along the way: it said "column C" for EVERY
+>   field's prompt, not just `ABOUT_BODY`'s, because it lived in code, not
+>   a Field Spec cell). All 13 drafted fields tagged on the live working
+>   copy, verified from the saved file's own bytes both times.
+> - **A class-wide Excel-instance-safety fix.** `WorkbookBridge.
+>   OpenOrGetWorkbook` gained a `wasAlreadyOpen` output param; 6 functions
+>   in `E2EField.bas`/`AuditRealDeck.bas` that previously opened the
+>   register with a raw `CreateObject+Open` now route through it. Found
+>   because a diagnostic PowerShell script of Claude's own hit exactly this
+>   bug live: it opened a second Excel handle onto a register another
+>   process already had open, wrote to it, "saved" with no error, and
+>   nothing reached disk. **This class of bug is now guarded everywhere it
+>   was found** — but see the addin-registration gotcha below, which is
+>   the SAME underlying failure mode (a second unguarded handle) in a
+>   different guise, and was NOT caught by this fix because it's a
+>   PowerPoint AddIns-collection issue, not an Excel-workbook one.
+> - **A real regression, caused and fixed same session**: the fail-first
+>   test for the guard above left `ShapeAddressBook`'s module-level
+>   workbook cache pointed at a closed handle, which cascaded into 10
+>   unrelated `InjectField`/`InjectPicture`/`FieldWiring`/`ReviewQueue`
+>   test failures — confirmed by running the same tests in isolation
+>   (clean) vs. the full suite (failing), which is what pointed at shared
+>   state rather than a logic break. Fixed by resetting
+>   `ShapeAddressBook.SetActiveWorkbook Nothing`, the same pattern every
+>   OTHER test touching that cache already used.
+> - **26 stray `SAVED HH:MM <field>` sheets, found and cleaned from the
+>   live working register.** Not a bug in the pruning logic — `PruneParked`
+>   correctly caps at 2 per field, and today's two genuine layout
+>   migrations (6→7, this morning) legitimately triggered exactly 26
+>   (13 fields × 2). Cleaned by deleting all `SAVED `-prefixed sheets
+>   directly; verified 0 remain, from the saved file. **The real lesson,
+>   surfaced by Rohan asking why the "nothing was lost" parking message is
+>   "backwards"**: the parking/backup mechanism only fires on the RARE
+>   paths (layout migration, period turnover) — the ORDINARY path (same
+>   layout, same period, the one that runs on every routine "Set up my
+>   quarter" press) has never had a backup, and `Drafting.bas`'s own
+>   2026-08-17 comment already flagged this as "still open, not decided."
+>   Investigated adding one and rejected it: the ordinary path currently
+>   writes NOTHING to `SOURCES`/`AI DRAFT`/`SUBMIT`/`APPROVE`/`NOTES` (its
+>   own comment: "THE PERSON'S COLUMNS ARE NOT WRITTEN HERE. THAT IS THE
+>   FIX."), so a backup there would cost a full sheet copy per field on
+>   EVERY routine press and leave the workbook permanently cluttered with
+>   `SAVED` tabs (not a rare event), to protect against a risk that
+>   doesn't exist today. Built a fail-first test instead
+>   (`Test_Drafting_OrdinaryRewriteLeavesThePersonsColumnsUntouched`) that
+>   enforces the invariant at zero runtime cost and would catch a future
+>   regression before it ships. **This is genuinely resolved, not deferred
+>   — the open question the 2026-08-17 comment posed now has an answer.**
+> - **`addin155` built, registered, and verified genuinely loaded** (a real
+>   `Application.Run` call through it, not just `Loaded=True`) — but the
+>   registration process itself surfaced two gotchas worth knowing before
+>   the next rebuild:
+>   1. **`File > Save As` lands the new `.ppam` in `OneDrive\Claude\`. That
+>      is NOT the trusted location.** The real one, where every prior
+>      addin (99 through 153) actually lives, is
+>      `C:\Users\rohan\AppData\Roaming\Microsoft\AddIns\`.
+>      `AddIns.Add(path)` registers AT WHATEVER PATH IT'S GIVEN — it does
+>      NOT auto-copy the file into the trusted folder the way I first
+>      assumed. Registering straight from `OneDrive\Claude\` silently
+>      "worked" (`Loaded=True`) while pointing at a synced folder instead
+>      of the real one. Fixing it required quitting PowerPoint entirely
+>      (to clear the mis-registered in-memory entry — `AddIn` COM objects
+>      expose no `.Delete()` method), a manual `Copy-Item` into the AddIns
+>      folder, and re-adding from there. **The corrected workflow, now
+>      also in `CHECKLIST.md`'s "Before rebuilding the addin" section:
+>      Save As → copy the file into `AppData\Roaming\Microsoft\AddIns\` →
+>      `AddIns.Add()` from THAT path → set `.Loaded = -1` AND
+>      `.Registered = -1` explicitly (Registered does not default to
+>      matching every other addin's state).**
+>   2. **`[Microsoft.Office.Core.MsoTriState]::msoTrue`/`msoFalse` fails to
+>      resolve ("Unable to find type") in a fresh PowerShell COM session**,
+>      and — the dangerous part — **the failed assignment does not
+>      terminate the script by default**, so a line like
+>      `$addin.Loaded = [Microsoft.Office.Core.MsoTriState]::msoTrue` can
+>      silently no-op while everything downstream keeps printing as though
+>      it worked. This is a RECURRING gotcha across this whole project
+>      (also hit setting `$ppt.Visible` earlier). **Use raw integers
+>      instead: `-1` for True, `0` for False.** Also now in
+>      `CHECKLIST.md` and should probably get folded into
+>      `reference_vba_office_gotchas` memory if it recurs a third time.
+>
+> **Working-copy state right now**: `C:\Users\rohan\AppData\Local\
+> deck-sync-quarter-20260820-0900\` — deck + `register-wide.xlsx`. Period
+> Q4F26, 43/43 parity, layout 7, all 13 History treatments tagged AND the
+> drafting-sheet prompts regenerated to reflect them (the refresh was
+> re-run after the Field Spec edit — see the standing checklist item this
+> added), 0 stray `SAVED` sheets. `addin155` is the live registered build,
+> genuinely verified. Full VBA suite: **279 passed, 0 failed, 0 skipped**
+> (`f46ce78`). None of that changes the PM verdict above — it's all
+> mechanism, still unexercised against real content today.
+>
+> **STATUS: CURRENT, supersedes every block below.**
+
 > ## 19 AUG, NIGHT (continued) — `1_S004`'s `PROJECT_STATUS` badge was
 > bleeding text (18pt vs the deck's normal 8.5pt) into the money grid
 > above it. `FIX-LIST.md` item BJ. Fixed and verified on the real deck.
@@ -21,8 +146,8 @@
 > should catch — a value rendering correctly in principle but wrong in
 > practice, on one slide only, not caught by any wiring/tag/geometry
 > check because those all measure whether a field CAN receive a value,
-> not whether it LOOKS right once it has one. **STATUS: CURRENT,
-> supersedes every block below.**
+> not whether it LOOKS right once it has one. **STATUS: SUPERSEDED by the
+> block above.**
 
 > ## 19 AUG, NIGHT — a real defect in `InjectPictureField` itself found by
 > actually looking at the rendered slide, fail-first tested, fixed, and
