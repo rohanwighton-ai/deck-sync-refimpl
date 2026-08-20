@@ -12536,7 +12536,7 @@ Private Function Test_Drafting_CitedSourceReachesThePromptCell() As String
     ' Build once, cite, rebuild -- the citation is carried across.
     Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", srcWs
     Dim before As String
-    before = CStr(dws.Cells(2, Drafting.COL_D_PROMPT).Value)
+    before = CStr(dws.Cells(2, Drafting.COL_D_DRAFT).Value)
     result = result & Assert(InStr(before, "S12") = 0, _
         "with nothing cited, the prompt carries no sources block")
 
@@ -12544,7 +12544,7 @@ Private Function Test_Drafting_CitedSourceReachesThePromptCell() As String
     Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", srcWs
 
     Dim after As String
-    after = CStr(dws.Cells(2, Drafting.COL_D_PROMPT).Value)
+    after = CStr(dws.Cells(2, Drafting.COL_D_DRAFT).Value)
     result = result & Assert(InStr(after, "S12") > 0, _
         "the cited source reaches the PROMPT CELL, not just the block builder")
     result = result & Assert(InStr(after, "C:\rig\plan.md") > 0, _

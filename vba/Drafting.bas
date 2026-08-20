@@ -90,16 +90,26 @@ Public Const COL_D_NAME As Long = 2
 ' carried-forward, unedited value IS last quarter's value) -- the only case
 ' they differed was a field already redrafted this quarter, and THAT
 ' distinction belongs to Sync, not to a reference column here.
-Public Const COL_D_PREV As Long = 3         ' C  REPORTED LAST TIME -- see below
-Public Const COL_D_SOURCES As Long = 4      ' D  what you drafted FROM
+' SOURCES MOVED AHEAD OF PREV, 2026-08-20 -- Rohan: REPORTED LAST TIME is
+' itself a source (for voice and narrative continuity), not a separate kind
+' of thing that comes before "real" sourcing starts. Reading order now
+' matches the instruction order: name your sources (which now includes
+' recognising last quarter's words as one of them), then read them.
+Public Const COL_D_SOURCES As Long = 3      ' C  what you drafted FROM
+Public Const COL_D_PREV As Long = 4         ' D  REPORTED LAST TIME -- a source too, see above
 Public Const COL_D_DRAFT As Long = 5        ' E  AI draft, never published
 Public Const COL_D_SUBMIT As Long = 6       ' F  your text -- this publishes
 Public Const COL_D_APPROVED As Long = 7     ' G  the tick
 Public Const COL_D_SUBCHARS As Long = 8
 Public Const COL_D_NOTES As Long = 9       ' I  notes back to the tool
 Public Const COL_D_LAYOUT As Long = 10
-Public Const COL_D_PROMPT As Long = 11
-Public Const COL_D_PERIOD As Long = 12
+Public Const COL_D_PERIOD As Long = 11
+' COL_D_PROMPT REMOVED, 2026-08-20 -- Rohan: it was never really a column, just
+' one intro-row cell that happened to sit at a column position, one prompt per
+' FIELD not per project, which read as a stray per-project column. The prompt
+' now sits directly above the AI DRAFT column (row 2 of COL_D_DRAFT) instead
+' of off in its own remote slot -- same cell purpose, no separate constant
+' needed since it's always written at row 2 of whichever column DRAFT is.
 
 ' THE SHEET DECLARES WHICH LAYOUT IT WAS WRITTEN IN.
 '
@@ -138,7 +148,13 @@ Public Const COL_D_PERIOD As Long = 12
 ' with real Q3F26 content sitting untouched in the register the whole time.
 ' The hybrid keeps the ferry's win (survives unpublished work) and adds the
 ' register as a safety net for exactly the gap that broke today.
-Public Const DRAFT_LAYOUT_VERSION As Long = 6
+' 7 puts SOURCES ahead of PREV, 2026-08-20 -- Rohan: REPORTED LAST TIME is
+' itself a source (voice/continuity), not a separate category read before
+' "real" sourcing starts; reading order now matches instruction order. Also
+' drops COL_D_PROMPT as its own column -- it was one intro-row cell per
+' FIELD, not per project, sitting in a remote column that read as a stray
+' per-project field. Now written directly above AI DRAFT instead.
+Public Const DRAFT_LAYOUT_VERSION As Long = 7
 
 ' The instruction block occupies rows 1-7, so the grid starts lower.
 '
@@ -241,6 +257,18 @@ Private Function ColumnInLayout(layoutVersion As Long, which As String) As Long
                 Case "NOTES":    ColumnInLayout = COL_D_NOTES
             End Select
 
+        ' Layout 6: PREV at C, SOURCES at D -- layout 7 swapped their order
+        ' (SOURCES now C, PREV now D) and dropped the separate PROMPT column.
+        Case 6
+            Select Case which
+                Case "PREV":     ColumnInLayout = 3
+                Case "SOURCES":  ColumnInLayout = 4
+                Case "DRAFT":    ColumnInLayout = 5
+                Case "SUBMIT":   ColumnInLayout = 6
+                Case "APPROVED": ColumnInLayout = 7
+                Case "NOTES":    ColumnInLayout = 9
+            End Select
+
         ' Layout 5: had ORIGINAL at C and REPORTED LAST TIME at D; layout 6
         ' removed ORIGINAL and shifted everything else one column left.
         Case 5
@@ -299,6 +327,7 @@ End Function
 Public Function LayoutStampColumn(ByVal layoutVersion As Long) As Long
     Select Case layoutVersion
         Case DRAFT_LAYOUT_VERSION: LayoutStampColumn = COL_D_LAYOUT
+        Case 6:                    LayoutStampColumn = 10      ' layout 6, frozen
         Case 5:                    LayoutStampColumn = 12      ' layout 5, frozen
         Case Else:                 LayoutStampColumn = 11      ' layouts 3 and 4
     End Select
@@ -307,6 +336,7 @@ End Function
 Public Function PeriodStampColumn(ByVal layoutVersion As Long) As Long
     Select Case layoutVersion
         Case DRAFT_LAYOUT_VERSION: PeriodStampColumn = COL_D_PERIOD
+        Case 6:                    PeriodStampColumn = 12      ' layout 6, frozen
         Case 5:                    PeriodStampColumn = 14      ' layout 5, frozen
         Case Else:                 PeriodStampColumn = 13      ' layouts 3 and 4
     End Select
@@ -861,16 +891,20 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Cells(DRAFT_INTRO_ROW, 1).Font.Bold = True
     ws.Cells(DRAFT_INTRO_ROW, 1).Font.Size = 9
 
-    ws.Cells(2, 1).Value = "STEP 1   Read column " & Chr$(64 + COL_D_PREV) & _
-                           " -- what was reported last quarter. Match its voice, do not repeat it. " & _
-                           "Whether this field is already current for THIS quarter is not tracked here -- Sync decides that when you publish."
-    ' COLUMN G, NOT E. Step 5 below sends the tick to E, so this line named one
-    ' column for two things inside a single instruction block -- and E is the tick,
-    ' which is the consent gate. Stale since 3de4be8 moved SUBMIT to D and the tick
-    ' to E; that commit updated the header row and the toolbar tooltip and left
-    ' every prose instruction pointing at the old layout.
-    ws.Cells(3, 1).Value = "STEP 2   Name your sources in column " & Chr$(64 + COL_D_SOURCES) & ". Add new ones on the Sources sheet first."
-    ws.Cells(4, 1).Value = "STEP 3   Ask Copilot for a draft -- the prompt is in cell L2. It writes into column " & Chr$(64 + COL_D_DRAFT) & ". That column is NEVER published."
+    ' REORDERED, 2026-08-20 -- Rohan: REPORTED LAST TIME is itself a source
+    ' (for voice and narrative continuity, not facts), so sourcing is now one
+    ' continuous step-pair instead of "read old text" then "separately, name
+    ' your sources" as if they were unrelated categories.
+    ws.Cells(2, 1).Value = "STEP 1   Name your sources in column " & Chr$(64 + COL_D_SOURCES) & _
+                           ". Add new ones on the Sources sheet first."
+    ws.Cells(3, 1).Value = "STEP 2   Read column " & Chr$(64 + COL_D_PREV) & _
+                           " -- what was reported last quarter. It is a source too: for voice and " & _
+                           "continuity, not facts. Match its voice, do not repeat it. Whether this " & _
+                           "field is already current for THIS quarter is not tracked here -- Sync " & _
+                           "decides that when you publish."
+    ws.Cells(4, 1).Value = "STEP 3   Ask Copilot for a draft -- the prompt is in cell " & _
+                           Chr$(64 + COL_D_DRAFT) & "2. It writes into column " & Chr$(64 + COL_D_DRAFT) & _
+                           ". That column is NEVER published."
     ws.Cells(5, 1).Value = "STEP 4   Press '" & CommandBarUI.CAP_SET_UP_QUARTER & "' to copy " & Chr$(64 + COL_D_DRAFT) & " into " & Chr$(64 + COL_D_SUBMIT) & ", then EDIT column " & Chr$(64 + COL_D_SUBMIT) & " until you are happy. That is what gets sent."
     ws.Cells(6, 1).Value = "STEP 5   Type  Y  in column " & Chr$(64 + COL_D_APPROVED) & ", save and CLOSE the file, then press '" & CommandBarUI.CAP_PUT_ON_SLIDES & "' again."
 
@@ -917,6 +951,14 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
         Chr$(64 + COL_D_APPROVED) & "   APPROVE -- type Y"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES).Value = _
         Chr$(64 + COL_D_NOTES) & "   NOTES -- back to the tool (optional)"
+    ' LABELLED, 2026-08-20 -- Rohan: it had no header at all, just a bare
+    ' number in a narrow grey cell, which reads as clutter to anyone who
+    ' doesn't already know what it is and invites exactly the kind of
+    ' "tidy this up" deletion this stamp cannot survive.
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_LAYOUT).Value = _
+        Chr$(64 + COL_D_LAYOUT) & "   layout version (internal -- do not edit)"
+    ws.Cells(DRAFT_HEADER_ROW, COL_D_PERIOD).Value = _
+        Chr$(64 + COL_D_PERIOD) & "   period stamp (internal -- do not edit)"
     ws.Rows(DRAFT_HEADER_ROW).Font.Bold = True
     ws.Rows(DRAFT_HEADER_ROW).WrapText = True
 
@@ -1134,9 +1176,12 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     On Error GoTo 0
 
     ' The AI prompt, on the sheet rather than in a console window that closes.
-    ' Placed to the RIGHT of the grid so it is available to copy without
-    ' pushing the instructions a person needs off the top of the screen.
-    ws.Cells(DRAFT_INTRO_ROW, COL_D_PROMPT).Font.Bold = True
+    ' MOVED directly above AI DRAFT, 2026-08-20 (Rohan) -- it was its own
+    ' remote column, one prompt per FIELD sitting where a per-project value
+    ' would normally be, which read as a stray column. It is written at row 2
+    ' of whichever column DRAFT currently is, right above where its own output
+    ' gets pasted -- no separate column, no separate constant.
+    ws.Cells(DRAFT_INTRO_ROW, COL_D_DRAFT).Font.Bold = True
     ' The prompt comes from the field's OWN spec row when there is one. A field
     ' with no row still drafts -- on generic guidance that says so -- because
     ' blocking the work until somebody writes a style guide would be paperwork
@@ -1161,11 +1206,10 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     If Not srcWs Is Nothing Then
         citedBlock = Sources.CitedBlockFor(srcWs, ws, COL_D_SOURCES, DRAFT_FIRST_ROW)
     End If
-    ws.Cells(2, COL_D_PROMPT).Value = "'" & FieldSpec.PromptFrom(g, citedBlock)
-    ws.Cells(DRAFT_INTRO_ROW, COL_D_PROMPT).Value = _
+    ws.Cells(2, COL_D_DRAFT).Value = "'" & FieldSpec.PromptFrom(g, citedBlock)
+    ws.Cells(DRAFT_INTRO_ROW, COL_D_DRAFT).Value = _
         "PROMPT TO GIVE COPILOT (copy this cell)" & IIf(g.Found, "", "  --  GENERIC, no Field Spec row")
-    ws.Columns(COL_D_PROMPT).ColumnWidth = 70
-    ws.Cells(2, COL_D_PROMPT).WrapText = True
+    ws.Cells(2, COL_D_DRAFT).WrapText = True
 
     ws.Rows(DRAFT_HEADER_ROW).RowHeight = 30
 
