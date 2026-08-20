@@ -974,7 +974,47 @@ built and tested on.
 - [ ] Step 5 — the deck surgery: make the `K` and `S` templates from real slides,
       on a copy, never the live deck.
 
-## Scenario 8 — portability (never tried)
+### Template parity — three real templates exist today, and they have already drifted
+
+**Measured directly from the live deck, 2026-08-20, not assumed.** Three slides
+are tagged `IS_TEMPLATE=1` for `project-progress`: **44** (green, the one
+everything has been built and tested against), **46**, and **47** — neither 46
+nor 47 is registered under a letter, so `DeckRegistry.LookupTemplateForLetter`'s
+own fallback means every real project today clones from 44 regardless. **46 and
+47 are dormant, not live.** That is the fact this whole strategy leans on: the
+gap exists but is not currently hurting anyone, which is exactly the window to
+close it in, not a reason to leave it.
+
+**The actual gap, role-tag census across all three:**
+
+| finding | detail |
+|---|---|
+| 14 roles on 44, absent from BOTH 46 and 47 | `DELIVERABLE1-4_PHOTO`, `DELIVERABLES_BODY`, `INDUSTRY_PARTNER`, `MILESTONE_TIMELINE`, `PROJECT_PHOTO`, `SAAFE_CASH`, `STATUS_BADGE`, `TERTIARY_INSTITUTION`, `TIMELINE_ELAPSED`, `TIMELINE_ELAPSED.rest`, `TOTAL_INKIND` |
+| 1 role went the OTHER way | `PROJECT_STATUS` is on 46/47, gone from 44 — the `STATUS_BADGE` retagging migration's own commit note says it touched "slide 44" only; 46/47 were never included and nobody flagged it |
+| leaked donor content, confirmed live | `47` carries an untagged shape reading "Research commenced," sitting OUTSIDE the milestone-timeline group (unlike the real `MS*_LABEL` shapes), matching no Field Spec row — the same untagged-camouflage pattern already found and fixed on 44 for `HIGHLIGHTS_BODY`/`PROJECT_PHOTO`. Found by Rohan asking "where does this fit" and correctly suspecting it didn't belong to any MECE list. Not yet deleted — confirm it is genuinely orphaned (not misread) before removing. |
+| 47's shape count differs structurally | 90 shapes vs. 71 (44) / 66 (46) — not just recolouring; likely other undiscovered structural drift beyond the role-tag census above |
+
+**The strategy — three rules, while 44 is the only live template:**
+
+1. **44 stays the single source of truth.** Every field-tagging or shape-creation
+   session works against 44 and 44 alone, same as tonight. Do not spend effort
+   keeping 46/47 current in lockstep — they cost nothing sitting behind the
+   fallback, and updating three templates for every single-field change would
+   triple tonight's build cost for a benefit nobody can see yet.
+2. **A parity census, like the one above, is a MANDATORY gate before EITHER 46
+   or 47 is ever registered under a letter — never optional, never assumed
+   clean.** Registering a template with a 14-role gap would silently ship real
+   projects missing money fields, both deliverable mechanisms, the milestone
+   timeline, and the industry partner/institution fields — exactly the
+   "worst shape a reporting-tool defect can take" `TemplateSlide.bas`'s own
+   docstring already warns about, just for a whole colour instead of one field.
+   Whoever picks up Scenario 3 step 5 runs this census FIRST, closes every gap
+   it finds, THEN registers the letter — never the other order.
+3. **This whole strategy retires itself the moment 46 or 47 is actually
+   activated.** Once a colour variant is live, it goes back under the same
+   discipline as 44 — every future change touches every LIVE template in the
+   same session, verified by the census, not by memory. Until then, "in
+   parity" means "44 is complete and correct," not "all three match."
 
 - [ ] Bring up a genuinely fresh deck + fresh register from nothing, unaided —
       the standing requirement, the tool has to travel with Rohan.
