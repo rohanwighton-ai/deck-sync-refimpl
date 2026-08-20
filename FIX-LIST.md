@@ -3525,3 +3525,39 @@ it flagged), and worth deciding whether `Decide` gets filled in as a
 standing habit going forward or the sheet gets treated as disposable and
 rebuilt each time -- currently it's neither, which is how a correct
 finding sat for this long.
+
+## Added and FIXED 2026-08-21 — BP, a delegated cleanup silently undid an
+## earlier fix, and a non-breaking hyphen hid a leak from every text search
+
+**The regression.** K and S's `MILESTONE_TIMELINE` widgets were correctly
+recoloured (green to K's orange / S's lavender) earlier the same night. A
+few hours later, a fork was asked to fix a separate, real problem -- the
+widget showing too many circles and real `3_P001` data on the templates --
+and its fix, correctly scoped to that problem, deleted the (by-then-
+recoloured) K/S copies and re-cloned them fresh from the P template,
+explicitly not touching colour (its own report said so). That silently
+reverted the earlier recolour work, and nothing after it redid the fix --
+the 42-real-slide propagation that followed cloned FROM the now-reverted
+K/S templates, so the regression spread to all 32 real K/S slides too.
+Found only because Rohan looked at the live deck directly and asked why
+the bar was "often in front of circles? and wrong colour" -- the z-order
+half turned out correct everywhere checked (probably a stale screenshot),
+but the colour half was real, confirmed on all 34 widgets (2 templates +
+32 real slides), and fixed the same way as the original recolour.
+
+**The lesson, stated as a shape**: delegating a fix for problem A, when
+the target already carries an unrelated fix for problem B, needs an
+explicit check afterward that B survived -- "fixed A" and "did not touch
+B" are two different claims, and a rebuild-from-source step can satisfy
+the first while silently failing the second without anyone asking it to.
+
+**Separately, a leaked achievement-sentence on the P template
+("...helped stop biofilm formation...") survived two earlier search
+passes that should have caught it**, including a search across all 47
+slides for the literal string. The text uses `Chr(8209)`, a non-breaking
+hyphen (U+2011), not the ordinary ASCII hyphen (U+002D) the search
+patterns used -- so "Silver-enhanced" as typed never matched, even though
+the word renders identically on screen. Found only by matching on
+hyphen-free anchors ("biofilm formation") once the mismatch was suspected.
+**Any earlier search this session that matched on a hyphenated phrase has
+the same blind spot and has not been re-checked.**

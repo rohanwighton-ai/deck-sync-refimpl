@@ -1048,6 +1048,31 @@ as a first draft needing Rohan's (or the real source's) confirmation before they
 on: `1_K1001, 1_K1002, 1_K1003, 1_K1004, 1_K1005, 1_K1006, 1_K1007, 1_K1008, 1_K010,
 3_K016, 4_K017, 4_K021, 1_K022, 3_K023`.
 
+## Bold header line for PROGRESS_BODY/KEY_EVENTS_BODY — built on templates only, 2026-08-21
+
+Rohan's original ask, from earlier the same night: a dedicated bold header line
+(quarter on the left, project status on the right when not "In Progress") above
+each section body, replacing the old stale first-run-formatting inheritance that
+made the whole body render bold. Design fully confirmed with him: new shapes, not
+a formatting-reset fix.
+
+**Built and confirmed on the P/K/S templates**: `PROGRESS_HEADER`/`KEY_EVENTS_HEADER`
+shapes exist, correctly positioned (body shapes shrunk ~12pt and shifted down to make
+room, bottom edge held fixed), bold, Calibri 8pt, coloured per type (P `#003C23`,
+K `#F55A2D`, S `#C0A2F2` — matching the same per-type convention as the milestone
+widget). The pre-existing body-bold bug is fixed alongside it (`Font.Bold = 0` on
+`PROGRESS_BODY`/`KEY_EVENTS_BODY`).
+
+**Not done yet**:
+- [ ] Not propagated to any of the 43 real slides — templates only.
+- [ ] Not wired as an actual computed field anywhere in the VBA sync path. The
+      shapes currently hold `<<PROGRESS_HEADER>>`/`<<KEY_EVENTS_HEADER>>` placeholder
+      text, same as every other untouched template field — there is no
+      `SyncOperations.ComputeDerivedValue` case for either yet, so a real sync
+      today would not fill them. Needs a real `Kind=Derived` field (quarter from
+      the deck's own period + `PROJECT_STATUS` suffix, suppressed when "In
+      Progress") before this is more than a static mock-up.
+
 - [ ] Verify or correct the 14 inferred SECTOR/TRL values above against real source data.
 - [ ] Decide whether `SECTOR`/`TRL` need a lightweight provenance flag of their own —
       `PROVENANCE.md`'s design is scoped to prose fields going through the real publish
