@@ -310,6 +310,35 @@ foreach ($m in $pptModules) {
         Copy-Item $srcPath -Destination $dstPath
     }
 }
+# vba/tools/ GOES THROUGH THE COMPILE GATE, AND NOTHING EVER COMPILED IT BEFORE
+# 2026-08-20. These are the diagnostic and one-off modules that get run against
+# the REAL deck and the REAL register -- FIX-LIST item BM is one of them
+# silently losing every write to the live register -- and VBA had never once
+# checked that they resolve. The day this gate was added it immediately found
+# AuditRealDeck calling RibbonUI.ExcludeSlide, which is Private and therefore
+# invisible across modules: that tool could not run at all, and nothing in the
+# repo was capable of saying so.
+#
+# DERIVED FROM THE DIRECTORY, NEVER LISTED. A hand-typed module list is the
+# exact rot this gate exists to catch -- field_e2e.ps1's own list went stale
+# twice, once causing a live compile error that blocked all COM automation. A
+# new tool is covered the moment it is written, with nobody remembering to add
+# it.
+#
+# Compile-only: these are staged and compiled, never imported for the test run,
+# because no test exercises them. Compiling proves they RESOLVE, not that they
+# WORK -- a real gap, and a smaller one than having no signal at all.
+$toolModules = @()
+$toolsDir = Join-Path $vbaSourceDir "tools"
+if (Test-Path $toolsDir) {
+    $toolModules = @(Get-ChildItem $toolsDir -Filter *.bas -ErrorAction SilentlyContinue |
+                     ForEach-Object { $_.Name })
+    foreach ($m in $toolModules) {
+        Copy-Item (Join-Path $toolsDir $m) -Destination (Join-Path $staging $m) -Force
+    }
+    Write-Output "staged $($toolModules.Count) tool module(s) for the compile gate"
+}
+
 $excelModules = @("ExcelOutput.bas", "tests\TestRunnerExcel.bas")
 foreach ($m in $excelModules) {
     Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging
@@ -408,7 +437,7 @@ $compileTimeoutSeconds = 180
 # Application.ActiveWorkbook. That is a compile error in a PowerPoint project
 # and has nothing to do with the code under test. The first version of this
 # gate did exactly that and reported a healthy project as broken.
-$pptImports = @("ExcelOutput.bas") + @($pptModules | ForEach-Object { Split-Path $_ -Leaf })
+$pptImports = @("ExcelOutput.bas") + @($pptModules | ForEach-Object { Split-Path $_ -Leaf }) + $toolModules
 
 $compileProc = Start-Process -FilePath "powershell.exe" -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput $compileLog `

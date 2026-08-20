@@ -109,7 +109,14 @@ Public Function AuditRealDeck(deckPath As String, Optional workbookPathOverride 
         End If
 
         Dim comparisons() As Object
-        comparisons = RibbonUI.ExcludeSlide(instances, subjectSld)
+        ' RibbonUI.ExcludeSlide is Private, so this module could never see it and
+        ' AuditRealDeck has not compiled for as long as that has been true --
+        ' undetected because nothing in this repo compiles vba/tools/ (fixed the
+        ' same day, 2026-08-20). AdoptFlow.ExcludeTemplateSlide is the Public
+        ' twin, same signature, and a dead-code audit the same evening flagged it
+        ' as having no callers -- which is exactly what a caller pointed at the
+        ' wrong module looks like from the other end.
+        comparisons = AdoptFlow.ExcludeTemplateSlide(instances, subjectSld)
 
         Dim cLo As Long, cHi As Long, hasComp As Boolean
         On Error Resume Next
