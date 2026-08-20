@@ -59,6 +59,30 @@ IDs for the same underlying file, all needing fresh siblings every quarter with 
 saying so. It only flags, never adds or deletes a source; deciding whether a fresh
 variant is actually needed is still a person's call.
 
+**One ID per document, not one ID per section of it — the rule, stated once.**
+S01/S02/S03 were the same physical file cited three times because different columns
+fed different fields; merged into one ID 2026-08-20 (see `SYSTEM-OVERVIEW.md`'s Sources
+row above). Per-project uniqueness does NOT need a separate source ID per project
+either — `SRC_EXTRACTS` is one column per source ID, **one row per project**, so a
+single shared ID already gives every project its own extract in its own row (S01
+already proves this: one ID, 43 different linkage-code values). The exception that
+proves the rule: `S16`, "Original project contract" — one shared ID across all 43
+projects even though each project's contract is a genuinely different document,
+because the per-project distinctness lives in the row, not the ID. Feeds `ABOUT_BODY`
+(the what), `PROBLEM_BODY` (the why), `STRATEGIC_ALIGNMENT_BODY` (the so-what) —
+confirmed with Rohan 2026-08-20, closing the one real gap in the recipe checklist
+(these three previously had no source at all). **`S16`'s "Where it lives" is still
+`[TBC — path needed]`** — added so the recipe is structurally complete, not because
+the actual contract-filing location is known yet.
+
+**Extraction discipline for a multi-field source: label the sections, don't paste
+the whole document.** `SRC_EXTRACTS`' cell for `S16` is instructed to hold labelled
+excerpts (WHAT / WHY / SO WHAT) rather than a raw contract dump — an LLM drafting from
+a long, unstructured cell has to guess which paragraph answers which question; a
+short labelled excerpt per field removes the guess. Same technique the working `S02`
+extract already uses (numbered subsections within one cell), just named as a rule here
+rather than left implicit.
+
 ## The drafting sheet — column layout, RE-VERIFIED 2026-08-16
 
 *Source: re-derived from `Drafting.bas`'s `COL_D_*` constants directly, 2026-08-20 (layout
