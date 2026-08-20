@@ -64,12 +64,16 @@ Public Function AuditRealDeck(deckPath As String, Optional workbookPathOverride 
         Exit Function
     End If
 
-    Dim xl As Object, wb As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    xl.DisplayAlerts = False
-    ' positional args: UpdateLinks:=0, ReadOnly:=False -- this one writes.
-    Set wb = xl.Workbooks.Open(workbookPath, 0, False)
+    ' Routed through WorkbookBridge.OpenOrGetWorkbook, not a raw
+    ' CreateObject+Open, for the same reason every writer in E2EField.bas
+    ' was moved onto it 2026-08-20: a second, unguarded Excel instance
+    ' opening a file someone already has open can silently "save"
+    ' successfully into a copy that never reaches disk. This module's own
+    ' header already says never to point it at Rohan's real files, but the
+    ' guard costs nothing and the header comment is not itself a control.
+    Dim wb As Object
+    Dim wasOpen As Boolean
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(workbookPath, wasOpen)
 
     report = "Deck:      " & deckPath & vbCrLf & _
              "Workbook:  " & workbookPath & vbCrLf & _
@@ -164,8 +168,12 @@ NextType:
     Next i
 
     wb.Save
-    wb.Close False
-    xl.Quit
+    If Not wasOpen Then
+        Dim app As Object
+        Set app = wb.Application
+        wb.Close False
+        app.Quit
+    End If
 
     pres.Saved = msoTrue
     pres.Close

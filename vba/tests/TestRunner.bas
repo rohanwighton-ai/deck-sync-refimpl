@@ -743,6 +743,24 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "FieldSpec_RendersAsForRecognisesSlots", r
+    If TestMatches("FieldSpec_PromptDerivesHistoryTreatmentNotAHardcodedLetter", filterPattern) Then
+        r = Test_FieldSpec_PromptDerivesHistoryTreatmentNotAHardcodedLetter()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FieldSpec_PromptDerivesHistoryTreatmentNotAHardcodedLetter", r
+    If TestMatches("FieldSpec_DefaultGlobalRulesStatesAllFourTreatments", filterPattern) Then
+        r = Test_FieldSpec_DefaultGlobalRulesStatesAllFourTreatments()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FieldSpec_DefaultGlobalRulesStatesAllFourTreatments", r
+    If TestMatches("FieldSpec_LookupGuidanceReadsHistoryTreatmentAndNotes", filterPattern) Then
+        r = Test_FieldSpec_LookupGuidanceReadsHistoryTreatmentAndNotes()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FieldSpec_LookupGuidanceReadsHistoryTreatmentAndNotes", r
     On Error GoTo 0
     If TestMatches("Drafting_AFieldWithNoValueLeavesColumnCEmpty", filterPattern) Then
         r = Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty()
@@ -1259,6 +1277,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "WorkbookBridge_SaveWorkbookVerifiedProvesTheFileMoved", r
+    If TestMatches("WorkbookBridge_OpenOrGetWorkbookDetectsAnAlreadyOpenFile", filterPattern) Then
+        r = Test_WorkbookBridge_OpenOrGetWorkbookDetectsAnAlreadyOpenFile()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "WorkbookBridge_OpenOrGetWorkbookDetectsAnAlreadyOpenFile", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -5204,6 +5228,124 @@ Private Function Test_FieldSpec_RendersAsForRecognisesSlots() As String
     Test_FieldSpec_RendersAsForRecognisesSlots = result
 End Function
 
+' THE HARDCODED "column C" LINE IS GONE. PromptFrom used to emit a fixed
+' sentence naming a column letter for every field, regardless of what that
+' field's declared History treatment actually needed -- see HistoryPreamble's
+' own comment in FieldSpec.bas for why that was worse than believed (it lived
+' in code, not a Field Spec cell, so no per-field sheet audit could ever have
+' found it). This proves the prompt now reflects the DECLARED treatment, not
+' a fixed string, and that different fields get materially different
+' preambles.
+Private Function Test_FieldSpec_PromptDerivesHistoryTreatmentNotAHardcodedLetter() As String
+    Dim result As String
+
+    Dim g As FieldGuidance
+    g.Found = True: g.FieldId = "DELIVERABLES_BODY"
+    g.Purpose = "x": g.Voice = "x": g.Length = "x": g.OwnJob = "x": g.DoNot = "x"
+    g.History = FieldSpec.HIST_CARRY
+    g.HistoryNotes = "Re-interpreting an unchanged deliverable produces two readings."
+
+    Dim p As String
+    p = FieldSpec.PromptFrom(g)
+    result = result & Assert(InStr(p, "column C") = 0, "no field's prompt names a column letter for history any more")
+    result = result & Assert(InStr(p, "declared History treatment is CARRY") > 0, _
+        "the prompt states the field's OWN declared treatment, not a generic instruction")
+    result = result & Assert(InStr(p, "two readings") > 0, "a field's HistoryNotes reach its own prompt")
+
+    ' A different field with a different treatment must get a DIFFERENT
+    ' preamble -- otherwise this is decoration, same class of proof as
+    ' Test_FieldSpec_GuidanceDrivesThePrompt above it.
+    Dim g2 As FieldGuidance
+    g2.Found = True: g2.FieldId = "PROGRESS_BODY"
+    g2.Purpose = "x": g2.Voice = "x": g2.Length = "x": g2.OwnJob = "x": g2.DoNot = "x"
+    g2.History = FieldSpec.HIST_FRESH
+    Dim p2 As String
+    p2 = FieldSpec.PromptFrom(g2)
+    result = result & Assert(InStr(p2, "declared History treatment is FRESH") > 0, _
+        "a FRESH field is told FRESH, not CARRY")
+    result = result & Assert(InStr(p2, "declared History treatment is CARRY") = 0, _
+        "a FRESH field's prompt does not also claim CARRY")
+
+    ' A field with no declared treatment at all (a brand-new row, or a
+    ' workbook mid-migration) must not silently claim one -- it gets the
+    ' neutral fallback instead of an invented value.
+    Dim g3 As FieldGuidance
+    g3.Found = True: g3.FieldId = "SOME_NEW_FIELD"
+    g3.Purpose = "x": g3.Voice = "x": g3.Length = "x": g3.OwnJob = "x": g3.DoNot = "x"
+    Dim p3 As String
+    p3 = FieldSpec.PromptFrom(g3)
+    ' NOT "declared History treatment" alone -- DefaultGlobalRules always says
+    ' "...History treatment, stated above:" regardless of g.History, so that
+    ' substring can never be absent and the check would never be able to
+    ' fail. "declared History treatment is" is HistoryPreamble's own specific
+    ' phrasing, only emitted when a value was actually declared.
+    result = result & Assert(InStr(p3, "declared History treatment is") = 0, _
+        "a field with no History value does not claim to have one")
+    result = result & Assert(InStr(p3, "REPORTED LAST TIME") > 0, _
+        "it still points the drafter at REPORTED LAST TIME by name")
+
+    Test_FieldSpec_PromptDerivesHistoryTreatmentNotAHardcodedLetter = result
+End Function
+
+' THE GLOBAL RULE USED TO SAY ONE THING FOR EVERY FIELD ("every row needs a
+' genuine attempt this quarter") WHICH CONTRADICTED DELIVERABLES_BODY'S OWN
+' RECIPE ("re-sifting an unchanged value is explicitly wrong"). Both were
+' live in the same workbook at once -- caught by Claude (chat) reviewing the
+' rule before it reached thirteen fields' worth of prompts. This proves the
+' replacement states all four treatments rather than asserting one, and that
+' the stale column-letter references it also carried are gone.
+Private Function Test_FieldSpec_DefaultGlobalRulesStatesAllFourTreatments() As String
+    Dim result As String
+    Dim rules As String
+    rules = FieldSpec.DefaultGlobalRules()
+
+    Dim v As Variant
+    For Each v In Array(FieldSpec.HIST_CARRY, FieldSpec.HIST_FRESH, FieldSpec.HIST_PARTFROZEN, FieldSpec.HIST_DIFF)
+        result = result & Assert(InStr(rules, CStr(v)) > 0, "GLOBAL RULES defines " & CStr(v))
+    Next v
+
+    result = result & Assert(InStr(rules, "column C") = 0, "no stale column-letter reference survives the rewrite")
+    result = result & Assert(InStr(rules, "column J") = 0, "the NOTES reference is no longer a hardcoded letter")
+    result = result & Assert(InStr(rules, "sole source of truth") > 0, "the no-invention rule survives the rewrite")
+
+    Test_FieldSpec_DefaultGlobalRulesStatesAllFourTreatments = result
+End Function
+
+' LookupGuidance READS THE NEW COLUMNS. Without this, a value typed into the
+' History treatment or History notes column would sit on the sheet and never
+' reach a drafting prompt -- the exact "built and unreachable" shape this
+' project has hit repeatedly (DraftingUI.bas's own comment on
+' ApplyBehaviourValidation, right next to where ApplyHistoryValidation was
+' wired in this session, is the specimen).
+Private Function Test_FieldSpec_LookupGuidanceReadsHistoryTreatmentAndNotes() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_SPEC_FIELDID).Value = "STRATEGIC_LINKAGES"
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_SPEC_HISTORY).Value = FieldSpec.HIST_DIFF
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_SPEC_HISTORY_NOTES).Value = _
+        "Codes here should be identical to REPORTED LAST TIME unless the project has been varied."
+
+    Dim g As FieldGuidance
+    g = FieldSpec.LookupGuidance(ws, "STRATEGIC_LINKAGES")
+    result = result & Assert(g.History = FieldSpec.HIST_DIFF, "History treatment reads back as declared, got '" & g.History & "'")
+    result = result & Assert(InStr(g.HistoryNotes, "identical to REPORTED LAST TIME") > 0, _
+        "History notes reads back as declared")
+
+    On Error Resume Next
+    wb.Close False
+    xl.Quit
+    On Error GoTo 0
+
+    Test_FieldSpec_LookupGuidanceReadsHistoryTreatmentAndNotes = result
+End Function
+
 ' ONE PROJECT'S TEXT MUST NEVER APPEAR AGAINST ANOTHER PROJECT.
 '
 ' Originally guarded COL_D_CURRENT ("ORIGINAL") against exactly this: VBA's Dim
@@ -7937,6 +8079,79 @@ Private Function Test_WorkbookBridge_SaveWorkbookVerifiedProvesTheFileMoved() As
     fso.DeleteFile testPath, True
 
     Test_WorkbookBridge_SaveWorkbookVerifiedProvesTheFileMoved = result
+End Function
+
+' A SECOND OpenOrGetWorkbook ON A FILE THE FIRST CALL ALREADY OPENED MUST
+' RETURN THAT SAME WORKBOOK, WITH wasAlreadyOpen = True -- not a second,
+' independent handle. Added 2026-08-20 after a diagnostic script of Claude's
+' own hit exactly the failure this proves is now caught: a raw
+' CreateObject("Excel.Application") + Workbooks.Open in a SEPARATE process
+' silently opened a second, restricted handle onto a file this same session
+' already had open, wrote to it, and "saved" with no error while nothing
+' reached disk. The wrong hypothesis (the old contract, no wasAlreadyOpen
+' output) would leave every caller believing it owns whatever it got back,
+' with nothing to tell it otherwise -- so this checks the ONE thing that
+' distinguishes right from wrong: does the second call know.
+Private Function Test_WorkbookBridge_OpenOrGetWorkbookDetectsAnAlreadyOpenFile() As String
+    Dim result As String
+
+    Dim testPath As String
+    testPath = Environ("TEMP") & "\deck_sync_test_wb_reopen_" & Format(Now, "hhmmss") & ".xlsx"
+
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists(testPath) Then fso.DeleteFile testPath, True
+
+    Dim xl As Object, seed As Object
+    Set xl = WorkbookBridge.GetExcelApp()
+    Set seed = xl.Workbooks.Add()
+    Dim origAlerts As Boolean
+    origAlerts = xl.DisplayAlerts
+    xl.DisplayAlerts = False
+    seed.SaveAs testPath
+    xl.DisplayAlerts = origAlerts
+    seed.Close False
+
+    ' First call: nothing has this file open yet.
+    Dim wasOpen1 As Boolean
+    Dim wb1 As Object
+    Set wb1 = WorkbookBridge.OpenOrGetWorkbook(testPath, wasOpen1)
+    result = result & Assert(Not wb1 Is Nothing, "the first call opens the file at all")
+    result = result & Assert(wasOpen1 = False, _
+        "the first call reports it opened the file fresh, not that it was already open")
+
+    ' Second call, same path: THIS is the exact shape of the incident -- a
+    ' second caller reaching for the same file while the first call's handle
+    ' is still open. It must find wb1, not open a second handle onto it.
+    Dim wasOpen2 As Boolean
+    Dim wb2 As Object
+    Set wb2 = WorkbookBridge.OpenOrGetWorkbook(testPath, wasOpen2)
+    result = result & Assert(wasOpen2 = True, _
+        "the second call recognises the file is already open")
+    result = result & Assert(wb2 Is wb1, _
+        "and returns THE SAME workbook object, not a second handle onto it")
+
+    ' OpenOrGetWorkbook calls ShapeAddressBook.SetActiveWorkbook as its own
+    ' internal side effect (see its own header) -- every other test in this
+    ' file that touches that cache resets it to Nothing afterward, and this
+    ' one has to as well now that it calls a function which sets it
+    ' indirectly. Skipping this was the ACTUAL cause of a real cascade
+    ' failure confirmed live 2026-08-20: leaving mWb pointed at this test's
+    ' own workbook after Close+Quit left ShapeAddressBook.Lookup holding a
+    ' disconnected COM reference, and every InjectField/InjectPicture/
+    ' FieldWiring/ReviewQueue test running after this one in the same suite
+    ' either FAILed with "no single shape found" or ERRORed with "The object
+    ' invoked has disconnected from its clients" -- while every one of them
+    ' passed clean run in isolation, which is what pointed at shared state
+    ' rather than a real logic break.
+    ShapeAddressBook.SetActiveWorkbook Nothing
+
+    wb1.Saved = True
+    wb1.Close
+    xl.Quit
+    fso.DeleteFile testPath, True
+
+    Test_WorkbookBridge_OpenOrGetWorkbookDetectsAnAlreadyOpenFile = result
 End Function
 
 ' PROVES THE SAVE HAPPENS AND NOTHING BLOCKS ON IT. If EnsureSavedQuietly ever

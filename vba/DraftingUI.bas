@@ -1246,7 +1246,11 @@ Public Sub RefreshDraftingSheets()
     ' rebuilds the Field Spec sheet.
     valNote = valNote & vbCrLf & FieldSpec.ApplyBehaviourValidation(specWs)
     valNote = valNote & vbCrLf & FieldSpec.ApplyRendersValidation(specWs)
-    Timing.LogTiming wb, "ControlledValidation+BehaviourValidation+RendersValidation", tValidation
+    ' ApplyHistoryValidation added 2026-08-20 alongside the History treatment
+    ' column -- wired in here immediately, not left for a later session to
+    ' find unreachable the way the two lines above it were.
+    valNote = valNote & vbCrLf & FieldSpec.ApplyHistoryValidation(specWs)
+    Timing.LogTiming wb, "ControlledValidation+BehaviourValidation+RendersValidation+HistoryValidation", tValidation
 
     ShowSheet wb, firstSheet
 

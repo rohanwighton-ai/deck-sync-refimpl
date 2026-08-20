@@ -125,6 +125,32 @@ Public Const RENDER_SLOTS As String = "Slots"
 Public Const COL_SPEC_GLOBAL As Long = 9
 Public Const SPEC_GLOBAL_ROW As Long = 2
 
+' HOW REPORTED LAST TIME SHOULD BE USED FOR THIS FIELD -- the axis that
+' replaced the one-size "match voice, never repeat words" global instruction
+' added 2026-08-20 alongside the Sources/REPORTED LAST TIME column swap. That
+' single rule was right for FRESH fields and wrong for CARRY ones:
+' DELIVERABLES_BODY's own recipe already forbids re-sifting an unchanged
+' value once one exists, and a global "every row needs a genuine attempt this
+' quarter" told it the opposite. Four treatments, not one:
+'   CARRY        -- unchanged unless a source changed (most Standing prose)
+'   FRESH        -- new words every quarter (KEY_EVENTS_BODY, PROGRESS_BODY)
+'   PART-FROZEN  -- carried items keep their exact words; only new items are
+'                   written (HIGHLIGHTS_BODY, whose bullets carry a quarter tag)
+'   DIFF         -- no voice relationship; history is a change detector only
+'                   (STRATEGIC_LINKAGES)
+' The DEFINITIONS live in GLOBAL RULES (DefaultGlobalRules, below), because
+' that is the sheet's own editable prose -- same split as every other axis on
+' this sheet: the code owns the vocabulary, the sheet owns which value
+' applies to a given field and can edit what each value means. PICKED, NEVER
+' TYPED, so this gets the same dropdown treatment as Behaviour and Renders as.
+Public Const COL_SPEC_HISTORY As Long = 13
+Public Const COL_SPEC_HISTORY_NOTES As Long = 14
+
+Public Const HIST_CARRY As String = "CARRY"
+Public Const HIST_FRESH As String = "FRESH"
+Public Const HIST_PARTFROZEN As String = "PART-FROZEN"
+Public Const HIST_DIFF As String = "DIFF"
+
 Public Const SPEC_HEADER_ROW As Long = 1
 Public Const SPEC_FIRST_ROW As Long = 2
 
@@ -140,6 +166,8 @@ Public Type FieldGuidance
     DoNot As String
     GlobalRules As String   ' shared by every field -- see COL_SPEC_GLOBAL
     Behaviour As String     ' how the content is PLACED -- see COL_SPEC_BEHAVIOUR
+    History As String       ' CARRY / FRESH / PART-FROZEN / DIFF -- see COL_SPEC_HISTORY
+    HistoryNotes As String  ' optional field-specific addition -- see COL_SPEC_HISTORY_NOTES
 End Type
 
 ' Creates the sheet with its headers and, on a fresh workbook, the rows already
@@ -320,6 +348,15 @@ Public Function WriteSpecSheet(ws As Object) As String
         "' is tagged as a PAIR: the bar and its track."
     ws.Columns(COL_SPEC_RENDERS).ColumnWidth = 16
 
+    ws.Cells(SPEC_HEADER_ROW, COL_SPEC_HISTORY).Value = _
+        "History treatment -- " & HIST_CARRY & " / " & HIST_FRESH & " / " & HIST_PARTFROZEN & _
+        " / " & HIST_DIFF & " (controlled; definitions in GLOBAL RULES)"
+    ws.Columns(COL_SPEC_HISTORY).ColumnWidth = 16
+    ws.Cells(SPEC_HEADER_ROW, COL_SPEC_HISTORY_NOTES).Value = _
+        "History notes -- optional, field-specific addition to the declared treatment. Leave blank if none."
+    ws.Columns(COL_SPEC_HISTORY_NOTES).ColumnWidth = 46
+    ws.Columns(COL_SPEC_HISTORY_NOTES).WrapText = True
+
     ' Blank is filled with Text rather than left empty. Every field that existed
     ' before this column is text, and a blank meaning "unknown" would make every
     ' pre-existing sheet report a problem it does not have. An owner who wants
@@ -398,6 +435,8 @@ Public Function LookupGuidance(ws As Object, fieldId As String) As FieldGuidance
             g.Allowed = Trim(CStr(ws.Cells(r, COL_SPEC_ALLOWED).Value))
                 ' Per ROW, unlike GlobalRules which comes from a fixed cell.
                 g.Behaviour = Trim(CStr(ws.Cells(r, COL_SPEC_BEHAVIOUR).Value))
+                g.History = Trim(CStr(ws.Cells(r, COL_SPEC_HISTORY).Value))
+                g.HistoryNotes = Trim(CStr(ws.Cells(r, COL_SPEC_HISTORY_NOTES).Value))
             Exit Do
         End If
         r = r + 1
@@ -422,22 +461,48 @@ End Function
 ' cell appears to do nothing" failure the comment below warns about, inverted.
 ' Coming last, the sources block states the wider rule itself and cannot be
 ' silently overridden by either copy.
+' What to tell the drafter about REPORTED LAST TIME before the field's own
+' guidance, keyed off the field's declared History treatment (COL_SPEC_
+' HISTORY) rather than a hardcoded column letter. This used to be a single
+' sentence naming a specific column ("the existing text in column C") for
+' EVERY field regardless of what that field actually needed from its own
+' history -- and it went stale the moment Sources and REPORTED LAST TIME
+' swapped columns on 2026-08-20, because nothing here derived it. Found by
+' Claude (chat) asking why a per-field bug report didn't match either
+' Purpose or Voice: it wasn't in either, because it was never on the sheet at
+' all -- it was hardcoded in this function, applying to all thirteen fields
+' at once, not just the one it was first noticed on.
+Private Function HistoryPreamble(g As FieldGuidance) As String
+    Dim s As String
+    If Trim(g.History) = "" Then
+        s = "Read the workbook, including REPORTED LAST TIME and the cited SOURCES."
+    Else
+        s = "This field's declared History treatment is " & g.History & _
+            " -- see REPORTED LAST TIME IS A SOURCE in the rules below for what that means."
+        If Trim(g.HistoryNotes) <> "" Then s = s & vbCrLf & g.HistoryNotes
+    End If
+    HistoryPreamble = s
+End Function
+
 Public Function PromptFrom(g As FieldGuidance, Optional citedBlock As String = "") As String
     Dim s As String
-    s = "Read the workbook and the existing text in column C." & vbCrLf & vbCrLf
+    s = HistoryPreamble(g) & vbCrLf & vbCrLf
+
+    Dim submitCol As String
+    submitCol = Chr$(64 + Drafting.COL_D_SUBMIT) & " (SUBMIT)"
 
     If Not g.Found Then
         s = s & "NOTE: no Field Spec row exists for " & g.FieldId & ", so this is generic" & vbCrLf & _
             "guidance. Add a row to the 'Field Spec' sheet to say how this field" & vbCrLf & _
             "should be written." & vbCrLf & vbCrLf & _
-            "Write an updated version of " & g.FieldId & " for each project into column F ONLY." & vbCrLf & vbCrLf
+            "Write an updated version of " & g.FieldId & " for each project into " & submitCol & " ONLY." & vbCrLf & vbCrLf
     Else
         s = s & "WHAT THIS FIELD IS FOR" & vbCrLf & g.Purpose & vbCrLf & vbCrLf & _
             "VOICE" & vbCrLf & g.Voice & vbCrLf & vbCrLf & _
             "LENGTH" & vbCrLf & g.Length & vbCrLf & vbCrLf & _
             "BEFORE YOU WRITE EACH ROW, ASK" & vbCrLf & g.OwnJob & vbCrLf & vbCrLf & _
             "DO NOT" & vbCrLf & g.DoNot & vbCrLf & vbCrLf & _
-            "Write into column F ONLY. Leave every other column untouched." & vbCrLf & vbCrLf
+            "Write into " & submitCol & " ONLY. Leave every other column untouched." & vbCrLf & vbCrLf
     End If
 
     ' The sheet's wording wins when it has any. The built-in is a fallback for
@@ -461,25 +526,56 @@ End Function
 ' can never drift apart -- they were one hardcoded string in two conceptual
 ' places before, which is how the sheet came to claim ownership of text it did
 ' not hold.
-' REWRITTEN 2026-08-20 along with the column it describes. Column C used to
-' hold the CURRENT slide value, so "if C already does the job, leave the row
-' blank" was correct advice. C is now REPORTED LAST TIME (last quarter's
-' text, reference only) -- the same instruction, left unchanged, would tell
-' a drafter that repeating last quarter's words is an acceptable reason to
-' write nothing this quarter, which is close to the opposite of the point.
-' Every row on this sheet needs a genuine attempt at this quarter's words;
-' whether that word turns out to differ from what's already published is
-' Sync's question at apply time, not a reason to skip drafting.
+' REWRITTEN AGAIN 2026-08-20, hours after the first rewrite. That first
+' version replaced "column C is the standard, leave the row blank if it
+' already does the job" with "every row needs a genuine attempt this
+' quarter, even where nothing changed" -- correct for FRESH fields
+' (KEY_EVENTS_BODY, PROGRESS_BODY) and wrong for CARRY ones:
+' DELIVERABLES_BODY's own recipe already forbids re-sifting an unchanged
+' value once one exists, and MSn_LABEL's four-word compression is decided
+' ONCE, not re-decided every quarter on a funder-facing slide. A single rule
+' cannot be right for both, so this now states all four treatments and lets
+' each field's declared History treatment (COL_SPEC_HISTORY) pick which one
+' applies -- caught by Claude (chat) reviewing the first rewrite before it
+' propagated into thirteen fields' worth of individually-tailored prompts.
 Public Function DefaultGlobalRules() As String
-    DefaultGlobalRules = _
-        "Column C is last quarter's REPORTED text, for voice and continuity only --" & vbCrLf & _
-        "not a standard to check against, and not a reason to leave a row blank." & vbCrLf & _
-        "Match its voice; do not repeat its words. Every row here needs this" & vbCrLf & _
-        "quarter's own attempt, even where nothing has materially changed." & vbCrLf & vbCrLf & _
-        "The workbook is the sole source of truth. Do not introduce facts, figures," & vbCrLf & _
-        "organisations or outcomes that are not in it. Where something needed is" & vbCrLf & _
-        "missing or ambiguous, say so in column J (notes) and ask -- do not infer or" & vbCrLf & _
-        "fill the gap."
+    ' Built as several statements, not one -- VBA caps a single continued
+    ' statement at 25 physical lines, and the four treatment definitions
+    ' together ran past it as one assignment.
+    Dim s As String
+    s = "REPORTED LAST TIME IS A SOURCE. It is what this exact field said for" & vbCrLf & _
+        "this exact project last quarter -- a source for voice, continuity and" & vbCrLf & _
+        "scope, never for facts. Facts come from the cited SOURCES only. How you" & vbCrLf & _
+        "use it depends on this field's declared History treatment, stated above:" & vbCrLf & vbCrLf
+
+    s = s & HIST_CARRY & " -- this field describes something that does not change" & vbCrLf & _
+        "quarterly. Last quarter's text is your starting point and, where the" & vbCrLf & _
+        "sources are unchanged, your answer. Do not rewrite it for freshness." & vbCrLf & _
+        "Rewrite only where a source has actually changed, and say in NOTES what" & vbCrLf & _
+        "changed. An unchanged field is a correct outcome, not a skipped one." & vbCrLf & vbCrLf
+
+    s = s & HIST_FRESH & " -- this quarter gets its own words. Read REPORTED LAST" & vbCrLf & _
+        "TIME to learn two things: what has already been reported (do not" & vbCrLf & _
+        "report it again as if new), and what was left open or unresolved (say" & vbCrLf & _
+        "what happened to it). Match its register; reuse none of its sentences." & vbCrLf & vbCrLf
+
+    s = s & HIST_PARTFROZEN & " -- items carried over from a previous quarter keep" & vbCrLf & _
+        "their exact original wording, because they carry the quarter tag they" & vbCrLf & _
+        "were reported under. Rewording a carried item makes its tag false." & vbCrLf & _
+        "Write new items fresh; the judgement this quarter is which items are" & vbCrLf & _
+        "carried and which are displaced." & vbCrLf & vbCrLf
+
+    s = s & HIST_DIFF & " -- no voice relationship. Compare against REPORTED LAST" & vbCrLf & _
+        "TIME only to detect change. Any difference is either a formal" & vbCrLf & _
+        "variation or an error, and must be traced to the source before it is" & vbCrLf & _
+        "submitted." & vbCrLf & vbCrLf
+
+    s = s & "The workbook is the sole source of truth. Do not introduce facts," & vbCrLf & _
+        "figures, organisations or outcomes that are not in it. Where something" & vbCrLf & _
+        "needed is missing or ambiguous, say so in " & Chr$(64 + Drafting.COL_D_NOTES) & _
+        " (NOTES) and ask -- do not infer or fill the gap."
+
+    DefaultGlobalRules = s
 End Function
 
 ' Put a real dropdown on every Controlled field's Value cell in the register,
@@ -692,6 +788,47 @@ Public Function ApplyBehaviourValidation(ws As Object) As String
     On Error GoTo 0
 
     ApplyBehaviourValidation = "Behaviour: list applied to " & (lastRow - SPEC_FIRST_ROW) & " field row(s)."
+End Function
+
+' PICKED, NEVER TYPED, same as Behaviour and Renders as. Fails loud for the
+' same reason: a dropdown that silently did not apply reads as care taken.
+Public Function ApplyHistoryValidation(ws As Object) As String
+    If ws Is Nothing Then
+        ApplyHistoryValidation = "History validation: skipped (no Field Spec sheet)."
+        Exit Function
+    End If
+
+    Dim listText As String
+    listText = HIST_CARRY & "," & HIST_FRESH & "," & HIST_PARTFROZEN & "," & HIST_DIFF
+
+    Dim lastRow As Long
+    lastRow = SPEC_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(lastRow, COL_SPEC_FIELDID).Value)) <> ""
+        lastRow = lastRow + 1
+    Loop
+    If lastRow <= SPEC_FIRST_ROW Then
+        ApplyHistoryValidation = "History validation: no field rows yet."
+        Exit Function
+    End If
+
+    Dim rng As Object
+    Set rng = ws.Range(ws.Cells(SPEC_FIRST_ROW, COL_SPEC_HISTORY), ws.Cells(lastRow - 1, COL_SPEC_HISTORY))
+
+    On Error Resume Next
+    Err.Clear
+    rng.Validation.Delete
+    rng.Validation.Add 3, 1, 1, listText      ' xlValidateList, xlValidAlertStop, xlBetween
+    If Err.Number <> 0 Then
+        Dim e As String
+        e = Err.Description
+        On Error GoTo 0
+        ApplyHistoryValidation = "History validation NOT APPLIED (" & e & _
+            ") -- the column still works, it just will not offer the list."
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    ApplyHistoryValidation = "History: list applied to " & (lastRow - SPEC_FIRST_ROW) & " field row(s)."
 End Function
 
 ' What a field is declared to render as, from the sheet.

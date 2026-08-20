@@ -165,11 +165,13 @@ Public Function RunField(deckPath As String, registerPath As String, _
     End If
 
     ' --- Register ----------------------------------------------------------
-    Dim xl As Object, wb As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    xl.DisplayAlerts = False
-    Set wb = xl.Workbooks.Open(registerPath, 0, True)
+    ' Read-only by USE (this function never calls wb.Save), not by open mode
+    ' -- routed through the same already-open-aware primitive as every write
+    ' path below, so a register already open elsewhere is read from its live,
+    ' current state rather than a separate, possibly-stale disk copy.
+    Dim wb As Object
+    Dim wasOpen As Boolean
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(registerPath, wasOpen)
 
     ' THE WIDE SHEET, through the guarded reader -- the same read Sync Now uses.
     '
@@ -191,7 +193,7 @@ Public Function RunField(deckPath As String, registerPath As String, _
         "  problem: '" & problem & "'" & vbCrLf & vbCrLf
 
     If problem <> "" Or reg.InstanceOrder.count = 0 Then
-        wb.Close False: xl.Quit
+        CloseIfOwned wb, wasOpen
         pres.Saved = msoTrue: pres.Close
         RunField = r & "STOPPED: nothing usable read from the register."
         Exit Function
@@ -318,7 +320,7 @@ Public Function RunField(deckPath As String, registerPath As String, _
     End If
 
     If Not doWrite Then
-        wb.Close False: xl.Quit
+        CloseIfOwned wb, wasOpen
         pres.Saved = msoTrue: pres.Close
         RunField = r & "DRY RUN -- nothing was written to the deck." & vbCrLf
         Exit Function
@@ -348,8 +350,7 @@ Public Function RunField(deckPath As String, registerPath As String, _
         End If
     Next k
 
-    wb.Close False
-    xl.Quit
+    CloseIfOwned wb, wasOpen
 
     r = r & "--- write ---" & vbCrLf & _
         "  written and verified: " & wrote & vbCrLf & _
@@ -419,6 +420,20 @@ End Function
 '
 ' Every real line break becomes "||", which is the register's own convention
 ' (R6) and the inverse of what InjectPrimitive does on the way in.
+' Closes and quits a workbook opened via WorkbookBridge.OpenOrGetWorkbook,
+' but ONLY if this call actually opened it fresh. A workbook this call found
+' already open belongs to whatever already had it open -- closing it would
+' discard that owner's state, not just this function's own scratch use.
+' `wb.Application` is fetched BEFORE Close, because a closed workbook's own
+' property accessors are no longer reliable to call.
+Private Sub CloseIfOwned(wb As Object, wasAlreadyOpen As Boolean)
+    If wasAlreadyOpen Then Exit Sub
+    Dim app As Object
+    Set app = wb.Application
+    wb.Close False
+    app.Quit
+End Sub
+
 Public Function ReseedFromSlides(deckPath As String, registerPath As String, _
                                  period As String, entityList As String, fieldId As String) As String
     Dim r As String
@@ -447,11 +462,9 @@ Public Function ReseedFromSlides(deckPath As String, registerPath As String, _
         If inst.HasInstanceKey And Not inst.IsTemplate Then Set keyToSlide(inst.InstanceKey) = sld
     Next sld
 
-    Dim xl As Object, wb As Object, ws As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    xl.DisplayAlerts = False
-    Set wb = xl.Workbooks.Open(registerPath)      ' read-WRITE: this repairs it
+    Dim wb As Object, ws As Object
+    Dim wasOpen As Boolean
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(registerPath, wasOpen)
     Set ws = WorkbookBridge.RegisterSheet(wb)
 
     ' Columns by header name, never by position.
@@ -466,7 +479,7 @@ Public Function ReseedFromSlides(deckPath As String, registerPath As String, _
     Next c
 
     If cEntity = 0 Or cField = 0 Or cValue = 0 Then
-        wb.Close False: xl.Quit
+        CloseIfOwned wb, wasOpen
         pres.Saved = msoTrue: pres.Close
         ReseedFromSlides = r & "STOPPED: could not locate EntityCode/FieldID/Value by header."
         Exit Function
@@ -503,8 +516,7 @@ Public Function ReseedFromSlides(deckPath As String, registerPath As String, _
     Loop
 
     wb.Save
-    wb.Close False
-    xl.Quit
+    CloseIfOwned wb, wasOpen
     pres.Saved = msoTrue
     pres.Close
 
@@ -683,11 +695,9 @@ Public Function DeleteEntities(deckPath As String, registerPath As String, entit
     r = r & "Slides after: " & pres.Slides.count & vbCrLf & vbCrLf
 
     ' Register rows for those entities, every field.
-    Dim xl As Object, wb As Object, ws As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    xl.DisplayAlerts = False
-    Set wb = xl.Workbooks.Open(registerPath)
+    Dim wb As Object, ws As Object
+    Dim wasOpen As Boolean
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(registerPath, wasOpen)
     Set ws = WorkbookBridge.RegisterSheet(wb)
 
     Dim cEntity As Long, c As Long
@@ -714,8 +724,7 @@ Public Function DeleteEntities(deckPath As String, registerPath As String, entit
         Next rowN
         wb.Save
     End If
-    wb.Close False
-    xl.Quit
+    CloseIfOwned wb, wasOpen
 
     r = r & "Register rows removed: " & removed & vbCrLf
 
@@ -727,11 +736,9 @@ End Function
 ' Drafting entry points. Workbook-only -- no deck is opened, because drafting is
 ' work you should be able to do on a laptop with no deck in front of you.
 Public Function BuildDraftSheet(registerPath As String, period As String, fieldId As String) As String
-    Dim xl As Object, wb As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    xl.DisplayAlerts = False
-    Set wb = xl.Workbooks.Open(registerPath)
+    Dim wb As Object
+    Dim wasOpen As Boolean
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(registerPath, wasOpen)
 
     ' The wide sheet, through the guarded reader -- the same read the button and
     ' Sync Now use. The harness reading the long register while the buttons read
@@ -741,8 +748,7 @@ Public Function BuildDraftSheet(registerPath As String, period As String, fieldI
     Dim reg As Sheet
     reg = ExcelOutput.ReadSheetForDeckPeriod(WorkbookBridge.RegisterSheet(wb), period, problem)
     If problem <> "" Then
-        wb.Close False
-        xl.Quit
+        CloseIfOwned wb, wasOpen
         BuildDraftSheet = "STOPPED: " & problem
         Exit Function
     End If
@@ -777,8 +783,7 @@ Public Function BuildDraftSheet(registerPath As String, period As String, fieldI
         FieldSpec.PromptFrom(FieldSpec.LookupGuidance(specWs, fieldId)) & vbCrLf
 
     wb.Save
-    wb.Close False
-    xl.Quit
+    CloseIfOwned wb, wasOpen
     BuildDraftSheet = r
 End Function
 
@@ -787,11 +792,9 @@ End Function
 ' writing into. It was added 2026-08-05 with the move to the wide sheet.
 Public Function PublishDraftSheet(registerPath As String, period As String, _
                                   fieldId As String, mode As String) As String
-    Dim xl As Object, wb As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    xl.DisplayAlerts = False
-    Set wb = xl.Workbooks.Open(registerPath)
+    Dim wb As Object
+    Dim wasOpen As Boolean
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(registerPath, wasOpen)
 
     Dim ws As Object
     Set ws = WorkbookBridge.GetOrAddWorksheet(wb, Drafting.DraftSheetNameFor(fieldId))
@@ -804,19 +807,16 @@ Public Function PublishDraftSheet(registerPath As String, period As String, _
                                (LCase(Trim(mode)) <> "apply"), srcWs)
 
     wb.Save
-    wb.Close False
-    xl.Quit
+    CloseIfOwned wb, wasOpen
     PublishDraftSheet = r
 End Function
 
 ' Fill empty SUBMIT cells from AI DRAFT. Workbook-only, like the rest of
 ' drafting -- no deck, no period, nothing to get wrong.
 Public Function CopyAiToSubmitSheet(registerPath As String, fieldId As String) As String
-    Dim xl As Object, wb As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    xl.DisplayAlerts = False
-    Set wb = xl.Workbooks.Open(registerPath)
+    Dim wb As Object
+    Dim wasOpen As Boolean
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(registerPath, wasOpen)
 
     Dim ws As Object
     Set ws = WorkbookBridge.GetOrAddWorksheet(wb, Drafting.DraftSheetNameFor(fieldId))
@@ -825,8 +825,7 @@ Public Function CopyAiToSubmitSheet(registerPath As String, fieldId As String) A
     r = Drafting.CopyAiToSubmit(ws) & Drafting.RefreshSubmitCounts(ws) & vbCrLf
 
     wb.Save
-    wb.Close False
-    xl.Quit
+    CloseIfOwned wb, wasOpen
     CopyAiToSubmitSheet = r
 End Function
 
@@ -1028,11 +1027,15 @@ Public Function DiscoverSelfTest(deckPath As String, registerPath As String) As 
     Set pres = Application.Presentations.Open(deckPath, msoFalse, msoFalse, msoTrue)
     pres.Windows(1).Activate
 
-    Dim xl As Object, wb As Object
-    Set xl = CreateObject("Excel.Application")
-    xl.Visible = False
-    xl.DisplayAlerts = False
-    Set wb = xl.Workbooks.Open(registerPath)
+    ' This function's own Close below discards its scratch changes on
+    ' purpose (Close False, no Save) -- which makes OpenOrGetWorkbook's
+    ' already-open guard MORE important here than in a writer, not less: a
+    ' naive second instance attaching to someone's live, unsaved register
+    ' and then closing it unsaved would discard THEIR pending edits, not
+    ' just this self-test's own scratch marks.
+    Dim wb As Object
+    Dim wasOpen As Boolean
+    Set wb = WorkbookBridge.OpenOrGetWorkbook(registerPath, wasOpen)
 
     Dim sld As Object
     Set sld = pres.Slides(1)
@@ -1081,8 +1084,7 @@ Public Function DiscoverSelfTest(deckPath As String, registerPath As String) As 
         r = r & "  field 2 = " & BatchOnboardFlow.MarkedFieldNameForBatch(2) & vbCrLf
     End If
 
-    wb.Close False
-    xl.Quit
+    CloseIfOwned wb, wasOpen
     pres.Saved = msoTrue
     pres.Close
 

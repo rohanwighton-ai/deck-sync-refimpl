@@ -133,7 +133,27 @@ End Function
 ' should silently paper over). Opens it fresh only if no match is found.
 ' Returns Nothing if `path` doesn't exist and can't be opened -- callers
 ' must handle that explicitly, this never raises.
-Public Function OpenOrGetWorkbook(path As String) As Object
+'
+' wasAlreadyOpen tells the caller whether IT owns the workbook it got back.
+' False (the default) means this call opened it fresh: the caller may
+' Close it and Quit its Application when done, exactly the pattern several
+' vba/tools/*.bas scripts already used with a raw CreateObject. True means
+' someone else already had it open -- a person's own session, or another
+' tool -- and the caller must only Save, never Close or Quit: doing either
+' would discard or kill state that was not this call's to touch.
+'
+' Added 2026-08-20 after a diagnostic script of Claude's own hit exactly the
+' failure this whole function exists to prevent, one level up: a SECOND
+' fresh Excel.Application opened the same file a first instance (left open
+' by a prior step in the same session) already had open, wrote to it,
+' called .Save with no error raised, and none of it reached disk -- because
+' the second open was a silently-restricted handle onto a file someone else
+' already held. Several vba/tools/*.bas scripts open the register the same
+' unguarded way this diagnostic script did; this output param is what lets
+' them be fixed to the one already-proven-safe pattern instead.
+Public Function OpenOrGetWorkbook(path As String, Optional ByRef wasAlreadyOpen As Boolean) As Object
+    wasAlreadyOpen = False
+
     Dim xl As Object
     Set xl = GetExcelApp()
 
@@ -157,6 +177,7 @@ Public Function OpenOrGetWorkbook(path As String) As Object
         Dim wbLocalPath As String
         wbLocalPath = DeckRegistry.LocalPathForUrl(wb.FullName)
         If LCase(wbLocalPath) = LCase(path) Then
+            wasAlreadyOpen = True
             Set OpenOrGetWorkbook = wb
             Exit Function
         End If

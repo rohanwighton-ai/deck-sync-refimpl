@@ -955,7 +955,7 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     ws.Cells(DRAFT_HEADER_ROW, COL_D_APPROVED).Value = _
         Chr$(64 + COL_D_APPROVED) & "   APPROVE -- type Y"
     ws.Cells(DRAFT_HEADER_ROW, COL_D_NOTES).Value = _
-        Chr$(64 + COL_D_NOTES) & "   NOTES -- back to the tool (optional)"
+        Chr$(64 + COL_D_NOTES) & "   NOTES"
     ' LABELLED, 2026-08-20 -- Rohan: it had no header at all, just a bare
     ' number in a narrow grey cell, which reads as clutter to anyone who
     ' doesn't already know what it is and invites exactly the kind of
