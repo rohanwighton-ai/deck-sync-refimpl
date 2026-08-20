@@ -81,10 +81,11 @@ no Claude to explain the refusal.
 
 ### FILE-PER-QUARTER DELETES WORK — it is not hygiene, and it is mis-ranked
 
-Confirmed from the code 2026-08-15: **not built.** `ParkSheetCopy` (`Drafting.bas:446`)
-copies sheets *within* one workbook; the only `SaveCopyAs` is for DECK backups
-(`ReviewQueue.bas:1153`). `EXPECTED-TRACE-2026-08-14.md:94` calls it *"GAP 4 — THE BIG
-ONE."*
+Confirmed from the code 2026-08-15: **not built.** `ParkSheetCopy` (`Drafting.bas`, line
+number drifts as the file grows — search for the function name, not a specific line)
+copies sheets *within* one workbook; the only `SaveCopyAs` is for DECK backups (in
+`ReviewQueue.bas` — same rule, search rather than trust a line number).
+`EXPECTED-TRACE-2026-08-14.md:94` calls it *"GAP 4 — THE BIG ONE."*
 
 If each quarter were its own register file, four open problems close at once:
 `ParkSheetCopy` becomes unnecessary (last quarter's file IS the archive — the ruling
