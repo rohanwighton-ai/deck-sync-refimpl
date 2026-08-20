@@ -151,6 +151,12 @@ Public Const HIST_FRESH As String = "FRESH"
 Public Const HIST_PARTFROZEN As String = "PART-FROZEN"
 Public Const HIST_DIFF As String = "DIFF"
 
+' The heading HistoryPreamble sends a drafter to, and the heading
+' DefaultGlobalRules writes. It was the same string typed in both places --
+' a second copy of a machine-knowable fact, and the cross-reference silently
+' breaks if either is edited. One constant so they cannot disagree.
+Public Const HISTORY_ANCHOR As String = "REPORTED LAST TIME IS A SOURCE"
+
 Public Const SPEC_HEADER_ROW As Long = 1
 Public Const SPEC_FIRST_ROW As Long = 2
 
@@ -478,7 +484,7 @@ Private Function HistoryPreamble(g As FieldGuidance) As String
         s = "Read the workbook, including REPORTED LAST TIME and the cited SOURCES."
     Else
         s = "This field's declared History treatment is " & g.History & _
-            " -- see REPORTED LAST TIME IS A SOURCE in the rules below for what that means."
+            " -- see " & HISTORY_ANCHOR & " in the rules below for what that means."
         If Trim(g.HistoryNotes) <> "" Then s = s & vbCrLf & g.HistoryNotes
     End If
     HistoryPreamble = s
@@ -543,7 +549,7 @@ Public Function DefaultGlobalRules() As String
     ' statement at 25 physical lines, and the four treatment definitions
     ' together ran past it as one assignment.
     Dim s As String
-    s = "REPORTED LAST TIME IS A SOURCE. It is what this exact field said for" & vbCrLf & _
+    s = HISTORY_ANCHOR & ". It is what this exact field said for" & vbCrLf & _
         "this exact project last quarter -- a source for voice, continuity and" & vbCrLf & _
         "scope, never for facts. Facts come from the cited SOURCES only. How you" & vbCrLf & _
         "use it depends on this field's declared History treatment, stated above:" & vbCrLf & vbCrLf
@@ -576,6 +582,79 @@ Public Function DefaultGlobalRules() As String
         " (NOTES) and ask -- do not infer or fill the gap."
 
     DefaultGlobalRules = s
+End Function
+
+' Does the GLOBAL RULES cell still define what the prompts send a drafter to?
+'
+' The cell is the owner's, deliberately: PromptFrom prefers it over
+' DefaultGlobalRules whenever it holds anything, so that editing it is never a
+' no-op. But WriteSpecSheet seeds it ONLY when blank and nothing reconciles it
+' afterwards, so a cell seeded before a rules change goes on winning long after
+' the code has moved. Not hypothetical -- on 2026-08-20 the live cell still
+' held the pre-treatment wording: it named "Column C" for last quarter's text
+' (layout 7 had made C the SOURCES column) and "column J" for NOTES (which is
+' I), and contained none of the four treatments, while every field's prompt was
+' telling the drafter to read those treatment definitions in the rules below.
+' Thirteen prompts cross-referencing a section that was not there.
+'
+' This does NOT overwrite the owner's text, and must not. It answers one
+' structural question: does the heading the code POINTS AT, and the treatment
+' each field actually DECLARES, exist in the cell being pointed into. No
+' threshold and no judgement in that -- a cross-reference either resolves or it
+' does not, which is why this can fail for a real reason and cannot fire on a
+' cell that is merely worded differently from the default.
+'
+' Returns "" when sound, and when the cell is blank -- WriteSpecSheet reseeds a
+' blank cell from DefaultGlobalRules, so blank is self-healing and is the
+' recovery path: clear the cell, run the chain, get the current wording back.
+Public Function GlobalRulesProblem(ws As Object) As String
+    Dim rules As String
+    Dim used As Object
+    Dim missing As String
+    Dim r As Long
+    Dim h As String
+    Dim k As Variant
+
+    On Error GoTo Fail
+
+    rules = Trim(CStr(ws.Cells(SPEC_GLOBAL_ROW, COL_SPEC_GLOBAL).Value))
+    If rules = "" Then Exit Function
+
+    Set used = CreateObject("Scripting.Dictionary")
+    r = SPEC_FIRST_ROW
+    Do While Trim(CStr(ws.Cells(r, COL_SPEC_FIELDID).Value)) <> ""
+        h = UCase$(Trim(CStr(ws.Cells(r, COL_SPEC_HISTORY).Value)))
+        If h <> "" Then
+            If Not used.Exists(h) Then used.Add h, True
+        End If
+        r = r + 1
+    Loop
+
+    ' No field declares a treatment, so no prompt cross-references the anchor.
+    If used.Count = 0 Then Exit Function
+
+    If InStr(1, rules, HISTORY_ANCHOR, vbTextCompare) = 0 Then
+        missing = HISTORY_ANCHOR
+    End If
+
+    For Each k In used.Keys
+        If InStr(1, rules, CStr(k), vbTextCompare) = 0 Then
+            If missing <> "" Then missing = missing & ", "
+            missing = missing & CStr(k)
+        End If
+    Next k
+
+    If missing = "" Then Exit Function
+
+    GlobalRulesProblem = "GLOBAL RULES on Field Spec does not define: " & missing & _
+        ". Every field prompt sends the drafter there for it. Clear that cell and" & _
+        " run the chain again to restore the current wording, or add the text yourself."
+    Exit Function
+
+Fail:
+    ' Never report clean on a check that could not run -- that is the shape this
+    ' project has been burned by more than once.
+    GlobalRulesProblem = "Could not check GLOBAL RULES on Field Spec: " & Err.Description
 End Function
 
 ' Put a real dropdown on every Controlled field's Value cell in the register,

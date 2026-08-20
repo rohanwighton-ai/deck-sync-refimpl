@@ -1053,6 +1053,17 @@ Public Sub RefreshDraftingSheets()
     Dim staleSources As String
     staleSources = Sources.StalePeriodSources(srcWs, period)
 
+    ' GLOBAL RULES CROSS-REFERENCE CHECK, 2026-08-20. Same posture as the two
+    ' checks above -- reported, never blocking. Every field's prompt tells the
+    ' drafter to read its History treatment's definition "in the rules below";
+    ' those definitions live in the GLOBAL RULES cell, which is the owner's to
+    ' edit and is seeded only once. A cell seeded before the treatments existed
+    ' keeps winning over the code forever, and on 2026-08-20 that is exactly
+    ' what the live register held -- 13 prompts pointing at a section that was
+    ' not there, and naming two columns that layout 7 had moved.
+    Dim rulesProblem As String
+    rulesProblem = FieldSpec.GlobalRulesProblem(specWs)
+
     ' THE SAME READ SYNC NOW USES. This called Register.ReadRegisterAllStatuses
     ' until 2026-08-05 -- the LONG register -- while Sync Now read the wide
     ' sheet. Two files, so nothing drafted here could reach a slide.
@@ -1272,7 +1283,8 @@ Public Sub RefreshDraftingSheets()
     tRunLogSave = Timing.StartClock()
     WorkbookBridge.WriteRunLog wb, _
         "Drafting sheets rebuilt for " & period, _
-        report & vbCrLf & valNote & vbCrLf & srcValidation & vbCrLf & staleSources & vbCrLf & lobbyNote
+        report & vbCrLf & valNote & vbCrLf & srcValidation & vbCrLf & staleSources & _
+        vbCrLf & rulesProblem & vbCrLf & lobbyNote
 
     ' THE REFUSAL GOES FIRST SO TRUNCATION EATS THE GUIDANCE, NOT THE WARNING.
     ' MsgBox caps near 1024 characters and truncates silently, so ordering is the

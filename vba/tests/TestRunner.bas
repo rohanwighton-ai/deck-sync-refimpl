@@ -534,6 +534,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("FieldSpec_GlobalRulesProblemCatchesAStaleSeededCell", filterPattern) Then
+        r = Test_FieldSpec_GlobalRulesProblemCatchesAStaleSeededCell()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "FieldSpec_GlobalRulesProblemCatchesAStaleSeededCell", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("FieldSpec_ValidationRefusesAVocabularyNamedLikeAStructuralColumn", filterPattern) Then
         r = Test_FieldSpec_ValidationRefusesAVocabularyNamedLikeAStructuralColumn()
     Else
@@ -4784,6 +4793,55 @@ Private Function Test_FieldSpec_ValidationSaysSoWhenNothingIsControlled() As Str
     wb.Close False
     xl.Quit
     Test_FieldSpec_ValidationSaysSoWhenNothingIsControlled = result
+End Function
+
+' The GLOBAL RULES cell is the owner's and PromptFrom prefers it over the code
+' whenever it holds anything. Seeded only when blank, never reconciled -- so a
+' cell seeded before the History treatments existed goes on winning forever,
+' and every prompt then tells a drafter to read definitions that are not there.
+' That is not hypothetical: it is what the live register held on 2026-08-20.
+Private Function Test_FieldSpec_GlobalRulesProblemCatchesAStaleSeededCell() As String
+    Dim result As String
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+
+    ' One field declaring FRESH, so its prompt really will cross-reference both
+    ' the anchor and that treatment's definition.
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_SPEC_FIELDID).Value = "KEY_EVENTS_BODY"
+    ws.Cells(FieldSpec.SPEC_FIRST_ROW, FieldSpec.COL_SPEC_HISTORY).Value = FieldSpec.HIST_FRESH
+
+    ' The real stale wording, from the live register -- seeded before the
+    ' treatments existed, naming a column layout 7 had already moved.
+    ws.Cells(FieldSpec.SPEC_GLOBAL_ROW, FieldSpec.COL_SPEC_GLOBAL).Value = _
+        "Column C is last quarter's REPORTED text, for voice and continuity only" & _
+        " -- not a standard to check against. The workbook is the sole source of truth."
+
+    Dim rep As String
+    rep = FieldSpec.GlobalRulesProblem(ws)
+    result = result & Assert(InStr(rep, FieldSpec.HIST_FRESH) > 0, _
+        "names the treatment the cell fails to define, got '" & rep & "'")
+    result = result & Assert(InStr(rep, FieldSpec.HISTORY_ANCHOR) > 0, _
+        "names the missing anchor every prompt points at, got '" & rep & "'")
+
+    ' THE DISCRIMINATOR, and the reason this test is worth having. A cell worded
+    ' nothing like DefaultGlobalRules, but which DOES define the anchor and the
+    ' treatment in use, must stay silent. Without this assertion the two above
+    ' would pass just as happily against a check that merely diffs the cell
+    ' against the built-in default -- and such a check would fire on every edit
+    ' Rohan ever made, which is exactly what this cell exists to protect.
+    ws.Cells(FieldSpec.SPEC_GLOBAL_ROW, FieldSpec.COL_SPEC_GLOBAL).Value = _
+        "House style, my own words. " & FieldSpec.HISTORY_ANCHOR & " means read" & _
+        " last quarter for voice only. " & FieldSpec.HIST_FRESH & " means write afresh."
+    rep = FieldSpec.GlobalRulesProblem(ws)
+    result = result & Assert(rep = "", _
+        "stays silent on an owner-edited cell that still defines what is needed, got '" & rep & "'")
+
+    wb.Close False
+    xl.Quit
+    Test_FieldSpec_GlobalRulesProblemCatchesAStaleSeededCell = result
 End Function
 
 ' Does the wide sheet have ANY row whose Instance ID is `instanceId`?
