@@ -3473,3 +3473,55 @@ passes clean once reverted. `DOCUMENT-MAP.md` decision 6 updated with a
 pointer to this and to the four History treatments (item above this
 one's neighbour in `SYSTEM-OVERVIEW.md`) -- the open question that
 comment posed now has an answer, not just a fix.
+
+## Added and FIXED 2026-08-21 — BO, `Template Audit`'s own findings had
+## been sitting unactioned since before this project's live-leak-cleanup
+## work even started
+
+**Rohan asked what the other Excel sheet tabs looked like** while checking
+in on tonight's field-propagation work. `Template Audit` (a 51-row, 6-
+column sheet: `Shape | Inside group | Text on the slide | Guess | On how
+many other slides | Decide: field / chrome / drop`) turned out to already
+have found the exact leaked title-label defect (`Shape 229`, "3_P001
+Timeline") fixed independently tonight through a completely different
+path (visually inspecting the milestone widget) -- with the right guess
+("LIKELY PROJECT DATA -- on no other slide of this type") already sitting
+in row 12. **Every one of the sheet's 50 data rows has an empty `Decide`
+column.** The audit ran, guessed correctly in every case checked, and
+nobody ever closed the loop -- not a tooling gap, a process gap: a finding
+sitting unactioned reads identically to no finding at all until someone
+goes and reads the sheet.
+
+**Working through every "LIKELY PROJECT DATA" row against the live deck
+(not trusting the sheet as current -- it's a point-in-time snapshot) found
+real, still-live leaks the sheet's own text pointed at directly**: four
+untagged standalone shapes on the P template (`slide44`) showing
+`3_P001`'s real content in the open -- `"90%"`, two milestone-achievement
+sentences ("Found lead compounds...", "Lead candidates were safe..."),
+and `"Project closed 2026"`. None were part of the `MILESTONE_TIMELINE`
+group already fixed earlier the same night, so the earlier fix never
+touched them. Content-verified against the sheet's own quoted text before
+writing, then blanked and re-verified from the saved file's bytes -- same
+discipline as every other live-file write tonight. Two of the sheet's
+other flagged dollar figures (`$275,597`, `$1,371,209`) no longer exist
+anywhere in the current deck -- resolved by something else before tonight,
+not a live leak, the sheet is simply stale on those two rows.
+
+**A second question the sheet's rows raised, genuinely investigated
+rather than assumed either way**: the `MS1/3/4/5/7_LABEL` shapes inside
+the milestone widget are correctly hidden (`Visible=0`, from the earlier
+fix the same night) but their TEXT is still `3_P001`'s real content --
+does a future real sync risk showing another project's milestone story
+through them? Read `MilestoneDevice.DrawMilestones`'s actual draw loop
+(lines ~594-597) rather than guessing: every slot that becomes visible
+gets `WriteText` called in the same operation, before or alongside
+`SetVisible`. The stale hidden text is inert -- any real sync overwrites
+it before it could ever render. Left as-is; the residue is a `.pptx` file
+you'd have to open the XML to see, not a rendering risk.
+
+**Net for `Template Audit` itself**: worth re-running fresh rather than
+trusted as current (tonight's fixes have already resolved a chunk of what
+it flagged), and worth deciding whether `Decide` gets filled in as a
+standing habit going forward or the sheet gets treated as disposable and
+rebuilt each time -- currently it's neither, which is how a correct
+finding sat for this long.
