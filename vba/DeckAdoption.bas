@@ -187,10 +187,26 @@ Public Function PlanAdoption(slidesToAdopt() As Object, templateSld As Object, w
             For j = mLo To mHi
                 If matches(j).Result.Confidence = "high" And matches(j).Result.HasCandidate Then
                     anyMatch = True
-                    ' Harvest current values verbatim from every matched
-                    ' field -- the same technique InjectPrimitive.bas already
-                    ' uses to read a shape's current value.
-                    harvested(matches(j).Role) = untaggedShapes(matches(j).Result.CandidateIndex).TextFrame.TextRange.Text
+                    If matches(j).Role = SyncOperations.SUBTITLE_COMPOSITE_FIELD Then
+                        ' SUBTITLE_A's shape displays a middot-joined composite
+                        ' of four register columns (SyncOperations.
+                        ' ComposeSubtitleLine), not its own raw value --
+                        ' harvesting the rendered text here would write the
+                        ' whole composite into this one column, corrupting it
+                        ' for the next real sync. Same refusal Harvest.bas and
+                        ' E2EField.bas already apply for the same reason; a
+                        ' third live call site with the identical blind spot,
+                        ' found by mother-hound's 2026-08-21 kennel run. Still
+                        ' counts as a confident structural match (the shape IS
+                        ' in the right place) -- only the value harvest is
+                        ' unsafe, so the field is simply left unwritten rather
+                        ' than the slide downgraded to unclassified.
+                    Else
+                        ' Harvest current values verbatim from every matched
+                        ' field -- the same technique InjectPrimitive.bas already
+                        ' uses to read a shape's current value.
+                        harvested(matches(j).Role) = untaggedShapes(matches(j).Result.CandidateIndex).TextFrame.TextRange.Text
+                    End If
                 Else
                     allHigh = False
                     If matches(j).Result.Confidence = "medium" Then anyMatch = True

@@ -1064,6 +1064,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("DeckAdoption_RefusesToHarvestSubtitleAAsAComposite", filterPattern) Then
+        r = Test_DeckAdoption_RefusesToHarvestSubtitleAAsAComposite()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "DeckAdoption_RefusesToHarvestSubtitleAAsAComposite", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("DeckAdoption_MediumConfidenceSlideNeedsConfirmationAndIsNotTagged", filterPattern) Then
         r = Test_DeckAdoption_MediumConfidenceSlideNeedsConfirmationAndIsNotTagged()
     Else
@@ -7473,6 +7482,85 @@ Private Function Test_DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFresh
     xl.Quit
 
     Test_DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow = result
+End Function
+
+' A third live call site with Harvest.bas/E2EField.bas's identical
+' SUBTITLE_A blind spot, found by mother-hound's 2026-08-21 kennel run:
+' PlanAdoption's harvest loop read every high-confidence matched shape's
+' rendered text verbatim, with no exemption for SUBTITLE_A's shape, whose
+' text is a middot-joined composite of four register columns (Sync
+' Operations.ComposeSubtitleLine), not its own raw value. Two fields on
+' the template (Title, SUBTITLE_A) so the fix's actual claim -- the
+' SLIDE still counts as ready and Title still harvests normally, only
+' SUBTITLE_A's value harvest is skipped -- is provable, not just "nothing
+' crashed."
+Private Function Test_DeckAdoption_RefusesToHarvestSubtitleAAsAComposite() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim titleShp As Object
+    Set titleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 300, 50)
+    titleShp.TextFrame.TextRange.Text = "Template Title"
+    titleShp.Tags.Add "role", "Title"
+    Dim subtitleShp As Object
+    Set subtitleShp = templateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 160, 300, 30)
+    subtitleShp.TextFrame.TextRange.Text = "Template Subtitle"
+    subtitleShp.Tags.Add "role", SyncOperations.SUBTITLE_COMPOSITE_FIELD
+
+    Dim candidateSld As Object
+    Set candidateSld = NewBlankSlide()
+    Dim candidateTitleShp As Object
+    Set candidateTitleShp = candidateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 102, 101, 300, 50)
+    candidateTitleShp.TextFrame.TextRange.Text = "Harvested Title Value"
+    Dim candidateSubtitleShp As Object
+    Set candidateSubtitleShp = candidateSld.Shapes.AddTextbox(msoTextOrientationHorizontal, 101, 161, 300, 30)
+    candidateSubtitleShp.TextFrame.TextRange.Text = "Calix" & Chr$(183) & "UniSA" & Chr$(183) & "Livestock" & Chr$(183) & "TRL 3-5"
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+
+    Dim slidesToAdopt(1 To 1) As Object
+    Set slidesToAdopt(1) = candidateSld
+
+    Dim harvestedValues() As Object
+    Dim plans() As AdoptionSlidePlan
+    plans = DeckAdoption.PlanAdoption(slidesToAdopt, templateSld, ws, harvestedValues)
+
+    result = result & Assert(plans(1).Disposition = "ready", _
+        "SUBTITLE_A's structural match still counts -- disposition is ready, got '" & plans(1).Disposition & "'")
+    result = result & Assert(Not harvestedValues(1) Is Nothing, "harvested values captured for a ready slide")
+    If Not harvestedValues(1) Is Nothing Then
+        result = result & Assert(harvestedValues(1)("Title") = "Harvested Title Value", _
+            "Title still harvests normally, got '" & harvestedValues(1)("Title") & "'")
+        result = result & Assert(Not harvestedValues(1).Exists(SyncOperations.SUBTITLE_COMPOSITE_FIELD), _
+            "SUBTITLE_A's rendered composite text was NOT harvested")
+    End If
+
+    Dim confirmedKeys(1 To 1) As String
+    confirmedKeys(1) = "adopt-subtitle-1"
+
+    Dim commitResult As AdoptionResult
+    commitResult = DeckAdoption.CommitAdoption(plans, slidesToAdopt, harvestedValues, confirmedKeys, "adopt-type", templateSld, ws)
+
+    result = result & Assert(commitResult.LinkedCount = 1, "LinkedCount=1, got " & commitResult.LinkedCount)
+    result = result & Assert(commitResult.FailedVerificationCount = 0, _
+        "no verification failures (VerifyLink only checks what was actually harvested), got " & commitResult.FailedVerificationCount)
+
+    Dim sheet As Sheet
+    sheet = ExcelOutput.ReadSheet(ws)
+    result = result & Assert(sheet.Rows.Exists("adopt-subtitle-1"), "Data-sheet row created for the new instance")
+    If sheet.Rows.Exists("adopt-subtitle-1") Then
+        result = result & Assert(sheet.Rows("adopt-subtitle-1")("Title") = "Harvested Title Value", _
+            "Data-sheet row carries the harvested Title value")
+        result = result & Assert(Not sheet.Rows("adopt-subtitle-1").Exists(SyncOperations.SUBTITLE_COMPOSITE_FIELD), _
+            "the composite text was never written into SUBTITLE_A on the register")
+    End If
+
+    wb.Close False
+    xl.Quit
+
+    Test_DeckAdoption_RefusesToHarvestSubtitleAAsAComposite = result
 End Function
 
 ' Reuses the exact same drift (title barely moved, body moved 600pt away)

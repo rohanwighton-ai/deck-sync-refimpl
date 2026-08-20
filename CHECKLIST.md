@@ -1088,12 +1088,15 @@ Progress"`, otherwise shows it verbatim), wired into `DerivedFieldTags()`/
 BS)**: defaulted to `Q1F27` (computed from today's date) instead of the
 `Q4F26` he'd written directly in his own instruction — *"why Q1F27?!!"* —
 then, after fixing that, applied `Q4F26` uniformly to all 43 rows
-including the 13 S-project (student, six-monthly) rows he'd already told
+including the S-project (student, six-monthly) rows he'd already told
 me report on a different cadence — *"hang on the s projects didnt report
-in q4 like I explained."* Final state, verified from the saved file:
-`"Last reported quarter Q4F26"` on the 30 P/K rows, blank on all 13
-S-project rows — resolved same day (FIX-LIST item BU): Rohan confirmed
-`Q3F26` is their actual last-reported quarter, set on all 13 rows.
+in q4 like I explained."* Rohan confirmed `Q3F26` is their actual
+last-reported quarter (FIX-LIST item BU) — but that fix also missed 4 of
+the 17 S-rows (`S009`/`S021`/`S022`/`S023`, the bare-key instance IDs
+with no leading `N_` prefix), caught by the same mother-hound kennel run
+that found BY below (FIX-LIST item BX). Final state, verified from the
+saved file: `"Last reported quarter Q4F26"` on the 30 P/K rows, `"Last
+reported quarter Q3F26"` on all 17 S-project rows.
 
 **Propagated to all 43 real slides (FIX-LIST item BT)**: both header
 shapes cloned from the matching P/K/S template onto every real slide,
@@ -1145,6 +1148,34 @@ he sets them by hand.
       a real selection judgement (10 raw milestones, no due dates, down to 5
       circle slots) before it can carry any — not something to auto-pick.
 - [ ] `MS_DONE` blank on `2_P009`/`1_P010`/`2_P012` (7-14 cells) — Rohan to set.
+
+## mother-hound kennel, 2026-08-21 — CLOSED, both findings fixed
+
+Ran after the header propagation and milestone-carry work above. Two real
+defects, both fixed same day — see FIX-LIST items BX and BY:
+
+- **BX**: BU's "13/13 correct" S-project quarter fix was wrong — 17
+  S-rows exist, not 13; the 4 bare-key ones (`S009`/`S021`/`S022`/`S023`)
+  still held the P/K default. Same bare-key bug BT already found and fixed
+  in a different script, recurring in this one. Fixed, verified 17/17.
+- **BY**: `DeckAdoption.PlanAdoption` (the bulk "Adopt Existing Slides"
+  button) had the identical `SUBTITLE_A` composite-field blind spot
+  `Harvest.bas`/`E2EField.bas` were fixed for earlier tonight — a third
+  live call site, reachable via a normal workflow (duplicate a slide,
+  adopt it). Fixed with the same shape, new test, fail-first proven.
+
+Also confirmed clean by the kennel, independently re-derived: the 543-cell
+MS carry (full tuple match, not just counts), Field Spec ↔ Register column
+parity, controlled vocabulary, cross-row prose duplication, full field-tag
+parity across every real slide vs. its template, the milestone-widget
+colour fix standing on all 46 widgets, and the leaked-sentence/bold-run
+fixes holding uniformly across all 43 real slides.
+
+**Confirmed as expected, not a defect**: `PROGRESS_HEADER`/
+`KEY_EVENTS_HEADER` are tagged on all 43 real slides but still show
+literal `<<...>>` placeholder text — tag propagation happened, but no
+real sync has run to inject actual values yet. Needs a real sync before
+either field is genuinely live.
 
 ## Found while archiving `FIRST-REAL-RUN.md`, 2026-08-16
 

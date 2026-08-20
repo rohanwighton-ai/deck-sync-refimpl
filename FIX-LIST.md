@@ -3809,3 +3809,76 @@ header (`PROGRESS_HEADER`/`KEY_EVENTS_HEADER`) and say explicitly not to
 repeat it, so the next person reading the spec sees why it isn't
 mentioned rather than assuming an oversight. Verified from the saved
 file.
+
+## Fixed 2026-08-21 — BX, mother-hound kennel: BU's "13/13 correct" was
+## wrong, the same bare-key bug repeating in a second script
+
+`excel-hound` re-derived the actual state of `PROGRESS_HEADER` on Q4F26
+directly from the saved register rather than trusting BU's own claim,
+and found 17 S-series rows, not 13 -- `S009`, `S021`, `S022`, `S023`
+(the identical bare-key instance IDs, no leading `N_` prefix, that
+FIX-LIST item BT already found breaking a DIFFERENT script's
+`_P`/`_K`/`_S` substring match) still read the P/K default `"Last
+reported quarter Q4F26"`, wrong for six-monthly student reporters. BT's
+fix (match the type letter against the end of the string) was applied
+to the propagation script; it was never carried to whatever script
+wrote BS/BU's Q3F26 default, so the same bug recurred a second time
+under a different name.
+
+Re-verified all 17 S-rows directly before touching anything (confirmed
+the exact 4 wrong, 13 already right), fixed the 4, re-verified from the
+saved file: 17/17 correct.
+
+**The lesson, stated as a shape (same shape as BQ's "a fix applied to
+one call site doesn't confirm every other call site")**: a defect class
+found and fixed in one script is not fixed everywhere that class of bug
+can occur. The bare-key naming inconsistency (`P008`/`S009`/`S021`/
+`S022`/`S023`) has now caused silent skips in at least two independent
+scripts this session -- worth treating as a standing hazard for any
+future script that matches on instance-key substrings, not a
+one-off.
+
+## Fixed 2026-08-21 — BY, mother-hound kennel: DeckAdoption.bas had
+## Harvest.bas/E2EField.bas's SUBTITLE_A blind spot, a THIRD live site
+
+`hickey-hound` traced the actual call graph for the `SUBTITLE_A`
+composite-field collision (a shape's rendered text is a middot-joined
+join of four register columns, not its own raw value) and found a live
+path neither of tonight's earlier fixes touched: `RibbonUI.bas:1171` ->
+`AdoptFlow.AdoptExistingSlides` -> `DeckAdoption.PlanAdoption`
+(`DeckAdoption.bas:193`) harvested every high-confidence matched role's
+rendered text unconditionally, with no exemption, and wrote it straight
+into a new register row via `ExcelOutput.UpsertRow` with no guard.
+
+Concrete trigger: duplicate an existing composed slide to seed a new
+project (a normal way to start one -- the same instinct that caused the
+BQ template gap earlier tonight), run "Adopt Existing Slides" -- the
+rendered composite (`"Calix ~ UniSA ~ Livestock ~ TRL 3-5"`) gets
+written verbatim into the new row's `SUBTITLE_A` cell, and `VerifyLink`
+round-trips the same corrupted string back onto the slide, so the write
+reports success.
+
+Fixed with the same shape as the other two refusals, adapted to this
+call site's structure: `PlanAdoption`'s harvest loop now skips writing
+`SUBTITLE_A`'s value into `harvested()` when its role matches
+`SyncOperations.SUBTITLE_COMPOSITE_FIELD`, but still counts the role as
+a confident structural match (`anyMatch = True`) -- the shape genuinely
+IS in the right place, only the VALUE harvest is unsafe, so the field
+is left unwritten rather than downgrading the whole slide to
+`unclassified`. New test (`Test_DeckAdoption_
+RefusesToHarvestSubtitleAAsAComposite`) proves both halves: `Title`
+still harvests and lands on the register row normally, `SUBTITLE_A`
+does not, and `CommitAdoption`/`VerifyLink` both report success because
+they never see the composite. Fail-first proven live (reverted the
+`SUBTITLE_A` branch, confirmed the exact two expected failures --
+composite harvested, composite written to the register -- restored,
+confirmed green).
+
+**Third live call site, same defect class, in one session.** Same
+lesson as BQ/BX above, one level up: `SyncOperations.
+SUBTITLE_COMPOSITE_FIELD` is the shared constant so the check is
+centralized on what "is this field a composite" means, but nothing
+forces every NEW code path that reads a shape's text to actually
+consult it -- a fourth site would need the same manual find-and-fix,
+not a mechanism that catches it automatically. Worth a real look if a
+fourth turns up.
