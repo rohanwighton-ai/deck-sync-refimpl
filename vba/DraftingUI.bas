@@ -1287,7 +1287,7 @@ Public Sub RefreshDraftingSheets()
           "Your wording goes in column " & Chr$(64 + Drafting.COL_D_SUBMIT) & " (SUBMIT). Type Y in column " & _
               Chr$(64 + Drafting.COL_D_APPROVED) & " to approve." & vbCrLf & _
           "Column " & Chr$(64 + Drafting.COL_D_PREV) & " is what was reported last quarter. " & _
-              "Copilot's prompt is in cell L2." & vbCrLf & _
+              "Copilot's prompt is in cell " & Chr$(64 + Drafting.COL_D_DRAFT) & "2." & vbCrLf & _
           "Nothing reaches a slide until you publish and apply."
 
     If outOfVocab > 0 Then

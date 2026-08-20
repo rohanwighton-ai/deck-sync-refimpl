@@ -62,8 +62,13 @@ Option Explicit
 ' time, or scrolling sideways on a narrower screen. Everything else on the sheet
 ' is consulted occasionally; these three are the work.
 '
-' PROMPT stays at column 12 so Copilot's prompt is still in cell L2 -- that
-' address is written in the on-sheet instructions and in the toolbar tooltip.
+' PROMPT NO LONGER HAS A FIXED ADDRESS, 2026-08-20 -- it used to sit at a
+' pinned column 12 specifically so "cell L2" could be hardcoded in the
+' on-sheet instructions and the toolbar tooltip; removed as its own column
+' entirely (it was one prompt per FIELD, not per project, which read as a
+' stray per-project column) and now lives at row 2 of whichever column
+' COL_D_DRAFT currently is -- always derived, per the rule below, never
+' typed as a literal again.
 ' LEFT TO RIGHT IS THE ORDER YOU DO IT IN. Rohan, 2026-08-10: "fix the column
 ' order in the drafting sheet to make more sense re workflow".
 '
@@ -1207,8 +1212,10 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
         citedBlock = Sources.CitedBlockFor(srcWs, ws, COL_D_SOURCES, DRAFT_FIRST_ROW)
     End If
     ws.Cells(2, COL_D_DRAFT).Value = "'" & FieldSpec.PromptFrom(g, citedBlock)
+    ' "copy THIS cell" pointed at itself (row 1, the label) rather than row 2
+    ' where the actual prompt text lives -- Rohan caught it live, 2026-08-20.
     ws.Cells(DRAFT_INTRO_ROW, COL_D_DRAFT).Value = _
-        "PROMPT TO GIVE COPILOT (copy this cell)" & IIf(g.Found, "", "  --  GENERIC, no Field Spec row")
+        "PROMPT TO GIVE COPILOT (copy " & Chr$(64 + COL_D_DRAFT) & "2)" & IIf(g.Found, "", "  --  GENERIC, no Field Spec row")
     ws.Cells(2, COL_D_DRAFT).WrapText = True
 
     ws.Rows(DRAFT_HEADER_ROW).RowHeight = 30
@@ -1608,7 +1615,8 @@ Public Function CopyAiToSubmit(ws As Object) As String
         ' beside it said the opposite. Seen on screen 2026-08-10.
         CopyAiToSubmit = "Nothing to copy: there are no AI drafts on this sheet yet." & vbCrLf & _
             "Column " & Chr$(64 + COL_D_DRAFT) & " (AI DRAFT) is empty for all " & noAi & " row(s)." & vbCrLf & vbCrLf & _
-            "Paste Copilot's text into column " & Chr$(64 + COL_D_DRAFT) & " first -- the prompt is in cell L2 -- " & _
+            "Paste Copilot's text into column " & Chr$(64 + COL_D_DRAFT) & " first -- the prompt is in cell " & _
+            Chr$(64 + COL_D_DRAFT) & "2 -- " & _
             "or just type into column " & Chr$(64 + COL_D_SUBMIT) & " (SUBMIT) yourself." & vbCrLf
         Exit Function
     End If
