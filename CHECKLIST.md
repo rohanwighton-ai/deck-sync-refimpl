@@ -1031,6 +1031,29 @@ needs Rohan's own placement/design call, not a blind clone. Deliberately deferre
 - [ ] Bring up a genuinely fresh deck + fresh register from nothing, unaided —
       the standing requirement, the tool has to travel with Rohan.
 
+## SECTOR/TRL inferred rather than sourced on 14 projects, 2026-08-20/21 — needs verification, not a defect in the mechanism
+
+`SECTOR`/`TRL` are `Kind=Given` — the Field Spec's own text says "do not infer or fill
+the gap." Rohan explicitly authorised an exception for this one pass ("happy for you to
+take a stab at values based on what you can see"), but the register carries no flag
+distinguishing which values came from real source data and which were inferred from
+`ABOUT_BODY` prose. Recorded here rather than in the cell itself — a marker in the value
+would render on the actual slide subtitle line, which is worse than not flagging it at
+all.
+
+**29 of 43 projects had real data already** (hand-typed into the old `SUBTITLE_A` blob
+before it was split into columns) and were preserved, not inferred. **These 14 were not**
+— genuinely Claude-inferred from project descriptions, not sourced, and should be treated
+as a first draft needing Rohan's (or the real source's) confirmation before they're relied
+on: `1_K1001, 1_K1002, 1_K1003, 1_K1004, 1_K1005, 1_K1006, 1_K1007, 1_K1008, 1_K010,
+3_K016, 4_K017, 4_K021, 1_K022, 3_K023`.
+
+- [ ] Verify or correct the 14 inferred SECTOR/TRL values above against real source data.
+- [ ] Decide whether `SECTOR`/`TRL` need a lightweight provenance flag of their own —
+      `PROVENANCE.md`'s design is scoped to prose fields going through the real publish
+      pipeline (`Drafting.PublishDrafts`) and wouldn't have caught this even if built,
+      since these were hand-written directly to a `Given` field outside that path entirely.
+
 ## Found while archiving `FIRST-REAL-RUN.md`, 2026-08-16
 
 - [ ] **Team distribution / multi-user — deliberately parked, genuinely unresolved,
