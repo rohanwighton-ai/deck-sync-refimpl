@@ -3726,3 +3726,66 @@ verification attempt scanned 0 real slides (tag lookup used lowercase
 `instance_key`/`role`; the actual XML stores tag names uppercase --
 `INSTANCE_KEY`/`ROLE`) -- caught before it was reported as a clean
 result, not after.
+
+## Fixed 2026-08-21 — BU, PROGRESS_HEADER's S-project value was Q4F26 too
+
+Rohan, right after BS landed: *"hang on the s projects didnt report in
+q4 like I explained."* BS had correctly excluded S-projects from the
+Q4F26 default but left them entirely blank rather than set to their
+actual last-reported quarter -- Rohan's answer was `Q3F26`. Set on all
+13 S-project rows. Verified from the saved file: 13/13 correct.
+
+## Closed 2026-08-21 — BV, "SRC_MILESTONES -> MS1-7 migration" was a
+## broken CARRY, not a fresh migration
+
+Rohan: *"import all milestone data."* Before writing anything, checked
+the Field Spec's own declared shape for `MS1-7`: `Kind=Prose/Given`,
+`Cadence=Standing`, `History treatment=CARRY` for the five middle
+labels -- "the milestone plan only changes if the project is varied, so
+this is drafted ONCE per project and carried forward." That single
+check reframed the whole task: 38 projects already had this data,
+correctly compressed from `SRC_MILESTONES`'s raw tracker rows, sitting
+on **Q3F26**. **Q4F26 had zero of it** -- 0 of 543 non-blank cells
+carried across. This is the same CARRY-restoration gap flagged earlier
+in the session as still open, not a fresh derivation task.
+
+**Carried 543 cells for 38 projects** from Q3F26 -> Q4F26, verified by
+comparing per-project non-blank-cell counts between the two quarters
+(0 mismatches) and spot-checking two projects' exact values.
+
+**First attempt crashed** (`Unable to cast object of type System.Double
+to type System.String`) -- some `MS*_DATE` cells hold raw numeric month
+offsets (e.g. `6`, `12`), not text, and assigning a `.NET Double` back
+through `.Value2` without matching type failed via COM interop. Left an
+orphaned EXCEL.EXE holding the unsaved partial run -- confirmed the file
+on disk was untouched (same timestamp as the prior write) before killing
+it and re-running with an explicit type branch (`is [double]` ->
+`.Value2 = [double]`, else `[string]`).
+
+**5 of 43 projects still had no MS data anywhere** after the carry.
+Checked each against `SRC_MILESTONES` before doing anything further:
+`P008` and (initially miscounted, corrected on a direct final check)
+`S023` have no raw milestone rows AND no `START_DATE`/`END_DATE` --
+nothing to import, left blank. `2_P009`/`1_P010`/`2_P012` have clean
+4-5-row source data that maps directly onto MS2-6 with no selection
+judgement needed. `S023` alone has 10 raw milestones with no due dates
+at all -- exactly the case the Field Spec calls "a judgement, not a
+read" (compressing 10 real milestones down to 5 circles), left
+untouched rather than guessed.
+
+**Checked whether `MS_DONE` could be mechanically mirrored from the
+tracker's own "Deliverable Completion RM %" column before drafting the
+3 clean projects -- it can't.** `3_P001`'s own existing (already-CARRY'd)
+data has milestones the tracker marks 100% complete that are NOT marked
+done on the slide -- proof the DONE flag reflects Rohan's own review,
+not a literal read of that column. Asked rather than guess a fourth
+field this session; his answer: draft labels/dates, leave every
+`MS_DONE` blank on all 3 projects for him to set. Verified from the
+saved file: all 3 correctly drafted (MS1 = "Project initiated" +
+`START_DATE`, middle slots = ~4-word compressions of the real tracker
+milestone names with their due dates, MS7 = "Project end" + `END_DATE`,
+every DONE flag blank), `P008`/`S023` confirmed untouched.
+
+**Still open**: `P008` and `S023` have no importable data at all --
+`S023` additionally needs the genuine milestone-selection judgement call
+before it can carry any MS data.

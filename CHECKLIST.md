@@ -1092,8 +1092,8 @@ including the 13 S-project (student, six-monthly) rows he'd already told
 me report on a different cadence — *"hang on the s projects didnt report
 in q4 like I explained."* Final state, verified from the saved file:
 `"Last reported quarter Q4F26"` on the 30 P/K rows, blank on all 13
-S-project rows (Rohan fills these by hand — no data on disk says which
-quarter each last reported, so nothing here guesses one).
+S-project rows — resolved same day (FIX-LIST item BU): Rohan confirmed
+`Q3F26` is their actual last-reported quarter, set on all 13 rows.
 
 **Propagated to all 43 real slides (FIX-LIST item BT)**: both header
 shapes cloned from the matching P/K/S template onto every real slide,
@@ -1112,6 +1112,38 @@ fields and needs removing.
       `PROVENANCE.md`'s design is scoped to prose fields going through the real publish
       pipeline (`Drafting.PublishDrafts`) and wouldn't have caught this even if built,
       since these were hand-written directly to a `Given` field outside that path entirely.
+
+## Milestone data (MS1-7) — CLOSED 2026-08-21, was a broken CARRY not a fresh migration
+
+Rohan: *"import all milestone data."* Checked the Field Spec first rather than
+guess a design: `MS1-7`'s five middle labels are `Kind=Prose`, `Cadence=Standing`,
+`History treatment=CARRY` — drafted once per project from `SRC_MILESTONES`, then
+carried forward unless the milestone plan itself changes. 38 projects already had
+this (verified, correctly compressed from the raw tracker data) sitting on
+**Q3F26**; **Q4F26 had 0 of 543 non-blank cells carried across**. Not a fresh
+`SRC_MILESTONES → register` migration — the known "still open" gap from earlier
+in the session was this carry, already broken.
+
+**Carried 543 cells for 38 projects**, Q3F26 → Q4F26, verified (0 mismatches,
+spot-checked). See FIX-LIST item BV for the full account, including a crashed
+first attempt (numeric `MS*_DATE` cells vs. a `.Value2` type-cast COM error,
+caught and fixed before any partial write landed).
+
+**5 remaining projects had no MS data anywhere.** `P008`/`S023` have no source
+data (`SRC_MILESTONES` rows or `START_DATE`/`END_DATE`) to import — left blank.
+`2_P009`/`1_P010`/`2_P012` have clean 4-5-row source data, drafted directly
+(labels compressed to ~4 words from the real tracker milestone names, dates
+set, MS1/MS7 from `START_DATE`/`END_DATE`) — but `MS_DONE` was NOT auto-filled:
+checked first whether it mechanically mirrors the tracker's completion %, found
+it doesn't (`3_P001`'s own existing data has 100%-complete tracker milestones
+marked not-done on the slide, proving the flag reflects Rohan's own review),
+asked rather than guess. His answer: leave every `MS_DONE` blank on all 3,
+he sets them by hand.
+
+- [ ] `P008` and `S023` still have no milestone data. `S023` additionally needs
+      a real selection judgement (10 raw milestones, no due dates, down to 5
+      circle slots) before it can carry any — not something to auto-pick.
+- [ ] `MS_DONE` blank on `2_P009`/`1_P010`/`2_P012` (7-14 cells) — Rohan to set.
 
 ## Found while archiving `FIRST-REAL-RUN.md`, 2026-08-16
 
