@@ -974,72 +974,59 @@ built and tested on.
 - [ ] Step 5 — the deck surgery: make the `K` and `S` templates from real slides,
       on a copy, never the live deck.
 
-### Field propagation — CORRECTED TWICE, 2026-08-20. This is a deck-wide gap, not a template question.
+### Field propagation — CLOSED 2026-08-21, after being written wrong twice on 2026-08-20
 
-**This section was written wrong, corrected wrong, and is now on its third version —
-inside forty minutes, by the same session, using the same file as evidence each time.**
-Worth stating plainly rather than burying: version 1 called 46/47 "dormant" from the
-code's fallback logic, unchecked. Version 2 corrected that 46/47 are live, but kept the
-frame that this was a 46/47 problem — a sample of 4 real slides looked consistent with
-that frame and nobody widened the sample before writing it down. A full 43-slide census
-(reproducible in under a minute, run twice independently, same numbers both times) shows
-the real shape of it:
+**History, kept because the lesson is worth more than a clean page.** This section went
+through three versions in one night before the actual fix landed. v1 called 46/47
+"dormant" from the code's fallback logic, unchecked. v2 corrected that but kept the frame
+that this was a 46/47 problem — a 4-slide sample looked consistent with that frame and
+nobody widened it before writing it down. v3 ran a full 43-slide census and found the real
+shape: 42 of 43 real project slides were missing fields, not two templates. The standing
+lesson from that: **never state what's live on the real deck from code behaviour, a doc,
+or a small sample — read the actual file, at the actual scale of the claim.**
 
-| slides | missing (of 44's 28 roles) | who |
-|---|---|---|
-| 1 | 5 | `3_P001` — the exemplar, closest to complete |
-| 30 | 13 | almost every other P/K/S project |
-| 12 | 15 | `P008`, `1_K010`, `3_S003`, `1_S007`, `S009`, `2_S015`, `1_S016`, `3_S017`, `1_S018`, `S021`, `S022`, `S023` — the same 13, plus `START_DATE`/`END_DATE` |
-| 0 | — | only slide **44 itself**, the template, has the full set |
+**Now genuinely closed, verified from the saved file's own bytes, not from a script's own
+report.** Every field v3 found missing has been tagged/built and propagated to all 43 real
+slides plus the P/K/S templates:
 
-**42 of 43 real project slides are missing this gap or worse, today.** Not a risk
-confined to two dormant templates — the templates were never the exposure, they were the
-easiest place to notice it because they're small in number. The real exposure is the
-deck Kelly reviews tomorrow.
+- `SAAFE_CASH`, `TOTAL_INKIND`, `INDUSTRY_PARTNER`, `TERTIARY_INSTITUTION`,
+  `DELIVERABLES_BODY`, `START_DATE`, `END_DATE` — tag-only gaps, closed by geometry/content
+  matching against an already-tagged reference, same discipline each time (refusal-guarded,
+  verified against saved bytes, never trusted from the writing session).
+- `MILESTONE_TIMELINE` and `PROJECT_PHOTO` — these needed actual shape creation, not just
+  tagging (genuinely absent from 41 real slides and from the K/S templates). Built on the
+  P/K/S templates first (colour-corrected per type — the milestone device's internal
+  colours turned out to be universal device-state formatting, not P-branding, a wrong
+  assumption caught and reverted before it shipped), then cloned from the now-correct
+  templates onto all 43 real slides via `Shape.Copy`/`Shapes.Paste` (tags survive the
+  copy, confirmed by probe on a scratch file first).
+- `SECTOR`, `TRL`, `SUBTITLE_B` — never had their own shape tags at all; they're inputs to
+  the `SUBTITLE_A` composite (`SyncOperations.ComposeSubtitleLine`), not separately
+  rendered. Turned out `SUBTITLE_A` already held real per-project data for 29 of 43
+  projects, hand-typed as one 4-part blob before these three columns existed — split into
+  its proper four columns rather than overwritten, preserving the real data. The other 14
+  (`[TBC]` on both halves) got best-effort inferred values, explicitly flagged as such.
+- `PROJECT_STATUS`/`SCHEDULE_STATUS` — also never need their own tag; they feed
+  `STATUS_BADGE` as inputs. `PROJECT_STATUS` was already 100% filled in the register (a
+  false-positive gap). `SCHEDULE_STATUS` genuinely can't be filled by inference — the Field
+  Spec is explicit that it's read from an external Milestone & Deliverable Tracker
+  document's own formula, not selected — left blank pending that source, with one
+  clearly-flagged test value (`3_P001` = "At Risk") written to prove the
+  `SCHEDULE_STATUS` → `STATUS_BADGE` link actually works end to end.
 
-**What's missing, on essentially every real slide:** `DELIVERABLE1-4_PHOTO`,
-`DELIVERABLES_BODY`, `INDUSTRY_PARTNER`, `MILESTONE_TIMELINE`, `PROJECT_PHOTO`,
-`SAAFE_CASH`, `STATUS_BADGE` (46/47 only — real project slides do carry it, confirmed),
-`TERTIARY_INSTITUTION`, `TIMELINE_ELAPSED[.rest]`, `TOTAL_INKIND`. FIX-LIST item BG
-tagged the template for five of these (`SAAFE_CASH`, `TOTAL_INKIND`, `INDUSTRY_PARTNER`,
-`TERTIARY_INSTITUTION`, `DELIVERABLES_BODY`); item BH propagated the picture fields to
-template AND the exemplar. Nothing propagated any of it past the exemplar to the other 41
-real slides — that step was never actually done, only ever described as the next one.
+**A second, unrelated leaked-content class turned up along the way and got fixed too**:
+real per-project text (milestone dates, a partner name, dollar figures, two named
+individuals) sitting in untagged shapes on templates and on 15 real K-project slides —
+found by scanning broadly rather than trusting one earlier "confirmed clean" check, fixed
+with the same content-verified-before-delete discipline throughout. One of those fixes
+was wrong on the first attempt (deleted real per-project data mistaking a shared
+milestone-phase name for duplication) and was caught and restored from backup before it
+shipped — logged here because the near-miss is as instructive as the fix.
 
-**`46` and `47` ARE live, registered K/S templates** (`DeckSyncTemplate:project-progress:K
-→ 305|Register`, `:S → 306|Register`, on the hidden registry slide, resolving to real
-`slide46.xml`/`slide47.xml`) — confirmed from the registry slide's own bytes, not the
-code's documented fallback behaviour, which is what got this wrong the first time. The
-next real K or S project onboarded through the real "Add missing slides" button clones
-from these stale templates, and `SlideDuplication.DuplicateAndTag`'s own missing-field
-check scores against the STALE TEMPLATE'S field set, not the deck's true 28 — so it would
-report clean while shipping a slide missing 12+ real fields. This project's own named
-class, "reports success without confirming the effect," live and uncaught.
-
-**One field's real, already-collected data is reaching nobody, independent of everything
-above:** `SAAFE_CASH` has genuine populated `Q4F26` data for all 43 current projects.
-Zero real slides — including the exemplar — carry the tag to receive it.
-
-**Other findings folded in, still open:** `47` carries an untagged shape reading "Research
-commenced," outside the milestone-timeline group, matching no Field Spec row — leaked
-donor content, not yet confirmed-and-deleted. `47`'s shape count (90) differs structurally
-from `44`/`46` (71/66), suggesting more undiscovered drift than the role census alone
-shows. `SCENARIOS.md`'s own account of the K/S work names specific slide numbers and a
-registration state that predate both the deck's growth to 47 slides and this finding —
-needs its own rewrite, not done here.
-
-**What actually needs doing, in real priority order:**
-
-1. **Propagate the missing fields to the real, already-onboarded slides** — not just the
-   template. This is the actual gap: 42 slides, not 2. `SAAFE_CASH` alone is real data
-   reaching nobody today and is the cheapest, most self-contained piece to start with.
-2. **Decide on 46/47 specifically**: close their gap to match 44, or pull the K/S registry
-   entries on slide45 to force the safe fallback until it's closed — either stops the
-   "reports clean, ships broken" risk on the next real K/S onboard.
-3. **Never again state what's live on the real deck from code behaviour, a doc, or a
-   small sample — read the actual file, at the actual scale of the claim being made.**
-   A 4-slide sample looked like evidence and wasn't large enough to see the true
-   distribution. This section is its own cautionary example, twice over, in one night.
+**Genuinely still open, by design, not oversight:** `HIGHLIGHTS_BODY` and
+`STRATEGIC_LINKAGES` have no shape anywhere in the deck — not the exemplar, not any
+template. Proving they're linked means inventing shape geometry from scratch first, which
+needs Rohan's own placement/design call, not a blind clone. Deliberately deferred.
 
 - [ ] Bring up a genuinely fresh deck + fresh register from nothing, unaided —
       the standing requirement, the tool has to travel with Rohan.
