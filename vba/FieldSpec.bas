@@ -461,11 +461,21 @@ End Function
 ' can never drift apart -- they were one hardcoded string in two conceptual
 ' places before, which is how the sheet came to claim ownership of text it did
 ' not hold.
+' REWRITTEN 2026-08-20 along with the column it describes. Column C used to
+' hold the CURRENT slide value, so "if C already does the job, leave the row
+' blank" was correct advice. C is now REPORTED LAST TIME (last quarter's
+' text, reference only) -- the same instruction, left unchanged, would tell
+' a drafter that repeating last quarter's words is an acceptable reason to
+' write nothing this quarter, which is close to the opposite of the point.
+' Every row on this sheet needs a genuine attempt at this quarter's words;
+' whether that word turns out to differ from what's already published is
+' Sync's question at apply time, not a reason to skip drafting.
 Public Function DefaultGlobalRules() As String
     DefaultGlobalRules = _
-        "Column C is the standard, not a draft to improve on. Stay close to it in" & vbCrLf & _
-        "length and in voice. If the text in column C already does its job, say so" & vbCrLf & _
-        "and leave the row blank." & vbCrLf & vbCrLf & _
+        "Column C is last quarter's REPORTED text, for voice and continuity only --" & vbCrLf & _
+        "not a standard to check against, and not a reason to leave a row blank." & vbCrLf & _
+        "Match its voice; do not repeat its words. Every row here needs this" & vbCrLf & _
+        "quarter's own attempt, even where nothing has materially changed." & vbCrLf & vbCrLf & _
         "The workbook is the sole source of truth. Do not introduce facts, figures," & vbCrLf & _
         "organisations or outcomes that are not in it. Where something needed is" & vbCrLf & _
         "missing or ambiguous, say so in column J (notes) and ask -- do not infer or" & vbCrLf & _

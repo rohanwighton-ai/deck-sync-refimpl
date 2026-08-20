@@ -3312,3 +3312,40 @@ backup taken immediately before
 (`OneDrive\Claude\backups\PRE-STATUS-NORMALIZE-20260819-1940\`), then
 reverified from the saved file in a fresh process: 0 remaining
 out-of-vocabulary, `1_K010`'s `Q3F26` row confirmed reading `Not Started`.
+
+## Added 2026-08-20 morning — BL, queued idea (not built): a hound for
+## decision-propagation drift -- a design change lands in code but not in
+## every doc/data cell that describes it
+
+**QUEUED, NOT BUILT. Rohan's call, 2026-08-20: "queue it and let's draft"** --
+noted so it isn't lost, deliberately deferred rather than built today, to get
+to actual content drafting instead of more infrastructure.
+
+**Why it's worth building.** The same defect shape recurred SIX times in one
+morning while fixing the drafting sheet's column redesign (removing
+`COL_D_CURRENT`, making `REPORTED LAST TIME` a hybrid ferry+register read):
+`WorkbookBridge.DescribeSheet`/`LifespanOf` (fixed 2026-08-19 night, item BK's
+neighbour), `field_e2e.ps1`'s module list (stale names, twice, one causing a
+live VBA compile error that blocked all COM automation), `read_deck_props.py`
+and `preflight.py` (both reading the deprecated `docProps/custom.xml`
+fallback instead of the real `DeckSyncRegistry` hidden-slide storage that's
+been primary since 2026-08-16 -- every deck-period check made with these
+tools was silently reading stale data), the Field Spec sheet's single shared
+`GLOBAL RULES` cell (told drafters "if column C already does its job, leave
+the row blank" when C had just been repurposed to mean something the
+instruction no longer fit), and five separate `.md` docs (`WORKFLOW.md`,
+`SYSTEM-OVERVIEW.md`, `SOURCE-CAPTURE-FORM.md`, plus two already-correctly-
+exempted ones) describing a column layout that no longer existed.
+
+**The shape a hound would hunt:** a hardcoded name, a hand-typed table, a
+seeded cell of prose, or a doc's own worked example -- anywhere a fact that a
+single source of truth (a VBA constant, a function, a schema) already
+determines gets RESTATED somewhere else, with no mechanism forcing the
+restatement to track the source when it changes. Distinct from the existing
+hounds: not about reachability, provenance, naming conflation, or waste --
+specifically about a SECOND COPY of a fact that can silently disagree with
+the FIRST.
+
+**Where to start if built:** the six sites above are a ready-made seed
+corpus -- a hound built against this pattern should find them (and any
+siblings still lurking) as its first real test.

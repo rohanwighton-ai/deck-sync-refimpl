@@ -52,24 +52,25 @@ order of work.
 
 ## The drafting sheet — column layout, RE-VERIFIED 2026-08-16
 
-*Source: re-derived from `Drafting.bas`'s `COL_D_*` constants directly — the handover
-document's own table (F=SUBMIT, G=APPROVE) was already one column off, from before the
-`REPORTED LAST TIME` column was inserted. Per `DOCUMENT-MAP.md`'s own rule: this table
-is provided for orientation only. If it ever disagrees with `Drafting.bas`, the code
-wins — don't let this table calcify the same way the one it replaces did.*
+*Source: re-derived from `Drafting.bas`'s `COL_D_*` constants directly, 2026-08-20 (layout
+6). The `ORIGINAL`/`COL_D_CURRENT` column this table used to show was removed the same
+day — the drafting sheet's job is feeding the drafter what they need to write THIS
+quarter's words, not tracking whether a field is already current, which is Sync's
+question at apply time. Per `DOCUMENT-MAP.md`'s own rule: this table is provided for
+orientation only. If it ever disagrees with `Drafting.bas`, the code wins — don't let
+this table calcify the same way the one it replaces did.*
 
 | col | constant | what goes in it |
 |---|---|---|
 | A | `COL_D_ENTITY` | Project code — derived, do not edit |
 | B | `COL_D_NAME` | Project name — derived, do not edit |
-| C | `COL_D_CURRENT` | **ORIGINAL** — what the slide says now. Read this first. |
-| D | `COL_D_PREV` | **REPORTED LAST TIME** — last quarter's text, for voice/narrative consistency only, never storage (see `DOCUMENT-MAP.md` decision 6) |
-| E | `COL_D_SOURCES` | source IDs this row was drafted from, e.g. `S10, S12` |
-| F | `COL_D_DRAFT` | **AI DRAFT** — never published |
-| G | `COL_D_SUBMIT` | **your words — this is what publishes** |
-| H | `COL_D_APPROVED` | the tick |
-| K | `COL_D_NOTES` | notes back to the tool |
-| L2 | `COL_D_PROMPT` | the generated prompt for this field |
+| C | `COL_D_PREV` | **REPORTED LAST TIME** — last quarter's text, for voice/narrative consistency only, never storage (see `DOCUMENT-MAP.md` decision 6). Sourced from the register's stored-prior-period row when nothing was ferried from an in-progress draft. |
+| D | `COL_D_SOURCES` | source IDs this row was drafted from, e.g. `S10, S12` |
+| E | `COL_D_DRAFT` | **AI DRAFT** — never published |
+| F | `COL_D_SUBMIT` | **your words — this is what publishes** |
+| G | `COL_D_APPROVED` | the tick |
+| I | `COL_D_NOTES` | notes back to the tool |
+| K2 | `COL_D_PROMPT` | the generated prompt for this field |
 
 **A row publishes only when BOTH `SUBMIT` is non-empty AND `APPROVE` is `Y`.** Either
 alone is not consent.

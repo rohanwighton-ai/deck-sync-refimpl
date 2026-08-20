@@ -9,24 +9,23 @@
 > Periods are also written `Q3F26` now, not `FY26Q4`. The DESCRIPTIONS of what each stage
 > does are still accurate; only the way you reach them is wrong.
 >
-> **COLUMN LETTERS BELOW ARE WRONG (corrected 2026-08-14, again).** This file says drafts
-> go in **G** and the tick in **I**; that was layout 3. `DRAFT_LAYOUT_VERSION` is now **5**
-> -- a `REPORTED LAST TIME` column was inserted at D and everything from SOURCES rightwards
-> moved one right. The constants in `Drafting.bas` are authoritative; the current set is
-> C CURRENT, D REPORTED LAST TIME, E SOURCES, F AI DRAFT, **G SUBMIT**, **H APPROVE**,
-> K NOTES:
+> **UPDATE 2026-08-20: that "descriptions are still accurate" claim no longer holds for
+> anything mentioning ORIGINAL.** The body below (e.g. "the previous text arrives in the
+> ORIGINAL column", "edit column G and tick column I") describes a column and a mechanism
+> that were both removed. Treat every paragraph below as historical unless cross-checked
+> against `Drafting.bas` directly -- this file has now drifted from two different code
+> changes it was never updated for, and is not worth patching a third time. Read the
+> source, not this file, for current mechanics.
 >
-> | col | constant | meaning |
-> |---|---|---|
-> | C | `COL_D_CURRENT` | ORIGINAL — what the slide says now, read-only |
-> | D | `COL_D_SOURCES` | source IDs |
-> | E | `COL_D_DRAFT` | AI draft — **never published** |
-> | F | `COL_D_SUBMIT` | your words — **this is what publishes** |
-> | G | `COL_D_APPROVED` | the tick |
-> | J | `COL_D_NOTES` | notes |
->
-> Do not re-state these letters in prose anywhere. Derive them from the constants, per the
-> standing rule that a description of a machine fact goes stale silently.
+> **COLUMN LETTERS: DO NOT TRUST ANY TABLE IN THIS FILE, INCLUDING A PAST VERSION OF THIS
+> ONE.** Corrected twice already (2026-08-14, then again), and each fix immediately started
+> going stale the next time the layout moved -- most recently 2026-08-20, when `ORIGINAL`
+> (what the OLD column C held) was removed entirely and `COL_D_CURRENT` stopped existing.
+> A hand-typed table of column letters is a second copy of a fact `Drafting.bas` already
+> holds, and second copies drift silently. **The only trustworthy source is
+> `Drafting.bas`'s own `COL_D_*` constants and its `DRAFT_LAYOUT_VERSION` header comment**
+> -- read those directly rather than believing a letter written in prose anywhere,
+> including here.
 
 
 What a person actually does, what the tool does back, and what it touches — so the
