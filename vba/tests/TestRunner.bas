@@ -171,6 +171,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("SyncOperations_DeriveKeyEventsHeader", filterPattern) Then
+        r = Test_SyncOperations_DeriveKeyEventsHeader()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "SyncOperations_DeriveKeyEventsHeader", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("SyncOperations_BothDerivedFieldsReachableThroughPlanRoutineSync", filterPattern) Then
         r = Test_SyncOperations_BothDerivedFieldsReachableThroughPlanRoutineSync()
     Else
@@ -2949,14 +2958,51 @@ Private Function Test_SyncOperations_DeriveStatusBadge() As String
     Test_SyncOperations_DeriveStatusBadge = result
 End Function
 
+' Rohan, 2026-08-21: "Key events header is really any important status like
+' project closed" -- a plain lookup, not a priority ladder. "In Progress" is
+' the default state most projects sit in most of the time, so it headlines
+' nothing; anything else (including a future vocabulary value neither of us
+' has thought of yet) passes straight through unfiltered.
+Private Function Test_SyncOperations_DeriveKeyEventsHeader() As String
+    Dim result As String
+
+    result = result & Assert(SyncOperations.DeriveKeyEventsHeader("In Progress") = "", _
+        "the default status headlines nothing, got '" & SyncOperations.DeriveKeyEventsHeader("In Progress") & "'")
+    result = result & Assert(SyncOperations.DeriveKeyEventsHeader("in progress") = "", _
+        "case-insensitive default match, got '" & SyncOperations.DeriveKeyEventsHeader("in progress") & "'")
+    result = result & Assert(SyncOperations.DeriveKeyEventsHeader("Project Closed") = "Project Closed", _
+        "a non-default status passes straight through, got '" & SyncOperations.DeriveKeyEventsHeader("Project Closed") & "'")
+    result = result & Assert(SyncOperations.DeriveKeyEventsHeader("Not Started") = "Not Started", _
+        "a non-default status passes straight through, got '" & SyncOperations.DeriveKeyEventsHeader("Not Started") & "'")
+    result = result & Assert(SyncOperations.DeriveKeyEventsHeader("") = "", _
+        "an empty PROJECT_STATUS produces an empty header, not a blank-looking default, got '" & _
+        SyncOperations.DeriveKeyEventsHeader("") & "'")
+
+    ' Not a Controlled-vocabulary refusal like DeriveStatusBadge -- there is
+    ' no invented word to guess here, so an unrecognised value still passes
+    ' through. Proves the two derivations genuinely differ in shape, not
+    ' just in which field they read.
+    result = result & Assert(SyncOperations.DeriveKeyEventsHeader("Some Future Status") = "Some Future Status", _
+        "an unrecognised-but-non-default status still passes through (no vocabulary to guess against here), got '" & _
+        SyncOperations.DeriveKeyEventsHeader("Some Future Status") & "'")
+
+    Test_SyncOperations_DeriveKeyEventsHeader = result
+End Function
+
 ' THE REFACTOR THIS TEST EXISTS TO PROVE: TIMELINE_ELAPSED had NO unit test
 ' at all before tonight (proven live on the real deck, never at this level)
 ' -- so replacing its single hardcoded block with a shared loop over
 ' DerivedFieldTags() carried real regression risk nothing here would have
-' caught. One slide, two derived-field shapes, one register row: proves
-' BOTH TIMELINE_ELAPSED and STATUS_BADGE are still found, computed, and
-' written correctly through the same shared loop -- not just that the new
-' field works, but that generalising the old one didn't break it.
+' caught. One slide, three derived-field shapes, one register row: proves
+' TIMELINE_ELAPSED, STATUS_BADGE and KEY_EVENTS_HEADER are all still found
+' through the same shared loop -- not just that each new field works, but
+' that adding it didn't break the ones already there. PROJECT_STATUS is
+' deliberately left at "In Progress" here (the STATUS_BADGE/TIMELINE_ELAPSED
+' fixture this test already relied on), which makes KEY_EVENTS_HEADER
+' compute "" -- so this also proves the shared loop's own "" = don't write
+' rule (line ~568) correctly leaves a found-but-blank derived shape
+' untouched, rather than stamping an empty string over it. The non-blank
+' case is covered separately by Test_SyncOperations_DeriveKeyEventsHeader.
 Private Function Test_SyncOperations_BothDerivedFieldsReachableThroughPlanRoutineSync() As String
     Dim result As String
 
@@ -2974,6 +3020,11 @@ Private Function Test_SyncOperations_BothDerivedFieldsReachableThroughPlanRoutin
     Set badgeShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 100, 200, 20)
     badgeShp.TextFrame.TextRange.Text = "placeholder"
     badgeShp.Tags.Add "role", SyncOperations.STATUS_BADGE_TAG
+
+    Dim keyEventsShp As Object
+    Set keyEventsShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 20)
+    keyEventsShp.TextFrame.TextRange.Text = "should stay untouched"
+    keyEventsShp.Tags.Add "role", SyncOperations.KEY_EVENTS_HEADER_TAG
 
     Dim instances(1 To 1) As Object
     Set instances(1) = sld
@@ -3011,6 +3062,12 @@ Private Function Test_SyncOperations_BothDerivedFieldsReachableThroughPlanRoutin
         actions(1).ChangedFieldNew(SyncOperations.STATUS_BADGE_TAG) & "'")
     result = result & Assert(badgeShp.TextFrame.TextRange.Text = "At Risk", _
         "the badge shape's text was actually written, got '" & badgeShp.TextFrame.TextRange.Text & "'")
+
+    result = result & Assert(Not actions(1).ChangedFieldVerified.Exists(SyncOperations.KEY_EVENTS_HEADER_TAG), _
+        "KEY_EVENTS_HEADER computes blank for 'In Progress', so the shared loop's " & _
+        "'' = don't-write rule must have skipped it, not stamped an empty value")
+    result = result & Assert(keyEventsShp.TextFrame.TextRange.Text = "should stay untouched", _
+        "the key-events shape's text was left alone, got '" & keyEventsShp.TextFrame.TextRange.Text & "'")
 
     Test_SyncOperations_BothDerivedFieldsReachableThroughPlanRoutineSync = result
 End Function

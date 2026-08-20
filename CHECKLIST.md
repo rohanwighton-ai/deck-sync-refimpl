@@ -1072,15 +1072,29 @@ K `#F55A2D`, S `#C0A2F2` — matching the same per-type convention as the milest
 widget). The pre-existing body-bold bug is fixed alongside it (`Font.Bold = 0` on
 `PROGRESS_BODY`/`KEY_EVENTS_BODY`).
 
-**Not done yet**:
-- [ ] Not propagated to any of the 43 real slides — templates only.
-- [ ] Not wired as an actual computed field anywhere in the VBA sync path. The
-      shapes currently hold `<<PROGRESS_HEADER>>`/`<<KEY_EVENTS_HEADER>>` placeholder
-      text, same as every other untouched template field — there is no
-      `SyncOperations.ComputeDerivedValue` case for either yet, so a real sync
-      today would not fill them. Needs a real `Kind=Derived` field (quarter from
-      the deck's own period + `PROJECT_STATUS` suffix, suppressed when "In
-      Progress") before this is more than a static mock-up.
+**Update, 2026-08-21 — both fields now real, per Rohan's own clarification.**
+He rejected the computed-quarter design this section originally called for:
+*"progres sheader can just be 'Last reported quarter Q4F26' ... separate
+field thats either manually adjusted in rare nonexpected cases or for
+student projects takes a frozen quarter label when they report every six
+months."* So `PROGRESS_HEADER` is `Kind=Given` (plain, directly-editable
+register column, same pattern as `SECTOR`/`TRL`/`SUBTITLE_B`), not a
+computed derivation — populated `"Last reported quarter Q1F27"` across
+all 43 current rows, verified from the saved file. `KEY_EVENTS_HEADER` IS
+a real `Kind=Derived` field (`SyncOperations.DeriveKeyEventsHeader`: blank
+when `PROJECT_STATUS = "In Progress"`, otherwise shows it verbatim),
+wired into `DerivedFieldTags()`/`ComputeDerivedValue`, fail-first proven,
+full suite 286/286. See FIX-LIST item BR.
+
+**Still not done**:
+- [ ] Not propagated to any of the 43 real slides — templates only. Both
+      shapes still hold `<<PROGRESS_HEADER>>`/`<<KEY_EVENTS_HEADER>>`
+      placeholder text on the real slides; needs the same clone-and-tag
+      pattern used for `MILESTONE_TIMELINE`/`PROJECT_PHOTO`.
+- [ ] The Field Spec's own prompt text for `PROGRESS_BODY`/`KEY_EVENTS_BODY`
+      still instructs the AI to open with a bold quarter/status line — now
+      duplicated by these dedicated header fields and needs removing before
+      either header goes live on real slides.
 
 - [ ] Verify or correct the 14 inferred SECTOR/TRL values above against real source data.
 - [ ] Decide whether `SECTOR`/`TRL` need a lightweight provenance flag of their own —

@@ -98,6 +98,16 @@ Public Const TIMELINE_ELAPSED_TAG As String = "TIMELINE_ELAPSED"
 ' request, built).
 Public Const STATUS_BADGE_TAG As String = "STATUS_BADGE"
 
+' KEY_EVENTS_HEADER -- the bold header line above KEY_EVENTS_BODY. Rohan,
+' 2026-08-21: "Key events header is really any important status like
+' project closed" -- so unlike PROGRESS_HEADER (Kind=Given, a plain
+' directly-editable register column, same pattern as SECTOR/TRL), this one
+' is a genuine lookup: show PROJECT_STATUS's own value, but only when it
+' ISN'T the default "In Progress" -- an "In Progress" project has nothing
+' noteworthy to headline, so the header stays blank rather than stating the
+' unremarkable case. See DeriveKeyEventsHeader.
+Public Const KEY_EVENTS_HEADER_TAG As String = "KEY_EVENTS_HEADER"
+
 ' SUBTITLE_A -- NOT a Derived field in DerivedFieldTags()'s sense, and does
 ' not belong in that array. It is Kind=Given with a real register column of
 ' its own, unlike TIMELINE_ELAPSED/STATUS_BADGE which have none -- so the
@@ -272,12 +282,30 @@ Public Function DeriveStatusBadge(projectStatus As String, scheduleStatus As Str
     DeriveStatusBadge = ""
 End Function
 
+' Simple lookup, not a priority ladder like DeriveStatusBadge -- Rohan's own
+' framing was "any important status like project closed", and PROJECT_STATUS
+' is the one field that already carries that. "In Progress" is the default,
+' unremarkable state every normally-running project sits in most of the
+' time, so it headlines nothing; anything else (Not Started, Project Closed,
+' or a future vocabulary addition) is exactly the kind of thing worth
+' flagging above KEY_EVENTS_BODY. PROJECT_STATUS is Kind=Controlled, so an
+' unrecognised value still passes through here unfiltered -- there is no
+' invented sixth word to guess, unlike DeriveStatusBadge which manufactures
+' a badge from two inputs.
+Public Function DeriveKeyEventsHeader(projectStatus As String) As String
+    Dim ps As String
+    ps = Trim(projectStatus)
+    If ps = "" Then Exit Function
+    If StrComp(ps, "In Progress", vbTextCompare) = 0 Then Exit Function
+    DeriveKeyEventsHeader = ps
+End Function
+
 ' THE DERIVED-FIELD LIST. Small and explicit on purpose -- see the comment
 ' on TIMELINE_ELAPSED_TAG above for why this isn't a Field-Spec-driven
-' discovery walk. Adding a third derived field means adding its tag here
+' discovery walk. Adding a fourth derived field means adding its tag here
 ' and a Case to ComputeDerivedValue below; nothing else changes.
 Public Function DerivedFieldTags() As Variant
-    DerivedFieldTags = Array(TIMELINE_ELAPSED_TAG, STATUS_BADGE_TAG)
+    DerivedFieldTags = Array(TIMELINE_ELAPSED_TAG, STATUS_BADGE_TAG, KEY_EVENTS_HEADER_TAG)
 End Function
 
 ' One place that knows how to compute EACH derived field's value from the
@@ -299,6 +327,12 @@ Public Function ComputeDerivedValue(fieldId As String, rowValues As Object) As S
             If rowValues.Exists("PROJECT_STATUS") Then psVal = CStr(rowValues("PROJECT_STATUS"))
             If rowValues.Exists("SCHEDULE_STATUS") Then ssVal = CStr(rowValues("SCHEDULE_STATUS"))
             ComputeDerivedValue = DeriveStatusBadge(psVal, ssVal)
+
+        Case KEY_EVENTS_HEADER_TAG
+            Dim kehVal As String
+            kehVal = ""
+            If rowValues.Exists("PROJECT_STATUS") Then kehVal = CStr(rowValues("PROJECT_STATUS"))
+            ComputeDerivedValue = DeriveKeyEventsHeader(kehVal)
 
         Case Else
             ComputeDerivedValue = ""

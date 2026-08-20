@@ -3601,3 +3601,61 @@ not by itself confirm every OTHER call site or instance got the same
 treatment. Worth checking deliberately next time a cross-cutting fix
 lands, rather than assuming coverage from where the fix happened to be
 applied first.
+
+## Added and BUILT 2026-08-21 — BR, PROGRESS_HEADER and KEY_EVENTS_HEADER
+## built as real, data-backed fields on two different Kinds
+
+Rohan, 2026-08-21: "progres sheader can just be 'Last reported quarter
+Q4F26' ... Key events header is really any important status like project
+closed" -- followed by a clarifying question on how PROGRESS_HEADER's
+quarter should be computed, and his answer overriding both proposed
+options: "separate field thats either manually adjusted in rare
+nonexpected cases or for student projects takes a frozen quarter label
+when they report every six months." That settles it as `Kind=Given`, not
+a cross-quarter derivation -- the same shape as SECTOR/TRL/SUBTITLE_B
+built earlier tonight, not a new mechanism.
+
+**PROGRESS_HEADER (Given).** New Field Spec row + new register column
+(`register-wide.xlsx` col 55). Populated `"Last reported quarter Q1F27"`
+across all 43 Q1F27 rows -- verified by reading the saved file directly,
+not the writing session's own report. Rohan adjusts the rare exceptions
+(irregular/six-monthly/student-project reporters) by hand; nothing here
+infers or overwrites that judgement.
+
+**KEY_EVENTS_HEADER (Derived).** `SyncOperations.bas`:
+`KEY_EVENTS_HEADER_TAG` constant, `DeriveKeyEventsHeader` (blank when
+`PROJECT_STATUS = "In Progress"`, otherwise passes the value straight
+through -- a plain lookup, not a priority ladder like
+`DeriveStatusBadge`, and unlike it there is no Controlled-vocabulary
+refusal because there is no invented word to guess), added to
+`DerivedFieldTags()` and `ComputeDerivedValue`'s `Case`. No register
+column, computed at sync time, same as `TIMELINE_ELAPSED`/
+`STATUS_BADGE`. New Field Spec row (`Kind=Derived`), mirroring
+`STATUS_BADGE`'s row shape.
+
+**First pass wrote the PROGRESS_HEADER Field Spec row wrong** -- populated
+`Voice`/`Length`/`Own-job test`/`Do NOT`/`GLOBAL RULES`, the AI-drafting-
+prompt columns SECTOR/TRL (the other `Kind=Given` rows) correctly leave
+blank, because those columns only mean something for a field an AI
+drafts. Caught by comparing against SECTOR/TRL's actual row content
+before moving on, not assumed correct from having followed the STATUS_
+BADGE row as a template for the wrong Kind. Fixed in place.
+
+**Fail-first proven**: temporarily removed the `"In Progress"` exclusion
+from `DeriveKeyEventsHeader`, confirmed both new/extended tests failed
+naming the exact defect (`"the default status headlines nothing, got 'In
+Progress'"`), restored, confirmed green. Extended the existing
+`BothDerivedFieldsReachableThroughPlanRoutineSync` test with a third
+shape rather than writing a separate reachability test -- proves the
+shared derived-field loop's `"" = don't write` rule correctly leaves a
+found-but-blank `KEY_EVENTS_HEADER` shape untouched, not just that the
+pure function works in isolation. Full suite: 286 passed, 0 failed, 0
+skipped (285 -> 286: one new test, one extended).
+
+**Still open, not done in this pass**: neither header shape has been
+propagated from the 3 templates to the 43 real slides yet (same
+clone-and-tag pattern used for `MILESTONE_TIMELINE`/`PROJECT_PHOTO`
+earlier tonight), and the Field Spec's own prompt text for
+`PROGRESS_BODY`/`KEY_EVENTS_BODY` still instructs the AI to open with a
+bold quarter/status line -- now duplicated by these dedicated fields and
+needs removing before either goes live on real slides.
