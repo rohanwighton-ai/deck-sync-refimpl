@@ -37,6 +37,23 @@ Option Explicit
 ' freshly Imported project a Public Function only resolves once the cross-module
 ' Public UDTs it declares have been touched by an earlier Application.Run.
 
+' SUBTITLE_A is the one field whose slide value is a composite of four
+' register columns (SyncOperations.SUBTITLE_COMPOSITE_FIELD), not its own
+' raw column -- the real sync (SyncOperations.PlanRoutineSync,
+' ReviewQueue.ApplyApproved) already knows this at both its write sites.
+' This tool didn't, in either direction: reading raw here would compare the
+' slide against the wrong string at every read site below, and
+' ReseedFromSlides writing the rendered composite text back into the raw
+' column would corrupt it for the next real sync. Centralised once so a
+' third read site can't silently reintroduce the raw read.
+Private Function FieldValueFor(fieldId As String, rowValues As Object) As String
+    If fieldId = SyncOperations.SUBTITLE_COMPOSITE_FIELD Then
+        FieldValueFor = SyncOperations.ComposeSubtitleLine(rowValues)
+    Else
+        FieldValueFor = CStr(rowValues(fieldId))
+    End If
+End Function
+
 Private Function FindByRole(shapesColl As Object, role As String) As Object
     Dim shp As Object
     For Each shp In shapesColl
@@ -227,7 +244,7 @@ Public Function RunField(deckPath As String, registerPath As String, _
             nNotInRegister = nNotInRegister + 1
         Else
             Dim want As String
-            want = CStr(reg.Rows(k)(fieldId))
+            want = FieldValueFor(fieldId, reg.Rows(k))
 
             Dim shp As Object
             Set shp = FindByRole(keyToSlide(CStr(k)).Shapes, fieldId)
@@ -334,7 +351,7 @@ Public Function RunField(deckPath As String, registerPath As String, _
             If reg.Rows(k).Exists(fieldId) Then
                 Dim res As InjectResult
                 res = InjectPrimitive.InjectPrimitive(keyToSlide(CStr(k)), fieldId, _
-                        CStr(reg.Rows(k)(fieldId)), False)
+                        FieldValueFor(fieldId, reg.Rows(k)), False)
                 If res.Found And res.Written Then
                     If res.Verified Then wrote = wrote + 1 Else failed = failed + 1
 
@@ -388,7 +405,7 @@ Public Function RunField(deckPath As String, registerPath As String, _
                 ' disagree neither number means anything. Ask the writer.
                 Dim vprobe As InjectResult
                 vprobe = InjectPrimitive.InjectPrimitive(keyToSlide(CStr(k)), fieldId, _
-                            CStr(reg.Rows(k)(fieldId)), True)
+                            FieldValueFor(fieldId, reg.Rows(k)), True)
                 If vprobe.Found And Not vprobe.WouldChange Then vMatch = vMatch + 1 Else vMiss = vMiss + 1
             End If
         End If
@@ -502,7 +519,17 @@ Public Function ReseedFromSlides(deckPath As String, registerPath As String, _
         Dim ent As String
         ent = Trim(CStr(ws.Cells(rowN, cEntity).Value))
         If wanted.Exists(ent) And Trim(CStr(ws.Cells(rowN, cField).Value)) = fieldId Then
-            If keyToSlide.Exists(ent) Then
+            If fieldId = SyncOperations.SUBTITLE_COMPOSITE_FIELD Then
+                ' The slide shows a middot-joined composite of four register
+                ' columns (SUBTITLE_A/B, SECTOR, TRL), not SUBTITLE_A's own raw
+                ' value -- and the join drops empty segments, so it cannot be
+                ' decomposed back into the four originals. Writing the rendered
+                ' text into this one column would corrupt it for the next real
+                ' sync. Refuse rather than guess which of the four it belongs to.
+                skipped = skipped + 1
+                r = r & "  " & ent & ": SKIPPED -- SUBTITLE_A is a composite on the slide, " & _
+                    "reseeding it here would corrupt the register" & vbCrLf
+            ElseIf keyToSlide.Exists(ent) Then
                 Dim shp As Object
                 Set shp = FindByRole(keyToSlide(ent).Shapes, fieldId)
                 If shp Is Nothing Then
