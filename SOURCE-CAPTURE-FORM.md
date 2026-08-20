@@ -39,11 +39,12 @@ Where the two surviving pieces of that rule already live:
 Gist: the "don't overwrite the official wording" rule was solving a spreadsheet-layout problem that this design doesn't have.
 
 One thing still worth noticing when you fill the form in: deck-sync's drafting prompt
-tells the drafter to read column C for voice and continuity (last quarter's REPORTED
-text, since 2026-08-20 -- it explicitly says not to repeat it, but a drafter can still
-lean on it more than they realise). Citing a SharePoint report for a sentence actually
-carried over from what was said last quarter is a false trace — it looks like stronger
-evidence than it is.
+tells the drafter to read REPORTED LAST TIME (column D, since the 2026-08-20 layout —
+last quarter's actual text) for voice and continuity on most fields, per the field's
+declared History treatment. It explicitly says not to repeat its words, but a drafter
+can still lean on it more than they realise. Citing a SharePoint report for a sentence
+actually carried over from what was said last quarter is a false trace — it looks like
+stronger evidence than it is.
 
 ---
 

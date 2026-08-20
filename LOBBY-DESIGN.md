@@ -1,8 +1,12 @@
 # The Lobby — architectural plan
 
-> **CURRENT — Phases 0, 1, 2 and 3 built, tested, and DEPLOYED (`addin119`,
-> 2026-08-17 morning, after Rohan reviewed the diff and approved it explicitly:
-> "let's get it built properly"). Phase 4 not started.** Written at Rohan's explicit
+> **CURRENT — Phases 0, 1, 2 and 3 built, tested, and DEPLOYED** (originally
+> `addin119`, 2026-08-17 morning, after Rohan reviewed the diff and approved it
+> explicitly: "let's get it built properly"; `DraftingLobby.bas` has stayed in
+> `build_ppam.ps1`'s module list through every rebuild since, most recently
+> `addin155`, 2026-08-20. **The specific addin number here WILL go stale again —
+> check `NEXT-SESSION.md`'s top block for whichever one is actually registered
+> live before trusting this one.** **Phase 4 not started.** Written at Rohan's explicit
 > request before any of this got built: *"please
 > do a full architectural plan for this before we start, large changes."* Supersedes the
 > shorter version of this design scattered across `CHECKLIST.md`'s "The Lobby" section —

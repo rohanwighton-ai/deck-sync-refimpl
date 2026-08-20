@@ -3410,8 +3410,24 @@ registers AT WHATEVER PATH IT'S GIVEN rather than copying the file in --
 registering straight from `OneDrive\Claude\` silently "worked"
 (`Loaded=True`) while pointing at the wrong folder. Same underlying shape
 (a handle registered somewhere other than where everything else expects
-it to live), different surface. Full corrected workflow now in
-`CHECKLIST.md`'s "Before rebuilding the addin" checklist.
+it to live), different surface. **NOT a new discovery -- `AGENTS.md`
+already documented this exact failure from two prior nights
+(`addin133`/`addin134`), unread before repeating it a third time.**
+
+**Worse, fixing the path masked a second miss of the identical shape:**
+having moved the file and set `.Loaded = -1`, reported the addin
+registered -- without setting `.AutoLoad`. `.Loaded` is true for the
+CURRENT session only; `.AutoLoad` governs the NEXT PowerPoint launch. A
+check in a genuinely fresh PowerPoint instance (quit entirely, relaunched,
+nothing touched) found `addin155` at `AutoLoad = 0` and the PREVIOUS
+build (`addin153`) still at `AutoLoad = -1` -- the very next normal
+PowerPoint open would have loaded the OLD addin, silently, with the
+session-level check having reported success the whole time. Fixed:
+`.AutoLoad = -1` on the new build, `.AutoLoad = 0` explicitly on the
+old one, re-verified from a second cold quit-and-relaunch with nothing
+touched in between. Full corrected workflow, including this step and the
+cold-restart verification requirement, now in `CHECKLIST.md`'s "Before
+rebuilding the addin" checklist and reinforced in `AGENTS.md`.
 
 ## Added and FIXED 2026-08-20 evening — BN, investigated a backup for the
 ## ordinary drafting-sheet rewrite, built a test instead

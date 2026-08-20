@@ -447,6 +447,26 @@ guidance.
   the same night: `addin131` and `addin132` were both still auto-loading
   alongside a fresh build, three versions racing to load simultaneously.
 
+  **THIRD OCCURRENCE, 2026-08-20 (`addin155`) -- this paragraph was not
+  read before repeating the mistake.** Registered straight from
+  `OneDrive\Claude\` first (same failure as `addin133`/`addin134`,
+  described above); recovering needed quitting PowerPoint entirely
+  because `AddIn` COM objects expose no `.Delete()`. Then, having moved
+  the file and set `.Loaded = -1`, reported it done -- WITHOUT setting
+  `.AutoLoad`. A later check in a genuinely fresh PowerPoint instance
+  found `addin155` at `AutoLoad = 0` and `addin153` (the PREVIOUS build)
+  still at `AutoLoad = -1` -- meaning the very next normal PowerPoint
+  launch would have loaded the OLD build, not the new one, and nothing
+  in the session would have shown that, because `.Loaded` in the CURRENT
+  session looked correct the whole time. **`.Loaded` is what's true
+  right now; `.AutoLoad` is what's true on the next launch. Setting one
+  and reporting success on both is the exact "reports success without
+  confirming the effect" failure this project's own standing rule
+  exists to catch.** Real verification requires the full cycle: quit
+  PowerPoint entirely, relaunch fresh, and check the state WITHOUT
+  touching either property again -- only then does a `Loaded=True`
+  reading mean anything.
+
 - **The cross-application trap runs BOTH ways, and it is not only constants:
   `Application` itself is a different object in each host.** Already recorded
   below for Excel's `xlToLeft`/`xlUp` failing in a PowerPoint-driven module;

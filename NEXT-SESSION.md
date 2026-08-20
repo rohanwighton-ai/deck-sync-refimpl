@@ -92,38 +92,47 @@
 >   enforces the invariant at zero runtime cost and would catch a future
 >   regression before it ships. **This is genuinely resolved, not deferred
 >   — the open question the 2026-08-17 comment posed now has an answer.**
-> - **`addin155` built, registered, and verified genuinely loaded** (a real
->   `Application.Run` call through it, not just `Loaded=True`) — but the
->   registration process itself surfaced two gotchas worth knowing before
->   the next rebuild:
+> - **`addin155` built, registered, and verified genuinely loaded — properly,
+>   after getting it wrong twice on the way there.** Final proof: quit
+>   PowerPoint entirely, relaunched cold, checked `addin155`'s state
+>   WITHOUT touching it again (`Loaded=-1`, `AutoLoad=-1`), then called a
+>   real function through it (`Drafting.DraftSheetNameFor` via
+>   `Application.Run`) — not just trusted a flag. Three gotchas surfaced
+>   getting there, none of them new territory except in the sense that
+>   they weren't checked first:
 >   1. **`File > Save As` lands the new `.ppam` in `OneDrive\Claude\`. That
->      is NOT the trusted location.** The real one, where every prior
->      addin (99 through 153) actually lives, is
->      `C:\Users\rohan\AppData\Roaming\Microsoft\AddIns\`.
->      `AddIns.Add(path)` registers AT WHATEVER PATH IT'S GIVEN — it does
->      NOT auto-copy the file into the trusted folder the way I first
->      assumed. Registering straight from `OneDrive\Claude\` silently
->      "worked" (`Loaded=True`) while pointing at a synced folder instead
->      of the real one. Fixing it required quitting PowerPoint entirely
->      (to clear the mis-registered in-memory entry — `AddIn` COM objects
->      expose no `.Delete()` method), a manual `Copy-Item` into the AddIns
->      folder, and re-adding from there. **The corrected workflow, now
->      also in `CHECKLIST.md`'s "Before rebuilding the addin" section:
->      Save As → copy the file into `AppData\Roaming\Microsoft\AddIns\` →
->      `AddIns.Add()` from THAT path → set `.Loaded = -1` AND
->      `.Registered = -1` explicitly (Registered does not default to
->      matching every other addin's state).**
->   2. **`[Microsoft.Office.Core.MsoTriState]::msoTrue`/`msoFalse` fails to
+>      is NOT the trusted location** —
+>      `C:\Users\rohan\AppData\Roaming\Microsoft\AddIns\`, where every
+>      prior addin (99–155) actually lives. `AddIns.Add(path)` registers
+>      AT WHATEVER PATH IT'S GIVEN, it does not auto-copy the file in.
+>      **This is NOT a new discovery — `AGENTS.md`'s own COM-automation
+>      section already documented it from two prior nights
+>      (`addin133`/`addin134`), unread before repeating it a third time
+>      here.** Fix: quit PowerPoint entirely (`AddIn` COM objects expose
+>      no `.Delete()`, so a mis-registered entry can't be removed any
+>      other way), `Copy-Item` into the AddIns folder, `AddIns.Add()` from
+>      THAT path.
+>   2. **Setting only `.Loaded`, not `.AutoLoad`, is a trap that looks
+>      like success.** `.Loaded` is true for the CURRENT session only;
+>      `.AutoLoad` is what governs the NEXT PowerPoint launch. Reported
+>      `addin155` "loaded" with `.Loaded` set and `.AutoLoad` untouched —
+>      a genuinely cold restart found `addin155` at `AutoLoad=0` and the
+>      PREVIOUS build (`addin153`) still at `AutoLoad=-1`. The next normal
+>      PowerPoint open would have silently loaded the OLD addin. Fixed:
+>      `.AutoLoad=-1` on the new build, `.AutoLoad=0` explicitly on the
+>      old one, re-verified from a second cold quit-and-relaunch.
+>   3. **`[Microsoft.Office.Core.MsoTriState]::msoTrue`/`msoFalse` fails to
 >      resolve ("Unable to find type") in a fresh PowerShell COM session**,
->      and — the dangerous part — **the failed assignment does not
->      terminate the script by default**, so a line like
->      `$addin.Loaded = [Microsoft.Office.Core.MsoTriState]::msoTrue` can
->      silently no-op while everything downstream keeps printing as though
->      it worked. This is a RECURRING gotcha across this whole project
->      (also hit setting `$ppt.Visible` earlier). **Use raw integers
->      instead: `-1` for True, `0` for False.** Also now in
->      `CHECKLIST.md` and should probably get folded into
->      `reference_vba_office_gotchas` memory if it recurs a third time.
+>      and the failed assignment does not terminate the script by
+>      default, so it silently no-ops while everything downstream keeps
+>      printing as though it worked. Recurring across this project (also
+>      hit setting `$ppt.Visible` earlier). **Use raw integers instead:
+>      `-1` for True, `0` for False.**
+>   **All three, plus the required cold-restart verification step, are now
+>   in `CHECKLIST.md`'s "Before rebuilding the addin" section and
+>   reinforced in `AGENTS.md`.** The lesson underneath all three is the
+>   same one: `AGENTS.md`'s existing COM-automation notes should be read
+>   BEFORE touching `AddIns`, not rediscovered live.
 >
 > **Working-copy state right now**: `C:\Users\rohan\AppData\Local\
 > deck-sync-quarter-20260820-0900\` — deck + `register-wide.xlsx`. Period

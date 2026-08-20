@@ -68,19 +68,34 @@ Run through this every time, not just when something feels off:
       trusting any test against it — register it, then call a real function
       through it (`Application.Run`), not just confirm the file exists or
       `AddIns.Loaded = True`.
-- [ ] **`OneDrive\Claude\` is NOT the trusted location — copy the file into
-      `C:\Users\rohan\AppData\Roaming\Microsoft\AddIns\` first.** Got this
-      wrong live 2026-08-20: `File > Save As` lands the new `.ppam` in
-      `OneDrive\Claude\`, and `AddIns.Add(path)` registers it AT WHATEVER
-      PATH IT'S GIVEN — it does NOT auto-copy into the trusted folder the
-      way every prior addin (99-153) actually lives in. Registering straight
-      from `OneDrive\Claude\` "worked" (`Loaded = True`) but left it pointed
-      at a synced folder, not the real location. The fix took quitting
-      PowerPoint entirely to clear the mis-registered in-memory entry, a
-      manual `Copy-Item` into the AddIns folder, and re-adding from there.
-      After adding, also set `.Registered = -1` explicitly — it does not
-      default to matching every other addin's `Registered = True` state on
-      its own.
+- [ ] **`OneDrive\Claude\` is NOT the trusted location — this is DOCUMENTED,
+      not newly discovered, and got relearned live a THIRD time 2026-08-20
+      (`addin155`) because `AGENTS.md`'s own COM-automation section wasn't
+      checked first. Read that section before touching `AddIns` at all.**
+      `File > Save As` lands the new `.ppam` in `OneDrive\Claude\`, and
+      `AddIns.Add(path)` registers it AT WHATEVER PATH IT'S GIVEN — it does
+      NOT auto-copy into the trusted folder every prior addin (99-155)
+      actually lives in: `C:\Users\rohan\AppData\Roaming\Microsoft\AddIns\`.
+      Fix: quit PowerPoint entirely first (`AddIn` COM objects expose no
+      `.Delete()`, so a mis-registered entry can't be removed any other
+      way), `Copy-Item` the file into the AddIns folder, `AddIns.Add()` from
+      THAT path.
+- [ ] **Set BOTH `.Loaded = -1` AND `.AutoLoad = -1` — setting only `.Loaded`
+      is a trap that looks like success.** `.Loaded` is true for the CURRENT
+      session only; `.AutoLoad` is what actually governs the NEXT PowerPoint
+      launch. `addin155` was reported "loaded" 2026-08-20 with `.Loaded`
+      set and `.AutoLoad` untouched — the next normal PowerPoint restart
+      would have silently loaded the OLD addin instead. Also set
+      `.Registered = -1` (does not default to match) and explicitly disable
+      `.Loaded`/`.AutoLoad` on whichever PREVIOUS addin was active — three
+      builds have raced to load simultaneously before (`addin131`/`132`,
+      per `AGENTS.md`) when this step was skipped.
+- [ ] **Verify by fully quitting PowerPoint and relaunching fresh, checking
+      state WITHOUT touching either property again.** A reading taken in
+      the same session you just set `.Loaded`/`.AutoLoad` in proves nothing
+      — it's checking the value you just wrote, not whether it persisted.
+      Only a genuinely cold restart proves the new addin actually auto-loads
+      and the old one doesn't.
 - [ ] **`MsoTriState` enum names (`msoTrue`/`msoFalse`) fail to resolve in a
       fresh PowerShell COM session** ("Unable to find type") — this is a
       RECURRING gotcha (see also `reference_vba_office_gotchas` memory). Use
