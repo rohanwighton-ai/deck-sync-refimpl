@@ -3561,3 +3561,43 @@ the word renders identically on screen. Found only by matching on
 hyphen-free anchors ("biofilm formation") once the mismatch was suspected.
 **Any earlier search this session that matched on a hyphenated phrase has
 the same blind spot and has not been re-checked.**
+
+## Added and FIXED 2026-08-21 — BQ, K/S templates were missing 4 fields
+## every real K/S slide already carries, and Harvest.bas had E2EField.bas's
+## SUBTITLE_A blind spot too
+
+**K/S template gap.** `TERTIARY_INSTITUTION`, `INDUSTRY_PARTNER`,
+`TIMELINE_ELAPSED` and `SAAFE_CASH` are tagged and live on all 32 real K/S
+slides (from earlier tonight's propagation work) but were never tagged on
+the K or S templates themselves -- that propagation targeted real slides
+only, and nobody separately checked the templates carried the same set.
+Worse than a plain gap: K's `INDUSTRY_PARTNER` shape held a hardcoded
+literal `"[TBC]"` string, not a placeholder tag, so no injector could ever
+have written into it. Found candidates by geometry match against the P
+template's own reference positions (S needed a slightly wider search --
+its layout carries an extra "Research Supervisor" row P/K don't have,
+shifting the partner/institution block down). All 8 tagged, the literal
+`[TBC]` reset to the proper `<<INDUSTRY_PARTNER>>` placeholder, verified
+from the saved file's bytes.
+
+**`Harvest.bas`'s `ShapeIsNotHarvestableText`** had the identical blind
+spot `E2EField.bas` did before it was fixed a few hours earlier the same
+night: `SUBTITLE_A`'s shape structurally looks like an ordinary text
+field, so the existing injector-routing check would wave it through as
+harvestable. What it displays is a middot-joined composite of four
+register columns, not its own raw value -- harvesting it would write the
+whole rendered composite into the raw `SUBTITLE_A` column, corrupting it
+for the next real sync. Unlike `E2EField.bas` (a diagnostic tool), this
+one sits behind a real ribbon button in the main sync chain
+(`RibbonUI.OfferHarvestForSelectedSlides`). Added the same explicit
+refusal, fail-first proven live (reverted, confirmed the composite string
+would have been written and the cell was no longer empty, restored,
+confirmed green), full suite 285/285.
+
+**Both found by the same kennel pass, both examples of the same shape**:
+a fix applied to one call site of a cross-cutting rule (SUBTITLE_A's
+composite nature; a field set needing to exist on every real slide) does
+not by itself confirm every OTHER call site or instance got the same
+treatment. Worth checking deliberately next time a cross-cutting fix
+lands, rather than assuming coverage from where the fix happened to be
+applied first.
