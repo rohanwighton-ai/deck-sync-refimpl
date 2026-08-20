@@ -756,6 +756,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "Drafting_HeaderRowDoesNotStrandTextFromAWiderPastLayout", r
+    If TestMatches("Drafting_Layout6To7MigrationSwapsSourcesAndPrevCorrectly", filterPattern) Then
+        r = Test_Drafting_Layout6To7MigrationSwapsSourcesAndPrevCorrectly()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "Drafting_Layout6To7MigrationSwapsSourcesAndPrevCorrectly", r
     If TestMatches("WorkbookBridge_RunLogSurvivesALineStartingWithEquals", filterPattern) Then
         r = Test_WorkbookBridge_RunLogSurvivesALineStartingWithEquals()
     Else
@@ -5345,6 +5351,60 @@ Private Function Test_Drafting_HeaderRowDoesNotStrandTextFromAWiderPastLayout() 
     xl.Quit
 
     Test_Drafting_HeaderRowDoesNotStrandTextFromAWiderPastLayout = result
+End Function
+
+' LAYOUT 6 -> 7 IS A SWAP, NOT JUST A SHIFT -- THE MIGRATION MUST CROSS THE
+' VALUES OVER, NOT JUST MOVE THEM SIDEWAYS.
+'
+' Layout 6 had PREV at C, SOURCES at D. Layout 7 swapped them: SOURCES now C,
+' PREV now D. A naive "shift everything left/right by one" migration would
+' silently put a project's SOURCES citation where PREV belongs and vice versa
+' -- a person's real "S01,S04" citation would land in the reference column,
+' and last quarter's prose would land in the sources cell. Proven against a
+' genuine layout-6 sheet, not a blank one, for the same reason the header test
+' above had to be rebuilt: a blank sheet takes an unrelated code path.
+Private Function Test_Drafting_Layout6To7MigrationSwapsSourcesAndPrevCorrectly() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+
+    Dim reg As Sheet
+    Set reg.Rows = CreateObject("Scripting.Dictionary")
+    Set reg.Fields = New Collection
+    Set reg.InstanceOrder = New Collection
+    reg.Fields.Add "ABOUT_BODY"
+    Dim vals As Object
+    Set vals = CreateObject("Scripting.Dictionary")
+    vals("PROJECT_NAME") = "Test project"
+    reg.Rows.Add "P001", vals
+    reg.InstanceOrder.Add "P001"
+
+    ' A genuine layout-6 sheet: stamped 6, one project row, PREV at OLD C(3),
+    ' SOURCES at OLD D(4) -- layout 6's real positions.
+    ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_ENTITY).Value = "P001"
+    ws.Cells(Drafting.DRAFT_FIRST_ROW, 3).Value = "Last quarter's real prose"
+    ws.Cells(Drafting.DRAFT_FIRST_ROW, 4).Value = "S01,S04"
+    ws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.LayoutStampColumn(6)).Value = 6
+    ws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.PeriodStampColumn(6)).Value = "Q4F26"
+
+    Drafting.WriteDraftingSheet ws, reg, "ABOUT_BODY", Empty, "Q4F26"
+
+    result = result & Assert(CStr(ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_PREV).Value) = "Last quarter's real prose", _
+        "PREV lands at its NEW position (D) with the real prose, not a blank or the citation, got '" & _
+        CStr(ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_PREV).Value) & "'")
+    result = result & Assert(CStr(ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value) = "S01,S04", _
+        "SOURCES lands at its NEW position (C) with the real citation, not the prose, got '" & _
+        CStr(ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value) & "'")
+
+    wb.Close False
+    xl.Quit
+
+    Test_Drafting_Layout6To7MigrationSwapsSourcesAndPrevCorrectly = result
 End Function
 
 ' THE LOG MUST SURVIVE THE FIRST LINE OF EVERY REPORT IT IS GIVEN.
