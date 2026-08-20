@@ -6,6 +6,43 @@
 > handover surface: `NEXT-SESSION.md`'s CURRENT block points here first. Add to
 > it, tick it here, together — don't let it drift back into prose.
 
+## The extraction-to-quality loop — Rohan's plan, 2026-08-20, PRIORITY
+
+**The real state, checked from `SRC_EXTRACTS` directly, not assumed:** across all 43
+real projects, only the linkage-code and quarterly-comment columns (fed by `S01`) are
+actually populated at scale (46/52 rows). Every other source — `PROJECT_PROGRESS` %,
+milestones/deliverables (`S04`), the money fields (`S05`/`S06`), lead/partner (`S07`),
+the deliverables judgement (`S08`), and the new contract source (`S16`) — is populated
+for **3-4 projects out of 52**. The drafting mechanism itself is proven and correct
+(fail-first tested, fixed today); the actual blocker for real content is that almost
+none of the source material behind it has been extracted yet.
+
+**The plan, stated so it survives today's volume of other work:**
+
+1. **Rohan runs the AI extraction prompts** against the real source documents (the
+   Notion prompt library, per `S01`-`S16`'s own "Where it lives" entries) to populate
+   `SRC_EXTRACTS` for the empty columns, across all 43 projects. Not automatable from
+   here — needs the actual source documents and the actual prompts, which live outside
+   this repo.
+2. **Once extraction is complete**, draft the real Q4F26 content through the (now
+   fixed) drafting-sheet mechanism — `SRC_EXTRACTS` -> AI DRAFT -> SUBMIT -> Publish,
+   per field, per project.
+3. **Measure the generated Q4F26 material against Q3F26's** — quality, completeness,
+   whether it actually reads as this quarter's own words rather than a restatement of
+   last quarter's. **Not yet defined: the actual rubric or comparison method.** This is
+   the first open question for whoever picks this up — "measure quality" needs an
+   actual yardstick before it can be done, not just eyeballing.
+4. **Triage which prompts need work** based on what step 3 finds, and iterate — refine
+   the AI prompts (not the drafting mechanism, which is a separate, already-solid
+   layer), re-run extraction/drafting for the fields that came out weak, re-measure.
+
+**Explicitly not done tonight, and not blocking anything:** no real button-press test
+was run against a broad set of fields — deliberately paused (Rohan: "why press put it
+on the slide before that is ready?") once the extraction gap was found, rather than
+prove the mechanism again on a narrow, already-well-tested slice. The mechanism proof
+that matters is steps 1-2 actually running for real, at scale, which hasn't happened
+yet.
+
 ## Immediate — nothing else is real until this happens
 
 - [x] Build `addin104`: run `build_ppam.ps1`, Save As `addin104`, tick it, untick
