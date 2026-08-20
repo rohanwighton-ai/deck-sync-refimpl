@@ -884,6 +884,17 @@ Public Function WriteDraftingSheet(ws As Object, reg As Sheet, fieldId As String
     Next introRow
 
     ' --- the grid --------------------------------------------------------
+    ' HEADER ROW CLEARED FIRST, 2026-08-20. Found live: a layout-6 rebuild left
+    ' "Chars" and "NOTES -- back to the tool" duplicated at J/K -- stale layout-5
+    ' header text, stranded because MigrateSheetLayout (above) only migrates the
+    ' per-PROJECT data rows, never the header row itself, and every layout bump
+    ' before this one only ADDED columns, so nothing wider was ever left behind
+    ' to strand. This is the first layout change that REMOVED a column
+    ' (ORIGINAL), which is what made the gap visible. The header is always
+    ' fully rewritten immediately below regardless of layout, so clearing it
+    ' first costs nothing and closes this for every future layout change in
+    ' either direction, not just this one.
+    ws.Rows(DRAFT_HEADER_ROW).ClearContents
     ' Headers say what to DO, not what the column is called internally.
     ' "Draft" and "Approved (Y/N)" were accurate and told a first-time reader
     ' nothing about where to type.

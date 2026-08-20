@@ -750,6 +750,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "Drafting_AFieldWithNoValueLeavesColumnCEmpty", r
+    If TestMatches("Drafting_HeaderRowDoesNotStrandTextFromAWiderPastLayout", filterPattern) Then
+        r = Test_Drafting_HeaderRowDoesNotStrandTextFromAWiderPastLayout()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "Drafting_HeaderRowDoesNotStrandTextFromAWiderPastLayout", r
     If TestMatches("WorkbookBridge_RunLogSurvivesALineStartingWithEquals", filterPattern) Then
         r = Test_WorkbookBridge_RunLogSurvivesALineStartingWithEquals()
     Else
@@ -5281,6 +5287,64 @@ Private Function Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty() As String
     On Error GoTo 0
 
     Test_Drafting_AFieldWithNoValueLeavesColumnCEmpty = result
+End Function
+
+' THE HEADER ROW MUST NOT ACCUMULATE STALE TEXT FROM A WIDER PAST LAYOUT.
+'
+' Found live 2026-08-20, Rohan noticing it just by looking: a rebuilt sheet showed
+' "Chars" and "NOTES -- back to the tool" TWICE, once at their real layout-6
+' position and once stranded at J/K -- leftover layout-5 header text.
+' MigrateSheetLayout only migrates the per-PROJECT rows; the header row was never
+' cleared before being rewritten, so nothing had ever wiped a wider layout's
+' trailing cells. Every layout bump before this one only ADDED columns, so the
+' gap was invisible until this one REMOVED a column.
+Private Function Test_Drafting_HeaderRowDoesNotStrandTextFromAWiderPastLayout() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+
+    Dim reg As Sheet
+    Set reg.Rows = CreateObject("Scripting.Dictionary")
+    Set reg.Fields = New Collection
+    Set reg.InstanceOrder = New Collection
+    reg.Fields.Add "ABOUT_BODY"
+    Dim vals As Object
+    Set vals = CreateObject("Scripting.Dictionary")
+    vals("PROJECT_NAME") = "Test project"
+    reg.Rows.Add "P001", vals
+    reg.InstanceOrder.Add "P001"
+
+    ' A GENUINE layout-5 sheet, not a blank one -- a brand-new sheet takes a
+    ' different, unrelated full-clear path that made the first version of this
+    ' test pass even with the fix disabled (proven: it did). This has to be a
+    ' KNOWN, migratable prior layout for MigrateSheetLayout's path to be the one
+    ' actually exercised, which is the path that never touched the header row.
+    ws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_ENTITY).Value = "P001"
+    ws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.LayoutStampColumn(5)).Value = 5
+    ws.Cells(Drafting.DRAFT_INTRO_ROW, Drafting.PeriodStampColumn(5)).Value = "Q3F26"
+    ' Layout 5's own header text, at layout 5's own SUBCHARS/NOTES positions --
+    ' exactly what was found stranded live.
+    ws.Cells(Drafting.DRAFT_HEADER_ROW, 10).Value = "Chars"
+    ws.Cells(Drafting.DRAFT_HEADER_ROW, 11).Value = "K   NOTES -- back to the tool (optional)"
+
+    Drafting.WriteDraftingSheet ws, reg, "ABOUT_BODY", Empty, "Q4F26"
+
+    result = result & Assert(Trim(CStr(ws.Cells(Drafting.DRAFT_HEADER_ROW, 10).Value)) <> "Chars", _
+        "a layout-6 rebuild must not leave layout-5's stray 'Chars' header stranded at J, got '" & _
+        CStr(ws.Cells(Drafting.DRAFT_HEADER_ROW, 10).Value) & "'")
+    result = result & Assert(InStr(CStr(ws.Cells(Drafting.DRAFT_HEADER_ROW, 11).Value), "NOTES") = 0, _
+        "a layout-6 rebuild must not leave layout-5's stray NOTES header stranded at K, got '" & _
+        CStr(ws.Cells(Drafting.DRAFT_HEADER_ROW, 11).Value) & "'")
+
+    wb.Close False
+    xl.Quit
+
+    Test_Drafting_HeaderRowDoesNotStrandTextFromAWiderPastLayout = result
 End Function
 
 ' THE LOG MUST SURVIVE THE FIRST LINE OF EVERY REPORT IT IS GIVEN.
