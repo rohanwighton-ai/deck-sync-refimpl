@@ -1573,7 +1573,18 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                 Dim rowValues As Object
                 Set rowValues = sheet.Rows(q.Items(n).EntityKey)
                 If rowValues.Exists(q.Items(n).FieldID) Then
-                    proposed = CStr(rowValues(q.Items(n).FieldID))
+                    ' SUBTITLE_A is the one column whose own register value is
+                    ' never what gets written -- its shape shows a composite of
+                    ' four columns (SyncOperations.SUBTITLE_COMPOSITE_FIELD).
+                    ' Recomputed from rowValues here too, not carried from the
+                    ' queue's ProposedValue, so this still honours "the
+                    ' register's value NOW" for all four inputs, not a plan-
+                    ' time snapshot of the join.
+                    If q.Items(n).FieldID = SyncOperations.SUBTITLE_COMPOSITE_FIELD Then
+                        proposed = SyncOperations.ComposeSubtitleLine(rowValues)
+                    Else
+                        proposed = CStr(rowValues(q.Items(n).FieldID))
+                    End If
                     haveProposed = True
                 ElseIf InjectPrimitive.DeviceRoleTagsOnSlide(sld).Exists(q.Items(n).FieldID) Then
                     ' DEVICE FIELDS ARE NOT REGISTER COLUMNS -- FIX-LIST R's own

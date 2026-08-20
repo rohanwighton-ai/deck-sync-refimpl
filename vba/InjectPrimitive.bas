@@ -94,6 +94,7 @@ Public Const VALUE_SEPARATOR As String = LINE_BREAK_DELIMITER
 Public Const INJECTOR_DEVICE As String = "device"
 Public Const INJECTOR_PICTURE As String = "picture"
 Public Const INJECTOR_REPEATING As String = "repeating-bar"
+Public Const INJECTOR_SLOTS As String = "slots"
 Public Const INJECTOR_BAR As String = "bar"
 Public Const INJECTOR_TEXT As String = "text"
 
@@ -546,6 +547,16 @@ Public Function InjectorFor(sld As Object, identityTag As String) As String
         Exit Function
     End If
 
+    ' SLOTS -- one value, split on the line-break delimiter, one segment per
+    ' fixed shape (HIGHLIGHTS_BODY: three bullet shapes, "Two to three
+    ' headline outcomes" per Field Spec). Checked here, after REPEATING and
+    ' before BAR, using its own suffix (FieldWiring.SLOT_SUFFIX) so it cannot
+    ' collide with either.
+    If Not FindShapeByRoleTag(sld, identityTag & FieldWiring.SLOT_SUFFIX & "1") Is Nothing Then
+        InjectorFor = INJECTOR_SLOTS
+        Exit Function
+    End If
+
     ' EITHER COMPANION MAKES IT A BAR -- a track, or a remainder.
     '
     ' The done part is an ordinary rectangle and looks like any other shape, so
@@ -581,6 +592,8 @@ Public Function InjectField(sld As Object, identityTag As String, sourceValue As
             InjectField = InjectPictureVia(sld, identityTag, sourceValue, srcWs, dryRun)
         Case INJECTOR_REPEATING
             InjectField = InjectRepeatingProgress(sld, identityTag, sourceValue, dryRun)
+        Case INJECTOR_SLOTS
+            InjectField = InjectSlotsField(sld, identityTag, sourceValue, dryRun)
         Case INJECTOR_BAR
             InjectField = InjectProgressVia(sld, identityTag, sourceValue, dryRun)
         Case Else
@@ -697,6 +710,91 @@ Public Function InjectRepeatingProgress(sld As Object, identityTag As String, _
     result.Written = wroteAll And Not dryRun
     result.Verified = wroteAll
     InjectRepeatingProgress = result
+End Function
+
+' One value, || - delimited, split one segment per fixed slot shape.
+' HIGHLIGHTS_BODY is the specimen: "Two to three headline outcomes," three
+' fixed bullet shapes on the template. Each segment is written through
+' InjectPrimitive against its own slot tag, so a slot gets the same
+' geometry-preserving single-shape write/verify every other text field gets --
+' this function only discovers the slots and distributes the segments, it
+' does not duplicate the write logic.
+'
+' FEWER SEGMENTS THAN SLOTS IS NORMAL: an unused slot is blanked (segVal =
+' ""), never left holding a stale prior quarter's line. MORE SEGMENTS THAN
+' SLOTS REFUSES OUTRIGHT, same reasoning as InjectRepeatingProgress's count
+' mismatch -- writing the ones that fit and silently dropping the rest is a
+' worse failure than refusing and naming the excess.
+Public Function InjectSlotsField(sld As Object, identityTag As String, _
+                                 sourceValue As String, _
+                                 Optional dryRun As Boolean = False) As InjectResult
+    Dim result As InjectResult
+    result.Found = True
+
+    Dim slots As Long
+    slots = 0
+    Do While Not FindShapeByRoleTag(sld, identityTag & FieldWiring.SLOT_SUFFIX & (slots + 1)) Is Nothing
+        slots = slots + 1
+    Loop
+
+    Dim trimmedSource As String
+    trimmedSource = Trim(sourceValue)
+
+    Dim segments() As String
+    Dim segCount As Long
+    If trimmedSource = "" Then
+        segCount = 0
+    Else
+        segments = Split(trimmedSource, LINE_BREAK_DELIMITER)
+        segCount = UBound(segments) - LBound(segments) + 1
+    End If
+
+    If segCount > slots Then
+        result.ErrorMessage = identityTag & ": the register holds " & segCount & _
+            " item(s) but the slide has only " & slots & " slot(s) tagged " & _
+            identityTag & FieldWiring.SLOT_SUFFIX & "1.." & identityTag & _
+            FieldWiring.SLOT_SUFFIX & slots & ". Nothing was written -- the last " & _
+            "item has nowhere to go."
+        InjectSlotsField = result
+        Exit Function
+    End If
+
+    Dim currents As String
+    Dim wroteAll As Boolean, anyChange As Boolean, anyMoved As Boolean, allRestored As Boolean
+    wroteAll = True
+    allRestored = True
+
+    Dim i As Long
+    For i = 1 To slots
+        Dim slotTag As String
+        slotTag = identityTag & FieldWiring.SLOT_SUFFIX & i
+
+        Dim segVal As String
+        segVal = ""
+        If i <= segCount Then segVal = Trim(segments(LBound(segments) + i - 1))
+
+        Dim one As InjectResult
+        one = InjectPrimitive(sld, slotTag, segVal, dryRun)
+
+        If currents <> "" Then currents = currents & LINE_BREAK_DELIMITER
+        currents = currents & one.CurrentValue
+        If one.WouldChange Then anyChange = True
+        If one.GeometryMoved Then anyMoved = True
+        If one.GeometryMoved And Not one.GeometryRestored Then allRestored = False
+        If Not (one.Written Or one.Verified) Then
+            wroteAll = False
+            If result.ErrorMessage <> "" Then result.ErrorMessage = result.ErrorMessage & "; "
+            result.ErrorMessage = result.ErrorMessage & one.ErrorMessage
+        End If
+    Next i
+
+    result.CurrentValue = currents
+    result.WouldChange = anyChange
+    result.Written = wroteAll And Not dryRun
+    result.Verified = wroteAll
+    result.GeometryMoved = anyMoved
+    result.GeometryRestored = allRestored
+    InjectSlotsField = result
 End Function
 
 

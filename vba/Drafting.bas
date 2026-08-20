@@ -1597,7 +1597,15 @@ Public Function CopyAiToSubmit(ws As Object) As String
             keptExisting = keptExisting + 1
         Else
             ws.Cells(r, COL_D_SUBMIT).Value = "'" & ai
-            ws.Cells(r, COL_D_SUBCHARS).Value = Len(ai)
+            ' A GENUINE EXCEL FORMULA, NOT A COMPUTED LITERAL. SYSTEM-OVERVIEW.md
+            ' documents this column as "character count, live formula" -- a VBA
+            ' Len() snapshot here means the count silently goes stale the moment
+            ' someone edits SUBMIT by hand instead of pressing a button, because
+            ' nothing re-derives a literal. A formula recalculates on every edit
+            ' to SUBMIT for the rest of this cell's life, button or no button.
+            ' Column letter derived from COL_D_SUBMIT, never hardcoded -- same
+            ' rule as every Chr$(64 + COL_D_*) reference elsewhere in this file.
+            ws.Cells(r, COL_D_SUBCHARS).Formula = "=LEN(" & Chr$(64 + COL_D_SUBMIT) & r & ")"
             copied = copied + 1
         End If
         r = r + 1
@@ -1640,7 +1648,9 @@ Public Function RefreshSubmitCounts(ws As Object) As String
         If Trim(s) = "" Then
             ws.Cells(r, COL_D_SUBCHARS).Value = ""
         Else
-            ws.Cells(r, COL_D_SUBCHARS).Value = Len(s)
+            ' SAME FIX AS CopyAiToSubmit ABOVE: a live formula, not a Len()
+            ' snapshot -- see the comment there for why a literal goes stale.
+            ws.Cells(r, COL_D_SUBCHARS).Formula = "=LEN(" & Chr$(64 + COL_D_SUBMIT) & r & ")"
             n = n + 1
         End If
         r = r + 1

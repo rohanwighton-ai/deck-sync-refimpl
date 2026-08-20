@@ -98,6 +98,80 @@ Public Const TIMELINE_ELAPSED_TAG As String = "TIMELINE_ELAPSED"
 ' request, built).
 Public Const STATUS_BADGE_TAG As String = "STATUS_BADGE"
 
+' SUBTITLE_A -- NOT a Derived field in DerivedFieldTags()'s sense, and does
+' not belong in that array. It is Kind=Given with a real register column of
+' its own, unlike TIMELINE_ELAPSED/STATUS_BADGE which have none -- so the
+' ordinary per-field loop in PlanRoutineSync already claims it, and adding it
+' to DerivedFieldTags() would never fire (the derived loop's own guard skips
+' any tag the ordinary loop already claimed). What IS shared with the Derived
+' pattern is the underlying problem: the shape's role tag ("SUBTITLE_A") and
+' the register column of the SAME name hold two different things -- one raw
+' input, one composite of four. Field Spec's own Behaviour column (row 12,
+' column J) states the rule: "SUBTITLE_A - SUBTITLE_B - SECTOR - TRL joined
+' with a middot separator." Handled as an explicit substitution at both real
+' write call sites (PlanRoutineSync's ordinary loop, ReviewQueue.
+' ApplyApproved's "register's value NOW" branch) rather than a general
+' mechanism -- SUBTITLE_A is the only field on this sheet whose displayed
+' value is a computed join of several OTHER register columns, so a second
+' instance is what would justify generalising this into one.
+Public Const SUBTITLE_COMPOSITE_FIELD As String = "SUBTITLE_A"
+
+' MODULE-LEVEL DECLARATION, DELIBERATELY UP HERE with the Consts: a bare
+' module-level variable below the first procedure compiles quietly wrong and
+' reports its error in a DIFFERENT module -- hit twice on 2026-08-17, once
+' building the ORIGINAL version of this very fix (AGENTS.md, Known Patterns).
+' Moved down to here, still above every procedure, when SUBTITLE_COMPOSITE_
+' FIELD's block landed above it and nearly reintroduced the exact defect this
+' comment already warns about -- caught by the compiler, not by re-reading.
+Public mTestForcePlanCrash As Boolean
+
+' The four inputs, in the declared order, never re-typed elsewhere -- see
+' ComposeSubtitleLine.
+Private Function SubtitleComponentFields() As Variant
+    SubtitleComponentFields = Array("SUBTITLE_A", "SUBTITLE_B", "SECTOR", "TRL")
+End Function
+
+' Builds the one line actually shown under the title, from whatever of the
+' four inputs the row actually has. Field Spec's own words: "The separators
+' are chrome" -- an empty segment contributes NEITHER text nor a dangling
+' middot, so two present segments read as "A · D", never "A ·  · · D".
+' Chr$(183), not a literal middle-dot character, so the byte is unambiguous
+' regardless of how this .bas file's own encoding is read or re-saved --
+' this project has already been burned once by a line-ending assumption
+' silently changing a file's meaning (AppEvents.cls importing as the wrong
+' component type), and a raw non-ASCII glyph in source is the same class of
+' risk for one character instead of a whole file.
+Public Function ComposeSubtitleLine(rowValues As Object) As String
+    Dim fields As Variant
+    fields = SubtitleComponentFields()
+
+    Dim parts() As String
+    ReDim parts(UBound(fields))
+    Dim n As Long
+    n = 0
+
+    Dim f As Variant
+    For Each f In fields
+        Dim v As String
+        v = ""
+        If Not rowValues Is Nothing Then
+            If rowValues.Exists(CStr(f)) Then v = Trim(CStr(rowValues(CStr(f))))
+        End If
+        If v <> "" Then
+            parts(n) = v
+            n = n + 1
+        End If
+    Next f
+
+    Dim s As String
+    Dim i As Long
+    For i = 0 To n - 1
+        If s <> "" Then s = s & " " & Chr$(183) & " "
+        s = s & parts(i)
+    Next i
+    ComposeSubtitleLine = s
+End Function
+
 ' TEST-ONLY HOOK, same shape and same reason as ReviewQueue.
 ' mTestForceInjectCrash (its comment carries the full history). Error 50290
 ' (FIX-LIST.md item V) hit a FOURTH call site on 2026-08-19 -- this time
@@ -112,12 +186,6 @@ Public Const STATUS_BADGE_TAG As String = "STATUS_BADGE"
 ' Test_SyncOperations_PlanRoutineSyncNamesTheItemWhenProbeCrashes; never
 ' read by anything reachable from a button.
 '
-' MODULE-LEVEL DECLARATION, DELIBERATELY UP HERE with the Consts: a bare
-' module-level variable below the first procedure compiles quietly wrong and
-' reports its error in a DIFFERENT module -- hit twice on 2026-08-17, once
-' building the ORIGINAL version of this very fix (AGENTS.md, Known Patterns).
-Public mTestForcePlanCrash As Boolean
-
 ' Returns a string fraction 0-1 (e.g. "0.42"), clamped, or "" if either
 ' date is missing or unparseable -- refusing rather than drawing a wrong
 ' bar, the same rule InjectProgressVia already applies to an out-of-range
@@ -344,7 +412,13 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
             Dim fieldName As Variant
             For Each fieldName In rowValues.Keys
                 Dim sourceValue As String
-                sourceValue = rowValues(fieldName)
+                ' SUBTITLE_A's shape shows a composite, not its own raw
+                ' register value -- see SUBTITLE_COMPOSITE_FIELD's own note.
+                If CStr(fieldName) = SUBTITLE_COMPOSITE_FIELD Then
+                    sourceValue = ComposeSubtitleLine(rowValues)
+                Else
+                    sourceValue = rowValues(fieldName)
+                End If
 
                 Dim r As InjectResult
                 ' Routed by shape type. No Sources sheet is passed: PlanRoutineSync

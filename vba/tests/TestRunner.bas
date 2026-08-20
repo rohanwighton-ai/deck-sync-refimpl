@@ -792,6 +792,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "Drafting_HeaderRowDoesNotStrandTextFromAWiderPastLayout", r
+    If TestMatches("Drafting_SubcharsIsALiveFormulaNotASnapshot", filterPattern) Then
+        r = Test_Drafting_SubcharsIsALiveFormulaNotASnapshot()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "Drafting_SubcharsIsALiveFormulaNotASnapshot", r
     If TestMatches("Drafting_Layout6To7MigrationSwapsSourcesAndPrevCorrectly", filterPattern) Then
         r = Test_Drafting_Layout6To7MigrationSwapsSourcesAndPrevCorrectly()
     Else
@@ -2031,6 +2037,18 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "InjectField_RepeatingBarsOneCellManyMilestones", r
+    If TestMatches("InjectField_SlotsSplitsOneValueAcrossFixedShapes", filterPattern) Then
+        r = Test_InjectField_SlotsSplitsOneValueAcrossFixedShapes()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectField_SlotsSplitsOneValueAcrossFixedShapes", r
+    If TestMatches("SyncOperations_ComposeSubtitleLineJoinsWithMiddotSkippingEmpty", filterPattern) Then
+        r = Test_SyncOperations_ComposeSubtitleLineJoinsWithMiddotSkippingEmpty()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "SyncOperations_ComposeSubtitleLineJoinsWithMiddotSkippingEmpty", r
     If TestMatches("InjectProgress_TracklessPairMeasuresTheirSum", filterPattern) Then
         r = Test_InjectProgress_TracklessPairMeasuresTheirSum()
     Else
@@ -5643,6 +5661,85 @@ Private Function Test_Drafting_HeaderRowDoesNotStrandTextFromAWiderPastLayout() 
     xl.Quit
 
     Test_Drafting_HeaderRowDoesNotStrandTextFromAWiderPastLayout = result
+End Function
+
+' COL_D_SUBCHARS MUST BE A LIVE FORMULA, NOT A COMPUTED SNAPSHOT.
+'
+' SYSTEM-OVERVIEW.md documents column H as "character count, live formula",
+' but until this fix both write sites (CopyAiToSubmit and
+' RefreshSubmitCounts) wrote a VBA Len() literal into the cell instead of an
+' actual Excel formula. A literal is correct the instant it's written and
+' then silently stale forever after -- specifically, the moment someone
+' edits SUBMIT directly instead of pressing a button, nothing re-derives it.
+'
+' Proves BOTH write sites, and proves "live" literally: after CopyAiToSubmit
+' writes the formula, SUBMIT is edited by hand (bypassing every button,
+' exactly the case the defect was found from) and the count is checked to
+' have moved on its own, which only a real formula can do.
+Private Function Test_Drafting_SubcharsIsALiveFormulaNotASnapshot() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, ws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    Set wb = xl.Workbooks.Add()
+    Set ws = wb.Worksheets(1)
+
+    Dim r As Long
+    r = Drafting.DRAFT_FIRST_ROW
+    ws.Cells(r, Drafting.COL_D_ENTITY).Value = "P001"
+    ws.Cells(r, Drafting.COL_D_DRAFT).Value = "twelve chars"
+
+    ' Site 1: CopyAiToSubmit. AI DRAFT has text, SUBMIT is empty, so it gets
+    ' copied across and SUBCHARS written alongside it.
+    Drafting.CopyAiToSubmit ws
+
+    result = result & Assert(Left$(CStr(ws.Cells(r, Drafting.COL_D_SUBCHARS).Formula), 1) = "=", _
+        "CopyAiToSubmit must write a live formula into COL_D_SUBCHARS, not a computed literal -- got '" & _
+        CStr(ws.Cells(r, Drafting.COL_D_SUBCHARS).Formula) & "'")
+
+    Dim expectedLen As Long
+    expectedLen = Len(CStr(ws.Cells(r, Drafting.COL_D_SUBMIT).Value))
+    result = result & Assert(CLng(ws.Cells(r, Drafting.COL_D_SUBCHARS).Value) = expectedLen, _
+        "the formula must evaluate to SUBMIT's real length (" & expectedLen & ") -- got " & _
+        CStr(ws.Cells(r, Drafting.COL_D_SUBCHARS).Value))
+
+    ' THE ACTUAL LIVE TEST: hand-edit SUBMIT directly, no button pressed at
+    ' all, and confirm Excel recalculates SUBCHARS on its own. A Len()
+    ' literal from the write site above would still read the OLD length here
+    ' -- that is precisely the staleness the excel-hound audit found.
+    Dim handEdited As String
+    handEdited = "a much longer hand-typed replacement that nobody copied in"
+    ws.Cells(r, Drafting.COL_D_SUBMIT).Value = handEdited
+    result = result & Assert(CLng(ws.Cells(r, Drafting.COL_D_SUBCHARS).Value) = Len(handEdited), _
+        "a direct hand-edit to SUBMIT (bypassing every button) must recalculate SUBCHARS on its own -- got " & _
+        CStr(ws.Cells(r, Drafting.COL_D_SUBCHARS).Value) & ", wanted " & Len(handEdited))
+
+    ' Site 2: RefreshSubmitCounts, on a second row where SUBMIT was typed by
+    ' hand and nobody ever pressed Copy AI -> Submit.
+    Dim r2 As Long
+    r2 = r + 1
+    ws.Cells(r2, Drafting.COL_D_ENTITY).Value = "P002"
+    ws.Cells(r2, Drafting.COL_D_SUBMIT).Value = "hand typed"
+    Drafting.RefreshSubmitCounts ws
+
+    result = result & Assert(Left$(CStr(ws.Cells(r2, Drafting.COL_D_SUBCHARS).Formula), 1) = "=", _
+        "RefreshSubmitCounts must write a live formula into COL_D_SUBCHARS, not a computed literal -- got '" & _
+        CStr(ws.Cells(r2, Drafting.COL_D_SUBCHARS).Formula) & "'")
+
+    Dim expectedLen2 As Long
+    expectedLen2 = Len(CStr(ws.Cells(r2, Drafting.COL_D_SUBMIT).Value))
+    result = result & Assert(CLng(ws.Cells(r2, Drafting.COL_D_SUBCHARS).Value) = expectedLen2, _
+        "the formula must evaluate to SUBMIT's real length (" & expectedLen2 & ") -- got " & _
+        CStr(ws.Cells(r2, Drafting.COL_D_SUBCHARS).Value))
+
+    On Error Resume Next
+    wb.Close False
+    xl.Quit
+    On Error GoTo 0
+
+    Test_Drafting_SubcharsIsALiveFormulaNotASnapshot = result
 End Function
 
 ' LAYOUT 6 -> 7 IS A SWAP, NOT JUST A SHIFT -- THE MIGRATION MUST CROSS THE
@@ -14227,6 +14324,100 @@ Private Function Test_InjectField_RepeatingBarsOneCellManyMilestones() As String
 
     sld.Delete
     Test_InjectField_RepeatingBarsOneCellManyMilestones = result
+End Function
+
+' SLOTS SPLITS ONE VALUE ACROSS A FIXED SET OF SHAPES -- HIGHLIGHTS_BODY is
+' the specimen (three bullet shapes, "two to three headline outcomes").
+' Proves: segments land in order, an unused slot is blanked rather than left
+' holding a stale prior value, and too many segments for the slots present
+' refuses outright and names both counts -- the same "refuse, don't drop"
+' contract InjectRepeatingProgress already proves above.
+Private Function Test_InjectField_SlotsSplitsOneValueAcrossFixedShapes() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    Dim s1 As Object, s2 As Object, s3 As Object
+    Set s1 = sld.Shapes.AddTextbox(1, 40, 100, 300, 30)
+    s1.Tags.Add "role", "HIGHLIGHTS_BODY" & FieldWiring.SLOT_SUFFIX & "1"
+    Set s2 = sld.Shapes.AddTextbox(1, 40, 140, 300, 30)
+    s2.Tags.Add "role", "HIGHLIGHTS_BODY" & FieldWiring.SLOT_SUFFIX & "2"
+    Set s3 = sld.Shapes.AddTextbox(1, 40, 180, 300, 30)
+    s3.Tags.Add "role", "HIGHLIGHTS_BODY" & FieldWiring.SLOT_SUFFIX & "3"
+    s3.TextFrame.TextRange.Text = "stale prior-quarter line"
+
+    ' Two segments against three slots: fills 1 and 2 in order, blanks the
+    ' unused third rather than leaving its stale text sitting there.
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectField(sld, "HIGHLIGHTS_BODY", "First outcome" & InjectPrimitive.LINE_BREAK_DELIMITER & "Second outcome")
+
+    result = result & Assert(r.Written, "two segments against three slots is written [" & r.ErrorMessage & "]")
+    result = result & Assert(s1.TextFrame.TextRange.Text = "First outcome", _
+        "slot 1 gets the first segment, got '" & s1.TextFrame.TextRange.Text & "'")
+    result = result & Assert(s2.TextFrame.TextRange.Text = "Second outcome", _
+        "slot 2 gets the second segment, got '" & s2.TextFrame.TextRange.Text & "'")
+    result = result & Assert(s3.TextFrame.TextRange.Text = "", _
+        "the unused third slot is blanked, not left holding the stale line, got '" & s3.TextFrame.TextRange.Text & "'")
+
+    ' MORE SEGMENTS THAN SLOTS REFUSES OUTRIGHT -- same contract as the
+    ' repeating-bar count mismatch above. Nothing should move.
+    Dim r2 As InjectResult
+    r2 = InjectPrimitive.InjectField(sld, "HIGHLIGHTS_BODY", "A" & InjectPrimitive.LINE_BREAK_DELIMITER & "B" & InjectPrimitive.LINE_BREAK_DELIMITER & "C" & InjectPrimitive.LINE_BREAK_DELIMITER & "D")
+    result = result & Assert(Not r2.Written, "four segments against three slots is refused")
+    result = result & Assert(InStr(r2.ErrorMessage, "4") > 0 And InStr(r2.ErrorMessage, "3") > 0, _
+        "and the message names both counts, got '" & r2.ErrorMessage & "'")
+    result = result & Assert(s1.TextFrame.TextRange.Text = "First outcome", _
+        "and slot 1 is untouched by the refused write, got '" & s1.TextFrame.TextRange.Text & "'")
+
+    sld.Delete
+    Test_InjectField_SlotsSplitsOneValueAcrossFixedShapes = result
+End Function
+
+' COMPOSE SUBTITLE LINE JOINS FOUR COLUMNS WITH A MIDDOT, SKIPPING EMPTY
+' SEGMENTS CLEANLY -- Field Spec's own words: "the separators are chrome."
+' Two present segments must read as "A (middot) D", never "A (middot)
+' (middot) D" from a blank SECTOR/TRL leaving a dangling separator behind.
+Private Function Test_SyncOperations_ComposeSubtitleLineJoinsWithMiddotSkippingEmpty() As String
+    Dim result As String
+
+    Dim rows As Object
+    Set rows = CreateObject("Scripting.Dictionary")
+    rows.Add "SUBTITLE_A", "Antimicrobial resistance"
+    rows.Add "SUBTITLE_B", "in poultry systems"
+    rows.Add "SECTOR", ""
+    rows.Add "TRL", "TRL 4"
+
+    Dim joined As String
+    joined = SyncOperations.ComposeSubtitleLine(rows)
+
+    Dim expectedMiddot As String
+    expectedMiddot = " " & Chr$(183) & " "
+
+    result = result & Assert(joined = "Antimicrobial resistance" & expectedMiddot & "in poultry systems" & expectedMiddot & "TRL 4", _
+        "an empty SECTOR is skipped with no dangling separator either side, got '" & joined & "'")
+
+    ' All four present: three separators, none doubled.
+    Dim rows2 As Object
+    Set rows2 = CreateObject("Scripting.Dictionary")
+    rows2.Add "SUBTITLE_A", "A"
+    rows2.Add "SUBTITLE_B", "B"
+    rows2.Add "SECTOR", "C"
+    rows2.Add "TRL", "D"
+    result = result & Assert(SyncOperations.ComposeSubtitleLine(rows2) = "A" & expectedMiddot & "B" & expectedMiddot & "C" & expectedMiddot & "D", _
+        "all four present joins with exactly three separators, got '" & SyncOperations.ComposeSubtitleLine(rows2) & "'")
+
+    ' Only one present: no separator at all.
+    Dim rows3 As Object
+    Set rows3 = CreateObject("Scripting.Dictionary")
+    rows3.Add "SUBTITLE_A", "Solo"
+    rows3.Add "SUBTITLE_B", ""
+    rows3.Add "SECTOR", ""
+    rows3.Add "TRL", ""
+    result = result & Assert(SyncOperations.ComposeSubtitleLine(rows3) = "Solo", _
+        "a single present segment carries no separator at all, got '" & SyncOperations.ComposeSubtitleLine(rows3) & "'")
+
+    Test_SyncOperations_ComposeSubtitleLineJoinsWithMiddotSkippingEmpty = result
 End Function
 
 ' A BAR WITH NO TRACK, measured against its own remainder.

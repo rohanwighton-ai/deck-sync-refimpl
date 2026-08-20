@@ -79,6 +79,14 @@ Option Explicit
 Public Const TRACK_SUFFIX As String = ".track"
 Public Const REST_SUFFIX As String = ".rest"
 
+' A Slots field's Nth shape. Deliberately NOT ".1"/".2"/".3" -- that suffix
+' already means something else (InjectorFor checks it first, and it routes to
+' INJECTOR_REPEATING: several register VALUES, one per bar). Slots is the
+' opposite shape -- one value, split, one segment per shape -- and needs its
+' own suffix so a field could never accidentally satisfy both conventions and
+' be routed to the wrong injector.
+Public Const SLOT_SUFFIX As String = ".slot"
+
 Public Type FieldWiringResult
     Unmarked As String          ' register fields NO existing slide carries
     UnmarkedCount As Long
