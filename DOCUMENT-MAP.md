@@ -44,8 +44,18 @@ there is no Claude on the work machine. May also delete the planned device regis
 names carry device membership, the naming convention IS the registry.
 
 **4. "We are simplifying, why split?"** *(14 Aug)* Buttons are not a safety mechanism —
-the confirmation is. The toolbar went 16 → 2 on 9 August and stays at 2. **Eliminates:**
-recurring proposals to add a button for a problem already fixed at the root.
+the confirmation is. A capability earns a button only where a person has a decision to
+make at that boundary, never merely to be findable. **Eliminates:** recurring proposals
+to add a button for a problem already fixed at the root.
+
+> **How many buttons there are is not stated here, deliberately** — the `AddButton` calls
+> in `CommandBarUI.ShowToolbar` are the count, and they are the only thing that can be
+> right. This sentence read *"the toolbar went 16 → 2 on 9 August and stays at 2"* until
+> 2026-08-20, when an audit counted nine; two of the seven additions landed on 9 August
+> itself, so "stays at 2" may never have been true even the day it was written. Each
+> addition was independently justified against the rule above — the growth did not break
+> decision 4. **A hardcoded count in the document that forbids hardcoded counts is the
+> defect this file exists to prevent, sitting in the file itself.**
 
 **5. One add-in. The deck is the anchor.** *(14 Aug)* `ActivePresentation` yields the
 deck; the deck's properties yield the period and the workbook path. **Eliminates:** an
