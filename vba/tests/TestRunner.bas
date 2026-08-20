@@ -1013,6 +1013,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("Harvest_RefusesSubtitleAAsAComposite", filterPattern) Then
+        r = Test_Harvest_RefusesSubtitleAAsAComposite()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "Harvest_RefusesSubtitleAAsAComposite", r
     If TestMatches("Harvest_DryRunCountsFieldsThatLabellingWillCreate", filterPattern) Then
         r = Test_Harvest_DryRunCountsFieldsThatLabellingWillCreate()
     Else
@@ -7121,6 +7127,51 @@ Private Function Test_Harvest_RefusesAFieldThePublishPathWouldTreatAsABar() As S
     xl.Quit
 
     Test_Harvest_RefusesAFieldThePublishPathWouldTreatAsABar = result
+End Function
+
+' SUBTITLE_A's shape looks structurally like an ordinary text field --
+' InjectorFor would route it to INJECTOR_TEXT same as any other -- but what
+' it DISPLAYS is a middot-joined composite of four register columns, not its
+' own raw value. Harvesting the rendered text would write the whole
+' composite into this one column, corrupting it for the next real sync.
+' Same refusal E2EField.ReseedFromSlides applies for the identical reason.
+Private Function Test_Harvest_RefusesSubtitleAAsAComposite() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "harvest-type"
+    sld.Tags.Add "instance_key", "h-6"
+
+    Dim subtitle As Object
+    Set subtitle = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 100, 100, 300, 30)
+    subtitle.TextFrame.TextRange.Text = "Calix" & Chr$(183) & "UniSA" & Chr$(183) & "Livestock" & Chr$(183) & "TRL 3-5"
+    subtitle.Tags.Add "role", "SUBTITLE_A"
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+    ws.Cells(1, 2).Value = "Quarter"
+    ws.Cells(1, 3).Value = "SUBTITLE_A"
+    ws.Cells(2, 1).Value = "h-6"
+    ws.Cells(2, 2).Value = "Q4F26"
+
+    result = result & Assert(InjectPrimitive.InjectorFor(sld, "SUBTITLE_A") = InjectPrimitive.INJECTOR_TEXT, _
+        "the router calls this plain text, same as any ordinary field -- got '" & InjectPrimitive.InjectorFor(sld, "SUBTITLE_A") & "'")
+
+    Dim o As HarvestOutcome
+    o = Harvest.HarvestSlide(sld, ws, "Q4F26", False)
+
+    result = result & Assert(o.Ran, "the harvest ran, problem was '" & o.Problem & "'")
+    result = result & Assert(o.SkippedNotText = 1, _
+        "SUBTITLE_A was skipped as not genuinely harvestable text, got " & o.SkippedNotText)
+    result = result & Assert(o.Written = 0, "nothing was written, got " & o.Written)
+    result = result & Assert(IsEmpty(ws.Cells(2, 3).Value), _
+        "and its register cell is still empty, not corrupted with the composite string")
+
+    wb.Close False
+    xl.Quit
+
+    Test_Harvest_RefusesSubtitleAAsAComposite = result
 End Function
 
 ' THE PREVIEW MUST COUNT WHAT THE RUN WILL WRITE, NOT WHAT IS TAGGED TODAY.

@@ -412,6 +412,20 @@ Private Function ShapeIsNotHarvestableText(sld As Object, shp As Object, fname A
         Exit Function
     End If
 
+    ' SUBTITLE_A's shape structurally looks like an ordinary text field --
+    ' InjectorFor would happily route it to INJECTOR_TEXT below, because
+    ' nothing about its shape says otherwise. But what it DISPLAYS is a
+    ' middot-joined composite of four register columns
+    ' (SyncOperations.ComposeSubtitleLine), not its own raw value, and the
+    ' join drops empty segments -- so harvesting the rendered text would
+    ' write the whole composite into this one column, corrupting it for the
+    ' next real sync. Same refusal E2EField.ReseedFromSlides already applies
+    ' for the same reason.
+    If fname = SyncOperations.SUBTITLE_COMPOSITE_FIELD Then
+        ShapeIsNotHarvestableText = "a composite of four columns, not its own raw value"
+        Exit Function
+    End If
+
     Dim inj As String
     inj = InjectPrimitive.InjectorFor(sld, fname)
     If inj <> InjectPrimitive.INJECTOR_TEXT Then
