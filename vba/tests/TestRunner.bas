@@ -1731,6 +1731,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "Drafting_CitedSourceReachesThePromptCell", r
+    If TestMatches("Drafting_OrdinaryRewriteLeavesThePersonsColumnsUntouched", filterPattern) Then
+        r = Test_Drafting_OrdinaryRewriteLeavesThePersonsColumnsUntouched()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "Drafting_OrdinaryRewriteLeavesThePersonsColumnsUntouched", r
     If TestMatches("Drafting_Layout3SheetMigratesIntoLayout4Columns", filterPattern) Then
         r = Test_Drafting_Layout3SheetMigratesIntoLayout4Columns()
     Else
@@ -12833,6 +12839,72 @@ Private Function Test_Drafting_CitedSourceReachesThePromptCell() As String
     Set xl = Nothing
 
     Test_Drafting_CitedSourceReachesThePromptCell = result
+End Function
+
+' THE ORDINARY PATH -- SAME LAYOUT, SAME PERIOD, THE ONE THAT RUNS EVERY
+' SINGLE TIME "1. Set up my quarter" IS PRESSED ON A NORMAL DAY -- HAS NO
+' BACKUP, BY DESIGN, BECAUSE IT NEVER TOUCHES A PERSON'S OWN COLUMNS AT ALL.
+' Drafting.bas's own comment calls this out directly: "THE PERSON'S COLUMNS
+' ARE NOT WRITTEN HERE. THAT IS THE FIX." That claim was asserted in prose
+' and never enforced by a test -- this is the enforcement. Written 2026-08-20
+' after Rohan asked whether backing up the ordinary path (mirroring the
+' layout-migration and period-turnover paths, which DO park a copy) was
+' actually the right fix: it isn't, because there is nothing on this path
+' for a backup to protect against UNLESS this exact invariant regresses.
+' This test is the cheap thing that actually catches that regression, at
+' zero runtime cost, rather than a backup that would run -- and clutter the
+' workbook with a fresh SAVED sheet -- on every single ordinary press.
+Private Function Test_Drafting_OrdinaryRewriteLeavesThePersonsColumnsUntouched() As String
+    Dim result As String
+
+    Dim xl As Object, wb As Object, regWs As Object, dws As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set regWs = wb.Worksheets(1)
+    Set dws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+
+    ExcelOutput.CreateSheet regWs, "deck-v1"
+    Dim vals As Object
+    Set vals = CreateObject("Scripting.Dictionary")
+    vals("ABOUT_BODY") = "register text"
+    ExcelOutput.UpsertRow regWs, "2_P004", vals, "Q4F26"
+    Dim reg As Sheet
+    reg = ExcelOutput.ReadSheetForDeckPeriod(regWs, "Q4F26", "")
+
+    ' First build: creates the row at the current layout, current period --
+    ' the ordinary state a real sheet is in on any normal day.
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", Nothing
+
+    ' Now type into it, exactly as a person would.
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value = "S12"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).Value = "AI DRAFT TEXT"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value = "MY SUBMITTED WORDS"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value = "Y"
+    dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value = "MY NOTE TO MYSELF"
+
+    ' The ordinary rewrite: SAME layout (nothing bumped since the first
+    ' build), SAME period, and the row already exists -- not a migration,
+    ' not a rollover, not a new project.
+    Drafting.WriteDraftingSheet dws, reg, "ABOUT_BODY", Nothing, "Q4F26", Nothing
+
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SOURCES).Value) = "S12", _
+        "SOURCES survives an ordinary rewrite untouched")
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_DRAFT).Value) = "AI DRAFT TEXT", _
+        "AI DRAFT survives an ordinary rewrite untouched")
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_SUBMIT).Value) = "MY SUBMITTED WORDS", _
+        "SUBMIT survives an ordinary rewrite untouched")
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_APPROVED).Value) = "Y", _
+        "the APPROVE tick survives an ordinary rewrite untouched")
+    result = result & Assert(CStr(dws.Cells(Drafting.DRAFT_FIRST_ROW, Drafting.COL_D_NOTES).Value) = "MY NOTE TO MYSELF", _
+        "NOTES survives an ordinary rewrite untouched")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing
+    Set xl = Nothing
+
+    Test_Drafting_OrdinaryRewriteLeavesThePersonsColumnsUntouched = result
 End Function
 
 ' A LAYOUT-3 SHEET MUST GIVE UP ITS WORK INTO THE LAYOUT-4 POSITIONS.
