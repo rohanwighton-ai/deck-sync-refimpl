@@ -4612,19 +4612,51 @@ review (this session) sorted the remaining 6:
     raw XML bytes (not the writer's in-process report): all 5
     `MS1-5_DONE` read back `Y`. **Register only** -- the deck slide (10)
     still needs a real sync run to pick this up; not done automatically.
-  - **Ambiguous, needs a person's read, not a guess -- NOT fixed**:
-    `2_P009` (0/7 marked despite real completed activities in
-    `KEY_EVENTS_BODY`, but no clean 1:1 mapping to the 7 labels -- Fable
-    independently flagged the same "no basis in the register to decide
-    which slots" problem), `1_K1004`, `1_K1008`, `3_K016`, `1_K022` (each
-    has SOME later milestones plausibly complete per the narrative, but
-    at least one explicitly still open -- e.g. `1_K1008`: "molecular
-    testing remains incomplete").
+**BETTER EVIDENCE FOUND: `SRC_MILESTONES`.** Rohan's own question ("can't
+you check the milestone info against the source evidence in the xl
+file?") pointed at a sheet not yet consulted -- one row per milestone,
+pasted from the real CRC SAAFE Milestone & Deliverable Tracker (source
+S04), carrying `Deliverable Completion RM %`, `Project Status (S10)` and
+the raw Knack reporting comments per milestone. This is materially better
+evidence than inferring from drafted narrative prose, and re-triaged all
+5 remaining rows against it:
 
-**Partially fixed.** `1_P010` done and verified in the register (needs a
-sync run to reach the deck). The other 5 still await Rohan's call before
-any write -- this needs a register-content decision per project, not a
-VBA change. The drawing code itself was never wrong, confirmed twice.
+  - **FIXED 2026-08-22**: `3_K016` -- source's M05 ("Publish findings") is
+    explicitly `Complete` ("Paper submitted... final stages of
+    preparation"), matching register `MS5` (was blank). `MS6` ("Kickstart
+    end") has no source row of its own -- same administrative pattern as
+    `MS1` -- and every substantive milestone is now done, so marked `Y`
+    too. Backed up, written via the live Excel session (single-project
+    write; the combined two-project script was blocked by Claude Code's
+    own auto-mode safety classifier and split per Rohan's instruction),
+    verified from the saved file's raw bytes: all 6 slots now `Y`.
+  - **FIXED 2026-08-22**: `2_P009` -- source M01/M02 map to register
+    `MS2`/`MS3`, both `Complete`. `MS6` shows `Completion=0` but its own
+    comment overrides the stale number: "has been complete successfully
+    and a report has been generated." `MS4`/`MS5` map to genuinely
+    incomplete source rows and were left blank. `MS1` was NOT touched --
+    outside what was proposed and approved, flagged separately rather
+    than silently added; every other project here has `MS1` pre-marked,
+    so this is a real inconsistency worth a decision, just not made
+    unilaterally. Verified from saved bytes: `MS2`/`MS3`/`MS6` = `Y`,
+    `MS1`/`MS4`/`MS5`/`MS7` unchanged.
+  - **Confirmed correct as-is, no change**: `1_K022` -- source M04
+    ("Finalise and distribute draft report") explicitly still pending
+    sign-off ("final report with Dr Kelly Hill and Prof Erica Donner for
+    final review"). Register's matching slot was already blank.
+  - **Still genuinely ambiguous, left for Rohan**: `1_K1004`, `1_K1008` --
+    the tracker's milestone numbering doesn't map cleanly onto the
+    register's MS-slots for either (multi-item milestone descriptions
+    bundling more than one register slot into a single tracker row).
+    Cell locations handed to Rohan directly: `1_K1004` row 59 (`Q59`
+    MS2/`T59` MS3/`W59` MS4/`Z59` MS5/`AC59` MS6), `1_K1008` row 63 (same
+    column layout).
+
+**Mostly fixed.** `1_P010`, `3_K016`, `2_P009` done and verified in the
+register (all need a sync run to reach the deck). `1_K022` needed no
+change. `1_K1004`/`1_K1008` await Rohan's own read -- cells identified,
+evidence surfaced, decision genuinely his to make. The drawing code
+itself was never wrong, confirmed three times now (twice independently).
 
 ## Added 2026-08-22 — CL, STILL OPEN, content depth drops sharply for
 ## S007 onward (13 slides) versus the original hand-built deck

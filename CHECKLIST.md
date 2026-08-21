@@ -1543,11 +1543,18 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
 
 - [~] **CK — milestone timeline doesn't reflect project closure, 7 real
       candidates (of 8 closed projects; P008 has no milestones to mark).**
-      Register data gap, not code. Fable independently confirmed. `1_P010`
-      FIXED and verified in the register (needs a sync run to reach the
-      deck). `3_P001` confirmed CORRECT AS-IS (closed early, per its own
-      narrative). 5 still open, genuinely ambiguous, awaiting Rohan's
-      read: `2_P009`, `1_K1004`, `1_K1008`, `3_K016`, `1_K022`.
+      Register data gap, not code. Fable independently confirmed.
+      `SRC_MILESTONES` (the real CRC tracker extract, per Rohan's own
+      question) gave much better evidence than narrative prose. FIXED and
+      verified: `1_P010` (all 5), `3_K016` (`MS5`/`MS6`), `2_P009`
+      (`MS2`/`MS3`/`MS6`). Confirmed correct as-is, no change: `3_P001`
+      (closed early), `1_K022` (final report explicitly still pending
+      sign-off). Still open, genuinely ambiguous, cells identified for
+      Rohan: `1_K1004` (row 59), `1_K1008` (row 63) -- tracker milestone
+      numbering doesn't map cleanly to register slots for either. Also
+      noted, not acted on: `2_P009`'s `MS1` is blank unlike every other
+      project here -- outside what was proposed/approved, flagged not
+      fixed.
 - [ ] **CL — content depth drops sharply for S007 onward (13 slides).**
       Rest of the deck runs 80-100% of original text length; `S007`-`S023`
       sits at 55-70%. Reads like a drafting/sourcing depth gap for this
