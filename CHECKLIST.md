@@ -84,10 +84,23 @@ same night — real findings, real fixes, all verified from saved bytes:**
       `BuildAllQueuesCore` was fixed to actually write it there.
 
 **Still open from the same audit, not yet actioned:**
-- [ ] `DeckAdoption.bas:101`'s own unfiltered-read gap — a different
-      function (`PlanAdoption`, new-project onboarding) than the ones
-      already fixed, needs its own look at adoption's period semantics
-      before a quick swap-in is safe.
+- [x] `DeckAdoption.bas:101`'s own unfiltered-read — **investigated,
+      false positive, no fix needed.** `PlanAdoption` calls
+      `ExcelOutput.ReadSheet(ws)` but uses exactly one member of the
+      result, `sheet.Fields` — and `.Fields` is built purely from the
+      header row (`ReadSheetForPeriod`, before any period filter is
+      applied), identical whether read filtered or unfiltered. The actual
+      row-level work this function does (`ReadKeylessRows`, matching
+      pre-existing untagged legacy data into the bootstrap) is a separate,
+      deliberate raw-cell scan across every row regardless of period —
+      correct, because that data can predate the period column entirely
+      or span periods, and this is the one-time historical bootstrap, not
+      ongoing sync. Same surface shape as the real period-collision bug
+      (`ExcelOutput.ReadSheet` with no period arg) but the vulnerable path
+      — silent first-wins row collision — is never reached, since `.Rows`
+      is never consumed here. Swapping to `ReadSheetForDeckPeriod` would
+      add nothing (Fields is unaffected) and would be actively wrong if
+      anyone later extended it to also filter Rows.
 - [ ] `VerifyRealDeck`'s first real 624/62 findings — untriaged. At least
       one likely systematic false-positive already spotted (role-tag-only
       lookup missing the milestone device's by-name addressing).
