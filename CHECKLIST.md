@@ -6,7 +6,39 @@
 > handover surface: `NEXT-SESSION.md`'s CURRENT block points here first. Add to
 > it, tick it here, together — don't let it drift back into prose.
 
-## INCIDENT 2026-08-21 — real content blanked by a real sync, restored, root-caused, fixed, deployed. READ FIRST.
+## INCIDENT 2026-08-21 (evening) — a diagnostic sync tool silently wrote LAST QUARTER's data onto the live deck, twice, both reporting a clean save. READ FIRST.
+
+**Second incident of the day, different shape.** `sync_real_deck.ps1` (not
+the real Sync Now button — a standalone diagnostic twin of it) reads the
+register via an unfiltered `ExcelOutput.ReadSheet`, whose own code comment
+says "first row wins" on a duplicate instance ID — and Q3F26 rows sit above
+Q4F26 rows in the register, so it silently synced last quarter's prose onto
+43 live slides, twice, both times reporting "SAVED to disk (verified)."
+Caught only by re-reading the saved file's own bytes independently. The real
+"Sync Now" button was never affected — `RibbonUI.bas` already reads
+period-aware. Full account: `FIX-LIST.md`, "INCIDENT, 2026-08-21 (evening)."
+
+- [x] Deck restored to the last state confirmed (by direct content check) to
+      predate both buggy runs and still carry the same night's milestone
+      geometry fix.
+- [x] Root cause found by reading `ExcelOutput.ReadSheetForPeriod`'s actual
+      collision-handling code, not guessed.
+- [x] Fix: `SyncRealDeck.bas`/`HiddenFixCheck.bas` now build the sheet the
+      same period-aware way the real button does
+      (`ReadSheetForDeckPeriod` + `RunRoutineSyncWithSheet`).
+      `RunRoutineSync` (the unfiltered wrapper) left in place but loudly
+      marked do-not-call, since deleting it risks an unknown caller.
+- [x] Same session, same tool-drift shape: `preview_real_deck.ps1`/
+      `sync_real_deck.ps1` were importing a second, stale copy of the
+      production module list (missing 5 modules, one deleted-module
+      reference, no CRLF handling for the one `.cls`) — now import the
+      same canonical list `build_ppam.ps1` uses.
+- [x] Re-verified independently from saved bytes after the fix: Q4F26
+      throughout, all 16 `PROJECT_PROGRESS` values correct (tag-scoped
+      check, not a blind text scan), `KEY_EVENTS_HEADER` 0/43 remaining
+      placeholders, milestone geometry intact.
+
+## INCIDENT 2026-08-21 (morning) — real content blanked by a real sync, restored, root-caused, fixed, deployed.
 
 **The most serious incident this project has had.** A real "Put it on the slides"
 sync blanked 117 fields of real, human-authored content across 41+ live slides
@@ -31,10 +63,16 @@ as real content. Full account: FIX-LIST.md, "INCIDENT, 2026-08-21."
       before. Rebuilt (`addin156.ppam`), deployed, verified persisted across a
       real close/reopen, verified live via the build-stamp dialog with Rohan
       reading it directly off his own screen.
-- [ ] **Still open**: the register's ~158 husk cells (zero-length-strings) are
-      safe now (guarded, not destructive) but still genuinely empty of real
-      content — a real Harvest pass or manual entry is needed to actually
-      recover the data into the register.
+- [x] **Partially closed, same night**: `PROJECT_PROGRESS` (16 of the worst-
+      affected projects, sourced from `SRC_MILESTONES` column M, confirmed
+      with Rohan) and `PROJECT_STATUS` (all 41 blank Q4F26 rows, set to
+      "In Progress" on milestone-done evidence, also confirmed with Rohan —
+      plus a new Excel dropdown so future quarters can't leave it blank the
+      same way) are now real. `STRATEGIC_ALIGNMENT_BODY`/`PROBLEM_BODY`
+      husk cells and the remaining 27 projects' pre-existing
+      `PROJECT_PROGRESS` values were untouched (already fine) — still
+      genuinely empty where the source material itself hasn't been drafted
+      yet (see "extraction-to-quality loop" below).
 - [ ] The exact mechanism that minted zero-length-strings instead of true Empty
       cells on 2026-08-20 was not identified — worth naming if it recurs.
 

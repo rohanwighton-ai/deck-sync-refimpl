@@ -4149,3 +4149,215 @@ having Rohan read it directly: **`addin156` confirmed live.**
   script wasn't preserved"). Worth naming if it recurs -- a bulk `Range
   = array` assignment with `""` elements mints ZLS; a scalar `.Value =
   ""` does not, per the same investigation's own note.
+
+## Fixed 2026-08-21 (evening) — CB, milestone label boxes were sized for one
+## line on 31 real projects that genuinely need two
+
+Rohan: *"fixing milestones important"* — `3_K016`'s `MS1_LABEL` ("Kickstart
+initiated | Dec 2025") was overlapping `MS2`'s circle below it. First theory
+(wrong, corrected before anything was touched): that the non-standard wording
+was corrupted data needing reset to the generic "Project initiated." Checked
+against the pre-add-in backup and scanned every real project first, per
+Rohan: *"measuere on my original slides, I dont trust what the addin did."**
+Confirmed **31 real projects** (all 15 K-type, all 16 S-type) carry
+deliberate, type-specific two-line wording ("Kickstart initiated |
+[date]"/"PhD Commencement | [date]") — legitimate content, not a defect.
+
+**The real defect**: static XML across all 46 slides (43 real + P/K/S
+templates) showed byte-identical `MILESTONE_TIMELINE` geometry everywhere —
+slots 1/3/4/7 fixed at H=12.5pt (room for one line), slots 2/5/6 at
+H=21.5-22.9pt (room for two). Rohan: *"you shouldn't have geometry and
+position [differences] if they are copied elements?"* — correct: since every
+real slide is a faithful `Shape.Copy`/`Shapes.Paste` clone of its P/K/S
+template (see BT above), the height split is baked into the TEMPLATE, not
+per-slide drift. `MilestoneDevice.bas`'s own design rule (Rohan, 2026-08-13:
+*"you can see the extremely accurate positioning? we need to maintain
+that"*) means `DrawMilestones` never touches label geometry — the fix could
+only be a template-level edit, re-propagated the same way the device was
+built.
+
+**Fix**: grew slots 1/3/4/7's label boxes to match 2/5/6 (22.92pt), centred
+on each label's own existing circle (matching the pattern slot 2 already
+used), applied identically across all 46 slides in one pass. **First attempt
+silently failed** — `Presentations.Open`'s 3rd parameter (`Untitled`) was
+`$true`, so PowerPoint opened the content disconnected from the real path;
+`Save()` reported success against a phantom in-memory document while the
+real file's mtime never moved. Caught by re-reading the saved file's own
+bytes rather than trusting the script, same discipline as the morning
+incident — refixed with `Untitled=$false` and a hard guard (abort if the
+reopened `.FullName` doesn't match the real path) so this can't repeat
+silently. Verified from saved bytes: all 46 slides uniform,
+`MS1/3/4/7_LABEL` now 22.92pt.
+
+## Fixed 2026-08-21 (evening) — CC, `KEY_EVENTS_HEADER`'s legitimate blank
+## was being treated the same as "cannot compute" and silently never written
+
+`SyncOperations.PlanRoutineSync`'s derived-field loop gates every write on
+`derivedVal <> ""`, on the assumption `""` only ever means "no source data."
+True for `TIMELINE_ELAPSED`/`STATUS_BADGE`, false for `KEY_EVENTS_HEADER`:
+`DeriveKeyEventsHeader` returns `""` as the CORRECT answer whenever
+`PROJECT_STATUS = "In Progress"` — the header is supposed to render as
+nothing. The existing regression test (`...BothDerivedFieldsReachable
+ThroughPlanRoutineSync`) had actually enshrined the bug: its own comment
+called the placeholder-shape-left-untouched outcome correct, using a fixture
+seeded with arbitrary text ("should stay untouched") rather than the real
+`<<KEY_EVENTS_HEADER>>` placeholder every real slide actually starts with —
+a test that validated the wrong scenario convincingly.
+
+Practical effect: every "In Progress" project's slide (the overwhelming
+majority) showed the raw `<<KEY_EVENTS_HEADER>>` token forever, because the
+write was never attempted, not because it failed.
+
+**Fix**: the gate now also attempts the write whenever `PROJECT_STATUS` was
+actually read for the row (`rowValues.Exists("PROJECT_STATUS")`), regardless
+of whether the computed value is blank — and defers the actual safety
+decision to `InjectPrimitive`'s own `refuseBlankOverReal` guard, which is
+already placeholder-aware and was being bypassed entirely by this shortcut.
+Rewrote the existing test to assert the corrected behaviour (placeholder ->
+real blank) and added a new one proving real hand-typed content still
+survives (the guard is reached, not merely present in source). Both fail-
+first proven; full `InjectField`/`SyncOperations` regression cluster green.
+
+**A second, genuine data gap surfaced verifying this, not a code bug**:
+`PROJECT_STATUS` (a `Controlled`-kind field, fixed vocabulary "In
+Progress"/"Not Started"/"Project Closed") was blank for Q4F26 on 41 of 43
+projects — the fix correctly refused to guess rather than write garbage.
+Milestone-done evidence (37/41 show `MS1_DONE=Y`, none show `MS7_DONE=Y` or
+any closure signal) supported "In Progress" for all 41; confirmed with
+Rohan rather than inferred silently (Field Spec's own text: *"do not infer
+or fill the gap"*), then written in. Also added an Excel data-validation
+dropdown on the `PROJECT_STATUS` column (the only `Controlled`-kind field in
+the whole Field Spec) so future quarters get a constrained in-cell picker
+instead of a blank cell nobody remembers to fill correctly.
+
+## Fixed 2026-08-21 (evening) — CD, `PROJECT_PROGRESS` rendered as a raw
+## decimal ("0.8027") instead of a percentage on 16 real slides
+
+`PROJECT_PROGRESS` is `Kind=Given`, stored in the register as display text
+("80%", not 0.8) per its own Field Spec contract — the opposite convention
+from the BAR path, whose own contract is a raw 0-1 fraction
+(`InjectProgressVia`'s error message: *"0.9, not 90 and not '90%'"*). Two
+different injectors, two different, mutually-inverted conventions for the
+same-looking value — worth remembering if this field's routing ever changes
+again. On the 16 real slides where `PROJECT_PROGRESS` has no track/rest companion,
+`InjectorFor` correctly falls through to the plain-text writer — which had
+no idea this one field's register value needs percentage formatting, and
+wrote whatever raw text sat in the cell verbatim. Same failure shape already
+documented in this file for a trackless bar ("the injector was never the
+thing that was wrong") — the value preparation was.
+
+**Fix**: `InjectField`'s plain-text (`Case Else`) branch now runs the source
+value through a new `FormatIfProgressText`, scoped exactly to
+`PROJECT_PROGRESS` — numeric and in 0-1 range converts to a whole-number
+percentage string; anything already formatted, non-numeric, or out of range
+passes through unchanged (not this function's job to guess-correct a
+data-entry error). New fail-first-proven test through `InjectField` (not
+`InjectPrimitive` directly, since the fix lives one layer up in the
+dispatch), plus a negative case proving the formatting is scoped to this
+one field and doesn't touch anything else.
+
+**Root cause of the 16 wrong values, checked directly rather than assumed**:
+the register's `PROJECT_PROGRESS` was genuinely blank for Q4F26 on 41 of 43
+projects (all of them, not just these 16) — the stale numbers were leftover
+content from an earlier quarter or early testing, never refreshed, and the
+same-night `refuseBlankOverReal` guard (see the morning INCIDENT below)
+correctly refused to blank them rather than erase real-looking content.
+Sourced real Q4F26 values from `SRC_MILESTONES` column M ("Project
+Completion %") — a permanent, already-pasted-in sheet the sheet's own row 7
+documents as feeding `PROJECT_PROGRESS` directly — for the 16 with the worst
+(and, on inspection, duplicated/leaked) stale values; confirmed with Rohan
+before writing, not inferred. The other 27 projects' register values were
+already correct and untouched.
+
+
+## INCIDENT, 2026-08-21 (evening) — a diagnostic sync tool silently wrote
+## LAST QUARTER's prose onto the live deck, twice, both reporting "SAVED to
+## disk (verified)"
+
+The second serious incident this project has had, different shape from the
+morning one (destructive blanking vs. silent regression to stale data), same
+root lesson: a green report is not evidence.
+
+**What happened.** After fixing CC/CD above, ran `sync_real_deck.ps1
+-SaveWhenDone` twice against the real deck to apply them. Both runs reported
+"43 corrected... SAVED to disk (verified)." Independent verification (a
+byte-copy of the saved file, parsed fresh, never trusting the writer's own
+in-process report) showed `PROGRESS_BODY` reading *"Last reported quarter
+update – Q3F26"* on the live slides — not Q4F26. The deck had been silently
+regressed by a full quarter.
+
+**Root cause, found by reading the actual code, not guessed.**
+`SyncRealDeck.bas` (the driver `sync_real_deck.ps1` uses) calls
+`RunSync.RunRoutineSync`, which reads the register via
+`ExcelOutput.ReadSheet(ws)` — `ReadSheetForPeriod(ws, "")`, no period filter.
+`ReadSheetForPeriod`'s own code comment states the collision rule plainly:
+*"Same project, same period, twice. First one wins."* With no filter, EVERY
+row for a given instance ID passes the keep-check, so "first" isn't "same
+period twice" as the comment's own example assumes — it's whichever period's
+row sits highest in the sheet. Q3F26 rows sit above Q4F26 rows in every real
+register past its first quarter, so this reads last quarter's data for
+every field on every project, not just the two just-fixed ones — CC's own
+"43 corrected" success for `KEY_EVENTS_HEADER` earlier the same night likely
+also ran against Q3F26 `PROJECT_STATUS`, invisible only because that
+specific value happened not to differ between quarters for most projects.
+
+**The real "Sync Now" button was never affected.** `RibbonUI.bas` (what
+Rohan actually presses) builds its sheet via `ExcelOutput.
+ReadSheetForDeckPeriod(ws, period, problem)` — genuinely period-aware,
+confirmed by reading the call site directly. `SyncRealDeck.bas`'s own header
+comment claimed to be *"the same RunSync.RunRoutineSync"* mirroring
+`SyncNow`'s behaviour; that claim was false the whole time this bug existed
+— a real, undetected drift between a diagnostic tool and the button it
+claimed to twin, same shape as `OnboardFlow.bas`/`AppEvents.cls` staleness
+found fixing the tooling earlier the same session (see below).
+
+**Immediate response.**
+1. Corrupted state preserved as its own backup before touching anything
+   (`PRE-RESTORE-period-bug-corrupted-*.bak`) — evidence kept, not
+   discarded.
+2. Restored the deck from the last backup confirmed (by direct content
+   check, not assumed) to predate BOTH buggy runs and still carry the CB
+   milestone-height fix — one clean restore point, nothing re-done.
+3. Register was NOT reverted — it was never the corrupted side; the bug was
+   in the sync tool's read logic, not the stored data. All of tonight's
+   register writes (CC/CD's real values, `PROJECT_STATUS`) survived intact.
+
+**The fix.** `SyncRealDeck.bas` and `HiddenFixCheck.bas` (the only two
+callers of the unfiltered path) now build the sheet the same period-aware
+way `RibbonUI.SyncNow` already did — `ExcelOutput.ReadSheetForDeckPeriod(ws,
+DeckRegistry.GetDeckPeriod(pres), problem)` — and call
+`RunSync.RunRoutineSyncWithSheet` directly. `RunRoutineSync` itself (the
+unfiltered wrapper) is left in place, since deleting it risks breaking a
+caller this search didn't find, but now carries a loud "DO NOT ADD A NEW
+CALLER" comment naming the exact failure and pointing at the fix, so a third
+caller can't reintroduce this silently.
+
+**Also found and fixed reaching this point, same tool-drift shape as CB's
+`Untitled` bug**: `preview_real_deck.ps1`/`sync_real_deck.ps1` both
+hand-maintained a second, already-stale copy of the production module list
+— missing `IdentityCheck`/`ReviewQueue`/`TemplateSlide`/`CommandBarUI`/
+`Sources` (needed by `PreviewRoutineSync`'s R9 duplicate-key check),
+referencing a deleted `OnboardFlow.bas`, and copying `AppEvents.cls`
+byte-for-byte without the LF->CRLF conversion `run_vba_tests.ps1` already
+documents as required for a class module's header to be recognised at all
+(silent import as a plain Standard Module, then a generic "Expected: end of
+statement" nowhere near the real cause). Both scripts now import the exact
+canonical list `build_ppam.ps1` uses for the real shipped add-in.
+
+**Verified, independently, from the saved file's own bytes, after the
+re-run**: period text reads Q4F26 throughout; all 16 `PROJECT_PROGRESS`
+values match the sourced numbers exactly (tag-scoped read, not a blind text
+scan — an earlier "still broken" alarm during this same investigation
+turned out to be a different, unrelated stray value on the same slides,
+caught by a regex that matched anywhere in the slide rather than the
+actually-tagged shape); `KEY_EVENTS_HEADER` placeholder count 0/43 (42
+correctly blank, 1 real, matching each project's actual status); milestone
+geometry from CB still intact, unaffected throughout.
+
+**Lesson for next time, stated so it's checkable**: a "headless twin" of a
+real button is a claim, not a guarantee — the two code paths can drift
+apart silently, and the only way to know is to read both call chains, not
+trust a header comment. Worth a standing check: before trusting any
+`vba/tools/*.bas` script that claims to mirror a real ribbon action, grep
+the actual button's handler and diff the call chain.
+
