@@ -28,19 +28,46 @@ $staging = Join-Path $env:TEMP ("deck-sync-verify-" + [guid]::NewGuid().ToString
 New-Item -ItemType Directory -Path $staging | Out-Null
 $vbaSourceDir = Join-Path $RepoRoot "vba"
 
-$modules = @(
-    (Join-Path $vbaSourceDir "Resolve.bas"),
-    (Join-Path $vbaSourceDir "ExcelOutput.bas"),
-    (Join-Path $vbaSourceDir "tools\VerifyRealDeck.bas")
+# CORRECTED 2026-08-21: this used to import a hand-picked 3-module subset
+# (Resolve/ExcelOutput/VerifyRealDeck) that never covered what VerifyRealDeck
+# actually calls (DeckRegistry, InjectPrimitive, WorkbookBridge, and their
+# own transitive dependencies) -- a mother-hound audit found this script had
+# been unable to compile for three weeks while still exiting 0. Same failure
+# shape already fixed the same night in preview_real_deck.ps1/
+# sync_real_deck.ps1: stop hand-maintaining a second, silently-driftable
+# copy of the dependency graph, use the canonical list build_ppam.ps1 uses
+# for the real shipped add-in instead.
+$moduleNames = @(
+    "Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas",
+    "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas",
+    "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "PlaceholderCheck.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas",
+    "DeckRegistry.bas", "WorkbookBridge.bas", "Harvest.bas", "RibbonUI.bas",
+    "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas",
+    "ReviewQueue.bas", "FieldWiring.bas", "MilestoneDevice.bas",
+    "Drafting.bas", "FieldSpec.bas", "Sources.bas", "DraftingUI.bas", "DiscoverUI.bas",
+    "DraftingLobby.bas", "AppEvents.cls", "ShapeAddressBook.bas", "Timing.bas", "FormattingAudit.bas"
 )
-foreach ($m in $modules) { Copy-Item $m -Destination $staging }
+foreach ($m in $moduleNames) {
+    $srcPath = Join-Path $vbaSourceDir $m
+    $dstPath = Join-Path $staging $m
+    if ($m -like "*.cls") {
+        # CRLF, NOT A PLAIN COPY -- see run_vba_tests.ps1's own comment on this
+        # exact line. LF-only makes Import() treat the class header as
+        # unrecognised and silently import it as a plain Standard Module.
+        ((Get-Content $srcPath -Raw) -replace "`r`n", "`n" -replace "`n", "`r`n") | Set-Content $dstPath -NoNewline
+    } else {
+        Copy-Item $srcPath -Destination $dstPath
+    }
+}
+Copy-Item (Join-Path $vbaSourceDir "tools\VerifyRealDeck.bas") -Destination $staging
 
 $ppt = New-Object -ComObject PowerPoint.Application
 $ppt.Visible = -1
 $pres = $null
+$driverFailed = $false
 try {
     $pres = $ppt.Presentations.Add()
-    foreach ($m in @("Resolve.bas", "ExcelOutput.bas", "VerifyRealDeck.bas")) {
+    foreach ($m in ($moduleNames + @("VerifyRealDeck.bas"))) {
         $comp = $pres.VBProject.VBComponents.Import((Join-Path $staging $m))
         Write-Output ("Imported $m as: " + $comp.Name)
     }
@@ -59,6 +86,11 @@ try {
 }
 catch {
     Write-Output ("=== DRIVER ERROR === " + $_.Exception.Message + " [line " + $_.InvocationInfo.ScriptLineNumber + ": " + $_.InvocationInfo.Line.Trim() + "]")
+    # CORRECTED 2026-08-21: this used to fall through to a normal (0) exit
+    # even on a genuine failure -- "unable to compile for three weeks and
+    # exits 0 anyway" (mother-hound). A DRIVER ERROR line in the output is
+    # not the same as a caller checking $LASTEXITCODE.
+    $driverFailed = $true
 }
 finally {
     if ($pres) { $pres.Saved = $true; try { $pres.Close() } catch {} }
@@ -73,3 +105,5 @@ finally {
     Get-Process POWERPNT -ErrorAction SilentlyContinue | Where-Object { -not $_.MainWindowTitle } | Stop-Process -Force -ErrorAction SilentlyContinue
     Get-Process EXCEL -ErrorAction SilentlyContinue | Where-Object { -not $_.MainWindowTitle } | Stop-Process -Force -ErrorAction SilentlyContinue
 }
+
+if ($driverFailed) { exit 1 }

@@ -19,8 +19,20 @@ Option Explicit
 ' path RunSync/DeckAdoption already trust), walks its shapes recursively
 ' (mirrors InjectPrimitive.bas's WalkForRoleTag) collecting role-tagged
 ' shapes' current text, and compares that against the matching row in the
-' paired Data workbook (ExcelOutput.ReadSheet, the same read path
-' SyncOperations already trusts) field-by-field.
+' paired Data workbook, filtered to the deck's own current period
+' (ExcelOutput.ReadSheetForDeckPeriod, the same read path RibbonUI.SyncNow
+' already trusts) field-by-field.
+'
+' CORRECTED 2026-08-21: this used to call the UNFILTERED ExcelOutput.
+' ReadSheet -- same bug as SyncRealDeck.bas/HiddenFixCheck.bas had ("first
+' row wins" on a duplicate instance ID, and Q3F26 rows sit above Q4F26 rows
+' in the register). The irony: this tool exists specifically to be trusted
+' when something looks wrong after a sync, and a mother-hound audit found
+' it would compare a live Q4F26 slide against its Q3F26 register row --
+' either a false MISMATCH on any field that legitimately changed between
+' quarters, or worse, a false "slideOk" if the two happened to coincide.
+' A safety-net tool with this bug is more dangerous than no tool, because
+' it's the one thing a person reaches for specifically when suspicious.
 Public Function VerifyRealDeck(deckPath As String, workbookPath As String) As String
     Dim report As String
     Dim detail As String
@@ -35,8 +47,19 @@ Public Function VerifyRealDeck(deckPath As String, workbookPath As String) As St
     Set wb = xl.Workbooks.Open(workbookPath, 0, True) ' positional: UpdateLinks:=0, ReadOnly:=True -- named args aren't reliable on a late-bound Object
     Set ws = WorkbookBridge.RegisterOrFirstDataSheet(wb)
 
+    Dim deckPeriod As String
+    deckPeriod = DeckRegistry.GetDeckPeriod(pres)
+
     Dim sheet As ExcelOutput.Sheet
-    sheet = ExcelOutput.ReadSheet(ws)
+    Dim readProblem As String
+    sheet = ExcelOutput.ReadSheetForDeckPeriod(ws, deckPeriod, readProblem)
+    If readProblem <> "" Then
+        VerifyRealDeck = "REFUSED: could not read the register for period '" & deckPeriod & "': " & readProblem
+        wb.Close False
+        xl.Quit
+        pres.Close
+        Exit Function
+    End If
 
     Dim slidesChecked As Long, slidesOk As Long, slidesMissingTags As Long, slidesNoWorkbookRow As Long
     Dim fieldsChecked As Long, fieldsMissingShape As Long, fieldsMismatch As Long

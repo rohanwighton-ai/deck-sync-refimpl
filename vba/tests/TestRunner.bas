@@ -1974,6 +1974,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "MilestoneDevice_DrawsFromDataAndCreatesNothing", r
+    If TestMatches("MilestoneDevice_FullLifecycleNoStaleCircles", filterPattern) Then
+        r = Test_MilestoneDevice_FullLifecycleNoStaleCircles()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "MilestoneDevice_FullLifecycleNoStaleCircles", r
     If TestMatches("MilestoneDevice_TwoLineLabelConvertsThePipeDelimiterToARealBreak", filterPattern) Then
         r = Test_MilestoneDevice_TwoLineLabelConvertsThePipeDelimiterToARealBreak()
     Else
@@ -15194,6 +15200,55 @@ Private Function NewMilestoneDevice(sld As Object, slots As Long) As Object
     Set NewMilestoneDevice = sld.Shapes.Range(names).Group
 End Function
 
+' Same shape as NewMilestoneDevice, but WITH _NOW circles -- every real P/K/S
+' template slide has them (confirmed live 2026-08-21: MS1_NOW..MS7_NOW all
+' present), and the plain fixture above never exercises that path at all.
+' Rohan, 2026-08-21: "have you run a test where ... the milestone circles go
+' through every part of their life cycle as if a real project was regularly
+' ticking them off?" -- the honest answer was no, and this fixture is why:
+' every existing test calls DrawMilestones exactly ONCE with one static
+' done-pattern. This one exists so a real progression can be simulated.
+Private Function NewMilestoneDeviceWithNow(sld As Object, slots As Long) As Object
+    Dim names() As String
+    ReDim names(1 To 2 + slots * 5)
+    Dim n As Long
+    n = 0
+
+    Dim track As Object, bar As Object
+    Set track = sld.Shapes.AddShape(1, 100, 100, 6, 300)
+    track.Name = MilestoneDevice.NAME_TRACK
+    n = n + 1: names(n) = track.Name
+    Set bar = sld.Shapes.AddShape(1, 100, 100, 6, 10)
+    bar.Name = MilestoneDevice.NAME_BAR
+    n = n + 1: names(n) = bar.Name
+
+    Dim i As Long
+    For i = 1 To slots
+        Dim y As Single
+        y = 100 + (i - 1) * 50
+        Dim onS As Object, offS As Object, nowS As Object, labS As Object, datS As Object
+        Set onS = sld.Shapes.AddShape(9, 96, y, 14, 14)
+        onS.Name = MilestoneDevice.SLOT_PREFIX & i & MilestoneDevice.PART_ON
+        n = n + 1: names(n) = onS.Name
+        Set offS = sld.Shapes.AddShape(9, 96, y, 14, 14)
+        offS.Name = MilestoneDevice.SLOT_PREFIX & i & MilestoneDevice.PART_OFF
+        n = n + 1: names(n) = offS.Name
+        ' NOW is oversized, matching every real template's own convention
+        ' (the current milestone's circle is visibly bigger).
+        Set nowS = sld.Shapes.AddShape(9, 93, y - 3, 20, 20)
+        nowS.Name = MilestoneDevice.SLOT_PREFIX & i & MilestoneDevice.PART_NOW
+        n = n + 1: names(n) = nowS.Name
+        Set labS = sld.Shapes.AddTextbox(1, 130, y, 120, 14)
+        labS.Name = MilestoneDevice.SLOT_PREFIX & i & MilestoneDevice.PART_LABEL
+        n = n + 1: names(n) = labS.Name
+        Set datS = sld.Shapes.AddTextbox(1, 130, y + 14, 120, 14)
+        datS.Name = MilestoneDevice.SLOT_PREFIX & i & MilestoneDevice.PART_DATE
+        n = n + 1: names(n) = datS.Name
+    Next i
+
+    Set NewMilestoneDeviceWithNow = sld.Shapes.Range(names).Group
+End Function
+
 Private Function NamedIn(grp As Object, nm As String) As Object
     Dim s As Object
     For Each s In grp.GroupItems
@@ -15295,6 +15350,81 @@ Private Function Test_MilestoneDevice_DrawsFromDataAndCreatesNothing() As String
 
     sld.Delete
     Test_MilestoneDevice_DrawsFromDataAndCreatesNothing = result
+End Function
+
+' THE FULL LIFECYCLE, NOT ONE SNAPSHOT. Rohan, 2026-08-21, directly: "have
+' you run a test where on each slide you are able to basically make the
+' milestone circles go through every part of their life cycle as if a real
+' project was regularly ticking them off?" No -- every other MilestoneDevice
+' test calls DrawMilestones exactly once. This one calls it SIX times on the
+' SAME group (5 slots, 0 done through all 5 done, one quarter's worth of
+' ticking at a time), and at every single step checks EVERY slot's THREE
+' circles -- not just the one that's supposed to change. A stale circle
+' surviving a state change (the exact risk DrawMilestones's own header
+' comment names: "Hide all three first, then show the one chosen... is how
+' a stale circle survives a state change") would show up here as a wrong
+' Visible on some slot OTHER than the one that just moved -- something no
+' single-snapshot test can ever see, because there is no PREVIOUS state to
+' leave a stale circle behind.
+Private Function Test_MilestoneDevice_FullLifecycleNoStaleCircles() As String
+    Dim result As String
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDeviceWithNow(sld, 5)
+
+    Dim labels(1 To 5) As String, dates(1 To 5) As String
+    labels(1) = "Kickoff": labels(2) = "Design": labels(3) = "Build"
+    labels(4) = "Test": labels(5) = "Launch"
+    dates(1) = "Q1": dates(2) = "Q2": dates(3) = "Q3": dates(4) = "Q4": dates(5) = "Q5"
+
+    Dim qtrStep As Long
+    For qtrStep = 0 To 5   ' 0 = nothing done yet, 5 = fully complete
+        Dim done(1 To 5) As String
+        Dim i As Long
+        For i = 1 To 5
+            done(i) = IIf(i <= qtrStep, "Y", "N")
+        Next i
+
+        Dim r As MilestoneDrawResult
+        r = MilestoneDevice.DrawMilestones(grp, labels, dates, done)
+        result = result & Assert(r.ErrorMessage = "", _
+            "qtrStep " & qtrStep & " draws clean, got [" & r.ErrorMessage & "]")
+
+        For i = 1 To 5
+            Dim wantNow As Boolean, wantOn As Boolean, wantOff As Boolean
+            wantNow = (i = qtrStep And qtrStep > 0)
+            wantOn = (i < qtrStep)
+            wantOff = (i > qtrStep) Or (qtrStep = 0)
+
+            Dim gotNow As Boolean, gotOn As Boolean, gotOff As Boolean
+            gotNow = (NamedIn(grp, "MS" & i & "_NOW").Visible = msoTrue)
+            gotOn = (NamedIn(grp, "MS" & i & "_ON").Visible = msoTrue)
+            gotOff = (NamedIn(grp, "MS" & i & "_OFF").Visible = msoTrue)
+
+            result = result & Assert(gotNow = wantNow, _
+                "qtrStep " & qtrStep & " slot " & i & ": NOW visible should be " & wantNow & ", got " & gotNow)
+            result = result & Assert(gotOn = wantOn, _
+                "qtrStep " & qtrStep & " slot " & i & ": ON visible should be " & wantOn & ", got " & gotOn)
+            result = result & Assert(gotOff = wantOff, _
+                "qtrStep " & qtrStep & " slot " & i & ": OFF visible should be " & wantOff & ", got " & gotOff)
+
+            ' Exactly one circle showing per slot, never zero, never two --
+            ' the second half of "no stale circle": a slot that's supposed
+            ' to change but silently keeps TWO circles visible is just as
+            ' wrong as one left on that should be off.
+            Dim shownCount As Long
+            shownCount = 0
+            If gotNow Then shownCount = shownCount + 1
+            If gotOn Then shownCount = shownCount + 1
+            If gotOff Then shownCount = shownCount + 1
+            result = result & Assert(shownCount = 1, _
+                "qtrStep " & qtrStep & " slot " & i & ": exactly one circle visible, got " & shownCount)
+        Next i
+    Next qtrStep
+
+    sld.Delete
+    Test_MilestoneDevice_FullLifecycleNoStaleCircles = result
 End Function
 
 ' A TWO-LINE LABEL USES THE SAME "||" CONVENTION EVERY OTHER FIELD DOES.
