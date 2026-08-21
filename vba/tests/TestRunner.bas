@@ -5457,8 +5457,16 @@ Private Function Test_WorkbookBridge_IndexExplainsEachSheet() As String
         "the register is marked permanent, got '" & WorkbookBridge.LifespanOf("Register") & "'")
     result = result & Assert(InStr(WorkbookBridge.LifespanOf("TPL_ABOUT_BODY"), "Rebuilt") > 0, _
         "a drafting sheet is marked rebuilt, got '" & WorkbookBridge.LifespanOf("TPL_ABOUT_BODY") & "'")
-    result = result & Assert(InStr(WorkbookBridge.LifespanOf("Sync Review q"), "consumed") > 0, _
-        "a review grid is marked consumed, got '" & WorkbookBridge.LifespanOf("Sync Review q") & "'")
+    ' CORRECTED 2026-08-22 (mother-hound audit): "Sync Review q" was the
+    ' RETIRED sheet-name format -- this test had been hand-typing a string
+    ' that stopped matching reality the day ReviewSheetNameFor was renamed,
+    ' and kept passing anyway because it never asked the real generator what
+    ' a review sheet is actually called. Built from ReviewSheetNameFor
+    ' itself now, so it can't silently drift out of sync with it again.
+    Dim realReviewName As String
+    realReviewName = ReviewQueue.ReviewSheetNameFor("q")
+    result = result & Assert(InStr(WorkbookBridge.LifespanOf(realReviewName), "consumed") > 0, _
+        "a review grid ('" & realReviewName & "') is marked consumed, got '" & WorkbookBridge.LifespanOf(realReviewName) & "'")
     result = result & Assert(InStr(WorkbookBridge.LifespanOf("Sync Log"), "Append") > 0, _
         "the log is marked append-only, got '" & WorkbookBridge.LifespanOf("Sync Log") & "'")
 

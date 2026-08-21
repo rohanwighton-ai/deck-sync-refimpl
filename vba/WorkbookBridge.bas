@@ -763,7 +763,17 @@ Public Function LifespanOf(sheetName As String) As String
         LifespanOf = "Rebuilt each drafting round"
     ElseIf sheetName = DraftingLobby.LOBBY_SHEET_NAME Then
         LifespanOf = "Rebuilt each drafting round"
-    ElseIf Left(sheetName, 11) = "Sync Review" Then
+    ElseIf Left(sheetName, 7) = "Review " Then
+        ' CORRECTED 2026-08-22 (mother-hound audit): checked for "Sync
+        ' Review", the RETIRED name format -- ReviewQueue.ReviewSheetNameFor
+        ' has produced "Review <type>-<tag>" (no "Sync") since the rename
+        ' documented in its own header ("Sync Review project-st-43212D3D"
+        ' truncated and read like a temp file). Every real review sheet
+        ' has shown "unknown" here instead of its actual lifespan ever
+        ' since -- purely cosmetic (this feeds WriteWorkbookIndex, a
+        ' human-facing report; nothing acts on the classification), but the
+        ' same "a fact restated somewhere its source has already moved on"
+        ' shape as everything else this file's rot-prone.
         LifespanOf = "One per run, then consumed"
     ElseIf sheetName = SYNC_LOG_SHEET_NAME Then
         LifespanOf = "Append-only history"
