@@ -4522,3 +4522,41 @@ fix this mirrors, which also has none. Verified via clean whole-project
 compile and no regression in the existing `RibbonUI`/`CapReport` test
 cluster (7/7 passed).
 
+## Fixed 2026-08-22 — CJ, `VerifyRealDeck` reported 624 false positives for
+## fields that never carry their own role tag by design
+
+Traced the tool's first-ever run (2026-08-21: 624 "no tagged shape"
+findings) field-by-field. Every single one fell into one of two known-by-
+design categories: `MS1-7_LABEL`/`_DATE`/`_DONE` (581 -- `MilestoneDevice`'s
+own columns, addressed by shape name, never role-tagged; recognised by
+the existing `MilestoneDevice.IsColumnForThisDevice`, which already fixed
+the identical false-alarm class for `FieldWiring.ScanFieldWiring` once
+before), and `PROJECT_STATUS` (43 -- a register-only source for the
+Derived `STATUS_BADGE` field, per `FieldSpec.bas`'s own row for it).
+**100% false positive, 0% real defects.**
+
+**Fixed** by adding `IsExpectedToCarryNoOwnRoleTag`, reusing
+`MilestoneDevice`'s own function plus an explicitly commented
+`PROJECT_STATUS`/`SCHEDULE_STATUS` exclusion. Skipped fields get their own
+counter ("Fields skipped, no role tag expected by design") rather than
+silently vanishing from the report.
+
+Verified live against the real deck (read-only run, no backup needed --
+the tool never writes to either file): missing-shape count went from 624
+to exactly 0; slides reading fully OK went from 0 to 13.
+
+**A separate, real finding surfaced by the same live run, not fixed
+here:** the "fields with a text/value mismatch" count held steady at 62,
+identical before and after this fix, and identical in shape to the stale
+2026-08-21 report despite being fresh 2026-08-22 data (post-dating
+today's `TIMELINE_ELAPSED`/`ApplyApproved` fixes) -- so this is real,
+current, unrelated drift, not stale noise. Dominated by two fields
+appearing together on nearly every checked slide: `KEY_EVENTS_BODY` (30)
+and `PROGRESS_BODY` (27), with `ABOUT_BODY` (3), `STRATEGIC_ALIGNMENT_BODY`
+(1) and `PROJECT_PROGRESS` (1) scattered. Not triaged further -- could be
+ordinary pending-sync state (drafted/approved in the register, not yet
+applied to these slides this quarter) or a genuine defect; the systematic
+two-field pattern across nearly every slide is the kind of shape that
+turned out to be structural, not incidental, the last three times this
+project saw it. See CHECKLIST.md.
+

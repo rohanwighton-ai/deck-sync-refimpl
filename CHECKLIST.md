@@ -101,9 +101,18 @@ same night — real findings, real fixes, all verified from saved bytes:**
       is never consumed here. Swapping to `ReadSheetForDeckPeriod` would
       add nothing (Fields is unaffected) and would be actively wrong if
       anyone later extended it to also filter Rows.
-- [ ] `VerifyRealDeck`'s first real 624/62 findings — untriaged. At least
-      one likely systematic false-positive already spotted (role-tag-only
-      lookup missing the milestone device's by-name addressing).
+- [x] `VerifyRealDeck`'s first real 624/62 findings — see FIX-LIST CJ.
+      The 624 "no tagged shape" bucket was 100% false positive (581
+      milestone-device columns addressed by name not tag, 43
+      PROJECT_STATUS feeding the Derived STATUS_BADGE) — fixed, verified
+      live: 624 -> 0. **The 62 mismatch bucket is real and NOT fixed** —
+      held steady at 62 on a fresh 2026-08-22 run (post-dating today's
+      other fixes), dominated by `KEY_EVENTS_BODY` (30) and
+      `PROGRESS_BODY` (27) co-occurring on nearly every checked slide.
+      Not yet triaged as pending-sync-state vs. a real defect — flagging
+      rather than chasing further in this session; the systematic
+      two-field pattern is worth its own look (ppt-hound or a fresh
+      Sync Now against these slides would settle it fastest).
 
 ## INCIDENT 2026-08-21 (morning) — real content blanked by a real sync, restored, root-caused, fixed, deployed.
 
