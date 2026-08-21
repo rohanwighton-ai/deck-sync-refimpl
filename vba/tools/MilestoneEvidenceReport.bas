@@ -175,8 +175,23 @@ Public Function MilestoneEvidenceReport(deckPath As String, workbookPath As Stri
         If srcCount = 0 Then GoTo NextInstance ' no source rows for this project -- nothing to compare
 
         stage = "GroupSourceIntoSlots call"
+        ' EXPLICITLY RESET, ALL THREE. Same class of bug as projectDetail
+        ' below: a fixed-size array declared inside a loop keeps its old
+        ' values between iterations in VBA, and GroupSourceIntoSlots only
+        ' WRITES to slots that actually get a match this project -- a slot
+        ' untouched this time silently kept a PREVIOUS project's count or
+        ' comment. Confirmed live: the "N of M complete" figures visibly
+        ' grew project over project (1 of 2, then 5 of 8, then 11 of 14,
+        ' then 16 of 19...) because slotGroupN was only ever incremented,
+        ' never zeroed, so every project's count was really a running
+        ' total across every project checked before it.
         Dim slotGroupN(1 To 7) As Long, slotGroupComplete(1 To 7) As Long
         Dim slotLatestComment(1 To 7) As String
+        For slotNum = 1 To 7
+            slotGroupN(slotNum) = 0
+            slotGroupComplete(slotNum) = 0
+            slotLatestComment(slotNum) = ""
+        Next slotNum
         GroupSourceIntoSlots slotOffset, slotOffsetKnown, slotHasLabel, _
             srcOffset, srcComplete, srcComment, srcCount, _
             slotGroupN, slotGroupComplete, slotLatestComment
@@ -185,7 +200,14 @@ Public Function MilestoneEvidenceReport(deckPath As String, workbookPath As Stri
         stage = "report loop"
         Dim projectHasGap As Boolean
         projectHasGap = False
+        ' RESET EXPLICITLY. A plain Dim inside a loop does not clear a
+        ' String's value between iterations in VBA -- only a fresh
+        ' assignment does. Missing this line is why every project's
+        ' printed detail carried every prior project's detail forward too,
+        ' confirmed live: 2_P003's block visibly repeated all of 3_P002's
+        ' lines before adding its own, and it only got worse from there.
         Dim projectDetail As String
+        projectDetail = ""
         For slotNum = 1 To 7
             If slotHasLabel(slotNum) And slotGroupN(slotNum) > 0 Then
                 Dim allComplete As Boolean
