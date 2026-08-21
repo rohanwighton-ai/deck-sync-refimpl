@@ -1564,9 +1564,16 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       properly). Built `vba/tools/MilestoneEvidenceReport.bas` +
       `milestone_evidence_report.ps1` (read-only, reports only, matches
       `VerifyRealDeck`'s pattern) to do the grouping properly and surface
-      disagreements with the actual comment text. Not yet run -- blocked
-      on PowerPoint/Excel being free. Prevention proposed, not actioned:
-      hook into `RollForwardUI` rather than a separate tool to remember.
+      disagreements with the actual comment text. **Now run and working**
+      -- found and fixed 3 real bugs in the tool itself first (a bulk-read
+      perf fix, per-project error trapping, and the actual crash: VBA's
+      `Or` doesn't short-circuit, so `bestSlot = 0 Or slotOffset(...) <
+      slotOffset(bestSlot)` read `slotOffset(0)` unconditionally against a
+      `1 To 7` array -- crashed on every single project until fixed).
+      Clean live run: 41 projects checked, 26 with disagreements. Detail
+      saved locally, not yet reviewed line-by-line -- Rohan's to work
+      through. Prevention proposed, not actioned: hook into
+      `RollForwardUI` rather than a separate tool to remember.
 - [ ] **CL — content depth drops sharply for S007 onward (13 slides).**
       Rest of the deck runs 80-100% of original text length; `S007`-`S023`
       sits at 55-70%. Reads like a drafting/sourcing depth gap for this

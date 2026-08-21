@@ -4782,11 +4782,35 @@ tool modules are "compile-only... no test exercises them", same as
 `VerifyRealDeck`), it is NOT wired into `TestRunner.bas`; verified by
 compile + a live read-only run instead.
 
-**Not yet run.** Both PowerPoint and Excel have been holding the real
-deck/register open for Rohan's own live investigation all evening;
-compile check and the actual live run are both blocked until they're
-free. Prevention (Fable's proposal, not yet actioned): hook this same
-comparison into `RollForwardUI` -- a button Rohan already presses every
-quarter -- rather than a separate tool requiring new discipline to
-remember to run.
+**Now run and working, after finding and fixing three real bugs in the
+tool itself along the way (2026-08-22, later the same night):**
+
+1. **Perf**: the first version re-scanned all ~560 `SRC_MILESTONES` rows
+   via per-cell COM calls for each of ~40 projects (~22,000 round trips)
+   -- never finished, this project's own established "bulk read/write"
+   lesson paid for again. Fixed: one `Range.Value2` call reads the whole
+   block, everything after works in memory.
+2. **Appeared hung, wasn't**: the fixed-perf version still looked stuck
+   (flat CPU for minutes) -- it was actually sitting at a modal VBA error
+   dialog the whole time ("Run-time error '9': Subscript out of range"),
+   only found because a screenshot was checked. Added per-project error
+   trapping so one project's data can never crash the whole batch or
+   leave a run silently stuck again.
+3. **The actual bug**: `GroupSourceIntoSlots` had `If bestSlot = 0 Or
+   slotOffset(slotNum) < slotOffset(bestSlot) Then` -- **VBA's `Or` does
+   not short-circuit.** Both operands always evaluate, so
+   `slotOffset(bestSlot)` = `slotOffset(0)` was read even when `bestSlot`
+   was still its initial 0, against an array dimensioned `1 To 7`. This
+   is why it crashed on literally every single project, every run.
+   Fixed to nested `If`/`ElseIf`.
+
+**Verified live against the real deck/register, clean run, 0 errors: 41
+projects checked, 26 with disagreements between grouped tracker evidence
+and recorded `DONE` flags.** Full per-project detail (with tracker
+comment quotes) saved locally, not yet reviewed line-by-line -- that's
+Rohan's to work through when he wants to, same review-before-write norm
+as the rest of this fix. Prevention (Fable's proposal, not yet actioned):
+hook this same comparison into `RollForwardUI` -- a button Rohan already
+presses every quarter -- rather than a separate tool requiring new
+discipline to remember to run.
 
