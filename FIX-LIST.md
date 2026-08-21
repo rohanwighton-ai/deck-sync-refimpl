@@ -4804,13 +4804,29 @@ tool itself along the way (2026-08-22, later the same night):**
    is why it crashed on literally every single project, every run.
    Fixed to nested `If`/`ElseIf`.
 
-**Verified live against the real deck/register, clean run, 0 errors: 41
-projects checked, 26 with disagreements between grouped tracker evidence
-and recorded `DONE` flags.** Full per-project detail (with tracker
-comment quotes) saved locally, not yet reviewed line-by-line -- that's
-Rohan's to work through when he wants to, same review-before-write norm
-as the rest of this fix. Prevention (Fable's proposal, not yet actioned):
-hook this same comparison into `RollForwardUI` -- a button Rohan already
-presses every quarter -- rather than a separate tool requiring new
-discipline to remember to run.
+**A fourth bug, found by actually reading the report instead of trusting
+"0 errors": the per-project detail was silently accumulating across
+projects.** `projectDetail`, `slotGroupN`, `slotGroupComplete`, and
+`slotLatestComment` are all declared inside the per-project loop, but a
+loop-scoped `Dim` does not reset a variable's value between iterations in
+VBA -- only an explicit assignment does. `projectDetail` was only ever
+appended to, so `2_P003`'s printed block literally repeated all of
+`3_P002`'s lines before adding its own; `slotGroupN`/`slotGroupComplete`
+were only ever incremented, never zeroed, which is why the first run's
+"N of M complete" figures visibly grew project over project (1 of 2, then
+5 of 8, then 11 of 14...) instead of resetting per project. Fixed by
+explicitly resetting all four at the top of each iteration. Rohan asked
+whether this exact bug shape exists elsewhere in the codebase --
+swept every fixed-size array declaration in `vba/` (`Drafting.bas`,
+`SyncOperations.bas`, two `tools/` probes): all write every index
+unconditionally before use, none carry this risk. Isolated to this tool.
+
+**Verified live against the real deck/register, clean run, 0 errors,
+detail no longer repeating: 41 projects checked, 14 with real
+disagreements between grouped tracker evidence and recorded `DONE`
+flags.** (The earlier "26" was the corrupted count -- discard it.) Full
+per-project detail (with tracker comment quotes) saved locally. Prevention
+(Fable's proposal, not yet actioned): hook this same comparison into
+`RollForwardUI` -- a button Rohan already presses every quarter -- rather
+than a separate tool requiring new discipline to remember to run.
 

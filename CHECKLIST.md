@@ -1565,14 +1565,20 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       `milestone_evidence_report.ps1` (read-only, reports only, matches
       `VerifyRealDeck`'s pattern) to do the grouping properly and surface
       disagreements with the actual comment text. **Now run and working**
-      -- found and fixed 3 real bugs in the tool itself first (a bulk-read
-      perf fix, per-project error trapping, and the actual crash: VBA's
-      `Or` doesn't short-circuit, so `bestSlot = 0 Or slotOffset(...) <
+      -- found and fixed 4 real bugs in the tool itself first: a bulk-read
+      perf fix, per-project error trapping, the actual crash (VBA's `Or`
+      doesn't short-circuit, so `bestSlot = 0 Or slotOffset(...) <
       slotOffset(bestSlot)` read `slotOffset(0)` unconditionally against a
-      `1 To 7` array -- crashed on every single project until fixed).
-      Clean live run: 41 projects checked, 26 with disagreements. Detail
-      saved locally, not yet reviewed line-by-line -- Rohan's to work
-      through. Prevention proposed, not actioned: hook into
+      `1 To 7` array -- crashed on every project until fixed), and a
+      silent-accumulation bug (loop-scoped `Dim`s never reset between
+      projects, so each project's printed detail and "N of M" counts kept
+      compounding forward from every project before it -- caught by
+      actually reading the report instead of trusting "0 errors"). Swept
+      the rest of `vba/` for the same shape (Rohan's own question) --
+      isolated to this tool. Clean live run: **41 projects checked, 14
+      real disagreements** (the earlier "26" was the corrupted count).
+      Detail saved locally, going through it with Rohan now. Prevention
+      proposed, not actioned: hook into
       `RollForwardUI` rather than a separate tool to remember.
 - [ ] **CL — content depth drops sharply for S007 onward (13 slides).**
       Rest of the deck runs 80-100% of original text length; `S007`-`S023`
