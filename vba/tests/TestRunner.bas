@@ -1860,6 +1860,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "InjectProgress_MeasuresAgainstTheTrackNotItself", r
+    If TestMatches("InjectProgress_ClearsStrayTextFromTheBar", filterPattern) Then
+        r = Test_InjectProgress_ClearsStrayTextFromTheBar()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectProgress_ClearsStrayTextFromTheBar", r
     If TestMatches("InjectProgress_RefusesWithoutATrack", filterPattern) Then
         r = Test_InjectProgress_RefusesWithoutATrack()
     Else
@@ -14094,6 +14100,57 @@ Private Function Test_InjectProgress_MeasuresAgainstTheTrackNotItself() As Strin
 
     sld.Delete
     Test_InjectProgress_MeasuresAgainstTheTrackNotItself = result
+End Function
+
+' THE BAR IS A PURE VISUAL, NOT A LABEL -- found live 2026-08-21: real
+' slides showing raw register decimals ("0.8027") at 18pt inside a
+' ~5.5pt-tall bar, because this function only ever wrote Left/Width and
+' never touched the text frame, so whatever text happened to be sitting in
+' the shape (a template placeholder, a stray manual entry) just stayed
+' there forever, wrong, no matter how many times the bar's real width
+' changed underneath it.
+Private Function Test_InjectProgress_ClearsStrayTextFromTheBar() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    Dim track As Object, done As Object
+    Set track = sld.Shapes.AddShape(1, 100, 200, 400, 12)
+    track.Tags.Add "role", "ELAPSED.track"
+    Set done = sld.Shapes.AddShape(1, 100, 200, 40, 12)
+    done.Tags.Add "role", "ELAPSED"
+    done.TextFrame.TextRange.text = "0.8027"   ' the exact class of stray value found live
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectProgressField(sld, "ELAPSED", 0.75)
+
+    result = result & Assert(r.Written, "the bar is set [" & r.ErrorMessage & "]")
+    result = result & Assert(done.TextFrame.TextRange.text = "", _
+        "stray text is cleared, got '" & done.TextFrame.TextRange.text & "'")
+    result = result & Assert(Abs(done.Width - 300) < 1, "the width is still set correctly, got " & done.Width)
+
+    ' THE HARDER CASE: width already correct, but stray text alone must
+    ' still trigger a write. Without this, a bar that's already the right
+    ' size but still carries garbage text would report "no change" and the
+    ' garbage would survive every future sync forever.
+    Dim done2 As Object
+    Set done2 = sld.Shapes.AddShape(1, 100, 300, 300, 12)   ' already 75% of the 400pt track
+    done2.Tags.Add "role", "ELAPSED2"
+    done2.TextFrame.TextRange.text = "stale"
+    Dim track2 As Object
+    Set track2 = sld.Shapes.AddShape(1, 100, 300, 400, 12)
+    track2.Tags.Add "role", "ELAPSED2.track"
+
+    Dim r2 As InjectResult
+    r2 = InjectPrimitive.InjectProgressField(sld, "ELAPSED2", 0.75)
+    result = result & Assert(r2.WouldChange, "stray text alone must count as a change even when the width is already right")
+    result = result & Assert(r2.Written, "and the write must actually happen [" & r2.ErrorMessage & "]")
+    result = result & Assert(done2.TextFrame.TextRange.text = "", _
+        "second bar's stray text cleared too, got '" & done2.TextFrame.TextRange.text & "'")
+
+    sld.Delete
+    Test_InjectProgress_ClearsStrayTextFromTheBar = result
 End Function
 
 ' No track means no answer. Falling back to the bar's own width is the shrinking

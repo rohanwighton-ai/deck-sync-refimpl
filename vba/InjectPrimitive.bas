@@ -1522,7 +1522,31 @@ Public Function InjectProgressField(sld As Object, identityTag As String, _
     ' sensitive value reported as a real change) -- rounding to hundredths is
     ' well past the precision that matters on a slide and stable across reads.
     result.CurrentValue = Format(doneShp.Width, "0.00")
-    result.WouldChange = (Abs(doneShp.Width - wantWidth) > 0.5) Or (Abs(doneShp.Left - wantLeft) > 0.5)
+
+    ' THE BAR IS A PURE VISUAL -- Left/Width ARE the value; it never had a
+    ' number to show. But this function only ever wrote Left/Width, so any
+    ' text a person, an earlier code path, or template authoring left in
+    ' the shape's own text frame just sat there forever, growing more wrong
+    ' every time the bar's real width changed underneath it. Found live
+    ' 2026-08-21: real slides showing raw register decimals ("0.8027") at
+    ' 18pt inside a ~5.5pt-tall bar, and the K/S templates themselves still
+    ' holding the literal <<TIMELINE_ELAPSED>> placeholder token -- meaning
+    ' every future slide cloned from either template inherits it fresh.
+    ' Folded into WouldChange (not just the write below) so a bar that's
+    ' already at the right width but still carries stray text doesn't
+    ' report "no change" and skip the clear forever.
+    Dim needsTextClear As Boolean
+    needsTextClear = False
+    If doneShp.HasTextFrame Then
+        If doneShp.TextFrame.HasText Then needsTextClear = True
+    End If
+    If Not restShp Is Nothing Then
+        If restShp.HasTextFrame Then
+            If restShp.TextFrame.HasText Then needsTextClear = True
+        End If
+    End If
+
+    result.WouldChange = (Abs(doneShp.Width - wantWidth) > 0.5) Or (Abs(doneShp.Left - wantLeft) > 0.5) Or needsTextClear
 
     If Not result.WouldChange Then
         result.Verified = True
@@ -1539,6 +1563,7 @@ Public Function InjectProgressField(sld As Object, identityTag As String, _
     Err.Clear
     doneShp.Left = wantLeft
     doneShp.Width = wantWidth
+    If doneShp.HasTextFrame Then doneShp.TextFrame.TextRange.text = ""
 
     ' The remainder takes what is left of the extent. WRITTEN IN THE SAME
     ' OPERATION as the done part, always -- that is what keeps their sum
@@ -1547,6 +1572,7 @@ Public Function InjectProgressField(sld As Object, identityTag As String, _
     If Not restShp Is Nothing Then
         restShp.Left = wantLeft + wantWidth
         restShp.Width = extentWidth - wantWidth
+        If restShp.HasTextFrame Then restShp.TextFrame.TextRange.text = ""
     End If
 
     If Err.Number <> 0 Then
@@ -1559,11 +1585,27 @@ Public Function InjectProgressField(sld As Object, identityTag As String, _
     End If
     On Error GoTo 0
 
-    ' VERIFIED FROM THE SHAPE, not from the absence of an error.
+    ' VERIFIED FROM THE SHAPE, not from the absence of an error -- text
+    ' clearing gets the same standard the width write already had.
+    Dim textCleared As Boolean
+    textCleared = True
+    If doneShp.HasTextFrame Then
+        If doneShp.TextFrame.HasText Then textCleared = False
+    End If
+    If Not restShp Is Nothing Then
+        If restShp.HasTextFrame Then
+            If restShp.TextFrame.HasText Then textCleared = False
+        End If
+    End If
+
     result.Written = True
-    result.Verified = (Abs(doneShp.Width - wantWidth) <= 0.5)
+    result.Verified = (Abs(doneShp.Width - wantWidth) <= 0.5) And textCleared
     If Not result.Verified Then
-        result.ErrorMessage = "the bar was set to " & wantWidth & " but reads " & doneShp.Width
+        If Abs(doneShp.Width - wantWidth) > 0.5 Then
+            result.ErrorMessage = "the bar was set to " & wantWidth & " but reads " & doneShp.Width
+        Else
+            result.ErrorMessage = "the bar's stray text did not clear"
+        End If
     End If
 
     InjectProgressField = result
