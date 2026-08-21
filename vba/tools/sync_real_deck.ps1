@@ -38,19 +38,45 @@ $staging = Join-Path $env:TEMP ("deck-sync-run-" + [guid]::NewGuid().ToString("N
 New-Item -ItemType Directory -Path $staging | Out-Null
 $vbaSourceDir = Join-Path $RepoRoot "vba"
 
-# PreviewRoutineSync pulls in most of the add-in: RunSync -> SyncOperations /
-# ExcelOutput / SlideDuplication / InjectPrimitive / Resolve, and its report
-# formatting currently reaches into BatchOnboardFlow.FieldPreview, which drags
-# in that module's own dependency tree (Discovery / Matching / Onboarding /
-# WorkbookBridge / RibbonUI). Importing the same set run_vba_tests.ps1 imports
-# is simpler and known to compile together.
+# A hand-picked subset here used to be "known to compile together" -- until
+# it wasn't. RunSync.PreviewRoutineSync grew a call to IdentityCheck (the R9
+# duplicate-key check) with nothing here ever re-verifying the subset still
+# covered what RunSync actually reaches. VBA compiles the WHOLE PROJECT, not
+# just the lines that run -- one undefined module reference anywhere in the
+# imported set fails Application.Run for EVERY entry point, including ones
+# that never touch the missing module. Same failure shape build_ppam.ps1's
+# own header already documents for ReviewQueue (2026-08-01). Found
+# 2026-08-21 running preview_real_deck.ps1 against the real deck: "Sub or
+# function not defined" on an entry point that doesn't even call
+# IdentityCheck directly -- only RunSync does, three calls deep.
+# Fix: stop hand-maintaining a second, silently-driftable copy of the
+# dependency graph. Use the SAME canonical list build_ppam.ps1 uses for the
+# real shipped add-in -- one list, one place it can go stale, and it's
+# already proven to compile because it's what Rohan actually runs.
 $modules = @(
     "Discovery.bas", "InjectPrimitive.bas", "Matching.bas", "Resolve.bas",
     "SyncOperations.bas", "Onboarding.bas", "ExcelOutput.bas", "Verification.bas",
-    "SlideDuplication.bas", "RunSync.bas", "DeckRegistry.bas", "WorkbookBridge.bas",
-    "OnboardFlow.bas", "RibbonUI.bas", "BatchOnboardFlow.bas"
+    "SlideDuplication.bas", "TemplateSlide.bas", "TemplateAudit.bas", "IdentityCheck.bas", "TagMigration.bas", "PlaceholderCheck.bas", "RunSync.bas", "DeckAdoption.bas", "ResolveFields.bas",
+    "DeckRegistry.bas", "WorkbookBridge.bas", "Harvest.bas", "RibbonUI.bas",
+    "AdoptFlow.bas", "BatchOnboardFlow.bas", "CommandBarUI.bas",
+    "ReviewQueue.bas", "FieldWiring.bas", "MilestoneDevice.bas",
+    "Drafting.bas", "FieldSpec.bas", "Sources.bas", "DraftingUI.bas", "DiscoverUI.bas",
+    "DraftingLobby.bas", "AppEvents.cls", "ShapeAddressBook.bas", "Timing.bas", "FormattingAudit.bas"
 )
-foreach ($m in $modules) { Copy-Item (Join-Path $vbaSourceDir $m) -Destination $staging }
+foreach ($m in $modules) {
+    $srcPath = Join-Path $vbaSourceDir $m
+    $dstPath = Join-Path $staging (Split-Path $m -Leaf)
+    if ($m -like "*.cls") {
+        # CRLF, NOT A PLAIN COPY -- see run_vba_tests.ps1's own comment on this
+        # exact line. LF-only (this repo's native format) makes Import() treat
+        # the class header as unrecognised and silently import it as a plain
+        # Standard Module instead, which then fails to compile with a generic
+        # "Expected: end of statement" nowhere near the real cause (WithEvents).
+        ((Get-Content $srcPath -Raw) -replace "`r`n", "`n" -replace "`n", "`r`n") | Set-Content $dstPath -NoNewline
+    } else {
+        Copy-Item $srcPath -Destination $dstPath
+    }
+}
 Copy-Item (Join-Path $vbaSourceDir "tools\SyncRealDeck.bas") -Destination $staging
 
 $ppt = $null

@@ -72,11 +72,29 @@ Public Function HiddenFixCheck(deckPath As String, targetKey As String, Optional
     Dim lo As Long, hi As Long
     lo = LBound(types): hi = UBound(types)
 
+    ' CORRECTED 2026-08-21, same fix as SyncRealDeck.bas: RunSync.RunRoutineSync
+    ' reads via the UNFILTERED ExcelOutput.ReadSheet, which keeps whichever
+    ' period-row for an instance ID comes FIRST in the sheet -- not the
+    ' current one. Confirmed live on the real deck the same night. Building
+    ' the sheet period-aware here too, matching what RibbonUI.SyncNow actually
+    ' does.
+    Dim deckPeriod As String
+    deckPeriod = DeckRegistry.GetDeckPeriod(pres)
+
     For i = lo To hi
         Dim templateSld As Object
         Dim wsName As String
         If DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
-            report = report & vbCrLf & RunSync.RunRoutineSync(wb.Worksheets(wsName), types(i), templateSld)
+            Dim ws As Object
+            Set ws = wb.Worksheets(wsName)
+            Dim sheet As Sheet
+            Dim readProblem As String
+            sheet = ExcelOutput.ReadSheetForDeckPeriod(ws, deckPeriod, readProblem)
+            If readProblem <> "" Then
+                report = report & vbCrLf & "SKIPPED " & types(i) & ": " & readProblem
+            Else
+                report = report & vbCrLf & RunSync.RunRoutineSyncWithSheet(sheet, types(i), templateSld)
+            End If
         End If
     Next i
 

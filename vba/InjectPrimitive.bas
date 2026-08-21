@@ -597,8 +597,37 @@ Public Function InjectField(sld As Object, identityTag As String, sourceValue As
         Case INJECTOR_BAR
             InjectField = InjectProgressVia(sld, identityTag, sourceValue, dryRun)
         Case Else
-            InjectField = InjectPrimitive(sld, identityTag, sourceValue, dryRun)
+            InjectField = InjectPrimitive(sld, identityTag, FormatIfProgressText(identityTag, sourceValue), dryRun)
     End Select
+End Function
+
+' PROJECT_PROGRESS ON A SLIDE WITHOUT A BAR STRUCTURE STILL HOLDS A FRACTION,
+' NOT A PERCENTAGE STRING -- the register's own contract (see
+' InjectProgressVia's error message) is "0.9, not 90 and not '90%'", the same
+' contract the bar path already relies on. When InjectorFor finds no
+' track/rest companion it correctly falls through to the plain-text writer
+' -- but that writer has no idea this particular field is a fraction meant
+' to be READ as a percentage, so it wrote "0.8027" verbatim onto 16 real
+' slides where "48%"/"33%" was already sitting correctly (found 2026-08-21
+' auditing the live deck, the same failure shape already documented above:
+' "the injector was never the thing that was wrong").
+' Scoped to exactly this one field -- every other plain-text field's value
+' already IS the display string, and guessing at percentage formatting for
+' fields that were never meant to be one would invent a new defect instead
+' of fixing this one.
+Private Function FormatIfProgressText(identityTag As String, sourceValue As String) As String
+    FormatIfProgressText = sourceValue
+    If identityTag <> "PROJECT_PROGRESS" Then Exit Function
+
+    Dim trimmed As String
+    trimmed = Trim(sourceValue)
+    If Not IsNumeric(trimmed) Then Exit Function
+
+    Dim f As Double
+    f = CDbl(trimmed)
+    If f < 0 Or f > 1 Then Exit Function  ' out of the register's own contract -- not this function's job to guess-correct
+
+    FormatIfProgressText = Format(f * 100, "0") & "%"
 End Function
 
 ' A register cell is text; a bar needs a number. Converting is the router's

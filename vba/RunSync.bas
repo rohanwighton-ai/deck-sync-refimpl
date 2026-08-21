@@ -79,6 +79,20 @@ End Function
 ' reference slide) -- deciding where a template lives is explicitly out of
 ' scope everywhere else in this port (onboarding.md's own non-goal), so
 ' it's supplied here rather than looked up.
+' DO NOT ADD A NEW CALLER OF THIS FUNCTION. ExcelOutput.ReadSheet reads with
+' no period filter, and ReadSheetForPeriod's own comment says "first one
+' wins" when an instance ID appears more than once -- on a register with
+' more than one period's rows (every real register, past its first quarter),
+' that means whichever period sits FIRST in the sheet, not the current one.
+' Confirmed live 2026-08-21: a real sync through this function wrote
+' Q3F26 prose onto the deck while reporting "43 corrected... SAVED to disk
+' (verified)" -- both known callers (SyncRealDeck.bas, HiddenFixCheck.bas)
+' were fixed the same night to build a period-aware Sheet themselves via
+' ExcelOutput.ReadSheetForDeckPeriod and call RunRoutineSyncWithSheet
+' directly, matching what RibbonUI.SyncNow (the real button) already did
+' correctly all along. Kept only because deleting it risks breaking a caller
+' this search didn't find; DerivedFieldTags-style "search before you add"
+' applies here too -- grep for RunRoutineSync( before ever calling this one.
 Public Function RunRoutineSync(ws As Object, slideType As String, templateSld As Object) As String
     Dim sheet As Sheet
     sheet = ExcelOutput.ReadSheet(ws)

@@ -85,6 +85,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("InjectPrimitive_ProjectProgressFormatsAsPercentOnThePlainTextPath", filterPattern) Then
+        r = Test_InjectPrimitive_ProjectProgressFormatsAsPercentOnThePlainTextPath()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectPrimitive_ProjectProgressFormatsAsPercentOnThePlainTextPath", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("InjectPrimitive_RefusesBlankOverRealContent", filterPattern) Then
         r = Test_InjectPrimitive_RefusesBlankOverRealContent()
     Else
@@ -195,6 +204,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "SyncOperations_BothDerivedFieldsReachableThroughPlanRoutineSync", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("SyncOperations_KeyEventsHeaderRefusesToBlankRealContent", filterPattern) Then
+        r = Test_SyncOperations_KeyEventsHeaderRefusesToBlankRealContent()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "SyncOperations_KeyEventsHeaderRefusesToBlankRealContent", r
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
@@ -2535,6 +2553,44 @@ Private Function Test_InjectPrimitive_WritesAndVerifiesOnMismatch() As String
     Test_InjectPrimitive_WritesAndVerifiesOnMismatch = result
 End Function
 
+' FOUND 2026-08-21 auditing the live deck: 16 real slides showed a raw
+' decimal ("0.8027") where every other slide correctly showed a percentage
+' ("48%"). PROJECT_PROGRESS on those slides has no bar/track structure, so
+' InjectorFor correctly falls through to the plain-text writer -- but that
+' writer had no idea this field's register value is a fraction meant to be
+' READ as a percentage. Goes through InjectField (not InjectPrimitive
+' directly), because the fix lives in InjectField's dispatch, one layer up.
+Private Function Test_InjectPrimitive_ProjectProgressFormatsAsPercentOnThePlainTextPath() As String
+    Dim result As String
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+
+    Dim shp As Object
+    Set shp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 50, 200, 50)
+    shp.TextFrame.TextRange.Text = "33%"
+    shp.Tags.Add "role", "PROJECT_PROGRESS"
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectField(sld, "PROJECT_PROGRESS", "0.8027")
+
+    result = result & Assert(r.Written, "written when the formatted value differs from what's on the slide")
+    result = result & Assert(shp.TextFrame.TextRange.Text = "80%", _
+        "0.8027 renders as a percentage, not a raw decimal, got '" & shp.TextFrame.TextRange.Text & "'")
+
+    ' A field this isn't shouldn't be touched by the same logic -- proves the
+    ' fix is scoped to PROJECT_PROGRESS, not every numeric-looking value.
+    Dim otherShp As Object
+    Set otherShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 50)
+    otherShp.TextFrame.TextRange.Text = "old"
+    otherShp.Tags.Add "role", "SOME_OTHER_FIELD"
+    Dim r2 As InjectResult
+    r2 = InjectPrimitive.InjectField(sld, "SOME_OTHER_FIELD", "0.5")
+    result = result & Assert(otherShp.TextFrame.TextRange.Text = "0.5", _
+        "a field that isn't PROJECT_PROGRESS is never percent-formatted, got '" & otherShp.TextFrame.TextRange.Text & "'")
+
+    Test_InjectPrimitive_ProjectProgressFormatsAsPercentOnThePlainTextPath = result
+End Function
+
 ' THE FIX FOR THE 2026-08-21 DATA-LOSS INCIDENT. A blank register value used
 ' to be written straight over real slide content with no guard at all --
 ' the first-ever real sync of STRATEGIC_ALIGNMENT_BODY/PROBLEM_BODY/
@@ -3103,13 +3159,22 @@ End Function
 ' caught. One slide, three derived-field shapes, one register row: proves
 ' TIMELINE_ELAPSED, STATUS_BADGE and KEY_EVENTS_HEADER are all still found
 ' through the same shared loop -- not just that each new field works, but
-' that adding it didn't break the ones already there. PROJECT_STATUS is
-' deliberately left at "In Progress" here (the STATUS_BADGE/TIMELINE_ELAPSED
-' fixture this test already relied on), which makes KEY_EVENTS_HEADER
-' compute "" -- so this also proves the shared loop's own "" = don't write
-' rule (line ~568) correctly leaves a found-but-blank derived shape
-' untouched, rather than stamping an empty string over it. The non-blank
-' case is covered separately by Test_SyncOperations_DeriveKeyEventsHeader.
+' that adding it didn't break the ones already there.
+'
+' CORRECTED 2026-08-21: this test used to assert the shared loop's "" =
+' don't-write rule left a found-but-blank KEY_EVENTS_HEADER shape
+' UNTOUCHED for "In Progress" -- and called that correct. It was not: on
+' the real deck the shape starts as the literal <<KEY_EVENTS_HEADER>>
+' placeholder, not real content, so "untouched" meant every "In Progress"
+' project (most of them) showed a raw placeholder token on the live slide
+' forever. The fixture's starting text, "should stay untouched", was never
+' actually the placeholder, so this test could not have caught that --
+' it validated the wrong scenario convincingly. Split into two real
+' scenarios below: a placeholder start gets blanked for real; genuine
+' hand-typed content is still protected by InjectPrimitive's own
+' refuseBlankOverReal guard, which is where that decision now actually
+' happens. The non-blank case is covered separately by
+' Test_SyncOperations_DeriveKeyEventsHeader.
 Private Function Test_SyncOperations_BothDerivedFieldsReachableThroughPlanRoutineSync() As String
     Dim result As String
 
@@ -3130,7 +3195,7 @@ Private Function Test_SyncOperations_BothDerivedFieldsReachableThroughPlanRoutin
 
     Dim keyEventsShp As Object
     Set keyEventsShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 20)
-    keyEventsShp.TextFrame.TextRange.Text = "should stay untouched"
+    keyEventsShp.TextFrame.TextRange.Text = TemplateSlide.PlaceholderFor(SyncOperations.KEY_EVENTS_HEADER_TAG)
     keyEventsShp.Tags.Add "role", SyncOperations.KEY_EVENTS_HEADER_TAG
 
     Dim instances(1 To 1) As Object
@@ -3170,13 +3235,54 @@ Private Function Test_SyncOperations_BothDerivedFieldsReachableThroughPlanRoutin
     result = result & Assert(badgeShp.TextFrame.TextRange.Text = "At Risk", _
         "the badge shape's text was actually written, got '" & badgeShp.TextFrame.TextRange.Text & "'")
 
-    result = result & Assert(Not actions(1).ChangedFieldVerified.Exists(SyncOperations.KEY_EVENTS_HEADER_TAG), _
-        "KEY_EVENTS_HEADER computes blank for 'In Progress', so the shared loop's " & _
-        "'' = don't-write rule must have skipped it, not stamped an empty value")
-    result = result & Assert(keyEventsShp.TextFrame.TextRange.Text = "should stay untouched", _
-        "the key-events shape's text was left alone, got '" & keyEventsShp.TextFrame.TextRange.Text & "'")
+    result = result & Assert(actions(1).ChangedFieldVerified.Exists(SyncOperations.KEY_EVENTS_HEADER_TAG), _
+        "KEY_EVENTS_HEADER computes blank for 'In Progress', but that IS the real " & _
+        "answer -- it must still be attempted, not skipped like a no-data case")
+    result = result & Assert(keyEventsShp.TextFrame.TextRange.Text = "", _
+        "the placeholder was replaced with real blank, got '" & keyEventsShp.TextFrame.TextRange.Text & "'")
 
     Test_SyncOperations_BothDerivedFieldsReachableThroughPlanRoutineSync = result
+End Function
+
+' THE OTHER HALF OF THE SAME FIX: a shape that starts with REAL, hand-typed
+' content (not the placeholder) must still be protected from being blanked
+' by a derived "In Progress" result. This is InjectPrimitive's own
+' refuseBlankOverReal guard doing its job -- PlanRoutineSync no longer
+' shortcuts around it for KEY_EVENTS_HEADER, so this proves the guard is
+' actually reached, not merely present in the source.
+Private Function Test_SyncOperations_KeyEventsHeaderRefusesToBlankRealContent() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    sld.Tags.Add "slide_type", "project-progress"
+    sld.Tags.Add "instance_key", "3_P001"
+
+    Dim keyEventsShp As Object
+    Set keyEventsShp = sld.Shapes.AddTextbox(msoTextOrientationHorizontal, 50, 150, 200, 20)
+    keyEventsShp.TextFrame.TextRange.Text = "Project Closed"
+    keyEventsShp.Tags.Add "role", SyncOperations.KEY_EVENTS_HEADER_TAG
+
+    Dim instances(1 To 1) As Object
+    Set instances(1) = sld
+    Dim order As New Collection
+    order.Add "3_P001"
+
+    Dim rows As Object
+    Set rows = CreateObject("Scripting.Dictionary")
+    Dim fields As Object
+    Set fields = CreateObject("Scripting.Dictionary")
+    fields("PROJECT_STATUS") = "In Progress"
+    Set rows("3_P001") = fields
+
+    Dim actions() As SyncAction
+    actions = SyncOperations.PlanRoutineSync(instances, order, rows)
+
+    result = result & Assert(keyEventsShp.TextFrame.TextRange.Text = "Project Closed", _
+        "real hand-typed content must survive a derived blank, got '" & _
+        keyEventsShp.TextFrame.TextRange.Text & "'")
+
+    Test_SyncOperations_KeyEventsHeaderRefusesToBlankRealContent = result
 End Function
 
 ' FIX-LIST R. The row dictionary below holds ONLY MS1_LABEL/MS1_DATE/MS1_DONE

@@ -7,8 +7,25 @@ Option Explicit
 '
 ' Exists for the same reason PreviewRealDeck does: SyncNow ends in
 ' ShowSyncResult, an unconditional MsgBox, which blocks an automated run
-' indefinitely. This resolves the registry identically and calls the same
-' RunSync.RunRoutineSync, returning the report instead of showing it.
+' indefinitely. This resolves the registry identically and reaches the same
+' SyncOperations.PlanRoutineSync the real button does, returning the report
+' instead of showing it.
+'
+' CORRECTED 2026-08-21: this used to call RunSync.RunRoutineSync directly,
+' which reads the workbook via the UNFILTERED ExcelOutput.ReadSheet (no
+' period argument) -- and ReadSheetForPeriod's own comment says "first one
+' wins" when the same instance ID appears more than once. Q3F26 rows sit
+' above Q4F26 rows in the register, so every real run through this path was
+' silently syncing LAST QUARTER's data onto the live deck -- confirmed live,
+' PROGRESS_BODY read back off the saved file as "Last reported quarter
+' update - Q3F26" after a run that reported "43 corrected... SAVED to disk
+' (verified)". The real Sync Now button was never affected: RibbonUI.bas
+' builds its sheet via ExcelOutput.ReadSheetForDeckPeriod(ws, period, ...),
+' which filters correctly. This was a genuine drift between this "headless
+' twin" and the button it claims to mirror -- the claim above was false
+' until this fix. Now builds the sheet the same period-aware way RibbonUI
+' does, and calls RunRoutineSyncWithSheet directly instead of the
+' unfiltered wrapper.
 '
 ' UNLIKE its two sibling diagnostics, this one is NOT read-only -- it is the
 ' real sync. RunRoutineSync writes corrected field text, duplicates the
@@ -78,12 +95,24 @@ Public Function SyncRealDeck(deckPath As String, Optional saveWhenDone As Boolea
              "Slides in: " & slidesBefore & vbCrLf & _
              "Saved flag on open: " & wasSavedOnOpen & vbCrLf & vbCrLf
 
+    Dim deckPeriod As String
+    deckPeriod = DeckRegistry.GetDeckPeriod(pres)
+
     Dim i As Long
     For i = lo To hi
         Dim templateSld As Object
         Dim wsName As String
         If DeckRegistry.LookupType(pres, types(i), templateSld, wsName) Then
-            report = report & RunSync.RunRoutineSync(wb.Worksheets(wsName), types(i), templateSld) & vbCrLf
+            Dim ws As Object
+            Set ws = wb.Worksheets(wsName)
+            Dim sheet As Sheet
+            Dim readProblem As String
+            sheet = ExcelOutput.ReadSheetForDeckPeriod(ws, deckPeriod, readProblem)
+            If readProblem <> "" Then
+                report = report & "SKIPPED " & types(i) & ": " & readProblem & vbCrLf
+            Else
+                report = report & RunSync.RunRoutineSyncWithSheet(sheet, types(i), templateSld) & vbCrLf
+            End If
         Else
             report = report & "SKIPPED " & types(i) & ": registered type's template slide no longer resolves." & vbCrLf
         End If

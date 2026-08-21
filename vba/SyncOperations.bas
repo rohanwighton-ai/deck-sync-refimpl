@@ -565,7 +565,33 @@ Public Function PlanRoutineSync(instances() As Object, instanceOrder As Collecti
                     If Not derivedShp Is Nothing Then
                         Dim derivedVal As String
                         derivedVal = ComputeDerivedValue(derivedTagStr, rowValues)
-                        If derivedVal <> "" Then
+
+                        ' "" IS DOING TWO JOBS HERE, AND THEY ARE OPPOSITES.
+                        ' For TIMELINE_ELAPSED/STATUS_BADGE, "" only ever means
+                        ' "no source data, cannot compute" -- skipping is right.
+                        ' For KEY_EVENTS_HEADER, DeriveKeyEventsHeader's own
+                        ' contract makes "" the CORRECT ANSWER whenever
+                        ' PROJECT_STATUS = "In Progress" -- the header is
+                        ' supposed to render as nothing. Treating both as
+                        ' "skip" left every "In Progress" project's slide
+                        ' showing the raw <<KEY_EVENTS_HEADER>> placeholder
+                        ' forever, because the write was never even attempted
+                        ' -- found 2026-08-21 comparing PROGRESS_HEADER (which
+                        ' synced fine, same commit) against KEY_EVENTS_HEADER
+                        ' (which never did) on all 43 real slides.
+                        ' Fix: attempt the write whenever we actually HAD
+                        ' PROJECT_STATUS to compute from, and let
+                        ' InjectPrimitive's own refuseBlankOverReal guard --
+                        ' already placeholder-aware -- decide whether blank is
+                        ' safe. That guard is the right place for this
+                        ' decision; duplicating it here was the mistake.
+                        Dim shouldAttemptWrite As Boolean
+                        shouldAttemptWrite = (derivedVal <> "")
+                        If Not shouldAttemptWrite And derivedTagStr = KEY_EVENTS_HEADER_TAG Then
+                            shouldAttemptWrite = rowValues.Exists("PROJECT_STATUS")
+                        End If
+
+                        If shouldAttemptWrite Then
                             Dim dre As InjectResult
                             dre = GuardedPlanProbe(instanceSlide, key, derivedTagStr, derivedVal, dryRun, rowValues, logWs, runStamp, srcWs)
                             If dre.Found And (dre.Written Or dre.WouldChange) Then
