@@ -4824,8 +4824,44 @@ unconditionally before use, none carry this risk. Isolated to this tool.
 **Verified live against the real deck/register, clean run, 0 errors,
 detail no longer repeating: 41 projects checked, 14 with real
 disagreements between grouped tracker evidence and recorded `DONE`
-flags.** (The earlier "26" was the corrupted count -- discard it.) Full
-per-project detail (with tracker comment quotes) saved locally. Prevention
+flags.** (The earlier "26" was the corrupted count -- discard it.)
+
+**All 14 worked through with Rohan, evidence-based, register cross-
+referenced against the tracker's own quarter-by-quarter comment history
+(not just the raw Completion% -- pulled full untruncated text per row and
+matched grouping against each register slot's actual `MS<n>_DATE` offset,
+not label-text guessing):**
+
+  - **Register overstated -- `Y` removed (7 projects, 8 slots), tracker
+    evidence showed the grouped item(s) genuinely incomplete**: `3_P002`
+    MS3 (a grouped item still "awaiting international isolates"),
+    `2_P003` MS3 and `2_P004` MS3 (both an explicitly deferred economic
+    assessment, "dependent on first identifying AMR management options"),
+    `1_P007` MS3+MS4 (the project's own quarterly self-reports peaked at
+    90% and 25% respectively, never reaching 100), `1_K1001` MS2 ("will
+    be completed during the next milestone reporting period"), `1_K1002`
+    MS2 (team/PAC setup not yet complete), `1_S012` MS2 (a grouped item
+    explicitly "in the process of" and "expected" -- future tense).
+  - **Register understated -- `Y` added (2 projects, 3 slots), tracker
+    showed genuine completion the register never recorded**: `1_K1008`
+    MS2+MS3 ("standardised protocol is included... chemistry lab has
+    begun conjugating"), `4_K017` MS4 ("EDAR8 training has now been
+    structured as a masterclass... published on the EDAR8 webpage").
+  - **Left alone, deliberately -- 5 slots across 4 projects where the
+    evidence gave no clean signal either way**: `4_K021` MS2 and
+    `3_K023` MS4 (blank/"No data" tracker rows, absence isn't evidence of
+    absence), `3_S002` MS2+MS3 (same), and notably `3_S003` MS3 and
+    `2_S011` MS3, where the comment TEXT explicitly confirmed genuine
+    completion ("Completed Successfully") despite a stale `0%` sitting
+    next to it -- the register's existing `Y` was correct, the disagreement
+    was a false positive from trusting the number over the comment. Left
+    untouched rather than "corrected" into being wrong.
+
+Backed up first (`backups/PRE-MILESTONE-EVIDENCE-FIXES-...`), written in
+one pass to the register (no live session held open at the time, so no
+handle-collision risk), verified independently from the saved file's raw
+XML bytes -- all 11 writes confirmed landed exactly as intended. **Register
+only, as always -- needs a real sync run to reach the deck.** Prevention
 (Fable's proposal, not yet actioned): hook this same comparison into
 `RollForwardUI` -- a button Rohan already presses every quarter -- rather
 than a separate tool requiring new discipline to remember to run.

@@ -1555,7 +1555,7 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       noted, not acted on: `2_P009`'s `MS1` is blank unlike every other
       project here -- outside what was proposed/approved, flagged not
       fixed.
-- [~] **CN — `MS*_DONE` drifts from the real CRC tracker with nothing to
+- [x] **CN — `MS*_DONE` drifts from the real CRC tracker with nothing to
       catch it, found via `2_P012` showing every milestone as "not
       achieved" despite 80% progress.** Root-caused by Fable: never
       code-linked to `SRC_MILESTONES` (deliberately manual, per BV), and a
@@ -1575,10 +1575,16 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       compounding forward from every project before it -- caught by
       actually reading the report instead of trusting "0 errors"). Swept
       the rest of `vba/` for the same shape (Rohan's own question) --
-      isolated to this tool. Clean live run: **41 projects checked, 14
-      real disagreements** (the earlier "26" was the corrupted count).
-      Detail saved locally, going through it with Rohan now. Prevention
-      proposed, not actioned: hook into
+      isolated to this tool. Clean live run: 41 projects checked, 14
+      real disagreements (the earlier "26" was the corrupted count).
+      **All 14 worked through with Rohan and resolved -- see FIX-LIST
+      CN for the full evidence per project.** 8 slots corrected `Y`->blank
+      (register overstated), 3 slots corrected blank->`Y` (register
+      understated), 5 slots deliberately left alone (no clean evidence
+      either way, or the comment text confirmed the register was already
+      right despite a stale 0%). Backed up, written in one pass, verified
+      from saved bytes. **Register only -- needs a sync run to reach the
+      deck.** Prevention proposed, not actioned: hook into
       `RollForwardUI` rather than a separate tool to remember.
 - [ ] **CL — content depth drops sharply for S007 onward (13 slides).**
       Rest of the deck runs 80-100% of original text length; `S007`-`S023`
