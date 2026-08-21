@@ -67,16 +67,20 @@ same night — real findings, real fixes, all verified from saved bytes:**
       `.rest`/`.track` companion, so the bar injector was never reached at
       all), not just the stray-text symptom.
 
+- [x] The real "Apply Approved" button dropping `KEY_EVENTS_HEADER` and
+      `STATUS_BADGE` — see FIX-LIST CG. Both now resolved through
+      `SyncOperations.ComputeDerivedValue` at apply time, same as build
+      time; fail-first proven against the exact real "DROPPED" symptom.
+- [x] Review-approval sheet lookup name-matching bug — see FIX-LIST CH.
+      `LifespanOf` matched the retired "Sync Review" format; cosmetic only
+      (feeds a human-facing report sheet, nothing acted on it), but the
+      same "a fact restated somewhere its source has moved on" shape as
+      the rest of this file's rot-prone areas. Fail-first proven.
+
 **Still open from the same audit, not yet actioned:**
-- [ ] The real "Apply Approved" button drops `KEY_EVENTS_HEADER` and
-      `STATUS_BADGE` — `ReviewQueue.bas` never rescues them, only
-      `TIMELINE_ELAPSED` has that handling. Both fields currently only
-      reach the deck via the diagnostic script, not the real button.
 - [ ] The approval dialog authorising writes to all 43 slides can silently
       truncate (`MsgBox`, no length cap, count sits at the end of the
       string).
-- [ ] Review-approval sheet lookup still broken by name-matching — a
-      repeat of the 2026-08-14 incident.
 - [ ] `DeckAdoption.bas:101`'s own unfiltered-read gap — a different
       function (`PlanAdoption`, new-project onboarding) than the ones
       already fixed, needs its own look at adoption's period semantics

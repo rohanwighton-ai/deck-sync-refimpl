@@ -4447,3 +4447,52 @@ independently after a real sync, from the saved file's own bytes: zero
 remaining stray text across all 43 real slides, every bar's computed
 elapsed fraction in sensible 0-1 range (0.16-1.0).
 
+## Fixed 2026-08-22 — CG, the real "Apply Approved" button dropped
+## `STATUS_BADGE` and `KEY_EVENTS_HEADER` on every approval
+
+Found via `mother-hound`: `ReviewQueue.ApplyApproved`'s field-resolution
+chain only rescues `TIMELINE_ELAPSED_TAG` as a derived value -- ordinary
+register columns and device role tags are the other two branches, and
+`STATUS_BADGE`/`KEY_EVENTS_HEADER` fell into none of them, hitting
+`haveProposed = False` and getting reported as `"DROPPED ... -- the
+register no longer has a value for this field"`. Both fields only ever
+reached the real deck via a diagnostic script, never the button Rohan
+actually presses (`RibbonUI.bas:1907` -> `ReviewQueue.ApplyApproved`).
+
+**Fixed** by adding an `ElseIf` branch resolving both tags through
+`SyncOperations.ComputeDerivedValue` -- the same single function
+`PlanRoutineSync` already uses at build time, now wired to apply time too.
+Re-deriving is safe here (unlike `TIMELINE_ELAPSED`, which re-reads its
+own build-time `ProposedValue` instead, because re-deriving a fraction a
+second time would drift from what was actually shown for approval) since
+`STATUS_BADGE`/`KEY_EVENTS_HEADER` are pure functions of `rowValues`, not
+of anything computed at build time that could have moved on.
+
+Fail-first proven: temporarily disabled the new branch, confirmed the
+test caught the exact "dropped as stale" failure matching mother-hound's
+real finding, restored, confirmed clean (4/4 `ApplyApproved` tests, 12/12
+`SyncOperations` regression tests).
+
+## Fixed 2026-08-22 — CH, `WorkbookBridge.LifespanOf` matched a sheet-name
+## format retired since an earlier rename
+
+`LifespanOf` checked for `"Sync Review"` (`Left(sheetName, 11)`) but
+`ReviewQueue.ReviewSheetNameFor` has produced `"Review <type>-<tag>"`
+sheet names since the rename documented in that function's own header
+(the old format truncated mid-word and read like a temp file). Every real
+review sheet has shown "unknown" in the workbook index instead of its
+actual lifespan ever since.
+
+Impact is cosmetic only: `LifespanOf`'s sole caller is
+`WriteWorkbookIndex`, a human-facing report sheet -- nothing acts on the
+misclassification. The companion test had been masking the bug the whole
+time by hardcoding the same retired `"Sync Review q"` string as its own
+fixture, rather than calling the real generator.
+
+**Fixed**: `Left(sheetName, 7) = "Review "`, plus the test corrected to
+call `ReviewQueue.ReviewSheetNameFor("q")` for a real sheet name. Fail-
+first proven: reverted to the old check, confirmed the test failed with
+the exact symptom (`"a review grid ('Review q-B616') is marked consumed,
+got 'unknown'"`), restored, confirmed clean (13/13 `WorkbookBridge` tests,
+52-module whole-project compile clean).
+
