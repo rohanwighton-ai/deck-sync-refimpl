@@ -4560,3 +4560,92 @@ two-field pattern across nearly every slide is the kind of shape that
 turned out to be structural, not incidental, the last three times this
 project saw it. See CHECKLIST.md.
 
+## Added 2026-08-22 — CK, STILL OPEN, the milestone timeline doesn't
+## reflect project closure -- 8 of 8 closed projects affected
+
+Slide-by-slide gap analysis of the real deck against the last hand-built
+version (`2026-08-13-0956-pre-onboard`, 43 matched slides) surfaced this
+via Rohan's own live observation ("whats happening with circle colour?")
+on `3_P001`, slide 1: the milestone timeline's current-milestone circle
+sits at "12 months / Method exploration" -- teal, visually distinct from
+the rest -- while the slide's own badge says `PROJECT_STATUS = Project
+Closed`, 80% progress, and the narrative says "Final Report submitted".
+
+**Root cause is register data, not code.** `MilestoneDevice.DrawMilestones`
+computes `lastAchieved` from the `MS*_DONE` flags and is working exactly
+as designed -- it drew slot 3 as current because slot 3 is the last one
+flagged `Y`. `3_P001`'s Q4F26 row has `MS1-3_DONE = Y`, `MS4-7_DONE =
+blank`, despite the project being closed.
+
+**Checked whether this is an isolated data-entry gap: it is not.** Scanned
+every Q4F26 register row with `PROJECT_STATUS = Project Closed` (8 rows
+total) for complete `MS*_DONE` coverage against however many milestone
+slots that row's labels populate. **Zero of eight have complete flags** --
+`3_P001` (3/7), `2_P009` (0/7), `1_P010` (0/5), `1_K1004` (1/6), `1_K1008`
+(1/6), `3_K016` (4/6), `1_K022` (3/5), plus one closed project with no
+milestone labels at all. There is no "correct" convention anywhere in the
+live register to point at as the expected pattern -- closing a project has
+never once been paired with backfilling its milestones.
+
+**Not fixed.** This needs a register/workflow step (something that
+back-fills `MS*_DONE = Y` for every populated slot when `PROJECT_STATUS`
+moves to `Project Closed`), not a VBA change -- the drawing code is
+already correct. Independent second check requested from Fable before
+this is treated as confirmed.
+
+## Added 2026-08-22 — CL, STILL OPEN, content depth drops sharply for
+## S007 onward (13 slides) versus the original hand-built deck
+
+Same gap analysis. P-series, K-series, and `S001`-`S004` all run 80-100%
+of the original deck's visible text length per slide (normal quarter-to-
+quarter variation). From `S007` onward (slides 31-43 of 43, matched 1:1
+by content-similarity and confirmed order-preserving) it drops to a
+consistent 55-70%, visibility-aware (hidden shapes excluded from both
+sides so the comparison isn't skewed by leftover template cruft -- see
+CM below).
+
+Spot-checked `S012` (slide 34): the current `ABOUT` text (272 chars) is
+factually accurate but drops the original's explicit deliverables framing
+entirely -- "a database of ARGs across waste types, a protocol for
+tracking ARG fate during treatment, and a modelling framework to evaluate
+AMR risk..." is simply gone, compressed into one general sentence. The
+`PROBLEM` box on the same slide is untouched (430 chars, byte-identical),
+so this isn't a blanket per-slide issue -- it's specific to how much depth
+`ABOUT`-class content gets during drafting for this batch of projects.
+
+**Not triaged further.** Reads like these 13 projects got less drafting/
+source depth than the rest of the deck at some point, not like anything
+in the sync mechanism is broken -- worth checking `Sources`/extraction
+completeness for `S007`-`S023` specifically before assuming a code fix is
+even the right lever here.
+
+## Added 2026-08-22 — CM, STILL OPEN (cosmetic), hidden leftover milestone
+## donor text on 32 of 43 slides
+
+Same gap analysis, found while investigating what first looked like a
+severe cross-project data-contamination bug on slide 43 (S023) -- a raw
+text-extraction diff (not visibility-aware) showed `MS1_LABEL`/`MS5_LABEL`
+etc. carrying content describing a completely different (antimicrobial)
+project. Rohan's instinct to check backups before trusting this ("You
+have backups from before we started check your notes") caught it: those
+`MS*` shapes all carry `hidden="1"` in the real slide's XML -- confirmed
+by checking every shape's `hidden` attribute directly, not just its text.
+`DrawMilestones` is working exactly as its own header says ("A SLOT WITH
+NO MILESTONE IS HIDDEN, NOT EMPTIED") -- nothing is visible, nothing is
+wrong on screen.
+
+Scanned all 43 slides for hidden shapes still carrying text: 32 of 43
+have at least one, almost all the harmless `MS7_LABEL="Project end"` /
+`MS7_DATE="★"` pair left over on projects using fewer than 7 milestone
+slots. Two slides (8 and 43, both projects with zero real milestone data)
+carry a full donor set of unrelated antimicrobial-project text across all
+14 hidden shapes -- confirmed via a pre-Aug-19 backup that the `MS*`
+shapes didn't exist on slide 43 at all before a later milestone-device
+retrofit, so the donor content was baked in when that retrofit cloned
+from a real, populated slide rather than a blank template.
+
+**Not fixed, low priority.** Purely a data-hygiene item -- real project
+text sitting in shapes nobody sees. Worth a cleanup pass (blank the
+donor text at template-build time) but not urgent since nothing currently
+exposes it.
+

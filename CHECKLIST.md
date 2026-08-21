@@ -1537,6 +1537,25 @@ subsystem (built, parked). Chrome/UI enforcement. Ribbon polish. Adding these
 here would be the "field count as progress" trap the project already fell into
 once. *Source: `TRACKER.md`, "Not on this list, deliberately."*
 
+## Gap analysis, 2026-08-22 — current deck vs. last hand-built version
+(`2026-08-13-0956-pre-onboard`, 43 slides matched 1:1 by content similarity,
+order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
+
+- [ ] **CK — milestone timeline doesn't reflect project closure, 8/8 closed
+      projects affected.** Register data gap, not code: `MS*_DONE` flags
+      stop partway through for every single `Project Closed` row (zero of
+      eight have complete flags). In progress: repairing the register
+      case-by-case (a closed project may have genuinely wound down before
+      its later milestones, so this isn't a blind "mark everything done"
+      patch). Fable double-check requested.
+- [ ] **CL — content depth drops sharply for S007 onward (13 slides).**
+      Rest of the deck runs 80-100% of original text length; `S007`-`S023`
+      sits at 55-70%. Reads like a drafting/sourcing depth gap for this
+      batch, not a sync-mechanism bug. Not yet investigated further.
+- [ ] **CM — hidden leftover milestone donor text, 32/43 slides, cosmetic.**
+      All correctly hidden, nothing visible on screen. Low priority
+      cleanup.
+
 ## Parked / explicitly decided — do not reopen without a new decision
 
 - [x] ~~Merge the 13 per-field drafting sheets into one long-format sheet.~~
