@@ -1625,6 +1625,27 @@ Public Function ApplyApproved(sheet As Sheet, slideType As String, ws As Object,
                     ' is exactly what Derived exists to prevent.
                     proposed = q.Items(n).ProposedValue
                     haveProposed = True
+                ElseIf q.Items(n).FieldID = SyncOperations.STATUS_BADGE_TAG _
+                    Or q.Items(n).FieldID = SyncOperations.KEY_EVENTS_HEADER_TAG Then
+                    ' UNLIKE TIMELINE_ELAPSED, THESE ARE SAFE TO RE-DERIVE HERE.
+                    ' Found 2026-08-21/22 (mother-hound audit): both hit the same
+                    ' "DROPPED -- register no longer has a value" fate as every
+                    ' other Derived field this apply loop didn't know about --
+                    ' they reached the deck at all tonight only via a diagnostic
+                    ' script, never through this, the real Apply Approved button.
+                    ' TIMELINE_ELAPSED needed its build-time ProposedValue
+                    ' preserved because re-deriving would be "a second copy of a
+                    ' computed value" (the comment above). That reasoning does
+                    ' NOT apply here: STATUS_BADGE and KEY_EVENTS_HEADER are
+                    ' cheap, deterministic string functions of PROJECT_STATUS/
+                    ' SCHEDULE_STATUS, already sitting in rowValues right here --
+                    ' the SAME function PlanRoutineSync used to compute them at
+                    ' build time. Re-deriving from CURRENT rowValues is not a
+                    ' second copy, it's the same "register's value NOW" rule
+                    ' the SUBTITLE_A branch above already follows for exactly
+                    ' this reason.
+                    proposed = SyncOperations.ComputeDerivedValue(q.Items(n).FieldID, rowValues)
+                    haveProposed = True
                 End If
             End If
 

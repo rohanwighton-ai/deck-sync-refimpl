@@ -1794,6 +1794,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "ReviewQueue_ApplyApprovedSummaryCountsMatchTheReport", r
+    If TestMatches("ReviewQueue_ApplyApprovedRederivesStatusBadgeAndKeyEventsHeader", filterPattern) Then
+        r = Test_ReviewQueue_ApplyApprovedRederivesStatusBadgeAndKeyEventsHeader()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "ReviewQueue_ApplyApprovedRederivesStatusBadgeAndKeyEventsHeader", r
     If TestMatches("ReviewQueue_BuildQueuePreTicksEveryItem", filterPattern) Then
         r = Test_ReviewQueue_BuildQueuePreTicksEveryItem()
     Else
@@ -13321,6 +13327,109 @@ Private Function Test_ReviewQueue_ApplyApprovedSummaryCountsMatchTheReport() As 
     On Error GoTo 0
 
     Test_ReviewQueue_ApplyApprovedSummaryCountsMatchTheReport = result
+End Function
+
+' FOUND 2026-08-21/22 (mother-hound audit): STATUS_BADGE and KEY_EVENTS_HEADER
+' are Derived, so rowValues.Exists(FieldID) is False for both (their register
+' columns are PROJECT_STATUS/SCHEDULE_STATUS, not columns named after
+' themselves) -- and neither is a device, and neither is TIMELINE_ELAPSED, so
+' every branch above fell through and both were DROPPED on every real run,
+' forever, through the actual Apply Approved button. Both fields only ever
+' reached the deck tonight via a diagnostic script that bypasses this
+' function entirely. Proves the fix: unlike TIMELINE_ELAPSED (which needs its
+' build-time fraction preserved), these are cheap to re-derive from CURRENT
+' rowValues at apply time, same as the SUBTITLE_A branch already does.
+Private Function Test_ReviewQueue_ApplyApprovedRederivesStatusBadgeAndKeyEventsHeader() As String
+    Dim result As String
+
+    Dim testPres As Object
+    Set testPres = Application.Presentations.Add
+    Dim tmpPath As String
+    tmpPath = Environ("TEMP") & "\applyapproved_derived_test_" & Format(Now, "yyyymmddhhnnss") & ".pptx"
+    testPres.SaveAs tmpPath
+
+    Dim sld As Object
+    Set sld = testPres.Slides.Add(1, ppLayoutBlank)
+    sld.Tags.Add "slide_type", "test-derived-type"
+    sld.Tags.Add "instance_key", "DERIVED001"
+    Dim badgeShp As Object
+    Set badgeShp = sld.Shapes.AddTextbox(1, 40, 40, 300, 40)
+    badgeShp.TextFrame.TextRange.Text = "placeholder"
+    badgeShp.Tags.Add "role", SyncOperations.STATUS_BADGE_TAG
+    Dim keyShp As Object
+    Set keyShp = sld.Shapes.AddTextbox(1, 40, 100, 300, 40)
+    keyShp.TextFrame.TextRange.Text = "<<KEY_EVENTS_HEADER>>"
+    keyShp.Tags.Add "role", SyncOperations.KEY_EVENTS_HEADER_TAG
+
+    Dim sheet As Sheet
+    Set sheet.Rows = CreateObject("Scripting.Dictionary")
+    Set sheet.Fields = New Collection
+    Set sheet.InstanceOrder = New Collection
+    Dim vals As Object
+    Set vals = CreateObject("Scripting.Dictionary")
+    ' "Project Closed" makes BOTH derivations land on the same clean,
+    ' non-blank value with no SCHEDULE_STATUS needed: DeriveStatusBadge
+    ' matches it directly, and DeriveKeyEventsHeader passes any non-"In
+    ' Progress", non-blank status straight through verbatim.
+    vals("PROJECT_STATUS") = "Project Closed"
+    Set sheet.Rows("DERIVED001") = vals
+    sheet.InstanceOrder.Add "DERIVED001"
+
+    Dim q As ReviewQueueSet
+    q.SlideType = "test-derived-type"
+    q.RunStamp = "TEST"
+    q.Consumed = False
+    q.Count = 2
+    ReDim q.Items(1 To 2)
+    q.Items(1).EntityKey = "DERIVED001"
+    q.Items(1).FieldID = SyncOperations.STATUS_BADGE_TAG
+    q.Items(1).Approved = True
+    q.Items(1).ChangeHash = ReviewQueue.ChangeHash("DERIVED001", SyncOperations.STATUS_BADGE_TAG, "placeholder", "Project Closed")
+    q.Items(2).EntityKey = "DERIVED001"
+    q.Items(2).FieldID = SyncOperations.KEY_EVENTS_HEADER_TAG
+    q.Items(2).Approved = True
+    q.Items(2).ChangeHash = ReviewQueue.ChangeHash("DERIVED001", SyncOperations.KEY_EVENTS_HEADER_TAG, "<<KEY_EVENTS_HEADER>>", "Project Closed")
+
+    Dim xl As Object, wb As Object, ws As Object, logWs As Object
+    Set xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    Set wb = xl.Workbooks.Add
+    Set ws = wb.Worksheets(1)
+    ws.Name = ReviewQueue.ReviewSheetNameFor("test-derived-type")
+    ReviewQueue.WriteQueueSheet ws, q
+    Set logWs = wb.Worksheets.Add
+    logWs.Name = "TestLog"
+
+    Dim outW As Long, outSk As Long, outSt As Long, outF As Long
+    Dim report As String
+    report = ReviewQueue.ApplyApproved(sheet, "test-derived-type", ws, logWs, outW, outSk, outSt, outF)
+
+    result = result & Assert(outW = 2, "both derived fields written, not dropped, got outWritten=" & outW & vbCrLf & report)
+    result = result & Assert(outSt = 0, "neither dropped as stale, got outStale=" & outSt & vbCrLf & report)
+    result = result & Assert(InStr(report, "DROPPED") = 0, "no DROPPED line at all, got: " & report)
+    result = result & Assert(badgeShp.TextFrame.TextRange.text = "Project Closed", _
+        "STATUS_BADGE actually re-derived and written, got '" & badgeShp.TextFrame.TextRange.text & "'")
+    result = result & Assert(keyShp.TextFrame.TextRange.text = "Project Closed", _
+        "KEY_EVENTS_HEADER actually re-derived and written, got '" & keyShp.TextFrame.TextRange.text & "'")
+
+    wb.Close False
+    xl.Quit
+    Set wb = Nothing
+    Set xl = Nothing
+
+    testPres.Saved = True
+    testPres.Close
+
+    On Error Resume Next
+    Dim fso3 As Object
+    Set fso3 = CreateObject("Scripting.FileSystemObject")
+    Dim f3 As Object
+    For Each f3 In fso3.GetFolder(Environ("TEMP")).Files
+        If InStr(f3.Name, "applyapproved_derived_test_") > 0 Then f3.Delete
+    Next f3
+    On Error GoTo 0
+
+    Test_ReviewQueue_ApplyApprovedRederivesStatusBadgeAndKeyEventsHeader = result
 End Function
 
 ' FOUND 2026-08-18 chasing why the elapsed-time bar dropped as "changed since
