@@ -4728,3 +4728,65 @@ likely a hidden-shape-detection methodology difference (direct `hidden`
 check vs. also treating children of a hidden ancestor as hidden), not new
 drift; not chased further given this finding's own low priority.
 
+## Added 2026-08-22 — CN, STILL OPEN, `MS*_DONE` drifts from the real CRC
+## tracker with nothing to catch it -- diagnostic tool built, not yet run
+
+Found live: Rohan spotted `2_P012`'s entire milestone timeline rendering as
+"not achieved" (every circle the same colour, no achieved/current
+distinction) despite the project being well underway, 80% progress, "In
+Progress". Register showed `MS1-7_DONE` all blank. `SRC_MILESTONES` (the
+permanent pasted extract from the real CRC tracker) showed 4 of 5 tracked
+milestones at `Completion=1`. Fixed `2_P012` by hand from that evidence
+(`MS1-5=Y`).
+
+**A naive follow-up scan (comparing raw DONE-flag counts against raw
+source-completion counts) found 8 more "gaps" -- wrong.** Root-caused by
+Fable (fresh agent, independent read of the same files):
+
+  - **`MS*_DONE` has NEVER been code-linked to `SRC_MILESTONES`.** Zero VBA
+    references to that sheet anywhere in `vba/`. Its own header claim
+    ("Feeds MS1..MS7") is hand-typed process documentation, never
+    implemented -- aspirational, not a broken mechanism.
+  - **This is a deliberate, already-recorded decision, not an oversight.**
+    FIX-LIST item BV (2026-08-21) proved mechanical mirroring from
+    `Completion%` is wrong in both directions: `3_P001` correctly shows
+    later milestones undone (closed early, genuinely incomplete);
+    `2_P009`'s `MS6` showed `Completion=0` while its own comment said the
+    work was finished. Rohan's own call at the time: leave it manual.
+  - **The naive scan overcounts because `SRC_MILESTONES` is far more
+    granular than the register.** One project can have 20+ tracker
+    milestone rows collapsing into the register's 7 `MS` slots. Verified
+    directly on `2_P004`: all 13 "missing" source completions, once
+    grouped by due-month against the register's own slot dates, land
+    under slots already marked `Y`. **`2_P004` needs no fix at all** --
+    the earlier flagged-list entry for it was a false positive from
+    counting raw rows instead of grouping them.
+
+**Built (not yet run against the real files): `vba/tools/
+MilestoneEvidenceReport.bas` + `milestone_evidence_report.ps1`, matching
+`VerifyRealDeck.bas`'s own pattern exactly** -- opens both real files
+READ-ONLY, never writes, not in the shipped add-in. Groups each
+`SRC_MILESTONES` row into the first register `MS` slot whose own
+`MS<n>_DATE` offset is >= that row's due-month offset (a deliverable due
+at month 9, with checkpoints at 6 and 12, belongs to the 12-month
+checkpoint). Reports disagreements only, quoting the actual Knack
+comment text -- since a comment overrides a stale percentage in either
+direction, per BV -- and **never decides or writes anything**; Rohan
+applies by hand, same review-before-write norm `ReviewQueue.bas` already
+holds for every other field. The grouping logic itself
+(`GroupSourceIntoSlots`) is a pure function taking plain arrays, no file
+I/O, matching `MilestoneDevice.DrawMilestones`'s own separation of pure
+computation from the COM-driving wrapper around it -- but per this repo's
+own established convention (confirmed in `run_vba_tests.ps1`'s comment:
+tool modules are "compile-only... no test exercises them", same as
+`VerifyRealDeck`), it is NOT wired into `TestRunner.bas`; verified by
+compile + a live read-only run instead.
+
+**Not yet run.** Both PowerPoint and Excel have been holding the real
+deck/register open for Rohan's own live investigation all evening;
+compile check and the actual live run are both blocked until they're
+free. Prevention (Fable's proposal, not yet actioned): hook this same
+comparison into `RollForwardUI` -- a button Rohan already presses every
+quarter -- rather than a separate tool requiring new discipline to
+remember to run.
+

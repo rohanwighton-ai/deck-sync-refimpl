@@ -1555,6 +1555,18 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       noted, not acted on: `2_P009`'s `MS1` is blank unlike every other
       project here -- outside what was proposed/approved, flagged not
       fixed.
+- [~] **CN — `MS*_DONE` drifts from the real CRC tracker with nothing to
+      catch it, found via `2_P012` showing every milestone as "not
+      achieved" despite 80% progress.** Root-caused by Fable: never
+      code-linked to `SRC_MILESTONES` (deliberately manual, per BV), and a
+      naive gap scan overcounts because the tracker is far more granular
+      than the register's 7 slots (`2_P004` needs no fix once grouped
+      properly). Built `vba/tools/MilestoneEvidenceReport.bas` +
+      `milestone_evidence_report.ps1` (read-only, reports only, matches
+      `VerifyRealDeck`'s pattern) to do the grouping properly and surface
+      disagreements with the actual comment text. Not yet run -- blocked
+      on PowerPoint/Excel being free. Prevention proposed, not actioned:
+      hook into `RollForwardUI` rather than a separate tool to remember.
 - [ ] **CL — content depth drops sharply for S007 onward (13 slides).**
       Rest of the deck runs 80-100% of original text length; `S007`-`S023`
       sits at 55-70%. Reads like a drafting/sourcing depth gap for this
