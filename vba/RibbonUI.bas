@@ -1711,17 +1711,26 @@ Private Sub PutItOnTheSlidesCore()
             Exit Sub
         End If
 
-        ' CAPPED, WITH THE QUESTION PROTECTED AS mustKeep (mother-hound audit,
-        ' 2026-08-22). This was a bare MsgBox on fullReport, which grows with
-        ' the number of registered slide types and slides -- exactly the
-        ' "MsgBox truncates SILENTLY" defect already fixed once in this file
-        ' at OfferHarvestAcrossDeck, here authorising a real write to every
-        ' approved slide with no guarantee the person ever saw the actual
-        ' question. BuildAllQueuesCore now writes fullReport to the Run Log
-        ' before returning, so CapReport's default notice is true.
+        ' CAPPED, WITH THE QUESTION APPENDED AFTER -- not passed as mustKeep.
+        ' mother-hound audit, 2026-08-22, corrected same day: the first
+        ' version passed askApply as CapReport's mustKeep parameter, on the
+        ' wrong assumption that mustKeep guarantees the text appears.
+        ' CapReport's own test (Test_RibbonUI_CapReportKeepsTheQuestion)
+        ' proves otherwise -- a SHORT text returns UNCHANGED, mustKeep never
+        ' appended, because mustKeep exists to survive TRUNCATION, not to
+        ' unconditionally add text. Caught live: a single-type "project-
+        ' progress" run produced a short fullReport, CapReport returned it
+        ' untouched, and the dialog showed with Yes/No buttons and no
+        ' visible question at all. Fixed to match ShowSyncResult's own
+        ' working pattern two functions down: cap the body ALONE, then
+        ' unconditionally append the must-survive text afterward, exactly
+        ' as ShowSyncResult does for its build stamp ("Appended AFTER
+        ' CapReport so the stamp cannot be the thing that gets truncated
+        ' away"). BuildAllQueuesCore still writes fullReport to the Run Log
+        ' before returning, so CapReport's default notice stays true.
         Dim askApply As String
         askApply = totalQueued & " change(s) queued, pre-approved. Apply them now?"
-        If MsgBox(CapReport(fullReport, askApply), _
+        If MsgBox(CapReport(fullReport) & vbCrLf & vbCrLf & askApply, _
                   vbYesNo + vbQuestion, CommandBarUI.CAP_PUT_ON_SLIDES) <> vbYes Then
             ' Queue stays written to the review sheet either way -- saying No
             ' here does not lose it, same as the old two-press path never did.
