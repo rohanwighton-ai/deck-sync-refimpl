@@ -77,10 +77,13 @@ same night — real findings, real fixes, all verified from saved bytes:**
       same "a fact restated somewhere its source has moved on" shape as
       the rest of this file's rot-prone areas. Fail-first proven.
 
+- [x] The approval dialog authorising writes to all 43 slides could
+      silently truncate — see FIX-LIST CI. Now capped with the actual
+      Yes/No question protected as `mustKeep`; also fixed `CapReport`'s
+      "full list is on the Run Log sheet" notice, which was untrue until
+      `BuildAllQueuesCore` was fixed to actually write it there.
+
 **Still open from the same audit, not yet actioned:**
-- [ ] The approval dialog authorising writes to all 43 slides can silently
-      truncate (`MsgBox`, no length cap, count sits at the end of the
-      string).
 - [ ] `DeckAdoption.bas:101`'s own unfiltered-read gap — a different
       function (`PlanAdoption`, new-project onboarding) than the ones
       already fixed, needs its own look at adoption's period semantics

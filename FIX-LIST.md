@@ -4496,3 +4496,29 @@ the exact symptom (`"a review grid ('Review q-B616') is marked consumed,
 got 'unknown'"`), restored, confirmed clean (13/13 `WorkbookBridge` tests,
 52-module whole-project compile clean).
 
+## Fixed 2026-08-22 — CI, the "Apply them now?" approval dialog could
+## silently truncate away its own question
+
+`PutItOnTheSlidesCore`'s confirmation dialog -- the one authorising real
+writes to every approved slide -- built its `MsgBox` text as bare
+concatenation of `fullReport` and the actual Yes/No question, with no
+cap. VBA's `MsgBox` truncates silently, so a large enough `fullReport`
+(grows with the number of registered slide types and slides) could cut
+the question off the bottom entirely. Same class of defect already fixed
+once in this file at `OfferHarvestAcrossDeck`.
+
+**Fixed** by wrapping in `CapReport(fullReport, askApply)`, protecting
+the question as `mustKeep` so it survives truncation no matter how long
+the report body grows. Also fixed a second, related gap this exposed:
+`CapReport`'s default notice claims "the full list is on the Run Log
+sheet", which was untrue here -- `BuildAllQueuesCore` never wrote
+`fullReport` there. Fixed at the source (`BuildAllQueuesCore` itself),
+which closes the same latent lie in `ReviewChangesCore`'s `ShowSyncResult`
+call too.
+
+No dedicated unit test -- `RibbonUI`'s Core functions are
+integration-only (live `MsgBox`/COM), same as the `OfferHarvestAcrossDeck`
+fix this mirrors, which also has none. Verified via clean whole-project
+compile and no regression in the existing `RibbonUI`/`CapReport` test
+cluster (7/7 passed).
+
