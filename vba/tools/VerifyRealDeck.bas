@@ -62,7 +62,7 @@ Public Function VerifyRealDeck(deckPath As String, workbookPath As String) As St
     End If
 
     Dim slidesChecked As Long, slidesOk As Long, slidesMissingTags As Long, slidesNoWorkbookRow As Long
-    Dim fieldsChecked As Long, fieldsMissingShape As Long, fieldsMismatch As Long
+    Dim fieldsChecked As Long, fieldsMissingShape As Long, fieldsMismatch As Long, fieldsSkippedByDesign As Long
 
     Dim sld As Object
     For Each sld In pres.Slides
@@ -91,7 +91,28 @@ Public Function VerifyRealDeck(deckPath As String, workbookPath As String) As St
             Dim fieldName As Variant
             For Each fieldName In rowValues.Keys
                 fieldsChecked = fieldsChecked + 1
-                If Not roleTags.Exists(CStr(fieldName)) Then
+                If IsExpectedToCarryNoOwnRoleTag(CStr(fieldName)) Then
+                    ' NOT A GAP, A WRONG QUESTION -- mother-hound audit,
+                    ' 2026-08-22. This register column was never meant to
+                    ' answer "does any shape carry this exact role tag",
+                    ' either because MilestoneDevice.IsColumnForThisDevice
+                    ' says so (MS1_LABEL etc. -- addressed by shape NAME
+                    ' inside the milestone group, not a role tag; see that
+                    ' function's own header, which already fixed the
+                    ' identical false-alarm class once for
+                    ' FieldWiring.ScanFieldWiring: "Reported as '21 fields on
+                    ' the register that no slide carries' on every run before
+                    ' this existed") or because it is a source-only column
+                    ' for a Derived field (PROJECT_STATUS/SCHEDULE_STATUS ->
+                    ' STATUS_BADGE, FieldSpec.bas's own STATUS_BADGE row:
+                    ' "computes it directly from PROJECT_STATUS and
+                    ' SCHEDULE_STATUS at sync time" -- the badge is tagged
+                    ' and checked; its two register-only sources never are).
+                    ' 624 of this tool's first-ever 686 findings (91%) were
+                    ' this exact false alarm, on all 43 real slides, before
+                    ' this exclusion existed.
+                    fieldsSkippedByDesign = fieldsSkippedByDesign + 1
+                ElseIf Not roleTags.Exists(CStr(fieldName)) Then
                     fieldsMissingShape = fieldsMissingShape + 1
                     slideOk = False
                     detail = detail & "Slide " & sld.SlideIndex & " (" & inst.InstanceKey & "): field '" & fieldName & "' -- no shape on the slide carries this role tag" & vbCrLf
@@ -119,11 +140,37 @@ Public Function VerifyRealDeck(deckPath As String, workbookPath As String) As St
         "Slides missing slide_type/instance_key tags: " & slidesMissingTags & vbCrLf & _
         "Slides with no matching workbook row: " & slidesNoWorkbookRow & vbCrLf & _
         "Fields checked (across all OK-tagged slides): " & fieldsChecked & vbCrLf & _
+        "Fields skipped, no role tag expected by design (milestone-device slots, Derived-field sources): " & fieldsSkippedByDesign & vbCrLf & _
         "Fields with no tagged shape found: " & fieldsMissingShape & vbCrLf & _
         "Fields with a text/value mismatch: " & fieldsMismatch & vbCrLf & vbCrLf & _
         "--- Per-slide detail (only non-OK slides/fields listed) ---" & vbCrLf & detail
 
     VerifyRealDeck = report
+End Function
+
+' A register column this tool must not ask "does any shape carry this exact
+' role tag" about, because the answer is always no by design, not by defect.
+' Two closed categories, both documented at the one call site above:
+'   - MilestoneDevice.IsColumnForThisDevice: MS<n>_LABEL/_DATE/_DONE, owned
+'     by the milestone group and addressed by shape name, never role-tagged
+'     individually.
+'   - Source-only columns for a Kind=Derived field (FieldSpec.bas): the
+'     Derived field itself IS role-tagged and IS checked (e.g. STATUS_BADGE);
+'     only its raw register inputs are exempt. Hardcoded here, not derived
+'     from FieldSpec, because FieldSpec's Kind=Derived column names the
+'     OUTPUT field, not its inputs, and there is no structured "feeds into"
+'     column to read this from -- if a new Derived field with register-only
+'     sources is ever added, its sources need adding here too.
+Private Function IsExpectedToCarryNoOwnRoleTag(fieldName As String) As Boolean
+    If MilestoneDevice.IsColumnForThisDevice(fieldName) Then
+        IsExpectedToCarryNoOwnRoleTag = True
+        Exit Function
+    End If
+
+    Select Case UCase(Trim(fieldName))
+        Case "PROJECT_STATUS", "SCHEDULE_STATUS" ' feed STATUS_BADGE only
+            IsExpectedToCarryNoOwnRoleTag = True
+    End Select
 End Function
 
 ' Same recursion shape as InjectPrimitive.bas's WalkForRoleTag, but
