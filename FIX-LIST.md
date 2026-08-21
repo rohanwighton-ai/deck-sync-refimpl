@@ -4587,11 +4587,37 @@ milestone labels at all. There is no "correct" convention anywhere in the
 live register to point at as the expected pattern -- closing a project has
 never once been paired with backfilling its milestones.
 
-**Not fixed.** This needs a register/workflow step (something that
-back-fills `MS*_DONE = Y` for every populated slot when `PROJECT_STATUS`
-moves to `Project Closed`), not a VBA change -- the drawing code is
-already correct. Independent second check requested from Fable before
-this is treated as confirmed.
+**Independently re-derived by Fable (fresh agent, own read of the same
+files): CONFIRMED, with one correction.** Same 8 rows found, same
+DONE-flag gaps -- but `P008` has ZERO populated milestone labels, so
+"every populated slot marked Y" is vacuously true for it: nothing to
+repair there, it needs milestone content authored, not a DONE-flag fix.
+**7 real candidates, not 8.**
+
+**NOT A BLANKET FIX -- confirmed independently, this matters.** `3_P001`'s
+own `KEY_EVENTS_BODY` says outright: "The industry partner's withdrawal
+halted further development. Later-stage milestones not completed." MS4-7
+blank is the TRUE state -- this project closed early, genuinely
+incomplete, and marking it fully done would fabricate history. Fable's
+own slide-side check confirms the rendered timeline (`MS_BAR` stopping at
+MS3, `MS3_NOW` oversized) faithfully reflects this. Per-project narrative
+review (this session) sorted the remaining 6:
+  - **High confidence, real fix**: `1_P010` -- `PROGRESS_BODY`/
+    `KEY_EVENTS_BODY` describe full completion of all 5 milestones'
+    activities; currently 0/5 marked.
+  - **Ambiguous, needs a person's read, not a guess**: `2_P009` (0/7
+    marked despite real completed activities in `KEY_EVENTS_BODY`, but no
+    clean 1:1 mapping to the 7 labels -- Fable independently flagged the
+    same "no basis in the register to decide which slots" problem),
+    `1_K1004`, `1_K1008`, `3_K016`, `1_K022` (each has SOME later
+    milestones plausibly complete per the narrative, but at least one
+    explicitly still open -- e.g. `1_K1008`: "molecular testing remains
+    incomplete").
+
+**Not fixed.** Awaiting Rohan's call on the 5 ambiguous rows before any
+register write; `1_P010` is ready to go once approved. This needs a
+register-content decision per project, not a VBA change -- the drawing
+code is already correct, confirmed twice now.
 
 ## Added 2026-08-22 — CL, STILL OPEN, content depth drops sharply for
 ## S007 onward (13 slides) versus the original hand-built deck
@@ -4618,6 +4644,14 @@ source depth than the rest of the deck at some point, not like anything
 in the sync mechanism is broken -- worth checking `Sources`/extraction
 completeness for `S007`-`S023` specifically before assuming a code fix is
 even the right lever here.
+
+**Independently re-derived by Fable: CONFIRMED, with a correction.** The
+depleted band actually runs 51-70% (a little lower than first measured),
+and it's not purely an S007+ pattern -- `4_K021` (position 24, ratio 0.70)
+belongs in the same band and was missed by the original sweep. Driver
+independently confirmed on `1_S012`: baseline's "Key Events -- Next 12
+Months" and "Deliverables for Partner Review" blocks are simply absent
+from the current slide, not just shortened.
 
 ## Added 2026-08-22 — CM, STILL OPEN (cosmetic), hidden leftover milestone
 ## donor text on 32 of 43 slides
@@ -4648,4 +4682,10 @@ from a real, populated slide rather than a blank template.
 text sitting in shapes nobody sees. Worth a cleanup pass (blank the
 donor text at template-build time) but not urgent since nothing currently
 exposes it.
+
+**Independently re-derived by Fable: CONFIRMED, count corrected to 34.**
+Pattern and root cause both check out. The count differs (34 vs 32) --
+likely a hidden-shape-detection methodology difference (direct `hidden`
+check vs. also treating children of a hidden ancestor as hidden), not new
+drift; not chased further given this finding's own low priority.
 
