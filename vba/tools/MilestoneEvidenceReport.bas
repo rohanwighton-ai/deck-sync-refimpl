@@ -73,18 +73,47 @@ Public Function MilestoneEvidenceReport(deckPath As String, workbookPath As Stri
     ' data from row 11. Columns confirmed against the live workbook:
     '   A=Project Number  D=Milestone Name  G=Due Month # (offset)
     '   J=Knack Reporting Comments  L=Deliverable Completion RM %
+    '
+    ' READ ONCE, AS A BLOCK. The first version of this tool called
+    ' srcWs.Cells(r, col).Value in a per-project loop -- one COM round trip
+    ' per cell, ~560 rows re-scanned for every one of ~40 projects, tens of
+    ' thousands of cross-process calls. Measured live: still running after
+    ' several minutes with CPU time flat between checks. Same class of
+    ' mistake this project has paid for before (DRAFTING-SPEED-STRATEGY.md's
+    ' whole "bulk read/write" phase exists because of it). A single
+    ' Range.Value2 read is ONE COM call regardless of row count; everything
+    ' after this point works on the in-memory array.
     Dim srcWs As Object
     Set srcWs = wb.Sheets("SRC_MILESTONES")
     Dim srcLastRow As Long
     srcLastRow = srcWs.Cells(srcWs.Rows.count, "A").End(-4162).Row ' xlUp
 
+    Dim srcBlock As Variant
+    If srcLastRow >= 11 Then
+        srcBlock = srcWs.Range("A11:L" & srcLastRow).Value2
+    End If
+    ' srcBlock(row, col): row is 1-based from A11, col 1=A .. 12=L
+
     Dim projectsChecked As Long, projectsWithGaps As Long
+    Dim errorDetail As String
 
     Dim instanceId As Variant
+    Dim stage As String
     For Each instanceId In sheet.InstanceOrder
+        ' PER-PROJECT ERROR TRAP. First live run crashed the whole batch on
+        ' a "Subscript out of range" with no indication which project or
+        ' line -- a modal dialog left sitting for minutes, mistaken for a
+        ' slow COM call before the screen was actually checked. One bad
+        ' project's data must not stop every other project's report.
+        ' `stage` records which block was entered last, since the error
+        ' dialog itself does not say -- included in the error report.
+        On Error GoTo InstanceError
+        stage = "rowValues"
+
         Dim rowValues As Object
         Set rowValues = sheet.Rows(CStr(instanceId))
 
+        stage = "slot loop"
         Dim slotNum As Long
         Dim slotOffset(1 To 7) As Long
         Dim slotOffsetKnown(1 To 7) As Boolean
@@ -94,6 +123,7 @@ Public Function MilestoneEvidenceReport(deckPath As String, workbookPath As Stri
         anySlot = False
 
         For slotNum = 1 To 7
+            stage = "slot loop, slotNum=" & slotNum
             Dim lbl As String, dt As String, dn As String
             lbl = ValueOr(rowValues, MilestoneDevice.ColumnFor(slotNum, MilestoneDevice.COL_LABEL))
             dt = ValueOr(rowValues, MilestoneDevice.ColumnFor(slotNum, MilestoneDevice.COL_DATE))
@@ -113,32 +143,38 @@ Public Function MilestoneEvidenceReport(deckPath As String, workbookPath As Stri
 
         projectsChecked = projectsChecked + 1
 
-        ' --- collect this project's SRC_MILESTONES rows -------------------
+        ' --- collect this project's SRC_MILESTONES rows, from the in-memory
+        ' block read once above -- no COM calls in this loop at all.
+        stage = "src row scan setup"
         Dim srcCount As Long
         Dim srcOffset() As Long, srcComplete() As Boolean, srcComment() As String
-        ReDim srcOffset(1 To srcLastRow)
-        ReDim srcComplete(1 To srcLastRow)
-        ReDim srcComment(1 To srcLastRow)
+        Dim srcRowCount As Long
+        srcRowCount = IIf(srcLastRow >= 11, srcLastRow - 11 + 1, 0)
+        ReDim srcOffset(1 To srcRowCount + 1)
+        ReDim srcComplete(1 To srcRowCount + 1)
+        ReDim srcComment(1 To srcRowCount + 1)
         srcCount = 0
 
         Dim r As Long
-        For r = 11 To srcLastRow
-            If StrComp(Trim(CStr(srcWs.Cells(r, "A").Value)), CStr(instanceId), vbTextCompare) = 0 Then
+        For r = 1 To srcRowCount
+            stage = "src row scan, r=" & r & " of " & srcRowCount
+            If StrComp(Trim(CStr(srcBlock(r, 1))), CStr(instanceId), vbTextCompare) = 0 Then
                 Dim dueRaw As Variant
-                dueRaw = srcWs.Cells(r, "G").Value
+                dueRaw = srcBlock(r, 7) ' column G
                 If IsNumeric(dueRaw) Then
                     srcCount = srcCount + 1
                     srcOffset(srcCount) = CLng(dueRaw)
                     Dim compRaw As Variant
-                    compRaw = srcWs.Cells(r, "L").Value
+                    compRaw = srcBlock(r, 12) ' column L
                     srcComplete(srcCount) = (IsNumeric(compRaw) And CDbl(compRaw) >= 1)
-                    srcComment(srcCount) = CStr(srcWs.Cells(r, "J").Value)
+                    srcComment(srcCount) = CStr(srcBlock(r, 10)) ' column J
                 End If
             End If
         Next r
 
         If srcCount = 0 Then GoTo NextInstance ' no source rows for this project -- nothing to compare
 
+        stage = "GroupSourceIntoSlots call"
         Dim slotGroupN(1 To 7) As Long, slotGroupComplete(1 To 7) As Long
         Dim slotLatestComment(1 To 7) As String
         GroupSourceIntoSlots slotOffset, slotOffsetKnown, slotHasLabel, _
@@ -146,6 +182,7 @@ Public Function MilestoneEvidenceReport(deckPath As String, workbookPath As Stri
             slotGroupN, slotGroupComplete, slotLatestComment
 
         ' --- report disagreements only ------------------------------------
+        stage = "report loop"
         Dim projectHasGap As Boolean
         projectHasGap = False
         Dim projectDetail As String
@@ -175,8 +212,17 @@ Public Function MilestoneEvidenceReport(deckPath As String, workbookPath As Stri
             detail = detail & instanceId & ":" & vbCrLf & projectDetail & vbCrLf
         End If
 
+        On Error GoTo 0
 NextInstance:
     Next instanceId
+    GoTo AfterLoop
+
+InstanceError:
+    errorDetail = errorDetail & instanceId & " [" & stage & "]: Err " & Err.Number & " -- " & Err.Description & vbCrLf
+    On Error GoTo 0
+    Resume NextInstance
+
+AfterLoop:
 
     wb.Close False
     xl.Quit
@@ -188,9 +234,12 @@ NextInstance:
         "Period: " & deckPeriod & vbCrLf & _
         "Run at: " & Now & vbCrLf & vbCrLf & _
         "Projects with a milestone plan checked: " & projectsChecked & vbCrLf & _
-        "Projects where grouped tracker evidence disagrees with a DONE flag: " & projectsWithGaps & vbCrLf & vbCrLf & _
+        "Projects where grouped tracker evidence disagrees with a DONE flag: " & projectsWithGaps & vbCrLf & _
+        IIf(errorDetail <> "", "Projects that errored during check (see below, skipped, did not stop the rest): " & _
+            (Len(errorDetail) - Len(Replace(errorDetail, vbCrLf, ""))) / Len(vbCrLf) & vbCrLf, "") & vbCrLf & _
         "This report NEVER decides or writes anything -- read the comment text before " & _
         "changing any flag; a comment can override a stale percentage in either direction." & vbCrLf & vbCrLf & _
+        IIf(errorDetail <> "", "--- Errors (per project, did not stop the run) ---" & vbCrLf & errorDetail & vbCrLf, "") & _
         "--- Per-project detail (only disagreements listed) ---" & vbCrLf & detail
 
     MilestoneEvidenceReport = report
@@ -232,7 +281,18 @@ Public Sub GroupSourceIntoSlots(slotOffset() As Long, slotOffsetKnown() As Boole
         For slotNum = 1 To 7
             If slotHasLabel(slotNum) And slotOffsetKnown(slotNum) Then
                 If slotOffset(slotNum) >= srcOffset(i) Then
-                    If bestSlot = 0 Or slotOffset(slotNum) < slotOffset(bestSlot) Then bestSlot = slotNum
+                    ' NOT "bestSlot = 0 Or slotOffset(slotNum) < slotOffset(bestSlot)" --
+                    ' VBA's Or does not short-circuit, so that form evaluates
+                    ' slotOffset(bestSlot) = slotOffset(0) even when bestSlot is
+                    ' still 0, and slotOffset is dimensioned 1 To 7. Confirmed
+                    ' live: this was "Subscript out of range" on every single
+                    ' project, every run, because bestSlot starts at 0 and this
+                    ' line is the first place that ever reads it as an index.
+                    If bestSlot = 0 Then
+                        bestSlot = slotNum
+                    ElseIf slotOffset(slotNum) < slotOffset(bestSlot) Then
+                        bestSlot = slotNum
+                    End If
                 End If
             End If
         Next slotNum
