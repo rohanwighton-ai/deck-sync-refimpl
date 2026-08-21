@@ -823,6 +823,17 @@ Private Function BuildAllQueuesCore(title As String, ByRef fullReport As String,
         On Error GoTo 0
     End If
 
+    ' WRITTEN BEFORE EITHER CALLER CAN CAP IT (mother-hound audit, 2026-08-22).
+    ' Both ReviewChangesCore's ShowSyncResult and PutItOnTheSlidesCore's own
+    ' dialog run this fullReport through CapReport, whose default notice
+    ' promises "the full list is on the Run Log sheet" -- a promise that was
+    ' false until now, since nothing ever wrote this report there. Same class
+    ' of bug as the collision-line truncation fixed at OfferHarvestAcrossDeck
+    ' (this file, ~line 1053): a notice pointing at a list that does not
+    ' exist is worse than truncating silently, because a person would go and
+    ' check.
+    If Not wb Is Nothing Then WorkbookBridge.WriteRunLog wb, title & " -- queue built", fullReport
+
     BuildAllQueuesCore = True
 End Function
 
@@ -1700,8 +1711,17 @@ Private Sub PutItOnTheSlidesCore()
             Exit Sub
         End If
 
-        If MsgBox(fullReport & vbCrLf & vbCrLf & totalQueued & _
-                  " change(s) queued, pre-approved. Apply them now?", _
+        ' CAPPED, WITH THE QUESTION PROTECTED AS mustKeep (mother-hound audit,
+        ' 2026-08-22). This was a bare MsgBox on fullReport, which grows with
+        ' the number of registered slide types and slides -- exactly the
+        ' "MsgBox truncates SILENTLY" defect already fixed once in this file
+        ' at OfferHarvestAcrossDeck, here authorising a real write to every
+        ' approved slide with no guarantee the person ever saw the actual
+        ' question. BuildAllQueuesCore now writes fullReport to the Run Log
+        ' before returning, so CapReport's default notice is true.
+        Dim askApply As String
+        askApply = totalQueued & " change(s) queued, pre-approved. Apply them now?"
+        If MsgBox(CapReport(fullReport, askApply), _
                   vbYesNo + vbQuestion, CommandBarUI.CAP_PUT_ON_SLIDES) <> vbYes Then
             ' Queue stays written to the review sheet either way -- saying No
             ' here does not lose it, same as the old two-press path never did.
