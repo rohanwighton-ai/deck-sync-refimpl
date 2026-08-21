@@ -4361,3 +4361,89 @@ trust a header comment. Worth a standing check: before trusting any
 `vba/tools/*.bas` script that claims to mirror a real ribbon action, grep
 the actual button's handler and diff the call chain.
 
+
+## Fixed 2026-08-21/22 — CE, `VerifyRealDeck.bas` had the same period bug
+## just fixed, plus a full milestone-lifecycle test that was never written
+
+`VerifyRealDeck.bas` — the tool built after the 2026-07-26 incident
+specifically to be trusted when a sync looks suspicious — read the register
+via the same unfiltered `ExcelOutput.ReadSheet` as `SyncRealDeck.bas`/
+`HiddenFixCheck.bas` had (see CC's incident entry above). A mother-hound
+audit found it: it would have compared a live Q4F26 slide against its
+Q3F26 register row, either a false mismatch on any field that legitimately
+changed between quarters, or worse, a false "slideOk" on any that happened
+to coincide. **Fixed** the same way as the other two: builds the sheet via
+`ExcelOutput.ReadSheetForDeckPeriod(ws, DeckRegistry.GetDeckPeriod(pres),
+problem)` instead.
+
+**A second, independent bug in the same tool, same audit**:
+`verify_real_deck.ps1` had the exact stale-module-list problem already
+found and fixed twice the same night in `preview_real_deck.ps1`/
+`sync_real_deck.ps1` -- a hand-picked 3-module import (`Resolve`/
+`ExcelOutput`/`VerifyRealDeck`) that never covered what the tool actually
+calls (`DeckRegistry`, `InjectPrimitive`, `WorkbookBridge`, and their own
+transitive dependencies). The tool had been unable to compile for three
+weeks, and its `catch` block never set a failing exit code, so every run
+exited 0 regardless. Both fixed: imports the same canonical module list
+`build_ppam.ps1` uses, and a driver-level failure now actually `exit 1`s.
+Proven by running it against the real live deck end to end for the first
+time in three weeks -- its first real output surfaced a large, separate
+body of findings (624 "no tagged shape found", 62 mismatches) still
+untriaged, likely including a systematic false-positive: the milestone
+device's 21 fields per project are deliberately addressed by shape NAME,
+not a `role` tag (`MilestoneDevice.bas`'s own design), and this tool only
+checks for `role` tags.
+
+**Also built, same session**: a full milestone-lifecycle test. Rohan,
+directly: *"have you run a test where on each slide you are able to
+basically make the milestone circles go through every part of their life
+cycle as if a real project was regularly ticking them off?"* Honest answer
+was no -- every existing `MilestoneDevice` test called `DrawMilestones`
+exactly once with one static done-pattern, never proving a real project
+ticking off milestones one quarter at a time doesn't leave a stale circle
+behind (the exact risk `DrawMilestones`'s own header comment names). New
+test (`Test_MilestoneDevice_FullLifecycleNoStaleCircles`) calls
+`DrawMilestones` six times on the same group (0 done through fully
+complete) and checks every slot's three circles at every step, not just
+the one that changed. Needed a second test fixture too
+(`NewMilestoneDeviceWithNow`) -- the existing one never created `_NOW`
+shapes at all, so no test had ever exercised the path every real P/K/S
+template actually uses. Fail-first proven: deliberately skipped the
+NOW-circle hide call, confirmed the test caught a stale NOW circle
+surviving on every previously-current slot, restored, confirmed clean.
+
+## Fixed 2026-08-22 — CF, `TIMELINE_ELAPSED` rendered raw register decimals
+## at 18pt inside a ~5.5pt bar on 29 real slides, because the bar shape
+## structurally couldn't be drawn as a bar at all there
+
+Found via `ui-hound` and independently corroborated by `mother-hound`: real
+slides showing text like `"0.8027"` at 18pt inside the `TIMELINE_ELAPSED`
+bar (height ~5.5pt), and the K/S templates themselves still holding the
+literal `<<TIMELINE_ELAPSED>>` placeholder token -- meaning every future
+slide cloned from either template would inherit it fresh.
+
+**Two layers, both real.** `InjectProgressField` only ever wrote
+`.Left`/`.Width` to the bar shape -- it never touched the text frame, so
+whatever text happened to be sitting there (a template placeholder, a
+stray manual entry) stayed forever, growing more wrong every time the
+bar's real width changed underneath it. Fixed: clears both the done and
+rest shapes' text as part of every write, folded into `WouldChange` so a
+bar already at the right width but still carrying stray text doesn't
+report "no change" and skip the clear. Fail-first proven (skipped the
+clear, confirmed the new test caught the exact live symptom, restored).
+
+That fix alone didn't reach 29 real slides, because the deeper cause was
+structural: `TIMELINE_ELAPSED` had **neither a `.track` nor a `.rest`
+companion shape** there, so `InjectorFor` could not route it to the bar
+injector at all ("EITHER COMPANION MAKES IT A BAR") -- it fell through to
+the plain-text path, which just wrote the raw computed fraction as literal
+text. Compare a clean P-type slide, which has a `.rest` companion and
+routes correctly. **Fixed** by adding a `.rest` companion (matching the P
+template's own convention: grey fill, bar+rest summing to one consistent
+extent) to the K/S templates and all 27 real slides missing one, resetting
+a few visibly-drifted bar positions in the process (one had wandered to
+`Left=871pt`, evidence of an earlier partial/broken write). Verified
+independently after a real sync, from the saved file's own bytes: zero
+remaining stray text across all 43 real slides, every bar's computed
+elapsed fraction in sensible 0-1 range (0.16-1.0).
+

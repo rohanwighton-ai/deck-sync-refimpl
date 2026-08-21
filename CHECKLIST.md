@@ -38,6 +38,53 @@ period-aware. Full account: `FIX-LIST.md`, "INCIDENT, 2026-08-21 (evening)."
       check, not a blind text scan), `KEY_EVENTS_HEADER` 0/43 remaining
       placeholders, milestone geometry intact.
 
+**Follow-on: a full mother-hound kennel audit of the live deck (Opus),
+same night — real findings, real fixes, all verified from saved bytes:**
+
+- [x] 883 stray shapes removed across 38 slides (`FIX-LIST.md` CE-adjacent —
+      logged under CB) — a complete second, hand-built pre-deck-sync
+      milestone timeline sitting underneath the real one on every slide,
+      invisible to any tag-based check. Rohan's hypothesis ("P slides are
+      clean, reset K/S to match") was half right — 6 P slides had the same
+      problem. Fixed by Fable, fail-first proven (planted a text corruption
+      and a height regression, confirmed both caught), one genuine near-miss
+      caught (slide 2's stray timeline was bundled with a real annotation —
+      separated, not deleted wholesale).
+- [x] `PROJECT_STATUS` bulk-fill from earlier in the night created 8 slides
+      contradicting their own body text ("In Progress" badge, "Project
+      closed. No reporting submitted..." in the prose) — corrected to
+      "Project Closed" for all 8, verified against the literal text on each
+      slide (not inferred a second time).
+- [x] `VerifyRealDeck.bas`'s own period bug fixed (same class as the
+      incident above) plus its driver's stale module list — see FIX-LIST
+      CE. Tool now runs for the first time in three weeks; its first real
+      output (624/62 findings) is untriaged, separate work.
+- [x] A full milestone-lifecycle test built — see FIX-LIST CE. Every prior
+      test called `DrawMilestones` once; nothing proved a real project
+      ticking off milestones over time doesn't leave a stale circle behind.
+- [x] `TIMELINE_ELAPSED` fixed — see FIX-LIST CF. Raw decimals at 18pt in a
+      5.5pt bar on 29 real slides, root cause was structural (no
+      `.rest`/`.track` companion, so the bar injector was never reached at
+      all), not just the stray-text symptom.
+
+**Still open from the same audit, not yet actioned:**
+- [ ] The real "Apply Approved" button drops `KEY_EVENTS_HEADER` and
+      `STATUS_BADGE` — `ReviewQueue.bas` never rescues them, only
+      `TIMELINE_ELAPSED` has that handling. Both fields currently only
+      reach the deck via the diagnostic script, not the real button.
+- [ ] The approval dialog authorising writes to all 43 slides can silently
+      truncate (`MsgBox`, no length cap, count sits at the end of the
+      string).
+- [ ] Review-approval sheet lookup still broken by name-matching — a
+      repeat of the 2026-08-14 incident.
+- [ ] `DeckAdoption.bas:101`'s own unfiltered-read gap — a different
+      function (`PlanAdoption`, new-project onboarding) than the ones
+      already fixed, needs its own look at adoption's period semantics
+      before a quick swap-in is safe.
+- [ ] `VerifyRealDeck`'s first real 624/62 findings — untriaged. At least
+      one likely systematic false-positive already spotted (role-tag-only
+      lookup missing the milestone device's by-name addressing).
+
 ## INCIDENT 2026-08-21 (morning) — real content blanked by a real sync, restored, root-caused, fixed, deployed.
 
 **The most serious incident this project has had.** A real "Put it on the slides"
