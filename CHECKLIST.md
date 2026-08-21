@@ -1541,13 +1541,13 @@ once. *Source: `TRACKER.md`, "Not on this list, deliberately."*
 (`2026-08-13-0956-pre-onboard`, 43 slides matched 1:1 by content similarity,
 order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
 
-- [ ] **CK — milestone timeline doesn't reflect project closure, 8/8 closed
-      projects affected.** Register data gap, not code: `MS*_DONE` flags
-      stop partway through for every single `Project Closed` row (zero of
-      eight have complete flags). In progress: repairing the register
-      case-by-case (a closed project may have genuinely wound down before
-      its later milestones, so this isn't a blind "mark everything done"
-      patch). Fable double-check requested.
+- [~] **CK — milestone timeline doesn't reflect project closure, 7 real
+      candidates (of 8 closed projects; P008 has no milestones to mark).**
+      Register data gap, not code. Fable independently confirmed. `1_P010`
+      FIXED and verified in the register (needs a sync run to reach the
+      deck). `3_P001` confirmed CORRECT AS-IS (closed early, per its own
+      narrative). 5 still open, genuinely ambiguous, awaiting Rohan's
+      read: `2_P009`, `1_K1004`, `1_K1008`, `3_K016`, `1_K022`.
 - [ ] **CL — content depth drops sharply for S007 onward (13 slides).**
       Rest of the deck runs 80-100% of original text length; `S007`-`S023`
       sits at 55-70%. Reads like a drafting/sourcing depth gap for this

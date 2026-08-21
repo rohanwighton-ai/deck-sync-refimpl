@@ -4602,22 +4602,29 @@ incomplete, and marking it fully done would fabricate history. Fable's
 own slide-side check confirms the rendered timeline (`MS_BAR` stopping at
 MS3, `MS3_NOW` oversized) faithfully reflects this. Per-project narrative
 review (this session) sorted the remaining 6:
-  - **High confidence, real fix**: `1_P010` -- `PROGRESS_BODY`/
-    `KEY_EVENTS_BODY` describe full completion of all 5 milestones'
-    activities; currently 0/5 marked.
-  - **Ambiguous, needs a person's read, not a guess**: `2_P009` (0/7
-    marked despite real completed activities in `KEY_EVENTS_BODY`, but no
-    clean 1:1 mapping to the 7 labels -- Fable independently flagged the
-    same "no basis in the register to decide which slots" problem),
-    `1_K1004`, `1_K1008`, `3_K016`, `1_K022` (each has SOME later
-    milestones plausibly complete per the narrative, but at least one
-    explicitly still open -- e.g. `1_K1008`: "molecular testing remains
-    incomplete").
+  - **FIXED 2026-08-22**: `1_P010` -- `PROGRESS_BODY`/`KEY_EVENTS_BODY`
+    describe full completion of all 5 milestones' activities; was 0/5
+    marked. Backed up `register-wide.xlsx` first (`backups/
+    PRE-1P010-MILESTONE-FIX-20260822-071...`), written via the LIVE Excel
+    COM session already open on the real file (not a second handle --
+    this project has a real prior data-loss bug from exactly that
+    mistake), saved, and independently verified from the saved file's own
+    raw XML bytes (not the writer's in-process report): all 5
+    `MS1-5_DONE` read back `Y`. **Register only** -- the deck slide (10)
+    still needs a real sync run to pick this up; not done automatically.
+  - **Ambiguous, needs a person's read, not a guess -- NOT fixed**:
+    `2_P009` (0/7 marked despite real completed activities in
+    `KEY_EVENTS_BODY`, but no clean 1:1 mapping to the 7 labels -- Fable
+    independently flagged the same "no basis in the register to decide
+    which slots" problem), `1_K1004`, `1_K1008`, `3_K016`, `1_K022` (each
+    has SOME later milestones plausibly complete per the narrative, but
+    at least one explicitly still open -- e.g. `1_K1008`: "molecular
+    testing remains incomplete").
 
-**Not fixed.** Awaiting Rohan's call on the 5 ambiguous rows before any
-register write; `1_P010` is ready to go once approved. This needs a
-register-content decision per project, not a VBA change -- the drawing
-code is already correct, confirmed twice now.
+**Partially fixed.** `1_P010` done and verified in the register (needs a
+sync run to reach the deck). The other 5 still await Rohan's call before
+any write -- this needs a register-content decision per project, not a
+VBA change. The drawing code itself was never wrong, confirmed twice.
 
 ## Added 2026-08-22 — CL, STILL OPEN, content depth drops sharply for
 ## S007 onward (13 slides) versus the original hand-built deck
