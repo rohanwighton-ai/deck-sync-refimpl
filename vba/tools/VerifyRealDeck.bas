@@ -33,6 +33,23 @@ Option Explicit
 ' quarters, or worse, a false "slideOk" if the two happened to coincide.
 ' A safety-net tool with this bug is more dangerous than no tool, because
 ' it's the one thing a person reaches for specifically when suspicious.
+' THE REGISTER'S RAW VALUE ISN'T WHAT LANDS ON THE SLIDE -- the sync
+' pipeline converts it first. A multi-line field like KEY_EVENTS_BODY is
+' stored in the register with "||" between lines (InjectPrimitive.
+' LINE_BREAK_DELIMITER) and written to the shape with those replaced by a
+' real line break (InjectPrimitive.bas:932, PPT_LINE_BREAK = vbCr). This
+' tool used to compare the raw "||"-encoded register string directly
+' against the already-rendered shape text -- reporting a mismatch on every
+' multi-line field even when the content was identical, because "||" isn't
+' vbCr. Found 2026-08-22 checking one real "mismatch" by hand: the
+' register and slide text were character-for-character identical once this
+' one substitution was applied. Can't reference InjectPrimitive's own
+' PPT_LINE_BREAK (Private to that module) -- vbCr is the same value,
+' confirmed at InjectPrimitive.bas:42.
+Private Function RenderedForCompare(registerValue As String) As String
+    RenderedForCompare = Replace(registerValue, InjectPrimitive.LINE_BREAK_DELIMITER, vbCr)
+End Function
+
 Public Function VerifyRealDeck(deckPath As String, workbookPath As String) As String
     Dim report As String
     Dim detail As String
@@ -116,7 +133,7 @@ Public Function VerifyRealDeck(deckPath As String, workbookPath As String) As St
                     fieldsMissingShape = fieldsMissingShape + 1
                     slideOk = False
                     detail = detail & "Slide " & sld.SlideIndex & " (" & inst.InstanceKey & "): field '" & fieldName & "' -- no shape on the slide carries this role tag" & vbCrLf
-                ElseIf CStr(roleTags(fieldName)) <> CStr(rowValues(fieldName)) Then
+                ElseIf CStr(roleTags(fieldName)) <> RenderedForCompare(CStr(rowValues(fieldName))) Then
                     fieldsMismatch = fieldsMismatch + 1
                     slideOk = False
                     detail = detail & "Slide " & sld.SlideIndex & " (" & inst.InstanceKey & "): field '" & fieldName & "' -- shape text does not match workbook value" & vbCrLf

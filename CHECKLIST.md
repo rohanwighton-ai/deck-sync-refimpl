@@ -1611,6 +1611,18 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       `MILESTONE-PERCENTAGE-DESIGN.md`. Live-verified 2026-08-22: full
       suite 296/296 passed, 0 failed. Still untested against real data --
       no `MS<n>_PCT` value has ever been entered in the register.
+- [x] **CS — CJ's 62 "mismatches" were mostly a checker bug, one real
+      cell fixed underneath.** `VerifyRealDeck` compared raw `||`-encoded
+      register text directly against already-rendered shape text; fixed
+      with a `RenderedForCompare` helper applying the same `||`->line-break
+      substitution the real sync already does. 62 -> 1. The one survivor
+      was real: `3_P001`'s Q4F26 `PROJECT_PROGRESS` cell held raw `0.8`
+      where every other quarter held text `"80%"` -- fixed directly,
+      verified from saved bytes. Final re-run: 0 mismatches, 0 unwired
+      fields, 43/43 slides fully OK. One real slip: the pre-fix register
+      backup was accidentally deleted right after being flagged to keep --
+      the write was already independently verified before that happened,
+      so nothing is at risk, but the snapshot itself is gone.
 - [x] **CR — `MS<n>_OFF`/`MS_TRACK` given a type-specific pale tint,
       verified live.** Completes the fade CP went looking for: `MS_BAR`
       and `_ON`/`_NOW` were already correctly type-specific (BP, 21 Aug);

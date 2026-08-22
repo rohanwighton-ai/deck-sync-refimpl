@@ -4937,6 +4937,52 @@ against real data, which the test suite can't cover: no `MS<n>_PCT` value
 has ever been entered in the live register, so this has never rendered on
 an actual slide.
 
+## Fixed and verified live 2026-08-22 — CS, `VerifyRealDeck`'s 62
+## "mismatches" were mostly a checker bug, not real staleness; the one
+## genuine mismatch underneath was fixed too
+
+Requested by Rohan after CJ's own 62-mismatch finding was surfaced
+tonight: "which is better, slides or xl, or are they for different time
+periods?" Checked one real example by hand (`3_P001`'s `KEY_EVENTS_BODY`)
+rather than guessing -- the slide and its Q4F26 register row were
+character-for-character identical except for one thing: the register
+stores multi-line fields with `||` between lines
+(`InjectPrimitive.LINE_BREAK_DELIMITER`), converted to a real line break
+(`vbCr`) only when the sync pipeline writes it to the shape
+(`InjectPrimitive.bas:932`). `VerifyRealDeck` was comparing the RAW
+`||`-encoded register string directly against the already-rendered shape
+text, so every multi-line field with genuinely matching content still
+reported a mismatch.
+
+**Not a data problem -- a comparison problem, in the same tool CJ already
+fixed once tonight for a different reason.** Fixed by adding
+`RenderedForCompare` (applies the identical `||`->`vbCr` substitution
+before comparing) and routing the mismatch check through it. Register
+data and the real sync pipeline are completely untouched -- this is a
+diagnostic-tool-only fix, same class as CJ. Re-ran against the real deck:
+**62 mismatches -> 1.**
+
+**The one that survived was real**: `3_P001`'s `PROJECT_PROGRESS` cell for
+Q4F26 held a raw decimal `0.8` where Q3F26 and Q1F27 both correctly held
+text `"80%"` -- the same Excel-silently-coerced-a-value class this project
+has hit before (`MS*_DATE`, same night, 18-19 Aug). The slide currently
+shows the *right* thing only because it hasn't been re-synced since that
+cell corrupted; a sync run right now would have pushed `0.8` onto the
+slide. Fixed directly (backed up first, `NumberFormat = "@"` forced before
+writing so it can't silently coerce again), verified from the saved
+file's own bytes. Re-ran the full check a third time: **0 mismatches, 0
+unwired fields, 43/43 real slides fully OK.**
+
+**One real slip along the way**: the pre-fix register backup
+(`PRE-PROJECT-PROGRESS-CELL-FIX-<timestamp>`) was deleted by an `rm -rf`
+run immediately after stating the opposite intent in the same breath --
+the shell executes the command, not the stated intent beside it. The
+write itself was already independently verified from the saved file's
+bytes before this happened, so nothing is actually at risk, but it's a
+real mistake, not a null one: that specific snapshot is gone. Other
+backups from earlier tonight (`PRE-MILESTONE-EVIDENCE-FIXES-*`) still
+hold an earlier, known-good copy of the register if one is ever needed.
+
 ## Built and verified live 2026-08-22 — CR, `MS<n>_OFF` circles and
 ## `MS_TRACK` now carry a type-specific pale tint, completing the fade CP
 ## went looking for and didn't find
