@@ -5220,11 +5220,12 @@ test yet proves the fix itself works**, and **no live re-test has run**
 state -- the fix is in source only, no add-in rebuild has happened
 since). Both genuinely open for whoever picks this up next.
 
-**Test data still live in the real deck/register, not yet cleaned up**:
-`P900`/`K900`/`S900` register rows and slides, `S17`/`S18`/`S19` Sources
-rows, three test images in
-`C:\Users\rohan\OneDrive\Claude\images\`. Backed up before this test at
-`backups/PRE-ONBOARDING-TEST-<timestamp>/`.
+**Test data cleaned up 2026-08-22 ~15:48** (see `NEXT-SESSION.md` §0b for
+the full account): `P900`/`K900`/`S900` register rows and slides,
+`S17`/`S18`/`S19` Sources rows, and the three test images all removed
+and verified from saved bytes. Backed up before the original test at
+`backups/PRE-ONBOARDING-TEST-<timestamp>/`, and again before cleanup at
+`OneDrive\Claude\backups\*-PRE-TESTDATA-CLEANUP-20260822-154838.*`.
 
 ## Found AND fixed 2026-08-22 — CW, CV's sibling bug: "Create template
 ## slide" also leaked a real donor photo

@@ -43,6 +43,27 @@
 > whether future sessions should work directly against OneDrive to avoid
 > this happening again.
 >
+> ### 0b. RESOLVED 2026-08-22 ~15:48 — test data cleaned up
+> Rohan's call: "clean up the test data now." Ran against the (now
+> canonical, just-promoted) OneDrive files — backed up first
+> (`*-PRE-TESTDATA-CLEANUP-20260822-154838.*` in `OneDrive\Claude\backups\`).
+>   - **Register**: deleted rows `P900`/`K900`/`S900` from `Register`, and
+>     the 7 `MS<n>_PCT` header columns — leftover from the reverted
+>     percentage-shape feature; the shapes were deleted from the deck
+>     earlier but these columns were never cleaned up until now.
+>   - **Sources**: deleted rows `S17`/`S18`/`S19`.
+>   - **Deck**: deleted the 3 test slides (found by `instance_key` tag,
+>     highest index first) — 50 slides down to 47.
+>   - **Images**: deleted `p900.png`/`k900.png`/`s900.png` from
+>     `OneDrive\Claude\images\`.
+>   - **Verified from saved bytes, not from the scripts' own "Saved."
+>     echo**: register's shared-string table has zero remaining hits for
+>     `P900`/`K900`/`S900`/`S17`-`S19`/any `MS%_PCT` string; deck's raw
+>     slide count is 47 and its tag files (`ppt/tags/*.xml`) have zero
+>     remaining mentions of the three test instance keys; both zip files
+>     pass integrity check with no corrupt members.
+> Office confirmed closed before and after each step.
+>
 > ### 1. Code fixes made tonight, not yet fully closed
 > **CW — `TemplateSlide.bas` picture-field leak (just fixed this session).**
 > Same root cause and same fix pattern as CV: routes template-placeholder

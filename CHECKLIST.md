@@ -1671,8 +1671,9 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       `[x]`: no dedicated test proves the fix itself, and no live
       re-test has run against a rebuilt add-in** -- the existing
       `P900`/`K900`/`S900` test slides still show the old broken state.
-      Test data (register rows, Sources rows, 3 test images) still live,
-      not yet cleaned up. Full account: `FIX-LIST.md` CV.
+      Test data (register rows, Sources rows, 3 test images) **cleaned up
+      2026-08-22 ~15:48** — see `NEXT-SESSION.md` §0b. Full account:
+      `FIX-LIST.md` CV.
 - [x] **CS — CJ's 62 "mismatches" were mostly a checker bug, one real
       cell fixed underneath.** `VerifyRealDeck` compared raw `||`-encoded
       register text directly against already-rendered shape text; fixed
