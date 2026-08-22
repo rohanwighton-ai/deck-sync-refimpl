@@ -1651,10 +1651,13 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       naming the field, instead of shipping donor content. Proven
       fail-first: a new test failed against the old code for the right
       reason (`Ok=True FieldCount=3`), then passed clean after the fix.
-      Filtered suite 14/14. **Existing templates in the real deck still
-      carry the old leaked photo baked in — needs a manual re-blank or
-      fresh regeneration, the code fix doesn't retroactively clean them.**
-      Full account: `FIX-LIST.md` CW.
+      Filtered suite 14/14. **Templates re-blanked 2026-08-22 ~15:54,
+      verified from saved bytes.** Surfaced a real unresolved defect
+      along the way: `InjectPictureField`'s "feed in place" technique
+      silently no-op'd on 2 of 5 shapes despite matching its proven-
+      working case exactly — worked around with rebuild, not root-caused.
+      Worth checking the shipped add-in's own sync path for the same
+      issue. Full account: `FIX-LIST.md` CW.
 - [~] **CV — real onboarding bug, found AND fixed: a new project's
       `PROJECT_PHOTO` never got set when "Add missing slides" created
       its slide.** Found via a real onboarding test (3 fake projects,

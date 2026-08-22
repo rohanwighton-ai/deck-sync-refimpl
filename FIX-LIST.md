@@ -5279,14 +5279,22 @@ exact silent-success bug). The fix was then restored and the same test
 re-run clean. Static check clean; filtered suite (`-Filter
 TemplateSlide`) 14/14 passed, 0 failed, on the final confirmation run.
 
-**Not yet done**: the three existing master templates in the real deck
-still carry the leaked photo baked in from before this fix -- the code
-fix alone does not retroactively clean them. They need to be manually
-re-blanked or regenerated fresh from `Create Template Slide` once this
-build is live. Two more leads in the same root-cause family, found by
-mother-hound but not execution-confirmed: `DeckAdoption.bas VerifyLink`
-/ `BatchOnboardFlow.bas VerifyBatchLink` (call the plain text injector
-on possibly-picture shapes), and `DeckAdoption.bas PlanAdoption` ~line
-207 (unguarded `.TextFrame.TextRange.Text` read, no `HasTextFrame`
-check).
+**Templates re-blanked 2026-08-22 ~15:54** (see `NEXT-SESSION.md` §0c for
+the full account): `PROJECT_PHOTO` on all three master templates and
+`DELIVERABLE3_PHOTO`/`DELIVERABLE4_PHOTO` on the P-template fed a
+neutral placeholder image, verified from saved bytes by resolving each
+shape's `ROLE` tag through the real OOXML relationship chain, not
+guessed from shape names. **Surfaced a real, unresolved defect along the
+way**: `InjectPictureField`'s documented "feed the shape in place"
+technique reported success but silently changed nothing for two of the
+five shapes, despite them matching its proven-working case exactly
+(`Type=13`, uncropped) -- worked around with the REBUILD path instead,
+not diagnosed at the root. Worth checking whether the shipped add-in's
+own sync path has the same silent no-op.
+
+Two more leads in the same root-cause family, found by mother-hound but
+not execution-confirmed: `DeckAdoption.bas VerifyLink` /
+`BatchOnboardFlow.bas VerifyBatchLink` (call the plain text injector on
+possibly-picture shapes), and `DeckAdoption.bas PlanAdoption` ~line 207
+(unguarded `.TextFrame.TextRange.Text` read, no `HasTextFrame` check).
 

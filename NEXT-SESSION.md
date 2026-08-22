@@ -64,6 +64,54 @@
 >     pass integrity check with no corrupt members.
 > Office confirmed closed before and after each step.
 >
+> ### 0c. RESOLVED 2026-08-22 ~15:54 — the three master templates re-blanked
+> Rohan's call: "re-blank the three master templates now" (the leaked
+> donor photos ppt-hound found — see §1's CW writeup). Backed up first
+> (`3. Project Progress.PRE-TEMPLATE-REBLANK-20260822-155359.pptx`).
+> Fed a generated neutral placeholder image (`<<PLACEHOLDER>>` on grey,
+> matching the same "cannot be read as real data" convention
+> `PlaceholderFor`'s text uses) into `PROJECT_PHOTO` on all three
+> templates and `DELIVERABLE3_PHOTO`/`DELIVERABLE4_PHOTO` on the
+> P-template (the only two of those the P-template actually carries).
+> `DELIVERABLE1_PHOTO`/`DELIVERABLE2_PHOTO` deliberately NOT touched —
+> ppt-hound identified those as generic stock icon graphics, not leaked
+> personal content.
+>
+> **A real defect surfaced and was worked around, not fixed at the
+> root.** `InjectPictureField`'s documented "feed the shape in place"
+> technique (`Fill.UserPicture`, proven for an uncropped `Type=13`
+> picture per its own header comment) reported success with no COM
+> error, but genuinely changed nothing — verified from saved bytes:
+> `DELIVERABLE3_PHOTO`/`DELIVERABLE4_PHOTO`'s media files stayed byte-
+> identical in size to the ORIGINAL leaked images (151,984 / 112,250
+> bytes) after the "fed in place" run, not the 8,444-byte placeholder.
+> Confirmed via a live probe both shapes are exactly the documented
+> proven case (`Type=13`, `CropLeft/Right/Top/Bottom=0`,
+> `LockAspectRatio=True`) — so this isn't a misclassified shape, the
+> proven technique itself silently no-op'd for reasons not diagnosed.
+> Worked around by using the REBUILD path (delete + `AddPicture` with
+> geometry carried across, the same technique `InjectPictureField` uses
+> for a CROPPED shape) unconditionally instead — proven 5/5 by re-
+> verifying from saved bytes with the shapes' role tags precisely
+> resolved (not guessed from shape names).
+>
+> **Worth investigating separately, not done here**: whether
+> `InjectPictureField`'s shipped "fed in place" branch has this same
+> silent-no-op behaviour in the real add-in's own sync path, not just in
+> this standalone COM script. If it does, that's a live defect in the
+> majority-case picture-write path (most picture fields are uncropped)
+> that nothing has caught yet — `Test_InjectPicture_...` tests exist and
+> pass, so either the tests don't reproduce whatever specific condition
+> triggered this, or something about a bare COM script differs from VBA
+> execution inside PowerPoint's own process. Not yet distinguished.
+>
+> **Verification method**: precisely resolved each shape's `ROLE` tag by
+> following the real OOXML relationship chain (`<p:tags r:id>` →
+> slide rels → `ppt/tags/tagN.xml`'s `name="ROLE" val="..."`), not by
+> guessing from PowerPoint's auto-generated shape names — an earlier,
+> cruder attempt at this same check (matching on shape name/position)
+> would have wrongly reported all three templates clean.
+>
 > ### 1. Code fixes made tonight, not yet fully closed
 > **CW — `TemplateSlide.bas` picture-field leak (just fixed this session).**
 > Same root cause and same fix pattern as CV: routes template-placeholder
