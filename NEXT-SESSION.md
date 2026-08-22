@@ -20,14 +20,19 @@
 > `[x]`; `FIX-LIST.md` DD entry appended with the finish; all committed
 > and pushed.
 >
+> **Confirmed clean after the retrofit**: static check (39 modules,
+> exit 0, no new reachability notes) and the full VBA suite — **304/304
+> passed, 0 failed** (up from the 302 baseline; the 2 new tests are
+> DD's own coverage), no regressions from any of tonight's DD code
+> changes. This was the last open item — DD is now fully closed at the
+> code/data layer.
+>
 > **Still open, unchanged from the block below**: real calendar-date
 > VALUES are a genuine future drafting task, not code work — someone
 > who knows which raw milestone each already-abridged slot represents
 > has to enter the date. No real sync has run end-to-end against the
 > new field yet — the add-in hasn't been rebuilt with tonight's
-> `MilestoneDevice.bas`/`InjectPrimitive.bas`/etc. changes. A final
-> full VBA suite run (last clean at 302/302, before the DD retrofit's
-> code changes) is worth doing before fully closing DD out.
+> `MilestoneDevice.bas`/`InjectPrimitive.bas`/etc. changes.
 
 > ## 22 AUG, ~20:35 — MARATHON SESSION WRAP. Read this block first, it
 > ## supersedes the priority ordering of everything below it.
