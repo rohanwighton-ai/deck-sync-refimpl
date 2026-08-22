@@ -2780,6 +2780,22 @@ End Function
 Public Function CommitBatch(plan As BatchOnboardPlan, templateSld As Object, otherSlides() As Object, otherSlideCount As Long, slideType As String, ws As Object, confirmedKeys As Object) As BatchCommitResult
     Dim result As BatchCommitResult
 
+    ' Same reasoning as DeckAdoption.CommitAdoption's identical resolution:
+    ' ws.Parent is the one workbook this whole commit already operates
+    ' against. FIX-LIST item, 2026-08-22: needed so VerifyBatchLink's
+    ' picture-field check (routed through InjectField below) can resolve a
+    ' picsrc stamp comparison the same way every other real write path
+    ' already does -- though this batch path harvests "" for a picture
+    ' field's value (see the comment where HarvestedText is built), so a
+    ' picture field verified here still won't come back Verified until
+    ' that separate, pre-existing limitation is closed; this fix's scope
+    ' is the router bypass, not that.
+    Dim srcWs As Object
+    Set srcWs = Nothing
+    If WorkbookBridge.WorksheetExists(ws.Parent, Sources.SOURCES_SHEET_NAME) Then
+        Set srcWs = WorkbookBridge.GetOrAddWorksheet(ws.Parent, Sources.SOURCES_SHEET_NAME)
+    End If
+
     Dim s As Long
     For s = 0 To otherSlideCount
         Dim instanceKey As String
@@ -2850,7 +2866,7 @@ Public Function CommitBatch(plan As BatchOnboardPlan, templateSld As Object, oth
             ExcelOutput.UpsertRow ws, instanceKey, harvested, _
                 DeckRegistry.GetDeckPeriod(templateSld.Parent)
 
-            If VerifyBatchLink(sld, harvested) Then
+            If VerifyBatchLink(sld, harvested, srcWs) Then
                 result.LinkedCount = result.LinkedCount + 1
             Else
                 result.FailedVerificationCount = result.FailedVerificationCount + 1
@@ -2888,11 +2904,17 @@ Private Function SlidesCarryingASlideType(pres As Object) As Long
     SlidesCarryingASlideType = n
 End Function
 
-Private Function VerifyBatchLink(sld As Object, harvested As Object) As Boolean
+' FIX-LIST item, 2026-08-22 (mother-hound kennel survey, finding #4 --
+' DeckAdoption.VerifyLink's identical fix, applied here too). Called
+' InjectPrimitive.InjectPrimitive directly, so a picture-typed field
+' unconditionally failed this check (Found=True, Written=False,
+' Verified=False -- no text frame) regardless of whether the link was
+' actually correct. Routes through InjectField now, matching VerifyLink.
+Private Function VerifyBatchLink(sld As Object, harvested As Object, Optional srcWs As Object = Nothing) As Boolean
     Dim fieldName As Variant
     For Each fieldName In harvested.Keys
         Dim r As InjectResult
-        r = InjectPrimitive.InjectPrimitive(sld, CStr(fieldName), CStr(harvested(fieldName)))
+        r = InjectPrimitive.InjectField(sld, CStr(fieldName), CStr(harvested(fieldName)), False, srcWs)
         If Not r.Found Or r.Written Or Not r.Verified Then
             VerifyBatchLink = False
             Exit Function

@@ -205,7 +205,25 @@ Public Function PlanAdoption(slidesToAdopt() As Object, templateSld As Object, w
                         ' Harvest current values verbatim from every matched
                         ' field -- the same technique InjectPrimitive.bas already
                         ' uses to read a shape's current value.
-                        harvested(matches(j).Role) = untaggedShapes(matches(j).Result.CandidateIndex).TextFrame.TextRange.Text
+                        '
+                        ' FIX-LIST item, 2026-08-22 (mother-hound kennel
+                        ' survey, finding #5). This was an unguarded
+                        ' .TextFrame.TextRange.Text read -- a picture-typed
+                        ' shape has no TextFrame at all, so a high-confidence
+                        ' picture-field match raised a hard VBA runtime error
+                        ' here during bulk onboarding harvest, where the
+                        ' sibling read two lines away in InjectPrimitive.bas
+                        ' already guards this exact case. A picture shape's
+                        ' "current value" is its picsrc TAG stamp, the same
+                        ' thing VerifyLink and a real sync both compare
+                        ' against -- not its (nonexistent) text.
+                        Dim matchedShp As Object
+                        Set matchedShp = untaggedShapes(matches(j).Result.CandidateIndex)
+                        If InjectPrimitive.IsPictureShape(matchedShp) Then
+                            harvested(matches(j).Role) = InjectPrimitive.PictureSourceOf(matchedShp)
+                        Else
+                            harvested(matches(j).Role) = matchedShp.TextFrame.TextRange.Text
+                        End If
                     End If
                 Else
                     allHigh = False
@@ -276,6 +294,19 @@ End Function
 Public Function CommitAdoption(plans() As AdoptionSlidePlan, slidesToAdopt() As Object, harvestedValues() As Object, confirmedInstanceKeys() As String, slideType As String, templateSld As Object, ws As Object) As AdoptionResult
     Dim result As AdoptionResult
 
+    ' Resolved once here, not threaded through the caller's signature --
+    ' same reasoning DeckRegistry.GetDeckPeriod's own comment gives a few
+    ' lines below: ws.Parent is the one workbook this whole commit is
+    ' already operating against, so it cannot disagree with itself.
+    ' FIX-LIST item, 2026-08-22: needed so VerifyLink's picture-field
+    ' check (routed through InjectField below) can resolve a picsrc stamp
+    ' the same way every other real write path already does.
+    Dim srcWs As Object
+    Set srcWs = Nothing
+    If WorkbookBridge.WorksheetExists(ws.Parent, Sources.SOURCES_SHEET_NAME) Then
+        Set srcWs = WorkbookBridge.GetOrAddWorksheet(ws.Parent, Sources.SOURCES_SHEET_NAME)
+    End If
+
     Dim templateRoles() As String
     Dim templateFieldShapes() As Candidate
     templateFieldShapes = Onboarding.BuildTemplateFieldShapes(templateSld, templateRoles)
@@ -333,7 +364,7 @@ Public Function CommitAdoption(plans() As AdoptionSlidePlan, slidesToAdopt() As 
                     ' inject_primitive no-op round trip onboard-slide-
                     ' type.md's Step 6 already mandates for the template,
                     ' generalized across this batch.
-                    If VerifyLink(sld, harvestedValues(i)) Then
+                    If VerifyLink(sld, harvestedValues(i), srcWs) Then
                         result.LinkedCount = result.LinkedCount + 1
                         ReDim Preserve result.LinkedLabels(1 To result.LinkedCount)
                         result.LinkedLabels(result.LinkedCount) = plans(i).SlideLabel
@@ -358,11 +389,22 @@ Public Function CommitAdoption(plans() As AdoptionSlidePlan, slidesToAdopt() As 
     CommitAdoption = result
 End Function
 
-Private Function VerifyLink(sld As Object, harvested As Object) As Boolean
+' FIX-LIST item, 2026-08-22 (mother-hound kennel survey, finding #4). This
+' called InjectPrimitive.InjectPrimitive (the plain TEXT writer) directly --
+' CV/CW's own router-bypass class, opposite failure direction. For a
+' picture-typed field, InjectPrimitive returns Found=True, Written=False,
+' Verified=False (no text frame to write into), which unconditionally
+' failed VerifyLink's `Not r.Found Or r.Written Or Not r.Verified` gate --
+' so a correctly-linked picture field was ALWAYS reported as a failed
+' link, never a corrupted one. Now routes through InjectField, the same
+' type-aware router CV threaded into slide creation; srcWs resolves a
+' picture field's picsrc stamp comparison the same way it does everywhere
+' else.
+Private Function VerifyLink(sld As Object, harvested As Object, Optional srcWs As Object = Nothing) As Boolean
     Dim fieldName As Variant
     For Each fieldName In harvested.Keys
         Dim r As InjectResult
-        r = InjectPrimitive.InjectPrimitive(sld, CStr(fieldName), CStr(harvested(fieldName)))
+        r = InjectPrimitive.InjectField(sld, CStr(fieldName), CStr(harvested(fieldName)), False, srcWs)
         If Not r.Found Or r.Written Or Not r.Verified Then
             VerifyLink = False
             Exit Function

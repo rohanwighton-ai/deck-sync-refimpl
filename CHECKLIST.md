@@ -1634,6 +1634,24 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       every `MS<n>_OFF`, across all 50 slides (47 + the 3 new test
       slides). Verified from saved bytes: 0 issues across all 49
       milestone-carrying slides.
+- [x] **DA/DB — mother-hound findings #4 and #5, found AND fixed: bulk
+      adoption's picture handling was both a crash and a false
+      rejection.** DB: `PlanAdoption`'s harvest loop read
+      `.TextFrame.TextRange.Text` unguarded, crashing on any
+      high-confidence picture-field match (confirmed live: reverting
+      the fix genuinely **errored**, not just failed an assertion).
+      Fixed to harvest the `picsrc` tag stamp for a picture shape
+      instead. DA: `VerifyLink`/`VerifyBatchLink` called
+      `InjectPrimitive` directly — CV/CW's router-bypass class, opposite
+      direction: a CORRECTLY-linked picture field was always reported
+      as a failed link. Fixed: both route through `InjectField`, `srcWs`
+      resolved from `ws.Parent` in each caller. `VerifyLink` proven
+      fail-first; `VerifyBatchLink`'s identical mirror fix verified by
+      non-regression (same shape, proven once). Known pre-existing gap,
+      unchanged: `BatchOnboardFlow`'s own harvest already self-documents
+      "" for a picture field's value — out of this fix's scope.
+      Filtered suites: `DeckAdoption` 9/9, `BatchOnboardFlow_CommitBatch`
+      2/2. Full account: `FIX-LIST.md` DA/DB.
 - [x] **CZ — mother-hound finding #3, found AND fixed: `InjectDeviceVia`
       hardcoded `Verified = True`.** `DrawMilestones`'s own `SetVisible`/
       `WriteText` genuinely re-read each shape after writing and record

@@ -1118,6 +1118,24 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("DeckAdoption_VerifyLinkDoesNotFalselyRejectAPictureField", filterPattern) Then
+        r = Test_DeckAdoption_VerifyLinkDoesNotFalselyRejectAPictureField()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "DeckAdoption_VerifyLinkDoesNotFalselyRejectAPictureField", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
+    If TestMatches("DeckAdoption_PlanAdoptionHarvestsAPictureFieldWithoutCrashing", filterPattern) Then
+        r = Test_DeckAdoption_PlanAdoptionHarvestsAPictureFieldWithoutCrashing()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "DeckAdoption_PlanAdoptionHarvestsAPictureFieldWithoutCrashing", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("DeckAdoption_RefusesToHarvestSubtitleAAsAComposite", filterPattern) Then
         r = Test_DeckAdoption_RefusesToHarvestSubtitleAAsAComposite()
     Else
@@ -7831,6 +7849,126 @@ Private Function Test_DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFresh
     xl.Quit
 
     Test_DeckAdoption_ReadyHighConfidenceSlideLinkedAndCreatesFreshRow = result
+End Function
+
+' Mother-hound kennel survey, 2026-08-22 (same session as CV/CX/CY/CZ),
+' finding #4. Before the fix, VerifyLink called InjectPrimitive.InjectPrimitive
+' (the plain text writer) directly -- Found=True, Written=False, Verified=
+' False for ANY picture field (no text frame), so a CORRECTLY-linked picture
+' field was unconditionally reported as a failed link. Bypasses PlanAdoption's
+' matching entirely (hand-built plans/harvestedValues, same technique the
+' test above uses) -- proving VerifyLink/CommitAdoption's own router-bypass
+' fix in isolation, not the separate question of whether picture-to-picture
+' matching itself works.
+Private Function Test_DeckAdoption_VerifyLinkDoesNotFalselyRejectAPictureField() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+
+    Dim candidateSld As Object
+    Set candidateSld = NewBlankSlide()
+    Dim seedPath As String
+    seedPath = MakeTestBitmap(Environ("TEMP") & "\dsadoptphoto.bmp", 40, 20)
+    Dim photoShp As Object
+    Set photoShp = candidateSld.Shapes.AddPicture(seedPath, msoFalse, msoTrue, 100, 100, 200, 100)
+    photoShp.Tags.Add "role", "PHOTO"
+    ' Already stamped -- the genuine no-op case: the harvested value below
+    ' is exactly this, so a correct verification writes nothing and passes.
+    photoShp.Tags.Add InjectPrimitive.PICTURE_SOURCE_TAG, "S50"
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+    Dim srcWs As Object
+    Set srcWs = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.count))
+    srcWs.Name = Sources.SOURCES_SHEET_NAME
+    Sources.WriteSourcesSheet srcWs
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_ID).Value = "S50"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_LABEL).Value = "Test adoption photo"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_TYPE).Value = "Image"
+    srcWs.Cells(Sources.SRC_FIRST_ROW, Sources.COL_SRC_LOCATOR).Value = seedPath
+
+    Dim plans(1 To 1) As AdoptionSlidePlan
+    plans(1).SlideId = candidateSld.SlideID
+    plans(1).SlideLabel = "Slide " & candidateSld.SlideIndex
+    plans(1).Disposition = "ready"
+    plans(1).MatchedKeylessRowId = ""
+
+    Dim slidesToAdopt(1 To 1) As Object
+    Set slidesToAdopt(1) = candidateSld
+
+    Dim harvestedValues(1 To 1) As Object
+    Set harvestedValues(1) = CreateObject("Scripting.Dictionary")
+    harvestedValues(1)("PHOTO") = "S50"
+
+    Dim confirmedKeys(1 To 1) As String
+    confirmedKeys(1) = "adopt-photo-1"
+
+    Dim commitResult As AdoptionResult
+    commitResult = DeckAdoption.CommitAdoption(plans, slidesToAdopt, harvestedValues, confirmedKeys, "adopt-photo-type", templateSld, ws)
+
+    ' THE ONE THAT MATTERS: before the fix, this read 1, always, for any
+    ' picture field, regardless of correctness.
+    result = result & Assert(commitResult.FailedVerificationCount = 0, _
+        "a correctly-linked picture field must not fail verification, got " & commitResult.FailedVerificationCount & " failure(s)")
+    result = result & Assert(commitResult.LinkedCount = 1, "LinkedCount=1, got " & commitResult.LinkedCount)
+
+    wb.Close False
+    xl.Quit
+
+    Test_DeckAdoption_VerifyLinkDoesNotFalselyRejectAPictureField = result
+End Function
+
+' Mother-hound kennel survey, 2026-08-22, finding #5. PlanAdoption's harvest
+' loop read every high-confidence matched shape's .TextFrame.TextRange.Text
+' with no HasTextFrame guard, unlike the sibling read in InjectPrimitive.bas.
+' A picture-typed shape scoring a high-confidence match raised a hard VBA
+' error here. Near-identical geometry between template and candidate (same
+' technique the Title high-confidence test above uses) to score high
+' confidence without needing text similarity, which a picture shape has none
+' of to offer.
+Private Function Test_DeckAdoption_PlanAdoptionHarvestsAPictureFieldWithoutCrashing() As String
+    Dim result As String
+
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+    Dim seedPath As String
+    seedPath = MakeTestBitmap(Environ("TEMP") & "\dsplanphoto.bmp", 40, 20)
+    Dim templatePhoto As Object
+    Set templatePhoto = templateSld.Shapes.AddPicture(seedPath, msoFalse, msoTrue, 100, 100, 200, 100)
+    templatePhoto.Tags.Add "role", "PHOTO"
+
+    Dim candidateSld As Object
+    Set candidateSld = NewBlankSlide()
+    Dim candidatePhoto As Object
+    Set candidatePhoto = candidateSld.Shapes.AddPicture(seedPath, msoFalse, msoTrue, 102, 101, 200, 100)
+    candidatePhoto.Tags.Add InjectPrimitive.PICTURE_SOURCE_TAG, "S51"
+
+    Dim xl As Object, wb As Object, ws As Object
+    NewTestWorksheet xl, wb, ws
+
+    Dim slidesToAdopt(1 To 1) As Object
+    Set slidesToAdopt(1) = candidateSld
+
+    Dim harvestedValues() As Object
+    Dim plans() As AdoptionSlidePlan
+    ' THE ONE THAT MATTERS: before the fix, a high-confidence picture match
+    ' raised a hard runtime error inside this call.
+    plans = DeckAdoption.PlanAdoption(slidesToAdopt, templateSld, ws, harvestedValues)
+
+    result = result & Assert(True, "PlanAdoption did not raise on a matched picture field")
+    result = result & Assert(plans(1).Disposition = "ready", _
+        "near-identical geometry scores a ready match, got '" & plans(1).Disposition & "'")
+    result = result & Assert(Not harvestedValues(1) Is Nothing, "harvested values captured for the picture-field slide")
+    If Not harvestedValues(1) Is Nothing Then
+        result = result & Assert(harvestedValues(1)("PHOTO") = "S51", _
+            "harvested value is the picsrc stamp, not text, got '" & harvestedValues(1)("PHOTO") & "'")
+    End If
+
+    wb.Close False
+    xl.Quit
+
+    Test_DeckAdoption_PlanAdoptionHarvestsAPictureFieldWithoutCrashing = result
 End Function
 
 ' A third live call site with Harvest.bas/E2EField.bas's identical

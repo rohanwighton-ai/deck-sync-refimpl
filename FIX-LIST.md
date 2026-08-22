@@ -5425,3 +5425,60 @@ right reason (`Written=True`, `ErrorMessage` names the failure,
 Static check clean. Filtered suite (`-Filter MilestoneDevice` plus the
 new test by exact name): 11/11 passed, 0 failed.
 
+## Found AND fixed 2026-08-22 — DA/DB, mother-hound findings #4 and #5:
+## bulk-adoption's picture handling was both a crash AND a false rejection
+
+Found by the same kennel survey, ranked #4 and #5 of five -- handled
+together because they were tightly coupled: #5's crash was corrupting
+the exact data #4's check depends on, so neither made full sense fixed
+alone.
+
+**DB (finding #5) -- `DeckAdoption.PlanAdoption`'s harvest loop crashed
+on a picture-shaped field.** `harvested(matches(j).Role) =
+untaggedShapes(...).TextFrame.TextRange.Text`, unguarded -- no
+`HasTextFrame` check, unlike the sibling read two lines away in
+`InjectPrimitive.bas`. A high-confidence picture-field match during bulk
+onboarding raised a hard VBA runtime error rather than a graceful
+refusal. **FIXED**: checks `InjectPrimitive.IsPictureShape` first; a
+picture shape's "current value" is harvested as its `picsrc` TAG stamp
+(via `PictureSourceOf`), the same thing a real sync and `VerifyLink`
+both compare against -- not its (nonexistent) text. Proven fail-first:
+reverted just the guard, confirmed the test genuinely **ERRORED**
+against the old code (`"The specified value is out of range"`, live,
+not simulated) rather than merely failed an assertion. Restored; same
+test passes, and confirms the harvested value is the picsrc stamp, not
+garbage.
+
+**DA (finding #4) -- `DeckAdoption.VerifyLink` / `BatchOnboardFlow.
+VerifyBatchLink` bypassed the router, opposite failure direction from
+CV/CW.** Both called `InjectPrimitive.InjectPrimitive` (the plain text
+writer) directly. For a picture-typed field this returns `Found=True,
+Written=False, Verified=False` (no text frame) -- which
+unconditionally failed both functions' `Not r.Found Or r.Written Or Not
+r.Verified` gate, so a CORRECTLY-linked picture field was ALWAYS
+reported as a failed link during bulk adoption, never a corrupted one.
+**FIXED**: both now route through `InjectField`, the same type-aware
+router CV threaded into slide creation; `srcWs` resolved once in each
+caller (`CommitAdoption`/`CommitBatch`) from `ws.Parent`, same pattern
+`RibbonUI.SlideMembershipCore` already established. Proven fail-first
+for `VerifyLink`: reverted just the routing call, confirmed the new
+test fails for the right reason (`FailedVerificationCount` read 1
+against a genuinely correctly-linked picture field). Restored; same
+test passes. `VerifyBatchLink`'s identical mirror fix verified by
+non-regression (its own existing `CommitBatch` tests, 2/2 green) rather
+than a separate red/green pair -- same code shape, same fix, proven
+once.
+
+**Known, pre-existing, unchanged limitation, stated plainly**:
+`BatchOnboardFlow`'s own harvest path (a separate mechanism from
+`DeckAdoption`'s) already self-documents harvesting `""` for a picture
+field's value ("pictures: not harvested as text, same limitation as
+every other module here") -- this fix does not close that; a picture
+field verified through the batch path still won't come back `Verified`
+until that separate gap is. This fix's scope was the router bypass, not
+that.
+
+Both: static check clean. Filtered suites: `DeckAdoption` 9/9 passed
+(0 failed) including both new tests; `BatchOnboardFlow_CommitBatch`
+2/2 passed (0 failed, non-regression).
+
