@@ -1652,24 +1652,31 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       "" for a picture field's value — out of this fix's scope.
       Filtered suites: `DeckAdoption` 9/9, `BatchOnboardFlow_CommitBatch`
       2/2. Full account: `FIX-LIST.md` DA/DB.
-- [ ] **DD — building: `MS<n>_CALDATE`, a real calendar date under each
-      circle, same optional-shape treatment CT's `%` used.** Code layer
-      done (proven fail-first, filtered suite 12/12). Auto-mapping real
+- [~] **DD — `MS<n>_CALDATE`, a real calendar date under each circle,
+      same optional-shape treatment CT's `%` used.** Code layer done
+      (proven fail-first, filtered suite 12/12). Auto-mapping real
       dates from `SRC_MILESTONES` tried and honestly abandoned — Rohan:
       "it's manual, the timeline has always been an abridgement", fuzzy
       text matching only found 8/250 (3.2%) plausible matches, refused
       to force the rest. Register plumbing done: 7 empty columns added,
       verified from saved bytes. Field-scan completeness PROVEN not
-      assumed (Rohan: "make sure field scan completeness encompasses
-      all the work") — extended the existing device-column test with
-      MS1_CALDATE, fail-first proven. Deck retrofit in progress
-      (`add_caldate_shapes.vbs`, mirrors the proven `add_pct_shapes.vbs`
-      technique) — found and fixed a real bug along the way (a
-      OneDrive path-identity check aborted safely on every one of the
-      first 36 slides; fixed to check filename not full path). **Still
-      needed**: finish the 46-slide retrofit, real date values (a
-      genuine future drafting task, not tonight's work), a real sync.
-      Full account: `FIX-LIST.md` DD.
+      assumed — extended the existing device-column test with
+      MS1_CALDATE, fail-first proven. **Deck retrofit: 39 of 46 real
+      slides done and verified clean from saved bytes** (remaining: 40,
+      41, 42, 43, 44, 46, 47). Real problems hit and fixed along the
+      way: a OneDrive path-identity check aborting safely (fixed to
+      check filename); a force-kill-right-after-an-error habit that
+      genuinely lost some slides' writes (fixed by always checking
+      `Saved` via COM before closing); a stray ungrouped duplicate
+      shape from an interrupted run (found and fixed live twice).
+      Rohan, mid-recovery: "harden the script first, always avoid a
+      grind, use fable" — dispatched, script rewritten with the retry/
+      dedupe/stale-reference fixes built in, every fix proven on a
+      scratch copy (real deck untouched throughout). **Marked `[~]` not
+      `[x]`: 7 slides still need the retrofit** (use the hardened
+      script + `verify_caldate.py` for from-disk verification), real
+      date values are a genuine future drafting task not tonight's
+      work, no real sync has run. Full account: `FIX-LIST.md` DD.
 - [~] **DC — found AND fixed: `MS<n>_DATE`'s font colour was hardcoded
       teal by position, never data-driven.** Found by Rohan looking at
       the promoted live deck: slots 1-3 were `scheme:bg2` on every one

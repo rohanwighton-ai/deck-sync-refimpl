@@ -5620,8 +5620,65 @@ project's own established posture on exactly this failure shape.
   path. Fixed to check `Presentation.Name` instead. Slides verified
   from saved bytes in batches as the retrofit proceeds.
 
-**Still not done**: real calendar-date values -- this remains a genuine
-future drafting task (someone who knows which raw milestone each
-already-abridged slot represents enters the date), not something built
-tonight; the full 46-slide shape retrofit; no real sync has run.
+**Retrofit run against the real deck, 39 of 46 slides done and verified
+clean from saved bytes** (slides 1-39; remaining: 40, 41, 42, 43, 44, 46,
+47). Real, reproducible problems surfaced along the way, all traced to
+their root cause rather than patched around:
+- **Save() intermittently erroring on a OneDrive-synced file, but not
+  always meaning failure.** Confirmed both ways live: sometimes
+  `Presentation.Saved` read `True` right after the error and the disk
+  bytes were already correct (the error was almost certainly OneDrive's
+  cloud-sync confirmation step, not the local write); sometimes `Saved`
+  genuinely read `False`, and a retry `Save()` on the same open
+  presentation succeeded every time it was tried.
+- **A force-kill immediately after an error is the actual risk, not the
+  error itself.** The first response to this (force-close right away)
+  caused genuine data loss for several slides -- confirmed by finding
+  slides with 1-4 of 7 shapes instead of 0 or 7. Corrected by always
+  checking `Presentation.Saved` via COM before closing, and only ever
+  force-closing after confirming `True`.
+- **A stray, ungrouped duplicate shape** (`MS4_CALDATE`, later
+  `MS1_CALDATE`) on slide 35/38 -- confirmed from raw XML that the
+  "already exists" check (scoped only to the tagged group's
+  `GroupItems`) missed a shape left OUTSIDE the group by an earlier
+  interrupted run, so a fresh duplicate got added and regrouped. Fixed
+  live for both instances (backed up first, verified from saved bytes
+  after); the general shape of the fix (widen the existence check to
+  also cover top-level `Shapes`, not just `GroupItems`) is now built
+  into the hardened script below.
+- **Rohan's own correction, mid-recovery**: "harden the script first,
+  always avoid a grind, use fable" -- after the same class of failure
+  was hand-fixed three times in a row. Logged as a standing behaviour
+  (`feedback_avoid_manual_grind_harden_tools` memory, claude-brain) and
+  acted on immediately.
+
+**Script hardened by a fable-model agent, 2026-08-22**, working entirely
+against a scratch copy (real deck untouched throughout, confirmed by
+`LastWriteTime`). New `vba/tools/verify_caldate.py` (external, from-disk
+verification -- zip+XML, grouped vs. stray) plus a rewritten
+`add_caldate_shapes.vbs`: re-acquires the device group fresh every slot
+(a stale reference after a deletion throws `Type mismatch`, confirmed
+live), checks both `GroupItems` and top-level `Shapes` for existing/stray
+shapes, adopts a lone stray into the group rather than duplicating it,
+runs a full per-slide dedupe self-check before saving, retries `Save()`
+once on a genuine failure (fatal only if the retry also fails, in which
+case the presentation is deliberately left open rather than closed with
+unsaved work), and closes with a brief poll rather than hanging the
+automation indefinitely. Each fix proven on the scratch copy from the
+saved file's own bytes -- full detail, including two NEW failure modes
+found and fixed during hardening (a bad path hanging on a modal dialog
+instead of raising; a fixed-size VBScript array declared inside a loop
+throwing `Type mismatch` on the second iteration) is in the agent's own
+report, not duplicated here. Explicitly NOT proven on demand (couldn't
+be reproduced outside the live OneDrive timing): the `Saved=True`-
+after-error path, the retry-succeeds path, and the self-check's own
+repair branch -- all coded exactly to what was observed live tonight,
+but a human's eyes on the first real run's log are still warranted.
+
+**Still not done**: finishing the retrofit on the remaining 7 slides
+(40, 41, 42, 43, 44, 46, 47) using the hardened script; real
+calendar-date values -- this remains a genuine future drafting task
+(someone who knows which raw milestone each already-abridged slot
+represents enters the date), not something built tonight; no real sync
+has run.
 

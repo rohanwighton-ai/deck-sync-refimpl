@@ -1,5 +1,95 @@
 # NEXT SESSION — start here
 
+> ## 22 AUG, ~20:35 — MARATHON SESSION WRAP. Read this block first, it
+> ## supersedes the priority ordering of everything below it.
+>
+> **BEFORE ANYTHING: `ListAgents`.** This doc has gone stale mid-session
+> before. If a peer session is listed, message it first.
+>
+> ### What's DONE tonight (all committed and pushed, deck-sync-refimpl)
+> Nine real code fixes, each fail-first proven (or non-regression proven
+> where a live discriminating case wasn't reproducible — stated
+> honestly per-fix, not glossed over):
+> - **CV** — `SlideDuplication.DuplicateAndTag` routed picture fields
+>   through the wrong injector (the original bug this whole thread
+>   started from).
+> - **CW** — `TemplateSlide.MakeTemplateFrom`, CV's sibling: same bug in
+>   the "Create Template Slide" path. Confirmed manifested live (all
+>   three master templates carried a leaked donor photo) — re-blanked,
+>   verified from saved bytes.
+> - **CX** — `DuplicateAndTag` discarded the router's own return value,
+>   so a field that failed to write still reported success.
+> - **CY** — bar/slot aggregators checked `Written OR Verified` instead
+>   of `Verified` alone (`Written` only means "attempted," not
+>   "succeeded"). Verified by non-regression, not live red/green — 7
+>   probes couldn't force the trigger condition, said so plainly.
+> - **CZ** — `InjectDeviceVia` hardcoded `Verified = True` regardless of
+>   real per-slot write failures already being tracked and discarded.
+> - **DA/DB** — bulk adoption (`DeckAdoption`/`BatchOnboardFlow`) had
+>   both a crash (unguarded `.TextFrame` read on a picture shape) and a
+>   false-rejection bug (same router-bypass class as CV, opposite
+>   direction).
+> - **DC** — milestone date text (`MS<n>_DATE`) font colour was
+>   hardcoded teal-or-type-hex BY POSITION on every slide, never
+>   reflecting that project's own real progress. Now follows its own
+>   circle's outline colour.
+> - **DD** — new field, `MS<n>_CALDATE` (a real calendar date shown
+>   under each circle, alongside the existing month-count text). Code
+>   layer done and proven; register plumbing done; field-scan
+>   completeness proven (not assumed); **deck retrofit 39/46 real
+>   slides done and verified clean from saved bytes, 7 remain** (40,
+>   41, 42, 43, 44, 46, 47) — see next section. Real calendar-date
+>   VALUES were NOT populated: tried auto-mapping from
+>   `SRC_MILESTONES` via fuzzy text match, only 8/250 (3.2%) plausible
+>   — Rohan confirmed the abridged-milestone selection has always been
+>   manual, so this is a genuine future drafting task, not a gap in
+>   tonight's work.
+>
+> Also: mother-hound's full kennel survey from earlier tonight is fully
+> closed out (CX/CY/CZ/DA/DB were its five findings, all fixed). The
+> `InjectPictureField` "feed in place" bug (found live, Rohan noticed
+> the teal circles) is ALSO fixed — see the `da0285a` commit, separate
+> from the mother-hound batch. AppData-vs-OneDrive split-brain
+> resolved (promoted). Test data from the CV/CW onboarding test
+> cleaned up. Full VBA suite run clean at multiple checkpoints tonight
+> (302/302 most recently before the DD work started).
+>
+> ### DD retrofit — where to pick this up
+> **`vba/tools/add_caldate_shapes.vbs` was hardened by a fable-model
+> agent tonight** after the first version hit real, live problems on
+> the OneDrive-synced real deck (intermittent Save() errors that
+> weren't always real failures; a force-kill habit that genuinely lost
+> some slides' writes the first time; a stray ungrouped duplicate shape
+> from an interrupted run). Full account in `FIX-LIST.md`'s DD entry —
+> don't re-derive this, read it first. The hardened script:
+> - Re-acquires the device group fresh every slot (a stale reference
+>   after a deletion throws `Type mismatch`).
+> - Checks BOTH the group's `GroupItems` and the slide's top-level
+>   `Shapes` for existing/stray shapes before adding.
+> - Adopts a lone stray into the group rather than duplicating it.
+> - Runs a full per-slide dedupe self-check before saving.
+> - Retries `Save()` once on a genuine failure (checked via the
+>   `Saved` property, not by trusting the error message).
+> - Closes with a brief poll rather than hanging indefinitely.
+>
+> New `vba/tools/verify_caldate.py` does the external, from-disk
+> verification (zip+XML, grouped vs. stray count per slide) — use it
+> after every slide, not the script's own log output.
+>
+> **To finish**: run the hardened script against slides 40, 41, 42, 43,
+> 44, 46, 47 (one invocation per slide, matching the one-launch-
+> per-slide pattern this whole project uses for regroup operations),
+> verify each from disk with `verify_caldate.py`, back up first. The
+> agent's own hardening report flags which failure-mode fixes were
+> proven on a scratch copy vs. coded-but-unexercised (the `Saved=True`-
+> after-error path and the retry-succeeds path specifically) — read a
+> few of the first real run's logs with that in mind rather than
+> trusting a clean run blindly.
+>
+> Once the retrofit is finished: full VBA suite, `VerifyRealDeck` sanity
+> pass, and a decision from Rohan on whether/how real calendar-date
+> values get populated (a drafting task, not a code task).
+
 > ## 22 AUG, ~15:45 — CONSOLIDATED TODO LIST (everything open, one spot)
 > Written directly by the main session at Rohan's request ("collate all still
 > todos and actions into one spot"), synthesising: this session's own CV/CW
