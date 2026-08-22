@@ -1652,7 +1652,7 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       "" for a picture field's value — out of this fix's scope.
       Filtered suites: `DeckAdoption` 9/9, `BatchOnboardFlow_CommitBatch`
       2/2. Full account: `FIX-LIST.md` DA/DB.
-- [~] **DD — `MS<n>_CALDATE`, a real calendar date under each circle,
+- [x] **DD — `MS<n>_CALDATE`, a real calendar date under each circle,
       same optional-shape treatment CT's `%` used.** Code layer done
       (proven fail-first, filtered suite 12/12). Auto-mapping real
       dates from `SRC_MILESTONES` tried and honestly abandoned — Rohan:
@@ -1661,22 +1661,32 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       to force the rest. Register plumbing done: 7 empty columns added,
       verified from saved bytes. Field-scan completeness PROVEN not
       assumed — extended the existing device-column test with
-      MS1_CALDATE, fail-first proven. **Deck retrofit: 39 of 46 real
-      slides done and verified clean from saved bytes** (remaining: 40,
-      41, 42, 43, 44, 46, 47). Real problems hit and fixed along the
-      way: a OneDrive path-identity check aborting safely (fixed to
-      check filename); a force-kill-right-after-an-error habit that
-      genuinely lost some slides' writes (fixed by always checking
-      `Saved` via COM before closing); a stray ungrouped duplicate
-      shape from an interrupted run (found and fixed live twice).
-      Rohan, mid-recovery: "harden the script first, always avoid a
-      grind, use fable" — dispatched, script rewritten with the retry/
-      dedupe/stale-reference fixes built in, every fix proven on a
-      scratch copy (real deck untouched throughout). **Marked `[~]` not
-      `[x]`: 7 slides still need the retrofit** (use the hardened
-      script + `verify_caldate.py` for from-disk verification), real
-      date values are a genuine future drafting task not tonight's
-      work, no real sync has run. Full account: `FIX-LIST.md` DD.
+      MS1_CALDATE, fail-first proven. **Deck retrofit: all 46 real
+      milestone-carrying slides done and verified clean from saved
+      bytes** (1-44, 46, 47; slide 45 correctly carries no milestone
+      device). Real problems hit and fixed along the way: a OneDrive
+      path-identity check aborting safely (fixed to check filename); a
+      force-kill-right-after-an-error habit that genuinely lost some
+      slides' writes (fixed by always checking `Saved` via COM before
+      closing); a stray ungrouped duplicate shape from an interrupted
+      run (found and fixed live twice, then a THIRD live occurrence on
+      slide 44 correctly self-healed by the hardened script's
+      stray-adoption logic with no manual intervention). Rohan,
+      mid-recovery: "harden the script first, always avoid a grind, use
+      fable" — dispatched, script rewritten with the retry/dedupe/
+      stale-reference fixes built in, every fix proven on a scratch
+      copy first (real deck untouched during hardening), then the
+      hardened script ran the remaining slides (40-44, 46, 47) against
+      the real deck unattended, self-recovering through several
+      genuine Save() retries and the slide-44 stray without any manual
+      fix. Final state confirmed with `verify_caldate.py all` against
+      the saved deck: 46/46 clean, 0 strays, 0 duplicates, exit 0.
+      **Still not tonight's work**: real calendar-date VALUES (a
+      genuine future drafting task — someone who knows which raw
+      milestone each abridged slot represents enters the date) and a
+      live end-to-end sync exercising the new field (the add-in itself
+      hasn't been rebuilt with tonight's `MilestoneDevice.bas` changes
+      yet). Full account: `FIX-LIST.md` DD.
 - [~] **DC — found AND fixed: `MS<n>_DATE`'s font colour was hardcoded
       teal by position, never data-driven.** Found by Rohan looking at
       the promoted live deck: slots 1-3 were `scheme:bg2` on every one

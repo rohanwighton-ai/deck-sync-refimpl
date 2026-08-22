@@ -1,5 +1,34 @@
 # NEXT SESSION — start here
 
+> ## 22 AUG, ~21:10 — DD RETROFIT FINISHED. Supersedes the "39/46, 7
+> ## remain" status in the block below it (that block is otherwise
+> ## still accurate — this just closes its one open item).
+>
+> The hardened script (see that block for full mechanics) ran the
+> remaining 7 slides (40, 41, 42, 43, 44, 46, 47) against the real deck
+> unattended. Two of the failure modes it was built to handle but
+> couldn't prove live during hardening fired for real on this run and
+> self-recovered with no manual intervention: several genuine `Save()`
+> retry-after-error cycles, and a real pre-existing stray
+> (`MS<n>_CALDATE`) on slide 44, correctly adopted into its device
+> group rather than duplicated.
+>
+> **Final verification, `verify_caldate.py all` against the saved real
+> deck: 46/46 slides OK — 7/7 grouped, no strays, no duplicates, exit
+> 0.** Slide 45 correctly has no milestone device (skipped by design).
+> This closes the deck-side retrofit. `CHECKLIST.md` DD flipped `[~]` →
+> `[x]`; `FIX-LIST.md` DD entry appended with the finish; all committed
+> and pushed.
+>
+> **Still open, unchanged from the block below**: real calendar-date
+> VALUES are a genuine future drafting task, not code work — someone
+> who knows which raw milestone each already-abridged slot represents
+> has to enter the date. No real sync has run end-to-end against the
+> new field yet — the add-in hasn't been rebuilt with tonight's
+> `MilestoneDevice.bas`/`InjectPrimitive.bas`/etc. changes. A final
+> full VBA suite run (last clean at 302/302, before the DD retrofit's
+> code changes) is worth doing before fully closing DD out.
+
 > ## 22 AUG, ~20:35 — MARATHON SESSION WRAP. Read this block first, it
 > ## supersedes the priority ordering of everything below it.
 >

@@ -5675,10 +5675,23 @@ after-error path, the retry-succeeds path, and the self-check's own
 repair branch -- all coded exactly to what was observed live tonight,
 but a human's eyes on the first real run's log are still warranted.
 
-**Still not done**: finishing the retrofit on the remaining 7 slides
-(40, 41, 42, 43, 44, 46, 47) using the hardened script; real
-calendar-date values -- this remains a genuine future drafting task
-(someone who knows which raw milestone each already-abridged slot
-represents enters the date), not something built tonight; no real sync
-has run.
+**Retrofit finished, 2026-08-22, same session.** The hardened script ran
+the remaining 7 slides (40, 41, 42, 43, 44, 46, 47) against the real
+deck unattended. Two of the failure modes documented above as
+"explicitly not proven on demand" fired for real during this run and
+self-recovered with no manual intervention: several genuine `Save()`
+retry-after-error cycles, and a real pre-existing stray
+(`MS<n>_CALDATE`) on slide 44, correctly adopted into its device group
+by the stray-adoption logic rather than duplicated. One slide (45) has
+no milestone device, correctly skipped by both the injection tool and
+`verify_caldate.py`. Final verification, `verify_caldate.py all`
+against the saved real deck: **46/46 slides OK -- 7/7 grouped, no
+strays, no duplicates -- exit 0.** This closes the deck-side retrofit.
+
+**Still not done**: real calendar-date values -- this remains a genuine
+future drafting task (someone who knows which raw milestone each
+already-abridged slot represents enters the date), not something built
+tonight; no real sync has run end-to-end against the new field (the
+add-in itself hasn't been rebuilt with tonight's `MilestoneDevice.bas`
+changes).
 
