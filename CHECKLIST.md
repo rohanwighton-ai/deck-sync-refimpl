@@ -1623,6 +1623,30 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       circle's own outline convention, verified across all 46 slides.
       Final `VerifyRealDeck`: 0 mismatches, 43/43 slides OK, unchanged.
       Full account: `FIX-LIST.md` CT.
+- [x] **CU — the real visible bug: `MS<n>_OFF` circles' OWN outline was
+      still teal.** The CT pass only fixed `MS_TRACK`'s outline (a thin
+      line, easy to miss); the circles' own borders -- what's actually
+      prominent -- were untouched. Found because Rohan said "I see no
+      difference" and asked for a visual sample; traced to an earlier
+      diagnostic mistake (a "nearest shape name" heuristic that
+      mis-attributed a different shape's outline to `MS1_OFF`). Fixed by
+      reading each slide's own `MS1_ON` outline live and copying it onto
+      every `MS<n>_OFF`, across all 50 slides (47 + the 3 new test
+      slides). Verified from saved bytes: 0 issues across all 49
+      milestone-carrying slides.
+- [ ] **CV — real onboarding bug found, NOT fixed: a new project's
+      `PROJECT_PHOTO` never gets set when "Add missing slides" creates
+      its slide.** Traced to `SlideDuplication.DuplicateAndTag` injecting
+      every field through the plain text writer (`InjectPrimitive`)
+      instead of the type-aware dispatcher (`InjectField`) that would
+      route a picture field to `InjectPictureField`. Confirmed via
+      `VerifyRealDeck`: the picture shape doesn't even carry its role tag
+      after duplication. Found via a real onboarding test (3 fake
+      projects, `P900`/`K900`/`S900`, each with its own distinct test
+      photo) -- Rohan pressed "Add missing slides" himself; all 3 slides
+      created correctly, all 3 showed the same (template's own) picture.
+      Test data (register rows, Sources rows, 3 test images) still live,
+      not yet cleaned up. Full account: `FIX-LIST.md` CV.
 - [x] **CS — CJ's 62 "mismatches" were mostly a checker bug, one real
       cell fixed underneath.** `VerifyRealDeck` compared raw `||`-encoded
       register text directly against already-rendered shape text; fixed

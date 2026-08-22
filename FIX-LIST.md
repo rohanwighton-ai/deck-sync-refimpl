@@ -5133,3 +5133,77 @@ retrofit). Verified from saved bytes: all 46 slides, track outline now
 matches ON outline exactly. Final `VerifyRealDeck` re-run: 0 mismatches,
 0 unwired, 43/43 real slides fully OK -- unchanged.
 
+## Fixed 2026-08-22 — CU, the actual visible bug: `MS<n>_OFF` circles'
+## OWN outline was still teal -- the CR/CT-adjacent fix only touched
+## `MS_TRACK`, never the circles themselves
+
+Rohan, after the `MS_TRACK` fix above: "can you please visually sample
+slides as I see no difference." Correctly -- the track's outline is a
+thin line, easy to miss; the circles' own borders are what's actually
+prominent, and THEY were still `scheme:bg2` (teal) on every `_OFF` state,
+on every slot, on every slide. **This was missed earlier tonight by a
+real diagnostic mistake, not a genuine "already correct" state**: an
+earlier check used a "find the nearest shape name before `</p:sp>`"
+extraction that mis-attributed a DIFFERENT shape's outline to `MS1_OFF`
+and reported it as already matching `_ON`/`_NOW`. Direct, tightly-bounded
+raw-XML reads of `MS1_OFF`'s own `<p:spPr>...</p:sp>` block (not the
+"nearest preceding name" heuristic) showed the truth: fill was correctly
+pale (`599279` etc., from CR), but the outline was still `bg2`.
+
+Fixed the same way as `MS_TRACK`: read each slide's own `MS1_ON` outline
+colour live via COM and copy it onto every `MS<n>_OFF` circle (all 7
+slots), never a hardcoded constant. Dry-run verified on a scratch copy
+first, then applied across all 50 slides (47 original + the 3 new
+`P900`/`K900`/`S900` test slides from the onboarding test below) --
+one PowerPoint launch per slide, same constraint as before. Exhaustively
+verified from the saved file's own bytes: every `MS<n>_OFF` outline now
+matches its own slide's `MS1_ON` outline exactly, 0 issues across all 49
+milestone-carrying slides. Final `VerifyRealDeck`: 0 mismatches, 43/43
+real slides fully OK (see CV below for the one new, unrelated finding
+that run surfaced).
+
+## Found, NOT fixed 2026-08-22 — CV, a real onboarding bug: a new
+## project's `PROJECT_PHOTO` never gets set when the slide is created
+
+Rohan: "can you please test adding a new fake data project slide of each
+PKS type to the xls and make sure that works?" -- re-running the proven
+2026-08-16 test (CHECKLIST #1) with 3 fake rows (`P900`/`K900`/`S900`,
+Q4F26, cloned from real rows of each type) plus, this time, a genuinely
+distinct test photo per project (`S17`/`S18`/`S19` in Sources, three
+different-coloured generated images). Rohan pressed "Add missing slides"
+himself -- 3 slides created successfully, correctly typed. **But all
+three show the same picture, not their own distinct one.**
+
+**Root cause, traced through the code, not guessed**:
+`SlideDuplication.DuplicateAndTag` (what "Add missing slides" calls to
+fill in a new slide's fields) injects every field through
+`InjectPrimitive.InjectPrimitive` directly -- the plain TEXT writer.
+There is a separate, type-aware dispatcher, `InjectField`
+(`InjectPrimitive.bas:485,592`), that correctly routes a picture-shaped
+field to `InjectPictureField` (which resolves a Sources-sheet ID to a
+real file locator first). `DuplicateAndTag` never calls that dispatcher
+-- every field, `PROJECT_PHOTO` included, goes through the same
+text-only path, which needs `shp.HasTextFrame` and can't write into a
+picture shape.
+
+`VerifyRealDeck`'s own re-run after this confirmed it precisely: **"no
+shape on the slide carries this role tag"** for `PROJECT_PHOTO` on all
+three new slides -- not merely "wrote the wrong thing", the role tag
+itself isn't present on the picture shape after duplication, so nothing
+downstream (including a later real sync) would find it either without
+separate intervention. Not yet fixed -- this is a real, load-bearing gap
+in new-project onboarding, confirmed on the real deck through the real
+button, not a synthetic-fixture finding. Whoever picks this up: `Onboarding
+.bas`'s own template-field-shape discovery already knows which roles are
+picture-typed (used for tagging during initial onboarding) -- the fix is
+almost certainly routing `DuplicateAndTag`'s injection loop through
+`InjectField` instead of `InjectPrimitive` directly, but that needs
+checking against every other field type's behaviour too before changing
+it, not just pictures.
+
+**Test data still live in the real deck/register, not yet cleaned up**:
+`P900`/`K900`/`S900` register rows and slides, `S17`/`S18`/`S19` Sources
+rows, three test images in
+`C:\Users\rohan\OneDrive\Claude\images\`. Backed up before this test at
+`backups/PRE-ONBOARDING-TEST-<timestamp>/`.
+
