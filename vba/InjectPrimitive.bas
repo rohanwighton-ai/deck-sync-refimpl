@@ -1245,31 +1245,40 @@ Public Function InjectPictureField(sld As Object, identityTag As String, _
         Exit Function
     End If
 
-    ' FEED THE SHAPE, DO NOT REPLACE IT. Rohan, 2026-08-10: "shouldn't the shape
-    ' settings handle it you just feed it".
+    ' THE SHAPE IS ALWAYS REBUILT. There is no feed-in-place route any more,
+    ' and the history matters because that route looked proven twice:
     '
-    ' He is right, and the first implementation proved it the hard way. Deleting
-    ' the old shape and inserting a new one meant recreating everything the
-    ' shape already knew -- position, size, crop, z-order, tags -- and PowerPoint
-    ' recomputes a picture's geometry when crops change, so a 300x150 frame came
-    ' back 284x150 at the wrong origin. Two passes of arithmetic did not fix it,
-    ' because the arithmetic was never the problem: replacing the shape was.
+    ' 2026-08-10: Fill.UserPicture was adopted for uncropped frames ("feed the
+    ' shape, do not replace it") after early rebuild attempts mangled geometry
+    ' -- a problem later solved outright by one line (LockAspectRatio off,
+    ' below). The probe behind "it works on a picture shape (type 13)" read
+    ' back object-model state, and the fill genuinely IS set -- that is
+    ' exactly what made the probe convincing and wrong.
     '
-    ' Fill.UserPicture was PROBED against real PowerPoint before being relied on
-    ' -- it works on a picture shape (type 13), not only on an autoshape. The
-    ' shape keeps its own settings because nothing touches them.
-    ' TWO ROUTES, CHOSEN BY WHAT THE TEMPLATE DID -- not by arithmetic.
+    ' 2026-08-19: found live that the feed silently changes nothing on an
+    ' msoGraphic (type 28) shape; that type alone was routed to the rebuild.
     '
-    ' Probed against real PowerPoint: Fill.UserPicture and cropping are mutually
-    ' exclusive on a picture shape. After feeding, CropLeft reads the no-crop
-    ' sentinel and CANNOT be set again. So an uncropped frame can be fed in
-    ' place, and a cropped frame cannot -- its framing would be lost with no way
-    ' back.
+    ' 2026-08-22: proven that the feed never displayed anything on ANY
+    ' p:pic-backed shape, plain type 13 included. Fill.UserPicture writes the
+    ' image into the shape-properties fill (a:blipFill in spPr), and a picture
+    ' shape's own content (p:blipFill) renders on top of its fill -- so the
+    ' fed image landed in the saved file INVISIBLE while the old picture kept
+    ' displaying, with Written/Verified both reading True off the tag stamp.
+    ' Proven from the far side of the save: the saved package still carried
+    ' the seed as the shape's picture content, and a recoloured render showed
+    ' the seed's colour where the fed image should have been. Every shape type
+    ' that could reach the feed branch is p:pic-backed (13, 17, 28), so the
+    ' branch could never work for anything and is gone. The rebuild is the
+    ' proven route: the same render experiment showed its image actually
+    ' displayed, and the replaced seed purged from the package on save.
+    ' See Test_InjectPicture_FillsStampsAndThenStaysSilent's saved-media
+    ' assertions, which fail against the feed route and pass against this one.
     '
-    ' For a cropped frame the shape is rebuilt and the TEMPLATE'S OWN CROP VALUES
-    ' are applied verbatim. That is not geometry logic: nothing is computed from
-    ' the image's proportions, nothing is fitted or filled. The template said how
-    ' this frame is framed, and those numbers are carried across unchanged.
+    ' THE FRAME'S RECORDED GEOMETRY IS CARRIED ACROSS THE REBUILD -- size,
+    ' position, z-order, and the TEMPLATE'S OWN CROP VALUES verbatim (zeros
+    ' for an uncropped frame). That is not geometry logic: nothing is computed
+    ' from the image's proportions, nothing is fitted or filled. The template
+    ' said how this frame is framed, and those numbers survive unchanged.
     Dim cL As Single, cR As Single, cT As Single, cB As Single
     On Error Resume Next
     cL = shp.PictureFormat.CropLeft
@@ -1277,54 +1286,6 @@ Public Function InjectPictureField(sld As Object, identityTag As String, _
     cT = shp.PictureFormat.CropTop
     cB = shp.PictureFormat.CropBottom
     On Error GoTo 0
-
-    Dim isCropped As Boolean
-    isCropped = (cL > 0.01) Or (cR > 0.01) Or (cT > 0.01) Or (cB > 0.01)
-
-    ' msoGraphic (SVG-backed) shapes MUST also take the rebuild branch below,
-    ' regardless of crop. Found live 2026-08-19: Fill.UserPicture reports
-    ' success on a type=28 shape but silently changes nothing -- confirmed by
-    ' feeding a deliberately distinct marker image into an already-filled SVG
-    ' shape and finding the ORIGINAL content still on screen afterward. The
-    ' comment above this branch ("probed against real PowerPoint... it works
-    ' on a picture shape (type 13)") was accurate and specific -- it never
-    ' claimed type 28, and nothing here had actually verified that case until
-    ' tonight. See Test_InjectPicture_SvgGraphicIsRebuiltNotFedInPlace, which
-    ' failed against this exact branch before this line existed.
-    Dim isGraphic As Boolean
-    isGraphic = (shp.Type = msoGraphic)
-
-    If Not isCropped And Not isGraphic Then
-        ' FED IN PLACE. Nothing about the shape changes but its image.
-        On Error Resume Next
-        Err.Clear
-        shp.Fill.UserPicture locator
-        If Err.Number <> 0 Then
-            Dim eFeed As String
-            eFeed = Err.Description
-            On Error GoTo 0
-            result.ErrorMessage = "could not place " & locator & " (" & eFeed & ")"
-            InjectPictureField = result
-            Exit Function
-        End If
-        shp.Tags.Delete PICTURE_SOURCE_TAG
-        shp.Tags.Add PICTURE_SOURCE_TAG, sourceId
-        On Error GoTo 0
-        result.Written = True
-        result.Verified = (StrComp(PictureSourceOf(shp), sourceId, vbTextCompare) = 0)
-        If Not result.Verified Then
-            result.ErrorMessage = "the picture was placed but its source stamp did not stick"
-        End If
-        InjectPictureField = result
-        Exit Function
-    End If
-
-    ' A CROPPED FRAME IS REPLACED, CARRYING ITS RECORDED GEOMETRY ACROSS.
-    '
-    ' Fill.UserPicture cannot be used here -- probed: after feeding, the crop
-    ' reads the no-crop sentinel and cannot be set again. So the shape is
-    ' rebuilt and its size, position, z-order and CROP are applied from values
-    ' captured before anything changed.
     '
     ' LOCKASPECTRATIO MUST BE OFF FIRST, and that single line is what five
     ' earlier attempts were missing. With it on, setting Width makes PowerPoint
@@ -1387,13 +1348,13 @@ Public Function InjectPictureField(sld As Object, identityTag As String, _
     result.Verified = (StrComp(PictureSourceOf(shp), sourceId, vbTextCompare) = 0)
     If Not result.Verified Then
         result.ErrorMessage = "the picture was placed but its source stamp did not stick -- a later run would replace it again"
-    ElseIf isCropped Then
-        If Abs(shp.Width - fW) > 0.5 Or Abs(shp.Height - fH) > 0.5 Then
-            result.Verified = False
-            result.ErrorMessage = "the image was placed but the frame ended " & _
-                shp.Width & "x" & shp.Height & " instead of " & fW & "x" & fH & _
-                " -- check this slide before trusting it"
-        End If
+    ' Every frame is rebuilt now, so every frame gets the geometry check --
+    ' it used to guard only the cropped route, which was the only rebuild.
+    ElseIf Abs(shp.Width - fW) > 0.5 Or Abs(shp.Height - fH) > 0.5 Then
+        result.Verified = False
+        result.ErrorMessage = "the image was placed but the frame ended " & _
+            shp.Width & "x" & shp.Height & " instead of " & fW & "x" & fH & _
+            " -- check this slide before trusting it"
     End If
 
     InjectPictureField = result

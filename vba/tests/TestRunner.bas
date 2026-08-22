@@ -13977,7 +13977,12 @@ End Function
 ' picture tests need an image PowerPoint will actually accept, and depending on
 ' a committed fixture file would make them fail for a reason unrelated to the
 ' thing under test.
-Private Function MakeTestBitmap(path As String, w As Long, h As Long) As String
+' `pixelValue` exists for the saved-media byte checks: two bitmaps from this
+' function at the SAME size are byte-identical, so a seed/replacement pair
+' that only a size apart is one refactor away from being unable to
+' discriminate. Callers that don't care keep the old flat grey.
+Private Function MakeTestBitmap(path As String, w As Long, h As Long, _
+                                Optional pixelValue As Byte = 200) As String
     Dim rowBytes As Long, padding As Long, pixelBytes As Long
     rowBytes = w * 3
     padding = (4 - (rowBytes Mod 4)) Mod 4
@@ -13998,7 +14003,7 @@ Private Function MakeTestBitmap(path As String, w As Long, h As Long) As String
 
     Dim i As Long
     For i = 54 To UBound(b)
-        b(i) = 200                                ' flat grey, content is irrelevant
+        b(i) = pixelValue                         ' flat single-value fill
     Next i
 
     Dim fnum As Integer
@@ -14046,27 +14051,153 @@ Private Function MakeTestSvg(path As String) As String
     MakeTestSvg = path
 End Function
 
-' A picture field: filled from a link, stamped, and silent on the second run.
+' ---------------------------------------------------------------------
+' SAVED-MEDIA BYTE CHECKS -- the far side of the save, read back in-process.
 '
-' The stamp is the whole design -- without it, idempotence would mean comparing
-' images across 43 slides every quarter. So the assertions are about the STAMP
-' and about what happens when it already matches, not about pixels.
+' The picture tests' original assertions (stamp, geometry, Shape.Id) are all
+' state the injector's own code writes AFTER its picture call returns, so a
+' write that silently changed no pixels passed every one of them (2026-08-22,
+' the feed-in-place defect). The only witness that cannot lie about the image
+' is the saved package itself: these helpers pull ppt/media/* out of a saved
+' .pptx and compare payloads byte-for-byte against the source images.
+' ---------------------------------------------------------------------
+
+' Extracts every ppt/media/* payload from a saved .pptx into a fresh temp
+' folder and returns the media folder's path, or "" on any failure.
+' tar.exe, not Shell.Application -- Namespace()/CopyHere is confirmed broken
+' under COM automation on this machine (Matching.bas LoadPartXml, 2026-07-25);
+' the tar route is the same one that module ships on. The glob pattern was
+' verified against a real saved .pptx before this helper was written.
+Private Function ExtractPptxMedia(pptxPath As String) As String
+    On Error GoTo Fail
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    Dim tempRoot As String
+    tempRoot = Environ$("TEMP") & "\dsmedia_" & CStr(CLng(Timer * 1000))
+    fso.CreateFolder tempRoot
+
+    Dim zipPath As String, extractPath As String
+    zipPath = tempRoot & "\copy.zip"
+    extractPath = tempRoot & "\x"
+    fso.CopyFile pptxPath, zipPath, True
+    fso.CreateFolder extractPath
+
+    Dim wsh As Object
+    Set wsh = CreateObject("WScript.Shell")
+    Dim exitCode As Long
+    exitCode = wsh.Run("cmd.exe /c tar -xf """ & zipPath & """ -C """ & _
+                       extractPath & """ ppt/media/*", 0, True)
+    If exitCode <> 0 Then GoTo Fail
+
+    Dim mediaDir As String
+    mediaDir = extractPath & "\ppt\media"
+    If Not fso.FolderExists(mediaDir) Then GoTo Fail
+    ExtractPptxMedia = mediaDir
+    Exit Function
+Fail:
+    ExtractPptxMedia = ""
+End Function
+
+Private Function FilesBytesEqual(pathA As String, pathB As String) As Boolean
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FileExists(pathA) Or Not fso.FileExists(pathB) Then Exit Function
+    If fso.GetFile(pathA).Size <> fso.GetFile(pathB).Size Then Exit Function
+    If fso.GetFile(pathA).Size = 0 Then
+        FilesBytesEqual = True                    ' both empty, equal by size
+        Exit Function
+    End If
+
+    Dim a() As Byte, b() As Byte
+    Dim fnum As Integer
+    fnum = FreeFile
+    Open pathA For Binary Access Read As #fnum
+    ReDim a(0 To LOF(fnum) - 1)
+    Get #fnum, 1, a
+    Close #fnum
+    fnum = FreeFile
+    Open pathB For Binary Access Read As #fnum
+    ReDim b(0 To LOF(fnum) - 1)
+    Get #fnum, 1, b
+    Close #fnum
+
+    Dim i As Long
+    For i = 0 To UBound(a)
+        If a(i) <> b(i) Then Exit Function
+    Next i
+    FilesBytesEqual = True
+End Function
+
+' True if any file in mediaDir is byte-identical to srcFile. Used both ways:
+' the replacement's bytes must be present, and the seed's must be ABSENT --
+' PowerPoint purges unreferenced media on save, so a surviving seed means a
+' shape still references it, which is exactly the feed-in-place defect. (That
+' purge is observed behaviour on this machine, not contract; if a future
+' PowerPoint keeps orphaned media this check fails safe -- red, not green.)
+Private Function MediaContainsBytesOf(mediaDir As String, srcFile As String) As Boolean
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FolderExists(mediaDir) Then Exit Function
+    Dim mf As Object
+    For Each mf In fso.GetFolder(mediaDir).Files
+        If FilesBytesEqual(mf.path, srcFile) Then
+            MediaContainsBytesOf = True
+            Exit Function
+        End If
+    Next mf
+End Function
+
+' A picture field: filled from a link, stamped, silent on the second run --
+' AND THE SAVED FILE CARRIES THE NEW IMAGE.
+'
+' The stamp is the design (idempotence without comparing pixels across 43
+' slides every quarter). The saved-bytes assertions are the lesson: until
+' 2026-08-22 this test checked only the stamp and geometry, and it passed
+' GREEN against a write path that never changed the image -- Fill.UserPicture
+' on a p:pic-backed shape writes into the shape-properties FILL (a:blipFill
+' in spPr), which the shape's own picture content (p:blipFill) covers
+' completely, so the fed image landed in the file invisible while the old
+' one kept displaying. Proven by saved-media bytes and a recoloured render.
+'
+' So this test now saves to a real file and reads the package back:
+'   - the replacement's bytes must be IN ppt/media, and
+'   - the seed's bytes must be GONE. Presence of the new bytes alone proves
+'     nothing -- the broken path put them in the file too, as the invisible
+'     fill. The seed's ABSENCE is the discriminator.
+' Seed and replacement differ in both size and pixel value; a same-size pair
+' from MakeTestBitmap is byte-identical and cannot discriminate at all.
 Private Function Test_InjectPicture_FillsStampsAndThenStaysSilent() As String
     Dim result As String
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
 
+    Dim seedPath As String, newPath As String
+    seedPath = MakeTestBitmap(Environ("TEMP") & "\dsseed.bmp", 40, 20, 200)
+    newPath = MakeTestBitmap(Environ("TEMP") & "\dsnew.bmp", 60, 30, 90)
+
+    ' A stale evidence file hangs the suite on PowerPoint's own "replace it?"
+    ' prompt -- same lesson the SaveDeckVerified test already paid for.
+    Dim savePath As String
+    savePath = Environ("TEMP") & "\dspicsave.pptx"
+    On Error Resume Next
+    fso.DeleteFile savePath, True
+    On Error GoTo 0
+
+    ' Its OWN presentation -- this test saves, and the runner's presentation
+    ' is deliberately never saved.
+    Dim probePres As Object
+    Set probePres = Application.Presentations.Add
     Dim sld As Object
-    Set sld = NewBlankSlide()
+    Set sld = probePres.Slides.Add(1, ppLayoutBlank)
 
     ' A picture already on the slide, tagged as a field -- the frame whose
     ' position and size the replacement must respect.
-    Dim seedPath As String
-    seedPath = MakeTestBitmap(Environ("TEMP") & "\dsseed.bmp", 40, 20)
     Dim frame As Object
     Set frame = sld.Shapes.AddPicture(seedPath, msoFalse, msoTrue, 100, 80, 300, 150)
     frame.Tags.Add "role", "PHOTO"
-
-    Dim newPath As String
-    newPath = MakeTestBitmap(Environ("TEMP") & "\dsnew.bmp", 40, 20)
+    Dim idBefore As Long
+    idBefore = frame.Id
 
     Dim r As InjectResult
     r = InjectPrimitive.InjectPictureField(sld, "PHOTO", "S20", newPath)
@@ -14081,11 +14212,12 @@ Private Function Test_InjectPicture_FillsStampsAndThenStaysSilent() As String
     If Not placed Is Nothing Then
         result = result & Assert(InjectPrimitive.PictureSourceOf(placed) = "S20", _
             "and the source stamp, got '" & InjectPrimitive.PictureSourceOf(placed) & "'")
-        ' The frame is untouched -- it was fed, not replaced.
         result = result & Assert(Abs(placed.Width - 300) < 1 And Abs(placed.Height - 150) < 1, _
             "the frame keeps the size the slide gave it, got " & placed.Width & "x" & placed.Height)
         result = result & Assert(Abs(placed.Left - 100) < 0.5 And Abs(placed.Top - 80) < 0.5, _
             "and its position, got " & placed.Left & "," & placed.Top)
+        result = result & Assert(placed.Id <> idBefore, _
+            "the shape was REBUILT -- an unchanged Id means the retired feed-in-place path is back")
     End If
 
     ' THE SECOND RUN MUST DO NOTHING. This is the property that makes a picture
@@ -14100,7 +14232,21 @@ Private Function Test_InjectPicture_FillsStampsAndThenStaysSilent() As String
     r3 = InjectPrimitive.InjectPictureField(sld, "PHOTO", "S21", newPath)
     result = result & Assert(r3.WouldChange, "a different source ID re-fires")
 
-    sld.Delete
+    ' THE FAR SIDE OF THE SAVE -- the only witness that cannot restate the
+    ' injector's own bookkeeping.
+    probePres.SaveAs savePath
+    probePres.Close
+
+    Dim mediaDir As String
+    mediaDir = ExtractPptxMedia(savePath)
+    result = result & Assert(mediaDir <> "", "the saved package's media could be extracted")
+    If mediaDir <> "" Then
+        result = result & Assert(MediaContainsBytesOf(mediaDir, newPath), _
+            "the replacement image's bytes are in the saved file")
+        result = result & Assert(Not MediaContainsBytesOf(mediaDir, seedPath), _
+            "and the seed's bytes are gone -- a surviving seed means a shape still displays it")
+    End If
+
     Test_InjectPicture_FillsStampsAndThenStaysSilent = result
 End Function
 
@@ -14163,12 +14309,27 @@ End Function
 ' deck already states which treatment each frame wants.
 Private Function Test_InjectPicture_CroppedFrameIsFilledUncroppedIsFitted() As String
     Dim result As String
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
 
-    Dim sld As Object
-    Set sld = NewBlankSlide()
+    ' Distinct size AND pixel value between seed and replacement -- the
+    ' saved-media byte check at the end cannot discriminate identical bytes.
     Dim wide As String, tall As String
-    wide = MakeTestBitmap(Environ("TEMP") & "\dswide.bmp", 40, 20)
-    tall = MakeTestBitmap(Environ("TEMP") & "\dstall.bmp", 20, 40)
+    wide = MakeTestBitmap(Environ("TEMP") & "\dswide.bmp", 40, 20, 200)
+    tall = MakeTestBitmap(Environ("TEMP") & "\dstall.bmp", 20, 40, 90)
+
+    Dim savePath As String
+    savePath = Environ("TEMP") & "\dspiccrop.pptx"
+    On Error Resume Next
+    fso.DeleteFile savePath, True
+    On Error GoTo 0
+
+    ' Its OWN presentation -- this test saves, and the runner's presentation
+    ' is deliberately never saved.
+    Dim probePres As Object
+    Set probePres = Application.Presentations.Add
+    Dim sld As Object
+    Set sld = probePres.Slides.Add(1, ppLayoutBlank)
 
     ' A cropped frame: 300x150, holding a portrait image it must fill.
     Dim cropped As Object
@@ -14223,7 +14384,24 @@ Private Function Test_InjectPicture_CroppedFrameIsFilledUncroppedIsFitted() As S
             "an uncropped frame also keeps its size, was " & plainW & "x" & plainH & " now " & placed2.Width & "x" & placed2.Height)
     End If
 
-    sld.Delete
+    ' THE FAR SIDE OF THE SAVE. Both frames (cropped and uncropped) were
+    ' injected with `tall`; both seeds were `wide`. The saved package must
+    ' carry tall's bytes and NONE of wide's -- a surviving wide means one of
+    ' the frames still displays its seed, which is the feed-in-place defect
+    ' this test passed green over until 2026-08-22.
+    probePres.SaveAs savePath
+    probePres.Close
+
+    Dim mediaDir As String
+    mediaDir = ExtractPptxMedia(savePath)
+    result = result & Assert(mediaDir <> "", "the saved package's media could be extracted")
+    If mediaDir <> "" Then
+        result = result & Assert(MediaContainsBytesOf(mediaDir, tall), _
+            "the injected image's bytes are in the saved file")
+        result = result & Assert(Not MediaContainsBytesOf(mediaDir, wide), _
+            "and neither frame's seed survived the save")
+    End If
+
     Test_InjectPicture_CroppedFrameIsFilledUncroppedIsFitted = result
 End Function
 
@@ -16395,9 +16573,10 @@ End Function
 ' THE END-TO-END WRITE, WITH AN SVG SOURCE -- the layer the readiness audit
 ' flagged as proven only once, live, by hand, never by the suite.
 ' InjectPicture_FillsStampsAndThenStaysSilent (above) already proves this
-' whole mechanism against a PNG; this proves the SAME mechanism against
-' the format that actually broke -- Fill.UserPicture's uncropped-frame
-' path, exercised with an .svg locator instead of a .bmp one.
+' whole mechanism against a bitmap; this proves the SAME mechanism against
+' the format that first exposed the broken feed-in-place route (type 28,
+' 2026-08-19 -- the route itself was retired for every type on 2026-08-22),
+' exercised with an .svg locator instead of a .bmp one.
 Private Function Test_InjectPicture_SvgSourceFillsAndStamps() As String
     Dim result As String
 
