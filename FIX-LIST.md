@@ -5386,3 +5386,42 @@ static check clean, filtered suite (`-Filter Inject`, all 35
 Inject-prefixed tests including the untouched single-item primitives)
 35/35 passed, 0 failed.
 
+## Found AND fixed 2026-08-22 — CZ, mother-hound finding #3:
+## `InjectDeviceVia` hardcoded `Verified = True`
+
+Found by the same kennel survey, my own finding rather than a puppy's --
+traced directly while checking every `.Verified =` assignment in
+`vba/*.bas` for the same "checks a proxy, not the effect" shape as
+`InjectPictureField`. Currently dormant (kingsbury-hound checked: no
+live reader of the field this fed exists today), fixed anyway because
+it is the exact "check that cannot fail" shape, sitting in code touched
+this same session (`MilestoneDevice.bas`, the CT percentage-shape work).
+
+**Root cause.** `InjectDeviceVia` set `result.Verified = True`
+unconditionally once `MilestoneDevice.DrawFromRow`'s top-level
+`ErrorMessage` was empty -- but `DrawMilestones`'s own `SetVisible`/
+`WriteText` already genuinely re-read each shape after writing and
+record a real per-slot failure ("MS2_LABEL: a write did not take") into
+`drawn.Detail`, which `InjectDeviceVia` copied into `result.ErrorMessage`
+for DISPLAY but never actually inspected to decide `Verified`.
+
+**FIXED, properly, not by substring-sniffing `Detail`.** `Detail` mixes
+genuine write failures with structural/template notes (a missing
+`MS<n>_PCT` shape, an unfound circle) -- matching a specific phrase in
+it would be fragile and semantically wrong (a template limitation is
+not a write failure). Instead, `MilestoneDrawResult` gained a proper
+`WriteFailureCount As Long`, incremented ONLY at the two genuine
+write-failure sites in `DrawMilestones` (`~L679`, `~L695`), never at its
+other informational notes. `InjectDeviceVia` now checks
+`(drawn.WriteFailureCount = 0)`.
+
+Proven fail-first, reusing `Test_MilestoneDevice_ReportsAWriteThatDidNotTake`'s
+own established technique (swap a slot's label for a `Line` shape --
+genuinely has no `TextFrame`, so `WriteText` deterministically fails, no
+PowerPoint-quirk guessing needed): temporarily reverted just the
+`InjectDeviceVia` consumer line, confirmed the new test fails for the
+right reason (`Written=True`, `ErrorMessage` names the failure,
+`Verified` still read `True`). Restored the fix; same test passes.
+Static check clean. Filtered suite (`-Filter MilestoneDevice` plus the
+new test by exact name): 11/11 passed, 0 failed.
+

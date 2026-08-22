@@ -2064,6 +2064,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "InjectField_RoutesADeviceGroupToTheTimeline", r
+    If TestMatches("InjectField_DeviceWriteFailureIsNotReportedVerified", filterPattern) Then
+        r = Test_InjectField_DeviceWriteFailureIsNotReportedVerified()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "InjectField_DeviceWriteFailureIsNotReportedVerified", r
     If TestMatches("InjectPrimitive_DeviceDiscoveredByNameWhenUntagged", filterPattern) Then
         r = Test_InjectPrimitive_DeviceDiscoveredByNameWhenUntagged()
     Else
@@ -16450,6 +16456,53 @@ Private Function Test_InjectField_RoutesADeviceGroupToTheTimeline() As String
     sld2.Delete
     sld.Delete
     Test_InjectField_RoutesADeviceGroupToTheTimeline = result
+End Function
+
+' Mother-hound kennel survey, 2026-08-22 (same session as CV/CX/CY). This is
+' InjectDeviceVia's own version of the aggregation bug: it set
+' `result.Verified = True` unconditionally once `drawn.ErrorMessage` was
+' empty -- but DrawMilestones already genuinely re-reads each shape after
+' writing and records a real per-slot failure into `drawn.Detail`
+' ("MS2_LABEL: a write did not take"), which InjectDeviceVia copied into
+' `ErrorMessage` for display but never actually inspected.
+'
+' Reuses Test_MilestoneDevice_ReportsAWriteThatDidNotTake's own proven
+' technique: swap a slot's label for a `Line` shape (genuinely has no
+' TextFrame, so WriteText deterministically fails), same group name so the
+' device still finds it by name.
+Private Function Test_InjectField_DeviceWriteFailureIsNotReportedVerified() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 3)
+    grp.Tags.Add "role", "MILESTONE_TIMELINE"
+
+    Dim badLabel As Object
+    Set badLabel = sld.Shapes.AddLine(130, 150, 250, 150)
+    NamedIn(grp, "MS2_LABEL").Delete
+    badLabel.Name = "MS2_LABEL"
+    Set grp = sld.Shapes.Range(Array(grp.Name, badLabel.Name)).Group
+    grp.Tags.Add "role", "MILESTONE_TIMELINE"
+
+    Dim row As Object
+    Set row = CreateObject("Scripting.Dictionary")
+    row("MS1_LABEL") = "Kickoff": row("MS1_DATE") = "Oct 2023": row("MS1_DONE") = "Y"
+    row("MS2_LABEL") = "Design":  row("MS2_DATE") = "Mar 2024": row("MS2_DONE") = "N"
+
+    Dim r As InjectResult
+    r = InjectPrimitive.InjectField(sld, "MILESTONE_TIMELINE", "", False, Nothing, row)
+
+    result = result & Assert(r.Written, "the device is reported written [" & r.ErrorMessage & "]")
+    result = result & Assert(InStr(r.ErrorMessage, "did not take") > 0, _
+        "the real failure surfaces in ErrorMessage, got '" & r.ErrorMessage & "'")
+    ' THE ONE THAT MATTERS: before this fix, Verified read True regardless.
+    result = result & Assert(Not r.Verified, _
+        "a real per-slot write failure must not be reported Verified")
+
+    sld.Delete
+    Test_InjectField_DeviceWriteFailureIsNotReportedVerified = result
 End Function
 
 ' THE REAL BUG, PROVEN AGAINST THE REAL SHAPE: found 2026-08-16 that 3_P001,

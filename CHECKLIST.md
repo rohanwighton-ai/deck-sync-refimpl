@@ -1634,6 +1634,21 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       every `MS<n>_OFF`, across all 50 slides (47 + the 3 new test
       slides). Verified from saved bytes: 0 issues across all 49
       milestone-carrying slides.
+- [x] **CZ — mother-hound finding #3, found AND fixed: `InjectDeviceVia`
+      hardcoded `Verified = True`.** `DrawMilestones`'s own `SetVisible`/
+      `WriteText` genuinely re-read each shape after writing and record
+      a real per-slot failure into `drawn.Detail`, but `InjectDeviceVia`
+      copied `Detail` into `ErrorMessage` for display and never actually
+      inspected it — `Verified` was set `True` the instant
+      `ErrorMessage` was empty. Dormant today (no current reader), fixed
+      anyway: same shape as the `InjectPictureField` bug, in code
+      touched this session. Fixed properly, not by matching a phrase in
+      `Detail` (which mixes real failures with template notes): added a
+      real `WriteFailureCount` to `MilestoneDrawResult`, incremented
+      only at the two genuine write-failure sites. Proven fail-first
+      using the existing "swap a label for a `Line` shape" technique —
+      deterministic, no PowerPoint-quirk guessing. Filtered suite 11/11.
+      Full account: `FIX-LIST.md` CZ.
 - [~] **CY — mother-hound finding #2, found AND fixed: the repeating/
       slots aggregator could never see a real write's failure.**
       `Written` means "an attempt was made," not "it succeeded" (its own

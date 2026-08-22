@@ -887,8 +887,19 @@ Private Function InjectDeviceVia(grp As Object, identityTag As String, _
         Exit Function
     End If
 
+    ' FIX-LIST item, 2026-08-22 (mother-hound kennel survey, finding #3).
+    ' This set Verified = True unconditionally the moment drawn.ErrorMessage
+    ' was empty -- but DrawMilestones/SetVisible/WriteText already genuinely
+    ' re-read each shape after writing and record a real per-slot failure
+    ' ("a write did not take") into drawn.Detail, which was copied into
+    ' result.ErrorMessage for DISPLAY but never actually inspected to decide
+    ' Verified. Dormant today (kingsbury-hound found no current reader of
+    ' the field this fed), but the exact "check that cannot fail" shape, in
+    ' code touched this same session. WriteFailureCount is a real signal
+    ' (incremented only at the two genuine write-failure sites, not at
+    ' Detail's other structural/template notes -- see its own type comment).
     result.Written = True
-    result.Verified = True
+    result.Verified = (drawn.WriteFailureCount = 0)
     result.WouldChange = True
     result.ErrorMessage = drawn.Detail
     InjectDeviceVia = result

@@ -96,7 +96,13 @@ Public Type MilestoneDrawResult
     SlotsFound As Long      ' slots the TEMPLATE carries
     BarSet As Boolean
     ErrorMessage As String
-    Detail As String
+    Detail As String        ' mixed notes: genuine write failures AND template
+                             ' limitations (a missing PART_PCT shape, etc.) --
+                             ' NOT a reliable "did anything fail" signal on its
+                             ' own. WriteFailureCount below is that signal.
+    WriteFailureCount As Long ' incremented ONLY where a real write genuinely
+                             ' did not take (a per-slot re-read mismatch),
+                             ' never for a structural/template note
 End Type
 
 ' A COLUMN PER PART, NOT A PACKED CELL.
@@ -676,8 +682,11 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
                 slotOk = SetVisible(pctShp, False) And slotOk
             End If
 
-            If Not slotOk Then NoteOnce result, SLOT_PREFIX & i & _
-                ": a write did not take -- the slide may not match this report"
+            If Not slotOk Then
+                NoteOnce result, SLOT_PREFIX & i & _
+                    ": a write did not take -- the slide may not match this report"
+                result.WriteFailureCount = result.WriteFailureCount + 1
+            End If
 
             result.Drawn = result.Drawn + 1
         Else
@@ -692,8 +701,11 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
             hideOk = SetVisible(datShp, False) And hideOk
             hideOk = SetVisible(pctShp, False) And hideOk
 
-            If Not hideOk Then NoteOnce result, SLOT_PREFIX & i & _
-                ": could not fully hide -- a visibility write did not take"
+            If Not hideOk Then
+                NoteOnce result, SLOT_PREFIX & i & _
+                    ": could not fully hide -- a visibility write did not take"
+                result.WriteFailureCount = result.WriteFailureCount + 1
+            End If
 
             result.Hidden = result.Hidden + 1
         End If
