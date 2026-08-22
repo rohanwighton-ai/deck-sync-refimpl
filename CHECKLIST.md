@@ -1634,17 +1634,22 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       every `MS<n>_OFF`, across all 50 slides (47 + the 3 new test
       slides). Verified from saved bytes: 0 issues across all 49
       milestone-carrying slides.
-- [ ] **CV — real onboarding bug found, NOT fixed: a new project's
-      `PROJECT_PHOTO` never gets set when "Add missing slides" creates
-      its slide.** Traced to `SlideDuplication.DuplicateAndTag` injecting
-      every field through the plain text writer (`InjectPrimitive`)
-      instead of the type-aware dispatcher (`InjectField`) that would
-      route a picture field to `InjectPictureField`. Confirmed via
-      `VerifyRealDeck`: the picture shape doesn't even carry its role tag
-      after duplication. Found via a real onboarding test (3 fake
-      projects, `P900`/`K900`/`S900`, each with its own distinct test
-      photo) -- Rohan pressed "Add missing slides" himself; all 3 slides
-      created correctly, all 3 showed the same (template's own) picture.
+- [~] **CV — real onboarding bug, found AND fixed: a new project's
+      `PROJECT_PHOTO` never got set when "Add missing slides" created
+      its slide.** Found via a real onboarding test (3 fake projects,
+      `P900`/`K900`/`S900`, each with its own distinct test photo) --
+      Rohan pressed "Add missing slides" himself; all 3 slides created
+      correctly, all 3 showed the same (template's own) picture. Traced
+      to `SlideDuplication.DuplicateAndTag` injecting every field through
+      the plain text writer (`InjectPrimitive`) instead of the
+      type-aware dispatcher (`InjectField`) that routes a picture field
+      to `InjectPictureField`. Fixed: now calls `InjectField`, `srcWs`
+      threaded through three signatures (`DuplicateAndTag`,
+      `RunSync.CreateMissingSlides`, `RibbonUI.SlideMembershipCore`).
+      Static check clean, full suite 297/297 twice. **Marked `[~]` not
+      `[x]`: no dedicated test proves the fix itself, and no live
+      re-test has run against a rebuilt add-in** -- the existing
+      `P900`/`K900`/`S900` test slides still show the old broken state.
       Test data (register rows, Sources rows, 3 test images) still live,
       not yet cleaned up. Full account: `FIX-LIST.md` CV.
 - [x] **CS — CJ's 62 "mismatches" were mostly a checker bug, one real

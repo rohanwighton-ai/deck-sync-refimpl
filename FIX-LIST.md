@@ -5162,7 +5162,7 @@ milestone-carrying slides. Final `VerifyRealDeck`: 0 mismatches, 43/43
 real slides fully OK (see CV below for the one new, unrelated finding
 that run surfaced).
 
-## Found, NOT fixed 2026-08-22 — CV, a real onboarding bug: a new
+## Found AND fixed 2026-08-22 — CV, a real onboarding bug: a new
 ## project's `PROJECT_PHOTO` never gets set when the slide is created
 
 Rohan: "can you please test adding a new fake data project slide of each
@@ -5191,15 +5191,34 @@ shape on the slide carries this role tag"** for `PROJECT_PHOTO` on all
 three new slides -- not merely "wrote the wrong thing", the role tag
 itself isn't present on the picture shape after duplication, so nothing
 downstream (including a later real sync) would find it either without
-separate intervention. Not yet fixed -- this is a real, load-bearing gap
-in new-project onboarding, confirmed on the real deck through the real
-button, not a synthetic-fixture finding. Whoever picks this up: `Onboarding
-.bas`'s own template-field-shape discovery already knows which roles are
-picture-typed (used for tagging during initial onboarding) -- the fix is
-almost certainly routing `DuplicateAndTag`'s injection loop through
-`InjectField` instead of `InjectPrimitive` directly, but that needs
-checking against every other field type's behaviour too before changing
-it, not just pictures.
+separate intervention. This was a real, load-bearing gap in new-project
+onboarding, confirmed on the real deck through the real button, not a
+synthetic-fixture finding.
+
+**FIXED, same session.** `SlideDuplication.DuplicateAndTag`'s injection
+loop now calls `InjectPrimitive.InjectField` (the type-aware router)
+instead of `InjectPrimitive.InjectPrimitive` (the plain text writer)
+directly -- confirmed this is a strict improvement for every field type,
+not just pictures: `InjectField`'s own default/text branch
+(`Case Else`) calls `InjectPrimitive` with the exact same arguments
+`DuplicateAndTag` used to pass directly, plus one genuine bonus fix
+(`FormatIfProgressText`, correcting a raw-fraction-instead-of-percentage
+bug this project already hit once before, for free, on every future new
+slide). `srcWs` (needed to resolve a picture field's Source ID to a real
+file) threaded through three signatures: `DuplicateAndTag` itself,
+`RunSync.CreateMissingSlides`, and resolved fresh in
+`RibbonUI.SlideMembershipCore` from the already-open workbook -- the
+exact same `srcWs`-not-threaded-through gap already found and fixed once
+before in this project (`PreviewRoutineSync`, 2026-08-18: "six call
+sites and only one had srcWs threaded through"), just a different call
+site of the same recurring class.
+
+Static check clean. Full suite run twice after the fix: 297/297 passed,
+0 failed both times -- proves nothing else broke, but **no dedicated
+test yet proves the fix itself works**, and **no live re-test has run**
+(the existing `P900`/`K900`/`S900` test slides still show the OLD broken
+state -- the fix is in source only, no add-in rebuild has happened
+since). Both genuinely open for whoever picks this up next.
 
 **Test data still live in the real deck/register, not yet cleaned up**:
 `P900`/`K900`/`S900` register rows and slides, `S17`/`S18`/`S19` Sources
