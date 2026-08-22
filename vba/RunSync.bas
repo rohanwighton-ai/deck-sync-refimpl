@@ -372,6 +372,14 @@ Public Function CreateMissingSlides(sheet As Sheet, slideType As String, templat
                             Next m
                             report = report & ")"
                         End If
+                        If dr.FailedFieldCount > 0 Then
+                            report = report & " (FAILED TO WRITE " & dr.FailedFieldCount & " field(s):"
+                            Dim fm As Long
+                            For fm = 1 To dr.FailedFieldCount
+                                report = report & " " & dr.FailedFields(fm)
+                            Next fm
+                            report = report & ")"
+                        End If
                         report = report & vbCrLf
                     Else
                         failedCount = failedCount + 1

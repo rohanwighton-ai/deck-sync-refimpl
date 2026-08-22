@@ -5298,3 +5298,43 @@ not execution-confirmed: `DeckAdoption.bas VerifyLink` /
 possibly-picture shapes), and `DeckAdoption.bas PlanAdoption` ~line 207
 (unguarded `.TextFrame.TextRange.Text` read, no `HasTextFrame` check).
 
+## Found AND fixed 2026-08-22 — CX, CV's sibling: `DuplicateAndTag`
+## discarded the router's own answer
+
+Found by mother-hound's kennel survey (same run that confirmed the
+`InjectPictureField` bug), ranked as the highest blast-radius finding of
+five. `SlideDuplication.DuplicateAndTag` calls the CORRECT router
+(`InjectPrimitive.InjectField`, CV's own fix) for every field a row
+supplies a value for -- but discarded the returned `InjectResult`
+entirely, and `result.Ok = True` was set unconditionally after the loop
+regardless of whether any individual field's write actually succeeded.
+Distinct from the pre-existing `MissingFieldCount` case (a value never
+supplied at all, already flagged): this is a value that WAS supplied,
+`InjectField` WAS called correctly, and the write still failed (bad
+picture locator, out-of-range bar fraction, unresolved device row) --
+silently, on a slide the tool reported as created successfully. Live
+through the real "Add Slides" button
+(`RibbonUI.AddMissingSlides` -> `SlideMembershipCore` ->
+`RunSync.CreateMissingSlides` -> `DuplicateAndTag`) -- the exact button
+CV was originally found through.
+
+**FIXED.** `DuplicateResult` gained `FailedFieldCount`/`FailedFields()`,
+parallel in shape to the existing `MissingFieldCount`/`MissingFields()`.
+The loop now captures `InjectField`'s result and checks `.Verified`
+(the true signal, not `Written` -- same reasoning as `TemplateSlide.
+MakeTemplateFrom`'s identical check) -- a field that fails is named in
+`FailedFields`, not silently swallowed. `Ok` stays `True` and the slide
+is still created (matching this module's own established philosophy:
+"no completeness rule exists anywhere in the spec chain" -- a partial
+slide is better than none, but it must be VISIBLY partial).
+`RunSync.bas`'s report line updated to surface failed fields the same
+way it already surfaces missing ones.
+
+Proven fail-first, properly: kept the new `DuplicateResult` fields but
+temporarily reverted just the loop body to discard the result again
+(matching the OLD behaviour exactly) -- confirmed the new test fails
+for the right reason (`FailedFieldCount` read 0 against a deliberately
+unresolvable picture field). Restored the real fix; same test passes.
+Static check clean. Filtered suite (`-Filter SlideDuplication`): 4/4
+passed, 0 failed.
+

@@ -1634,6 +1634,23 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       every `MS<n>_OFF`, across all 50 slides (47 + the 3 new test
       slides). Verified from saved bytes: 0 issues across all 49
       milestone-carrying slides.
+- [x] **CX — CV's sibling bug, found AND fixed: `DuplicateAndTag` discarded
+      the router's own answer.** Found by mother-hound's kennel survey,
+      ranked highest of five findings. Calls the correct `InjectField`
+      router for every supplied field, but discarded the returned
+      `InjectResult` and set `Ok = True` unconditionally regardless of
+      whether any individual write actually succeeded — a field with a
+      value that failed to write (bad picture locator, out-of-range bar
+      fraction) reported success on a slide that silently didn't get it.
+      Live through the real "Add Slides" button — the exact button CV
+      was found through. Fixed: `DuplicateResult` gained
+      `FailedFieldCount`/`FailedFields()`, parallel to the existing
+      `MissingFieldCount`. Slide still created (matches the module's own
+      "partial is better than none" philosophy), but a failed field is
+      now named, not swallowed. Proven fail-first: reverted just the
+      loop body (kept the new fields), confirmed the test fails for the
+      right reason, restored, confirmed green. Filtered suite 4/4.
+      Full account: `FIX-LIST.md` CX.
 - [x] **CW — CV's sibling bug, found AND fixed: "Create Template Slide"
       also leaked a real donor photo.** Found by mother-hound tracing
       CV's exact failure shape into every other real call site;

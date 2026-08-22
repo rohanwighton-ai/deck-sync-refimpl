@@ -19,6 +19,8 @@ Public Type DuplicateResult
     NewSlide As Object          ' the created, tagged slide, if Ok
     MissingFieldCount As Long
     MissingFields() As String   ' fields the template defines that `values` didn't supply -- possibly unallocated when MissingFieldCount = 0
+    FailedFieldCount As Long
+    FailedFields() As String    ' fields `values` DID supply, but InjectField's own write was not verified -- possibly unallocated when FailedFieldCount = 0
 End Type
 
 ' Duplicates `sourceSld` (an already-onboarded template/reference slide of
@@ -170,8 +172,9 @@ Public Function DuplicateAndTag(sourceSld As Object, slideType As String, newIns
     hasRoles = (Err.Number = 0)
     On Error GoTo 0
 
-    Dim missingCount As Long
+    Dim missingCount As Long, failedCount As Long
     missingCount = 0
+    failedCount = 0
     If hasRoles Then
         Dim r As Long
         For r = rLo To rHi
@@ -190,7 +193,24 @@ Public Function DuplicateAndTag(sourceSld As Object, slideType As String, newIns
                 ' `values` doubles as rowValues for the (rare, pre-existing,
                 ' unaffected-by-this-change) device case, same Dictionary
                 ' shape SyncOperations already hands the device injector.
-                InjectPrimitive.InjectField newSld, role, CStr(values(role)), False, srcWs, values
+                '
+                ' FIX-LIST item, 2026-08-22 (mother-hound kennel survey, same
+                ' session). InjectField's own InjectResult was discarded here
+                ' and `result.Ok = True` was set unconditionally below -- so a
+                ' field that WAS supplied a value but whose write genuinely
+                ' failed (a bad picture locator, an out-of-range bar fraction,
+                ' a device row that didn't resolve) reported success on a slide
+                ' that silently didn't get it. Same shape as CV itself: calling
+                ' the right function is not the same as looking at what it
+                ' returned. Verified, not Written, is the true signal -- see
+                ' TemplateSlide.MakeTemplateFrom's identical check, same reason.
+                Dim injResult As InjectResult
+                injResult = InjectPrimitive.InjectField(newSld, role, CStr(values(role)), False, srcWs, values)
+                If Not injResult.Verified Then
+                    failedCount = failedCount + 1
+                    ReDim Preserve result.FailedFields(1 To failedCount)
+                    result.FailedFields(failedCount) = role & " (" & injResult.ErrorMessage & ")"
+                End If
             Else
                 missingCount = missingCount + 1
                 ReDim Preserve result.MissingFields(1 To missingCount)
@@ -200,6 +220,7 @@ Public Function DuplicateAndTag(sourceSld As Object, slideType As String, newIns
     End If
 
     result.MissingFieldCount = missingCount
+    result.FailedFieldCount = failedCount
     result.Ok = True
     Set result.NewSlide = newSld
     DuplicateAndTag = result

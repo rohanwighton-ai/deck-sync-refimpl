@@ -335,6 +335,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("SlideDuplication_FailedWriteIsFlaggedNotSilentlyReportedOk", filterPattern) Then
+        r = Test_SlideDuplication_FailedWriteIsFlaggedNotSilentlyReportedOk()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "SlideDuplication_FailedWriteIsFlaggedNotSilentlyReportedOk", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("TemplateSlide_CodeLetterOfReadsBothKeyShapes", filterPattern) Then
         r = Test_TemplateSlide_CodeLetterOfReadsBothKeyShapes()
     Else
@@ -3810,6 +3819,48 @@ Private Function Test_SlideDuplication_PartialRowStillCreatesSlideButFlagsMissin
     End If
 
     Test_SlideDuplication_PartialRowStillCreatesSlideButFlagsMissing = result
+End Function
+
+' Mother-hound kennel survey, 2026-08-22 (same session as CV). DuplicateAndTag
+' called the correct InjectField router but discarded its returned InjectResult
+' entirely, so `result.Ok = True` was set unconditionally below regardless of
+' whether any individual field's write actually succeeded -- distinct from the
+' MissingFieldCount case above, where the value was never supplied at all. This
+' is: the value WAS supplied, InjectField WAS called, and the write still
+' failed (a picture field citing a source with no Sources sheet in scope,
+' which InjectPictureVia refuses cleanly with Verified=False).
+Private Function Test_SlideDuplication_FailedWriteIsFlaggedNotSilentlyReportedOk() As String
+    Dim result As String
+    Dim templateSld As Object
+    Set templateSld = NewBlankSlide()
+
+    Dim seedPath As String
+    seedPath = MakeTestBitmap(Environ("TEMP") & "\dsdupfail.bmp", 40, 20)
+    Dim photoShp As Object
+    Set photoShp = templateSld.Shapes.AddPicture(seedPath, msoFalse, msoTrue, 50, 50, 200, 100)
+    photoShp.Tags.Add "role", "PHOTO"
+    templateSld.Tags.Add "slide_type", "quarterly-update"
+    templateSld.Tags.Add "instance_key", "rec-template3"
+
+    Dim values As Object
+    Set values = CreateObject("Scripting.Dictionary")
+    values("PHOTO") = "S99" ' a source ID, but no Sources sheet is passed below
+
+    Dim noInstances() As Object
+
+    Dim dr As DuplicateResult
+    ' srcWs deliberately omitted (Nothing) -- InjectPictureVia's own documented
+    ' refusal path for exactly this case.
+    dr = SlideDuplication.DuplicateAndTag(templateSld, "quarterly-update", "rec-failed", values, noInstances)
+
+    result = result & Assert(dr.Ok, "slide still created despite a failed field write, reason='" & dr.Reason & "'")
+    result = result & Assert(dr.MissingFieldCount = 0, "PHOTO was supplied, not missing, got " & dr.MissingFieldCount)
+    result = result & Assert(dr.FailedFieldCount = 1, "exactly one FAILED field flagged, got " & dr.FailedFieldCount)
+    If dr.FailedFieldCount = 1 Then
+        result = result & Assert(InStr(dr.FailedFields(1), "PHOTO") > 0, "flagged field names PHOTO, got '" & dr.FailedFields(1) & "'")
+    End If
+
+    Test_SlideDuplication_FailedWriteIsFlaggedNotSilentlyReportedOk = result
 End Function
 
 ' ---------------------------------------------------------------------
