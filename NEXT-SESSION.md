@@ -12,6 +12,109 @@
 > number this doc names below; the file with the highest number isn't
 > necessarily the one actually registered live.
 
+> ## 21-22 AUG — the Milestone-Evidence tool built and used to fix a real
+> data-quality gap in the register; an open design decision on how the
+> milestone timeline should show partial progress, NOT YET BUILT.
+> **Written by the session that made this run — no other session's writes
+> reflected here; run `ListAgents` before trusting it's still current.**
+>
+> **What's DONE and committed (HEAD `7733867`):**
+> - Built `1. Build addin158.ppam`, registered it, ran a real sync on the
+>   live deck (`43 written, 0 dropped`), did a slide-by-slide gap analysis
+>   against the pre-automation original deck (3 findings: milestone-closure
+>   gap, content-depth drop for S007+, hidden donor text — none yet acted
+>   on beyond being named).
+> - **New tool, `vba/tools/MilestoneEvidenceReport.bas`** (+ its PowerShell
+>   driver `vba/tools/milestone_evidence_report.ps1`) — reads the real
+>   `SRC_MILESTONES` sheet (the pasted CRC tracker extract, header row 10,
+>   data from row 11) and the register side by side, groups tracker rows
+>   into MS-slots by due-month offset, and reports where a register `DONE`
+>   flag disagrees with the grouped tracker evidence. **Read-only; never
+>   writes.** Found and fixed 3 real bugs in the tool itself while building
+>   it (VBA `Or` doesn't short-circuit — was evaluating an unset array slot;
+>   a perf bug from ~22k per-cell COM calls, fixed with one bulk
+>   `Range.Value2` read; an accumulator that wasn't reset between
+>   per-project loop iterations, caught only by actually reading the "0
+>   errors" report's content and noticing one project's block literally
+>   repeated another's). Verified live: 41 projects checked, 14 real
+>   disagreements found.
+> - **All 14 disagreements resolved** in the real register (backed up
+>   first to `backups/PRE-MILESTONE-EVIDENCE-FIXES-<timestamp>/`): 11
+>   corrections written (7 `Y`→blank where the register overstated
+>   progress, 2 blank→`Y` where it understated, on `3_P002`, `2_P003`,
+>   `2_P004`, `1_P007`, `1_K1001`, `1_K1002`, `1_S012`, `1_K1008`,
+>   `4_K017`), 5 left deliberately untouched after the comment text
+>   confirmed the register was already right despite stale tracker %.
+>   Logged in full in `FIX-LIST.md` (item CN, resolved) and `CHECKLIST.md`.
+>
+> **Confirmed working (Rohan pressed the buttons himself, not scripted):**
+> the single-press "Apply them now?" chain from `BuildAllQueuesCore` →
+> `ApplyApprovedCore` — one Yes/No, no second press needed, matching the
+> 18 Aug single-press design intent. My own earlier read of the dialog
+> text as demanding a second press was wrong; corrected directly by Rohan.
+>
+> **Confirmed via full visual review, NOT fixed yet:**
+> 1. **Milestone circle colour regression.** Live `_OFF` circles are a
+>    shared teal (`scheme:bg2`, `93DCDC`) across ALL of P/K/S. The
+>    pre-retrofit backup
+>    (`deck-sync-backups\3. Project Progress.pptx.r13-20260819-224334.bak.pptx`)
+>    shows S-series `_OFF` was originally a distinct light purple
+>    (`C0A2F2`) and K-series was `scheme:accent3` (pale cream `FDF0E6`) —
+>    i.e. type-specific pale tints, not one shared colour. P's own
+>    original `_OFF` colour is unknown; no pre-19-Aug P backup exists to
+>    check against. Not logged as a FIX-LIST item yet — do that first if
+>    picking this up.
+> 2. **Layout-spacing defect, slide 12 (`1_K1001`).** `KEY_EVENTS_BODY`
+>    (TextBox 38) and `DELIVERABLE4_PHOTO` (Picture 2) are essentially
+>    touching — `KEY_EVENTS_BODY` bottom edge at `347.4`, `DELIVERABLE4_
+>    PHOTO` top at `347.5`. Confirmed by direct shape geometry, NOT a
+>    text-overflow-within-its-own-box issue (that check correctly returned
+>    clean — `BoundHeight=88.8` fits `Height=94.5`). This is a different
+>    defect class the overflow scanner isn't built to catch; unknown
+>    whether it recurs on other K-series slides — not yet checked.
+> 3. The full 47-slide "check fully" visual review Rohan asked for is only
+>    PARTIALLY done — slides 1-5, 7, 12, 19, 23, 30, 34 spot-checked via
+>    export, not every slide individually reviewed beyond the two defects
+>    above.
+>
+> **Deferred fix, not forgotten:** `RibbonUI.bas:1662-1669` — an
+> unconditional informational `MsgBox` ("nothing to copy") shown after
+> `PublishAllDraftedFields` even though its content is already logged to
+> Run Log unconditionally and the dialog offers no real decision
+> (OK-only). Proposed fix: drop the blocking MsgBox, just log and fall
+> through — same "one question, not three" philosophy already applied 20
+> lines below to the Apply step. Explicitly deferred mid-session pending
+> Rohan's live sync finishing; not yet revisited.
+>
+> **OPEN DESIGN DECISION — genuinely new feature, NOT SCOPED, NOT BUILT.**
+> Rohan flagged the milestone timeline as misleading on non-contiguous
+> progress (e.g. `2_P009`: MS2=done, MS3=done, MS4/5=not done, MS6=done —
+> "done, done, gap, gap, done" reads as messy/wrong even though it's
+> accurate). Two options discussed:
+> 1. Simpler — drop the "current position" marker, let circles be honest
+>    per-milestone ticks, lean on the existing overall-progress badge
+>    (already on every slide) to carry the "how far along" signal.
+> 2. Richer — **Rohan's choice**: add a per-circle percentage, sourced
+>    from a Research Manager's informed judgment (using
+>    `MilestoneEvidenceReport`'s grouped evidence as the reference
+>    material a human reads before entering it) — "this is where Research
+>    Managers give an informed opinion of where the project is at."
+>    Explicitly does NOT change which circle is "current" — the existing
+>    "newest achieved milestone = current/big circle" logic in
+>    `MilestoneDevice.DrawMilestones` stays exactly as is. My own earlier
+>    proposal to cap "current" at the last CONTIGUOUS done slot is
+>    superseded/declined — percentages carry the nuance instead of
+>    changing that logic.
+>    **Scope, not yet built:** new `MS<n>_PCT` register columns (same
+>    pattern as `_LABEL`/`_DATE`/`_DONE` — Research Manager enters it); a
+>    new shape per milestone slot to display the number, which exists on
+>    NO real slide or template (P/K/S exemplars 44/46/47) yet, so it's a
+>    retrofit across all 43 real slides + 3 templates; `MilestoneDevice.
+>    bas` drawing logic to show/hide it; Field Spec entries; tests. Sized
+>    as comparable to the biggest single piece of work done this session —
+>    write a real spec (field names, shape naming, placement relative to
+>    the circle, hidden/OFF-slot behaviour) before touching template XML.
+
 > ## 20 AUG — a full day of mechanism work, ZERO real content drafted, and
 > a cold PM audit that said so plainly. **READ THIS BLOCK FIRST — it is
 > the honest state, not the confident one.**
