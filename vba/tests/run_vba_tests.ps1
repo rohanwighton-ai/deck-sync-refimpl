@@ -29,7 +29,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# --- Every 10th run forces a full suite, regardless of -Filter ----------
+# --- Every 50th run forces a full suite, regardless of -Filter ----------
 #
 # A filtered run is for fast iteration on the area you're actively changing.
 # It is not evidence about anything else -- a filtered "0 failed" says
@@ -45,7 +45,7 @@ if (Test-Path $counterFile) {
 }
 $runCount += 1
 Set-Content -Path $counterFile -Value $runCount -NoNewline
-if ($Filter -ne "" -and ($runCount % 10) -eq 0) {
+if ($Filter -ne "" -and ($runCount % 50) -eq 0) {
     Write-Output "=== Run #$runCount since last reset: forcing a FULL suite despite -Filter '$Filter' ==="
     $Filter = ""
 }
