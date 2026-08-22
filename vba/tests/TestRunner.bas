@@ -2052,6 +2052,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "MilestoneDevice_PercentageIsItsOwnOptionalShape", r
+    If TestMatches("MilestoneDevice_CaldateShowsRegardlessOfAchievedState", filterPattern) Then
+        r = Test_MilestoneDevice_CaldateShowsRegardlessOfAchievedState()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "MilestoneDevice_CaldateShowsRegardlessOfAchievedState", r
     If TestMatches("MilestoneDevice_ColourIsContiguousNotPerFlag", filterPattern) Then
         r = Test_MilestoneDevice_ColourIsContiguousNotPerFlag()
     Else
@@ -15920,7 +15926,7 @@ Private Function Test_MilestoneDevice_DrawsFromDataAndCreatesNothing() As String
     r = MilestoneDevice.DrawMilestones(grp, _
         SplitList("Kickoff||Design||Build"), _
         SplitList("Oct 2023||Mar 2024||Sep 2024"), _
-        SplitList("Y||Y||N"), BlankList(3))
+        SplitList("Y||Y||N"), BlankList(3), BlankList(3))
 
     ' CRITICAL-EFFECTS SHORTLIST, item 1 -- see Watch's header. Three slots
     ' ON, one OFF, slot 2 the bolded NOW: a human watching the (visible)
@@ -16016,7 +16022,7 @@ Private Function Test_MilestoneDevice_FullLifecycleNoStaleCircles() As String
         Next i
 
         Dim r As MilestoneDrawResult
-        r = MilestoneDevice.DrawMilestones(grp, labels, dates, done, BlankList(5))
+        r = MilestoneDevice.DrawMilestones(grp, labels, dates, done, BlankList(5), BlankList(5))
         result = result & Assert(r.ErrorMessage = "", _
             "qtrStep " & qtrStep & " draws clean, got [" & r.ErrorMessage & "]")
 
@@ -16085,7 +16091,7 @@ Private Function Test_MilestoneDevice_TwoLineLabelConvertsThePipeDelimiterToARea
     done(1) = "Y": done(2) = "N"
 
     Dim r As MilestoneDrawResult
-    r = MilestoneDevice.DrawMilestones(grp, labels, dates, done, BlankList(2))
+    r = MilestoneDevice.DrawMilestones(grp, labels, dates, done, BlankList(2), BlankList(2))
 
     result = result & Assert(r.ErrorMessage = "", "it draws [" & r.ErrorMessage & "]")
 
@@ -16136,7 +16142,7 @@ Private Function Test_MilestoneDevice_ReportWrapperMatchesTheRealResult() As Str
     done = SplitList("Y||Y||N")
 
     Dim direct As MilestoneDrawResult
-    direct = MilestoneDevice.DrawMilestones(grp, labels, dates, done, BlankList(3))
+    direct = MilestoneDevice.DrawMilestones(grp, labels, dates, done, BlankList(3), BlankList(3))
 
     ' Re-run against the SAME group via DrawFromRow/the wrapper -- same data,
     ' different entry point, so the wrapper's numbers must match what DIRECT
@@ -16195,7 +16201,7 @@ Private Function Test_MilestoneDevice_ReportsAWriteThatDidNotTake() As String
     r = MilestoneDevice.DrawMilestones(grp, _
         SplitList("Kickoff||Design||Build"), _
         SplitList("Oct 2023||Mar 2024||Sep 2024"), _
-        SplitList("Y||Y||N"), BlankList(3))
+        SplitList("Y||Y||N"), BlankList(3), BlankList(3))
 
     ' THE ONE THAT MATTERS. Before this fix, a declined write was invisible --
     ' Drawn would read 3 and nothing would say slot 2 is wrong.
@@ -16230,7 +16236,7 @@ Private Function Test_MilestoneDevice_RefusesListsThatCannotBeAligned() As Strin
 
     Dim r As MilestoneDrawResult
     r = MilestoneDevice.DrawMilestones(grp, _
-        SplitList("A||B||C"), SplitList("1||2"), SplitList("Y||N||N"), BlankList(3))
+        SplitList("A||B||C"), SplitList("1||2"), SplitList("Y||N||N"), BlankList(3), BlankList(3))
 
     result = result & Assert(r.ErrorMessage <> "", "mismatched lists are refused")
     result = result & Assert(InStr(r.ErrorMessage, "3 label") > 0 _
@@ -16243,7 +16249,7 @@ Private Function Test_MilestoneDevice_RefusesListsThatCannotBeAligned() As Strin
     ' drawing the first four would silently drop the fifth.
     Dim r2 As MilestoneDrawResult
     r2 = MilestoneDevice.DrawMilestones(grp, _
-        SplitList("A||B||C||D||E"), SplitList("1||2||3||4||5"), SplitList("Y||Y||Y||Y||Y"), BlankList(5))
+        SplitList("A||B||C||D||E"), SplitList("1||2||3||4||5"), SplitList("Y||Y||Y||Y||Y"), BlankList(5), BlankList(5))
     result = result & Assert(r2.ErrorMessage <> "" And r2.Drawn = 0, _
         "five milestones into four slots is refused, not truncated")
     result = result & Assert(InStr(r2.ErrorMessage, "5 milestone") > 0 _
@@ -16392,6 +16398,79 @@ Private Function Test_MilestoneDevice_PercentageIsItsOwnOptionalShape() As Strin
 
     sld.Delete
     Test_MilestoneDevice_PercentageIsItsOwnOptionalShape = result
+End Function
+
+' Rohan, 2026-08-22: "date could be added instead under each circle like
+' we were going to with % deliverable complete" -- same optional-shape
+' treatment as PCT, but deliberately NOT gated by lastAchieved (see
+' COL_CALDATE's own header: a due date is most useful for a milestone
+' that HASN'T happened yet, unlike a % complete). Same fixture shape as
+' the PCT test above so the one real behavioural difference -- MS5 (after
+' current) stays hidden for PCT but SHOWS for CALDATE -- is the thing
+' actually being proven, not incidental.
+Private Function Test_MilestoneDevice_CaldateShowsRegardlessOfAchievedState() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDeviceWithNow(sld, 5)
+
+    ' Slots 1 and 5 get a real CALDATE shape -- slot 3 deliberately has
+    ' none, to prove the degrade-and-report path.
+    Dim caldShp As Object, caldShp5 As Object
+    Set caldShp = sld.Shapes.AddTextbox(1, 130, 114, 60, 10)
+    caldShp.Name = "MS1_CALDATE"
+    Set grp = sld.Shapes.Range(Array(grp.Name, caldShp.Name)).Group
+    Set caldShp5 = sld.Shapes.AddTextbox(1, 130, 314, 60, 10)
+    caldShp5.Name = "MS5_CALDATE"
+    Set grp = sld.Shapes.Range(Array(grp.Name, caldShp5.Name)).Group
+
+    Dim row As Object
+    Set row = CreateObject("Scripting.Dictionary")
+    row("MS1_LABEL") = "Fieldwork": row("MS1_DATE") = "6":  row("MS1_DONE") = ""
+    row("MS1_CALDATE") = "Nov 2023"
+    row("MS2_LABEL") = "Analysis":  row("MS2_DATE") = "12": row("MS2_DONE") = "Y"
+    row("MS2_CALDATE") = ""
+    row("MS3_LABEL") = "Design":    row("MS3_DATE") = "18": row("MS3_DONE") = ""
+    row("MS3_CALDATE") = "Mar 2024"
+    row("MS4_LABEL") = "Report":    row("MS4_DATE") = "24": row("MS4_DONE") = "Y"
+    row("MS4_CALDATE") = "Sep 2024"
+    ' MS5 is AFTER current (MS4 is the highest done slot) -- has both a
+    ' real shape AND a value. THE ONE THAT MATTERS: unlike PCT's identical
+    ' setup, this must SHOW, because a due date for an upcoming milestone
+    ' is exactly the useful case, not the meaningless one.
+    row("MS5_LABEL") = "Launch":     row("MS5_DATE") = "30": row("MS5_DONE") = ""
+    row("MS5_CALDATE") = "Jun 2025"
+
+    Dim r As MilestoneDrawResult
+    r = MilestoneDevice.DrawFromRow(grp, row)
+
+    result = result & Assert(r.ErrorMessage = "", "it draws [" & r.ErrorMessage & "]")
+
+    result = result & Assert(NamedIn(grp, "MS1_CALDATE").Visible = msoTrue, "MS1_CALDATE shown when a value is given")
+    result = result & Assert(NamedIn(grp, "MS1_CALDATE").TextFrame.TextRange.text = "Nov 2023", _
+        "MS1_CALDATE written verbatim, got '" & NamedIn(grp, "MS1_CALDATE").TextFrame.TextRange.text & "'")
+    result = result & Assert(NamedIn(grp, "MS1_DATE").TextFrame.TextRange.text = "6", _
+        "the existing MS1_DATE (month-count) is untouched, got '" & NamedIn(grp, "MS1_DATE").TextFrame.TextRange.text & "'")
+
+    ' MS3 has a value ("Mar 2024") but NO MS3_CALDATE shape on this
+    ' template -- degrades silently on the slide and names it in the
+    ' report, never invents a shape to show it in.
+    result = result & Assert(InStr(r.Detail, "MS3") > 0 And InStr(r.Detail, "calendar date") > 0, _
+        "a value with no shape to show it in is reported, got '" & r.Detail & "'")
+
+    ' THE ONE THAT MATTERS.
+    result = result & Assert(NamedIn(grp, "MS5_CALDATE").Visible = msoTrue, _
+        "MS5_CALDATE shows even though MS5 is after the current slot -- a due date, unlike a percentage, is useful before achievement")
+    result = result & Assert(NamedIn(grp, "MS5_CALDATE").TextFrame.TextRange.text = "Jun 2025", _
+        "and carries the right value, got '" & NamedIn(grp, "MS5_CALDATE").TextFrame.TextRange.text & "'")
+
+    result = result & Assert(MilestoneDevice.IsColumnForThisDevice("MS1_CALDATE"), _
+        "MS1_CALDATE is recognised as a device column, not a stray one")
+
+    sld.Delete
+    Test_MilestoneDevice_CaldateShowsRegardlessOfAchievedState = result
 End Function
 
 ' COLOUR IS CONTIGUOUS, NOT PER-FLAG -- Rohan: "we spoke about making the

@@ -5528,3 +5528,56 @@ per-slide-COM-launch technique as CR/CT/CU) to actually repaint the 43
 real slides' `MS<n>_DATE` text. Not done tonight: verify live against
 the real deck before declaring this closed.
 
+## Built 2026-08-22 — DD, `MS<n>_CALDATE`: a real calendar date under
+## each circle, code layer only
+
+Rohan, looking at the promoted deck: "i also like the play button
+asterix and month number from start in the circles" (kept, untouched --
+`PART_DATE`'s existing content) "i think date could be added instead
+under each circle like we were going to with % deliverable complete" --
+the same optional-shape, small-text-under-the-date treatment
+`PART_PCT`/CT used, showing a real calendar date instead.
+
+**This is the sibling of CT, and CT's own lesson is why this one has a
+real chance of working across the whole deck, not one slide.** Rohan
+corrected the record on why CT's `% deliverable complete` shapes "didn't
+really work": NOT a propagation bug -- the retrofit genuinely landed on
+all 46 slides, verified from saved bytes at the time. The reason it only
+ever showed up visibly on one slide is that real percentage data was
+never entered for more than the one project it was hand-tested against.
+Checked before building anything this time: `SRC_MILESTONES` already
+holds a real `Resolved Due Date` for 308 of 370 real milestone rows
+across 38 of the 43 real projects (extracted from CRC's own tracker,
+sitting unused next to the month-offset column that alone gets used
+today) -- real data, project-wide, not a hand-typed test case.
+
+**Code, `vba/MilestoneDevice.bas`**: new `PART_CALDATE`/`COL_CALDATE`
+constants, `MS<n>_CALDATE` is now a recognised device column
+(`IsColumnForThisDevice`). `DrawFromRow`/`DrawMilestones` gained a fifth
+parallel list (`caldates()`), same "same source loop, different
+column" pattern the other four fields already use. **Deliberately NOT
+gated by `i <= lastAchieved` the way PCT is** -- a % complete is
+meaningless before a milestone starts; a due date is exactly the
+opposite (most useful for what HASN'T happened yet), so this shape
+shows whenever a value exists, achieved or not. Font colour reuses
+`SetDateColourToMatch` (DC, same session) -- matches its own shown
+circle's outline, same "harmonious and visible" reasoning.
+
+Proven fail-first: a new test (`Test_MilestoneDevice_
+CaldateShowsRegardlessOfAchievedState`) proves both the write path and
+the one real behavioural difference from PCT -- a slot after the
+current marker, with a real shape AND a value, must SHOW for CALDATE
+where the identical setup stays hidden for PCT. Since this is a new
+capability with no prior broken state to revert to, fail-first meant
+disabling the new block entirely and confirming the test's three key
+assertions failed for the right reason (blank text, no report), not
+just that the test passed once. Restored; static check clean; filtered
+suite (`-Filter MilestoneDevice`) 12/12 passed, 0 failed.
+
+**Not yet done, this is the code layer only**: no register column
+exists for `MS<n>_CALDATE` on any real project; `SRC_MILESTONES`'
+`Resolved Due Date` (an Excel serial) has not been mapped to milestone
+slot number or converted to a display string ("Nov 2023"); no shape
+exists on any real slide's template or instances; no real sync has run.
+All of that is the next phase, in progress same session.
+

@@ -62,6 +62,9 @@ Option Explicit
 '   MS1_DATE   its date
 '   MS1_PCT    a Research Manager's % opinion, small text under the date
 '              (optional -- see COL_PCT's header)
+'   MS1_CALDATE a real calendar date ("Nov 2023"), small text under the
+'              date -- same shape and position PART_PCT uses, different
+'              content (optional -- see COL_CALDATE's header)
 ' and for the bar itself:
 '   MS_BAR     the part that grows, to the last ACHIEVED circle
 '   MS_TRACK   the extent, shortened to the last USED circle
@@ -87,6 +90,10 @@ Public Const PART_DATE As String = "_DATE"
 ' Optional, like _OFF: a template without it simply shows no percentage,
 ' reported once rather than faked. See COL_PCT's header for the shape.
 Public Const PART_PCT As String = "_PCT"
+' A real calendar date, same optional-shape treatment as PART_PCT. See
+' COL_CALDATE's header for why this is a separate field from PART_DATE
+' (the existing month-count/glyph text) rather than a replacement for it.
+Public Const PART_CALDATE As String = "_CALDATE"
 Public Const NAME_BAR As String = "MS_BAR"
 Public Const NAME_TRACK As String = "MS_TRACK"
 
@@ -158,6 +165,30 @@ Public Const COL_DONE As String = "_DONE"
 ' shape is simply left hidden.
 Public Const COL_PCT As String = "_PCT"
 
+' A REAL CALENDAR DATE, KEPT SEPARATE FROM PART_DATE ON PURPOSE.
+' Rohan, 2026-08-22, looking at the promoted deck: "i also like the play
+' button asterix and month number from start in the circles" (PART_DATE's
+' existing content -- the play glyph/star/month-offset-from-start, all
+' kept, none of this replaces it) "i think date could be added instead
+' under each circle like we were going to with % deliverable complete" --
+' the same optional-shape, small-text-under-the-date treatment PART_PCT
+' uses, but showing the real month/year a milestone is due, not a
+' percentage.
+'
+' NOT GATED BY `i <= lastAchieved` THE WAY PCT IS. A % complete is
+' meaningless before a milestone has started; a due date is exactly the
+' opposite -- most useful for a milestone that HASN'T happened yet, so
+' this shape shows whenever a value exists, achieved or not.
+'
+' Sourced from `SRC_MILESTONES`' own "Resolved Due Date" column, which
+' already existed for 308 of 370 real milestone rows across 38 projects
+' (extracted from CRC's own tracker) and was simply never carried through
+' to the register or a slide -- unlike PCT, which never had real data for
+' more than the one project it was hand-tested against. That is the
+' reason this feature can show up across the whole deck at once instead
+' of on one slide with nothing behind the rest.
+Public Const COL_CALDATE As String = "_CALDATE"
+
 ' The register column names this device reads, for slot `i`. Built here so the
 ' column names and the SHAPE names cannot drift apart -- they are deliberately
 ' the same strings, because a person looking at either should recognise the
@@ -199,6 +230,8 @@ Public Function IsColumnForThisDevice(colName As String) As Boolean
         part = COL_DONE
     ElseIf EndsWith(rest, COL_PCT) Then
         part = COL_PCT
+    ElseIf EndsWith(rest, COL_CALDATE) Then
+        part = COL_CALDATE
     Else
         Exit Function
     End If
@@ -442,8 +475,8 @@ Public Function DrawFromRow(grp As Object, rowValues As Object) As MilestoneDraw
         Exit Function
     End If
 
-    Dim labels() As String, dates() As String, done() As String, pcts() As String
-    ReDim labels(1 To slots): ReDim dates(1 To slots): ReDim done(1 To slots): ReDim pcts(1 To slots)
+    Dim labels() As String, dates() As String, done() As String, pcts() As String, caldates() As String
+    ReDim labels(1 To slots): ReDim dates(1 To slots): ReDim done(1 To slots): ReDim pcts(1 To slots): ReDim caldates(1 To slots)
 
     Dim used As Long
     Dim gap As String
@@ -460,6 +493,8 @@ Public Function DrawFromRow(grp As Object, rowValues As Object) As MilestoneDraw
         pct = Trim(ValueOr(rowValues, ColumnFor(i, COL_PCT)))
         If Right$(pct, 1) = "%" Then pct = Trim(Left$(pct, Len(pct) - 1))
         pcts(i) = pct
+
+        caldates(i) = ValueOr(rowValues, ColumnFor(i, COL_CALDATE))
 
         If Trim(labels(i)) <> "" Then
             ' A GAP IS REPORTED. Slots are drawn in order, so a filled MS3 with
@@ -482,7 +517,7 @@ Public Function DrawFromRow(grp As Object, rowValues As Object) As MilestoneDraw
         Exit Function
     End If
 
-    DrawFromRow = DrawMilestones(grp, labels, dates, done, pcts, used)
+    DrawFromRow = DrawMilestones(grp, labels, dates, done, pcts, caldates, used)
 End Function
 
 Private Function ValueOr(rowValues As Object, key As String) As String
@@ -499,7 +534,7 @@ End Function
 ' four from one pass over the same columns, so they cannot disagree. The
 ' length check below guards the tests that call this directly.
 Public Function DrawMilestones(grp As Object, labels() As String, dates() As String, _
-                               done() As String, pcts() As String, _
+                               done() As String, pcts() As String, caldates() As String, _
                                Optional useCount As Long = -1) As MilestoneDrawResult
     Dim result As MilestoneDrawResult
 
@@ -509,24 +544,26 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
         Exit Function
     End If
 
-    Dim nL As Long, nD As Long, nX As Long, nP As Long
+    Dim nL As Long, nD As Long, nX As Long, nP As Long, nC As Long
     nL = UBound(labels) - LBound(labels) + 1
     nD = UBound(dates) - LBound(dates) + 1
     nX = UBound(done) - LBound(done) + 1
     nP = UBound(pcts) - LBound(pcts) + 1
+    nC = UBound(caldates) - LBound(caldates) + 1
 
-    ' `useCount` says how many entries are REAL. DrawFromRow fills all four
+    ' `useCount` says how many entries are REAL. DrawFromRow fills all five
     ' arrays in one pass over the same slots, so they are the same length by
     ' construction and only the count differs -- overriding just nL made the
     ' guard compare 3 against 4 and refuse its own correctly-built data.
     ' The mismatch check below is for callers that build the arrays themselves.
     If useCount >= 0 Then
-        nL = useCount: nD = useCount: nX = useCount: nP = useCount
+        nL = useCount: nD = useCount: nX = useCount: nP = useCount: nC = useCount
     End If
 
-    If nL <> nD Or nL <> nX Or nL <> nP Then
+    If nL <> nD Or nL <> nX Or nL <> nP Or nL <> nC Then
         result.ErrorMessage = "the milestone lists are different lengths -- " & _
-            nL & " label(s), " & nD & " date(s), " & nX & " done-flag(s), " & nP & " pct(s). " & _
+            nL & " label(s), " & nD & " date(s), " & nX & " done-flag(s), " & nP & " pct(s), " & _
+            nC & " caldate(s). " & _
             "They are paired by position, so nothing was drawn: pairing them " & _
             "wrongly would put the right dates on the wrong milestones and the " & _
             "slide would look finished."
@@ -574,13 +611,14 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
     Dim i As Long
     For i = 1 To result.SlotsFound
         Dim onShp As Object, offShp As Object, nowShp As Object
-        Dim labShp As Object, datShp As Object, pctShp As Object
+        Dim labShp As Object, datShp As Object, pctShp As Object, caldShp As Object
         Set onShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_ON)
         Set offShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_OFF)
         Set nowShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_NOW)
         Set labShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_LABEL)
         Set datShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_DATE)
         Set pctShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_PCT)
+        Set caldShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_CALDATE)
 
         If i <= nL Then
             ' COLOUR IS POSITIONAL, NOT PER-FLAG -- Rohan, 2026-08-22: "colour
@@ -683,6 +721,26 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
                 slotOk = SetVisible(pctShp, False) And slotOk
             End If
 
+            ' CALDATE IS OPTIONAL AT THE VALUE LEVEL, same "blank means
+            ' absent" rule -- but NOT gated by lastAchieved the way PCT is.
+            ' A % complete is meaningless before a milestone starts; a due
+            ' date is exactly the opposite (see COL_CALDATE's own header),
+            ' so it shows whenever the register holds one, achieved or not.
+            Dim caldValue As String
+            caldValue = caldates(LBound(caldates) + i - 1)
+            If Trim(caldValue) <> "" Then
+                If caldShp Is Nothing Then
+                    NoteOnce result, SLOT_PREFIX & i & " has a calendar date to show but no " & _
+                        PART_CALDATE & " shape on this template, so it isn't shown"
+                Else
+                    slotOk = SetVisible(caldShp, True) And slotOk
+                    slotOk = WriteText(caldShp, caldValue) And slotOk
+                    slotOk = SetDateColourToMatch(caldShp, shown) And slotOk
+                End If
+            Else
+                slotOk = SetVisible(caldShp, False) And slotOk
+            End If
+
             If Not slotOk Then
                 NoteOnce result, SLOT_PREFIX & i & _
                     ": a write did not take -- the slide may not match this report"
@@ -701,6 +759,7 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
             hideOk = SetVisible(labShp, False) And hideOk
             hideOk = SetVisible(datShp, False) And hideOk
             hideOk = SetVisible(pctShp, False) And hideOk
+            hideOk = SetVisible(caldShp, False) And hideOk
 
             If Not hideOk Then
                 NoteOnce result, SLOT_PREFIX & i & _

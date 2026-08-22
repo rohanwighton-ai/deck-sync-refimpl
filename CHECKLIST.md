@@ -1652,6 +1652,21 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       "" for a picture field's value — out of this fix's scope.
       Filtered suites: `DeckAdoption` 9/9, `BatchOnboardFlow_CommitBatch`
       2/2. Full account: `FIX-LIST.md` DA/DB.
+- [ ] **DD — building: `MS<n>_CALDATE`, a real calendar date under each
+      circle, same optional-shape treatment CT's `%` used.** Rohan's
+      correction on why CT "didn't work": not a propagation bug (the
+      retrofit genuinely landed everywhere, verified), just no real %
+      data existed beyond one hand-tested project. This field is
+      different: `SRC_MILESTONES`'s `Resolved Due Date` already has real
+      values for 308/370 milestone rows across 38/43 projects, unused.
+      Code layer done: new field parallel to LABEL/DATE/DONE/PCT, NOT
+      gated by achieved-state (unlike PCT — a due date matters most
+      before it happens), colour matches its own circle's outline.
+      Proven fail-first (disabled the whole block, confirmed the test's
+      key assertions failed for the right reason, restored). Filtered
+      suite 12/12. **Still needed**: register column, real-date mapping
+      from SRC_MILESTONES, shapes on real slides, a real sync. Full
+      account: `FIX-LIST.md` DD.
 - [~] **DC — found AND fixed: `MS<n>_DATE`'s font colour was hardcoded
       teal by position, never data-driven.** Found by Rohan looking at
       the promoted live deck: slots 1-3 were `scheme:bg2` on every one
