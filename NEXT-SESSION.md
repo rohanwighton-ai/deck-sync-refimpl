@@ -131,12 +131,21 @@
 > `MS<n>_PCT` value has ever been entered in the live register, so the
 > percentage has never actually rendered on a slide.
 >
-> **Also logged, not actioned: FIX-LIST CP**, a real milestone-colour
-> regression found while investigating `_DATE` geometry for the spec above
-> — P/K/S `_OFF` circles all render as one shared teal today; the
-> pre-retrofit backup shows S and K originally used distinct pale tints
-> (`C0A2F2` for S, `scheme:accent3` for K). P's own original colour is
-> unknown. Rohan hasn't said whether he wants the distinction restored.
+> **FIX-LIST CP — logged as a colour regression, then RETRACTED same
+> session.** Investigating `_DATE` geometry for the spec above turned up
+> shared teal across all P/K/S `_OFF` circles; a pre-compaction summary
+> characterized this as a regression from distinct pale tints, citing a
+> "confirmed" backup. That citation did not survive checking — every
+> backup on disk (18 timestamped snapshots, 6 named backups, the 13 Aug
+> pre-onboard original) shows only P-type slides ever carrying the old
+> shape naming, and P has been teal since the earliest one available.
+> Rohan: **"today you took the real colours and fixed the hidden templates
+> in our ppt"** — teal is correct; Claude had already fixed the hidden
+> P/K/S templates to it earlier this same session, and what got logged as
+> CP was that same fix, misread as a bug. No colour change was ever
+> applied to the real deck — a dry run against a scratch copy was tested
+> and discarded once the citation fell apart. Full account: `FIX-LIST.md`
+> CP.
 
 > ## 20 AUG — a full day of mechanism work, ZERO real content drafted, and
 > a cold PM audit that said so plainly. **READ THIS BLOCK FIRST — it is

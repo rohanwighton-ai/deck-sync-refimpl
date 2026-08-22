@@ -1599,12 +1599,14 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       build+test verification still pending -- Excel/PowerPoint were both
       open under a live session at fix time. Run `run_vba_tests.ps1` next
       session before trusting this beyond the static read.
-- [ ] **CP — milestone circle colours regressed to one shared teal across
-      P/K/S, losing type-specific distinction.** Confirmed against the
-      pre-retrofit backup: S was `C0A2F2`, K was `scheme:accent3`. P's
-      original colour is unknown (already retrofitted by the earliest
-      available backup). Not actioned -- Rohan hasn't said whether he wants
-      the pale tints restored or the shared teal kept as the new baseline.
+- [x] **CP — RETRACTED, not a regression.** Originally logged as S/K
+      `_OFF` circles regressing to shared teal. Every available backup was
+      swept and none show a non-teal S/K colour ever existing. Rohan:
+      "today you took the real colours and fixed the hidden templates in
+      our ppt" -- teal is correct, already fixed by Claude earlier this
+      session; the "regression" was that fix, misread by the
+      pre-compaction summary. Full account in `FIX-LIST.md` CP. No colour
+      change was ever applied to the real deck.
 - [~] **CQ — milestone percentage display, Option A built.** `MS<n>_PCT`
       register column, folded into the existing `MS<n>_LABEL` text by
       `DrawFromRow` -- no new shape, no template retrofit. Full design in

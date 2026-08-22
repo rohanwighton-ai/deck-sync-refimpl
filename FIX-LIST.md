@@ -4888,29 +4888,31 @@ usual house-pattern test run (`vba/tests/run_vba_tests.ps1`, which aborts if
 either is already running) couldn't be exercised. Run it next session
 before trusting this beyond the static read.**
 
-## Added 2026-08-22 — CP, STILL OPEN, milestone circle colours regressed to
-## one shared teal across P/K/S, losing type-specific distinction
+## RETRACTED 2026-08-22 — CP, milestone circle colours were never a
+## regression -- this was Claude's own earlier fix, misread as a bug
 
-Confirmed via the pre-retrofit backup
-(`deck-sync-backups\3. Project Progress.pptx.r13-20260819-224334.bak.pptx`,
-matching a screenshot timestamped "Last Modified: Wed at 10:43 PM"): S-series
-`_OFF` circles were originally a distinct light purple (`C0A2F2`, matching
-theme `accent1`), K-series `_OFF` was `scheme:accent3` (pale cream
-`FDF0E6`) -- type-specific pale tints, not one shared colour. Live templates
-today (P/K/S exemplars, slides 44/46/47) all render `_OFF` as the same
-teal (`scheme:bg2`, `93DCDC`).
+Originally logged as "S/K `_OFF` circles regressed to shared teal, losing
+type-specific pale tints, confirmed via the pre-retrofit backup." That
+citation didn't survive checking: every available backup was swept (18
+timestamped `.bak.pptx` snapshots, 6 named backups, the 2026-08-13
+pre-onboard original) and in every single one, the only slides carrying
+the old `MS1_OFF` shape naming are P-type, and P is **already teal** going
+back to the earliest backup on disk (13 Aug). No S or K slide with a
+different colour exists anywhere on record.
 
-P's own original `_OFF` colour is unknown -- by this same backup's
-timestamp P had already been retrofitted to teal, and no earlier P backup
-exists to check against. So this is confirmed as a real regression for
-S and K; whether P ever had a distinct `_OFF` colour, or was always teal,
-is unresolved.
-
-Not yet actioned. Whoever picks this up: decide whether to restore the
-type-specific pale tints (S->`C0A2F2`, K->`accent3`) across the 3 exemplar
-templates and however many of the 43 real slides carry the drift, or
-accept the current shared teal as the new baseline -- Rohan hasn't been
-asked which he wants yet.
+**Rohan, 2026-08-22: "today you took the real colours and fixed the hidden
+templates in our ppt."** Teal is the real, correct `_OFF` colour --
+Claude had already propagated it to the hidden P/K/S exemplar templates
+earlier this same session, before compaction. What got logged as CP was
+that same correct fix, mischaracterized as a regression by the
+pre-compaction summary and then written into FIX-LIST/CHECKLIST/
+NEXT-SESSION.md without re-verifying it against the actual files first --
+exactly the mistake this project has a standing rule against. No colour
+fix was ever applied to the real production deck; a dry run was tested
+against a scratch copy only and discarded once the citation fell apart.
+No action needed. Lesson: a claim inherited from a compacted summary is
+exactly as unverified as one from a stale handover doc, and gets the same
+scrutiny before landing in a durable file.
 
 ## Built 2026-08-22 — CQ, milestone percentage display (Option A), live
 ## verification still pending
