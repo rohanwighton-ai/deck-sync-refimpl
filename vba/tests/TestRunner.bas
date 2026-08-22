@@ -2010,6 +2010,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "MilestoneDevice_ReadsAColumnPerIntervalFromTheRow", r
+    If TestMatches("MilestoneDevice_PercentageFoldsIntoLabelText", filterPattern) Then
+        r = Test_MilestoneDevice_PercentageFoldsIntoLabelText()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "MilestoneDevice_PercentageFoldsIntoLabelText", r
     If TestMatches("MilestoneDevice_ReportWrapperMatchesTheRealResult", filterPattern) Then
         r = Test_MilestoneDevice_ReportWrapperMatchesTheRealResult()
     Else
@@ -15861,6 +15867,52 @@ Private Function Test_MilestoneDevice_ReadsAColumnPerIntervalFromTheRow() As Str
 
     sld.Delete
     Test_MilestoneDevice_ReadsAColumnPerIntervalFromTheRow = result
+End Function
+
+
+' A RESEARCH MANAGER'S % OPINION, FOLDED INTO THE LABEL -- NO NEW SHAPE.
+'
+' MILESTONE-PERCENTAGE-DESIGN.md's Option A: MS<n>_PCT is a register column
+' only, never a shape in the Selection Pane. DrawFromRow appends it to the
+' label text it already writes. Three cases: a value present, blank (nothing
+' added), and a value someone already typed with its own "%" (not doubled).
+Private Function Test_MilestoneDevice_PercentageFoldsIntoLabelText() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDevice(sld, 3)
+
+    Dim row As Object
+    Set row = CreateObject("Scripting.Dictionary")
+    row("MS1_LABEL") = "Fieldwork": row("MS1_DATE") = "6":  row("MS1_DONE") = ""
+    row("MS1_PCT") = "75"
+    row("MS2_LABEL") = "Analysis":  row("MS2_DATE") = "12": row("MS2_DONE") = ""
+    row("MS2_PCT") = ""
+    row("MS3_LABEL") = "Report":    row("MS3_DATE") = "24": row("MS3_DONE") = "Y"
+    row("MS3_PCT") = "100%"
+
+    Dim r As MilestoneDrawResult
+    r = MilestoneDevice.DrawFromRow(grp, row)
+
+    result = result & Assert(r.ErrorMessage = "", "it draws [" & r.ErrorMessage & "]")
+    result = result & Assert(NamedIn(grp, "MS1_LABEL").TextFrame.TextRange.text = "Fieldwork (75%)", _
+        "a PCT value is appended to the label, got '" & _
+        NamedIn(grp, "MS1_LABEL").TextFrame.TextRange.text & "'")
+    result = result & Assert(NamedIn(grp, "MS2_LABEL").TextFrame.TextRange.text = "Analysis", _
+        "a blank PCT adds nothing, got '" & NamedIn(grp, "MS2_LABEL").TextFrame.TextRange.text & "'")
+    result = result & Assert(NamedIn(grp, "MS3_LABEL").TextFrame.TextRange.text = "Report (100%)", _
+        "a value already carrying its own '%' is not doubled, got '" & _
+        NamedIn(grp, "MS3_LABEL").TextFrame.TextRange.text & "'")
+
+    ' MS<n>_PCT MUST NOT BE TREATED AS AN ORDINARY ORPHAN COLUMN -- it is
+    ' addressed by the device, like LABEL/DATE/DONE, never role-tagged.
+    result = result & Assert(MilestoneDevice.IsColumnForThisDevice("MS1_PCT"), _
+        "MS1_PCT is recognised as a device column, not a stray one")
+
+    sld.Delete
+    Test_MilestoneDevice_PercentageFoldsIntoLabelText = result
 End Function
 
 

@@ -60,6 +60,9 @@ Option Explicit
 '   MS1_OFF    the circle shown when it is NOT achieved          (optional)
 '   MS1_LABEL  its text
 '   MS1_DATE   its date
+' MS1_PCT is NOT a shape in the Selection Pane -- it is a register column
+' only. There is nothing to name in PowerPoint; DrawFromRow folds its value
+' straight into MS1_LABEL's own text before the write. See COL_PCT's header.
 ' and for the bar itself:
 '   MS_BAR     the part that grows, to the last ACHIEVED circle
 '   MS_TRACK   the extent, shortened to the last USED circle
@@ -121,6 +124,17 @@ Public Const COL_LABEL As String = "_LABEL"
 Public Const COL_DATE As String = "_DATE"
 Public Const COL_DONE As String = "_DONE"
 
+' A RESEARCH MANAGER'S JUDGMENT OF HOW FAR ALONG A NOT-YET-DONE MILESTONE IS.
+' Rohan, 2026-08-22, after the on/off binary made a genuinely-progressing but
+' not-yet-achieved milestone look identical to one nobody has touched:
+' "perhaps we put a % done number in or next to each circle... this is where
+' Research Managers give an informed opinion." No new shape -- see
+' MILESTONE-PERCENTAGE-DESIGN.md's Option A/B tradeoff, decided in favour of
+' A: folded straight into the existing LABEL text by DrawFromRow, the same
+' way the whole rest of this device already treats a column as a column.
+' Blank means no opinion entered, same as every other part here.
+Public Const COL_PCT As String = "_PCT"
+
 ' The register column names this device reads, for slot `i`. Built here so the
 ' column names and the SHAPE names cannot drift apart -- they are deliberately
 ' the same strings, because a person looking at either should recognise the
@@ -160,6 +174,8 @@ Public Function IsColumnForThisDevice(colName As String) As Boolean
         part = COL_DATE
     ElseIf EndsWith(rest, COL_DONE) Then
         part = COL_DONE
+    ElseIf EndsWith(rest, COL_PCT) Then
+        part = COL_PCT
     Else
         Exit Function
     End If
@@ -409,6 +425,7 @@ Public Function DrawFromRow(grp As Object, rowValues As Object) As MilestoneDraw
     Dim used As Long
     Dim gap As String
     Dim i As Long
+    Dim pct As String
     For i = 1 To slots
         labels(i) = ValueOr(rowValues, ColumnFor(i, COL_LABEL))
         dates(i) = ValueOr(rowValues, ColumnFor(i, COL_DATE))
@@ -424,6 +441,13 @@ Public Function DrawFromRow(grp As Object, rowValues As Object) As MilestoneDraw
                     ColumnFor(used + 1, COL_LABEL) & " is empty"
             End If
             used = i
+
+            ' RESEARCH-MANAGER PERCENTAGE, FOLDED INTO THE LABEL TEXT --
+            ' see COL_PCT's own header for why there is no new shape.
+            ' Blank column means no opinion entered; nothing is added.
+            pct = Trim(ValueOr(rowValues, ColumnFor(i, COL_PCT)))
+            If Right$(pct, 1) = "%" Then pct = Trim(Left$(pct, Len(pct) - 1))
+            If pct <> "" Then labels(i) = labels(i) & " (" & pct & "%)"
         End If
     Next i
 

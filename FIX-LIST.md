@@ -4866,3 +4866,73 @@ only, as always -- needs a real sync run to reach the deck.** Prevention
 `RollForwardUI` -- a button Rohan already presses every quarter -- rather
 than a separate tool requiring new discipline to remember to run.
 
+## Fixed 2026-08-22 — CO, `Put it on the slides` showed a needless OK-only
+## dialog before its one real question
+
+`RibbonUI.PutItOnTheSlides` collected `DraftingUI.PublishAllDraftedFields`'s
+report and, if non-empty, showed it as a blocking `MsgBox` before falling
+into `PutItOnTheSlidesCore`'s own "Apply them now?" Yes/No. In practice this
+fired on every press with anything pinned: `PublishAllDraftedFields`'s own
+final `Say()` always emits a summary, even when nothing changed, so
+`published <> ""` was true almost always. The summary itself added nothing
+-- it's already written to the Run Log unconditionally inside
+`PublishAllDraftedFields` (the `WriteRunLog` call), so the dialog was pure
+ceremony in front of the actual decision one click later. Same "one
+question, not three" call already made for the Apply step, applied here.
+
+Fixed: dropped the `MsgBox`, kept the `EndCollecting` call (still needed to
+reset `mCollecting`/`mReport` so a chain that died halfway can't leak into
+the next run). **Static check clean; live build+test verification pending
+-- PowerPoint/Excel were both open under a live session at fix time, so the
+usual house-pattern test run (`vba/tests/run_vba_tests.ps1`, which aborts if
+either is already running) couldn't be exercised. Run it next session
+before trusting this beyond the static read.**
+
+## Added 2026-08-22 — CP, STILL OPEN, milestone circle colours regressed to
+## one shared teal across P/K/S, losing type-specific distinction
+
+Confirmed via the pre-retrofit backup
+(`deck-sync-backups\3. Project Progress.pptx.r13-20260819-224334.bak.pptx`,
+matching a screenshot timestamped "Last Modified: Wed at 10:43 PM"): S-series
+`_OFF` circles were originally a distinct light purple (`C0A2F2`, matching
+theme `accent1`), K-series `_OFF` was `scheme:accent3` (pale cream
+`FDF0E6`) -- type-specific pale tints, not one shared colour. Live templates
+today (P/K/S exemplars, slides 44/46/47) all render `_OFF` as the same
+teal (`scheme:bg2`, `93DCDC`).
+
+P's own original `_OFF` colour is unknown -- by this same backup's
+timestamp P had already been retrofitted to teal, and no earlier P backup
+exists to check against. So this is confirmed as a real regression for
+S and K; whether P ever had a distinct `_OFF` colour, or was always teal,
+is unresolved.
+
+Not yet actioned. Whoever picks this up: decide whether to restore the
+type-specific pale tints (S->`C0A2F2`, K->`accent3`) across the 3 exemplar
+templates and however many of the 43 real slides carry the drift, or
+accept the current shared teal as the new baseline -- Rohan hasn't been
+asked which he wants yet.
+
+## Built 2026-08-22 — CQ, milestone percentage display (Option A), live
+## verification still pending
+
+Full design in `MILESTONE-PERCENTAGE-DESIGN.md`. Rohan asked for a
+Research Manager's informed percentage next to a not-yet-achieved
+milestone circle, without changing which circle counts as "current."
+Built as: a new register column per slot, `MS<n>_PCT` (free text, RM-
+entered, optional -- blank means no opinion given), folded straight into
+the existing `MS<n>_LABEL` text by `MilestoneDevice.DrawFromRow` (e.g.
+"Fieldwork complete (75%)"). No new shape, no template change, no 43-slide
+retrofit -- `DrawMilestones`'s signature and its 7 existing direct-call
+tests in `TestRunner.bas` were untouched; the fold lives entirely in the
+row-to-arrays translation layer. `IsColumnForThisDevice` extended to
+recognise `_PCT` so it doesn't get flagged as an orphan column. New test:
+`Test_MilestoneDevice_PercentageFoldsIntoLabelText`.
+
+**Static check clean; NOT YET run live.** PowerPoint/Excel were both open
+under a live session at build time, so `vba/tests/run_vba_tests.ps1`
+(aborts if either is already running) couldn't be exercised -- same
+constraint as CO above, same fix: run it next session before trusting this
+beyond the static read. Also genuinely untested against real data: no
+`MS<n>_PCT` value has ever been entered in the live register, so this has
+never rendered on an actual slide.
+

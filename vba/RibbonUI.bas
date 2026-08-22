@@ -1662,11 +1662,17 @@ Public Sub PutItOnTheSlides()
     DraftingUI.BeginCollecting
     DraftingUI.PublishAllDraftedFields CommandBarUI.CAP_PUT_ON_SLIDES
 
-    Dim published As String
-    published = DraftingUI.EndCollecting()
-    If published <> "" Then
-        MsgBox CapReport(published, "Next: the slide changes."), vbInformation, CommandBarUI.CAP_PUT_ON_SLIDES
-    End If
+    ' NOT shown as its own OK-only dialog -- FIX-LIST item (2026-08-22). This
+    ' fired on every press with anything pinned, since PublishAllDraftedFields
+    ' always ends its own Say() with a summary even when nothing changed. That
+    ' summary is already in the Run Log unconditionally (DraftingUI.
+    ' PublishAllDraftedFields, the WriteRunLog call), so showing it again here
+    ' was ceremony in front of the one real question below ("Apply them now?"),
+    ' the same "one question, not three" call already made for that step.
+    ' EndCollecting is still called, discarding its text -- it resets
+    ' mCollecting/mReport, the fail-closed state a chain that died halfway must
+    ' not leak into the next run.
+    DraftingUI.EndCollecting
 
     PutItOnTheSlidesCore
     Exit Sub

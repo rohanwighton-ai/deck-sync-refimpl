@@ -1,12 +1,23 @@
 # Milestone percentage display — design
 
-> **DESIGNED, NOT YET BUILT.** Written 2026-08-22, from Rohan's decision the same
-> session ("option 2 as ultimately... this is where Research Managers give an
-> informed opinion of where the project is at so the newest achieved milestone
-> can be the default 'current achieved' big circle position"). Geometry facts
-> below are read from the real deck's exemplar slides (44/46/47); see the
-> caveat under "DATE geometry" — one shape's numbers didn't parse cleanly and
-> are flagged, not guessed.
+> **OPTION A BUILT, 2026-08-22 — live verification still pending.**
+> `MilestoneDevice.bas` (`COL_PCT`, `IsColumnForThisDevice`, `DrawFromRow`'s
+> label fold) and a new unit test
+> (`Test_MilestoneDevice_PercentageFoldsIntoLabelText`, `TestRunner.bas`) are
+> written and static-check clean. **Not yet run live** — Excel/PowerPoint
+> were both open under a live session at build time, so
+> `vba/tests/run_vba_tests.ps1` (which aborts if either is already running)
+> couldn't be exercised. Run it next session before trusting this beyond the
+> static read; see FIX-LIST item CQ. Option B (the new `_PCT` shape) is
+> unchanged below — still just a scoped design, not built.
+>
+> Originally written 2026-08-22, from Rohan's decision the same session
+> ("option 2 as ultimately... this is where Research Managers give an
+> informed opinion of where the project is at so the newest achieved
+> milestone can be the default 'current achieved' big circle position").
+> Geometry facts below are read from the real deck's exemplar slides
+> (44/46/47); see the caveat under "DATE geometry" — one shape's numbers
+> didn't parse cleanly at first and are flagged, not guessed.
 
 ## The problem
 
@@ -69,24 +80,31 @@ and this device's whole design rests on that never drifting.
 
 ## Two ways to render it — pick one
 
-### Option A (recommended): fold the percentage into the existing `_LABEL` text
+### Option A (recommended, BUILT): fold the percentage into the existing `_LABEL` text
 
-No new shape. No template change. No 43-slide retrofit. `DrawFromRow` already
-builds each slot's label text from `MS<n>_LABEL` before handing it to
-`WriteText` — extend that one line:
+No new shape. No template change. No 43-slide retrofit. Built inside
+`DrawFromRow`, not `DrawMilestones` — it's the row-to-arrays translation
+layer, the same place `DrawFromRow`'s own gap-check already lives, so
+`DrawMilestones`'s signature and its 7 existing direct-call tests in
+`TestRunner.bas` needed no changes at all:
 
+```vba
+pct = Trim(ValueOr(rowValues, ColumnFor(i, COL_PCT)))
+If Right$(pct, 1) = "%" Then pct = Trim(Left$(pct, Len(pct) - 1))
+If pct <> "" Then labels(i) = labels(i) & " (" & pct & "%)"
 ```
-labelText = labels(i)
-If Trim(pcts(i)) <> "" Then labelText = labelText & " (" & pcts(i) & "%)"
-```
 
-Renders as e.g. *"Fieldwork complete (75%)"*. Ships the moment `DrawMilestones`
-reads a fourth array; every real slide already has a working `_LABEL` shape,
-so there is nothing to retrofit and nothing that can be missing on an
-individual slide the way a new shape could be.
+Renders as e.g. *"Fieldwork complete (75%)"*. Strips a trailing `%` a
+Research Manager might already type, so `"75"` and `"75%"` both render as
+`(75%)`, never `(75%%)`. Every real slide already has a working `_LABEL`
+shape, so there is nothing to retrofit and nothing that can be missing on
+an individual slide the way a new shape could be.
 
-**Cost: near zero.** Trade-off: the percentage is inside a sentence, not
-scannable at a glance across all 7 circles.
+**Cost: near zero, and it shipped that way** — `COL_PCT` constant,
+`IsColumnForThisDevice` recognising it, the fold above, one new test
+(`Test_MilestoneDevice_PercentageFoldsIntoLabelText`). Trade-off stands:
+the percentage is inside a sentence, not scannable at a glance across all
+7 circles.
 
 ### Option B: a new `_PCT` shape per slot, same pattern as `_LABEL`/`_DATE`
 
@@ -135,22 +153,35 @@ comparable to the biggest single piece of work done this session.
 
 ## Recommendation
 
-Build **Option A** first. It delivers the actual thing Rohan asked for — a
+**Option A is built.** It delivers the actual thing Rohan asked for — a
 Research Manager's percentage opinion visible next to the milestone circle —
-with a code change measured in lines, zero template risk, and zero retrofit.
-If it turns out the label-text version isn't scannable enough in practice
-(a real slide has to be looked at to know), Option B is a well-scoped
-follow-up with its shape geometry already gathered above, not a redesign.
+with a code change measured in lines, zero template risk, and zero
+retrofit. If it turns out the label-text version isn't scannable enough in
+practice (a real slide has to be looked at to know, and no `MS<n>_PCT`
+value has been entered anywhere in the real register yet, so this hasn't
+been seen live), Option B is a well-scoped follow-up with its shape
+geometry already gathered above, not a redesign.
 
-## Open questions for Rohan
+## Decided by implementation (was "open questions")
 
-1. **Format**: `"(75%)"` appended after the label, or some other punctuation/
-   position (before the label, on its own line via the existing `||`
-   line-break convention)?
-2. **Which slots get a number?** Every slot with a value, or specifically
-   discouraged on `DONE=Y` slots (redundant "100%" next to an already-dark
-   circle) — a workflow convention for the RM, not a code branch either way,
-   since the code just renders whatever `MS<n>_PCT` holds.
-3. Whole numbers only, or does a Research Manager ever want to write
-   something like "~75%"? (Affects whether the column is validated as numeric
-   or left as free text like `_LABEL` already is.)
+1. **Format**: `"(75%)"` appended after the label. Not a separate line —
+   simplest to build, and the existing `||` line-break convention was left
+   alone rather than adding a second way to grow a label.
+2. **Which slots get a number?** Whatever `MS<n>_PCT` holds, unconditionally
+   — including a `DONE=Y` slot, if a Research Manager writes one there. The
+   code doesn't discourage it; if a redundant "(100%)" next to an
+   already-dark circle turns out to bother anyone in practice, that's a
+   register-entry convention to settle with Rohan, not a code change.
+3. **Format tolerance**: a trailing `%` the RM already typed is stripped
+   before re-adding one, so `"75"` and `"75%"` both render identically.
+   Anything else (e.g. `"~75"`) passes through unmodified and renders as
+   `(~75%)` — no numeric validation, same free-text trust `_LABEL` already
+   gets.
+
+## Still open
+
+- **Live verification.** Static-check clean; the actual VBA test hasn't run
+  against a real PowerPoint/Excel session yet (see the banner at the top).
+- **No real `MS<n>_PCT` value exists in the live register yet** — this has
+  never been seen on an actual slide. Worth trying on one real project
+  before treating the label-text approach as settled over Option B.

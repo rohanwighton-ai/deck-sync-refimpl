@@ -1593,6 +1593,25 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
 - [ ] **CM — hidden leftover milestone donor text, 32/43 slides, cosmetic.**
       All correctly hidden, nothing visible on screen. Low priority
       cleanup.
+- [~] **CO — `Put it on the slides` showed a needless OK-only dialog before
+      its one real question.** Fixed: dropped the `MsgBox`, its content was
+      already unconditionally in the Run Log. Static check clean; live
+      build+test verification still pending -- Excel/PowerPoint were both
+      open under a live session at fix time. Run `run_vba_tests.ps1` next
+      session before trusting this beyond the static read.
+- [ ] **CP — milestone circle colours regressed to one shared teal across
+      P/K/S, losing type-specific distinction.** Confirmed against the
+      pre-retrofit backup: S was `C0A2F2`, K was `scheme:accent3`. P's
+      original colour is unknown (already retrofitted by the earliest
+      available backup). Not actioned -- Rohan hasn't said whether he wants
+      the pale tints restored or the shared teal kept as the new baseline.
+- [~] **CQ — milestone percentage display, Option A built.** `MS<n>_PCT`
+      register column, folded into the existing `MS<n>_LABEL` text by
+      `DrawFromRow` -- no new shape, no template retrofit. Full design in
+      `MILESTONE-PERCENTAGE-DESIGN.md`. Static check clean; live
+      verification pending (Excel/PowerPoint open under a live session at
+      build time) and no real `MS<n>_PCT` value has ever been entered in
+      the register, so it hasn't rendered on an actual slide yet.
 
 ## Parked / explicitly decided — do not reopen without a new decision
 

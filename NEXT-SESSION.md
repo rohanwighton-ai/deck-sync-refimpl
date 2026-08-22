@@ -83,37 +83,60 @@
 > Run Log unconditionally and the dialog offers no real decision
 > (OK-only). Proposed fix: drop the blocking MsgBox, just log and fall
 > through — same "one question, not three" philosophy already applied 20
-> lines below to the Apply step. Explicitly deferred mid-session pending
-> Rohan's live sync finishing; not yet revisited.
+> lines below to the Apply step. **FIXED, later this same session — FIX-LIST
+> CO.** Dropped the blocking `MsgBox`; its content was already
+> unconditionally in the Run Log. Static check clean; **live verification
+> still pending** — Excel/PowerPoint were both open under a live session
+> when the fix landed, so `run_vba_tests.ps1` (aborts if either is already
+> running) couldn't be exercised. Run it next session before trusting this
+> beyond the static read.
 >
-> **OPEN DESIGN DECISION — genuinely new feature, NOT SCOPED, NOT BUILT.**
-> Rohan flagged the milestone timeline as misleading on non-contiguous
-> progress (e.g. `2_P009`: MS2=done, MS3=done, MS4/5=not done, MS6=done —
-> "done, done, gap, gap, done" reads as messy/wrong even though it's
-> accurate). Two options discussed:
-> 1. Simpler — drop the "current position" marker, let circles be honest
->    per-milestone ticks, lean on the existing overall-progress badge
->    (already on every slide) to carry the "how far along" signal.
-> 2. Richer — **Rohan's choice**: add a per-circle percentage, sourced
->    from a Research Manager's informed judgment (using
->    `MilestoneEvidenceReport`'s grouped evidence as the reference
->    material a human reads before entering it) — "this is where Research
->    Managers give an informed opinion of where the project is at."
->    Explicitly does NOT change which circle is "current" — the existing
->    "newest achieved milestone = current/big circle" logic in
->    `MilestoneDevice.DrawMilestones` stays exactly as is. My own earlier
->    proposal to cap "current" at the last CONTIGUOUS done slot is
->    superseded/declined — percentages carry the nuance instead of
->    changing that logic.
->    **Scope, not yet built:** new `MS<n>_PCT` register columns (same
->    pattern as `_LABEL`/`_DATE`/`_DONE` — Research Manager enters it); a
->    new shape per milestone slot to display the number, which exists on
->    NO real slide or template (P/K/S exemplars 44/46/47) yet, so it's a
->    retrofit across all 43 real slides + 3 templates; `MilestoneDevice.
->    bas` drawing logic to show/hide it; Field Spec entries; tests. Sized
->    as comparable to the biggest single piece of work done this session —
->    write a real spec (field names, shape naming, placement relative to
->    the circle, hidden/OFF-slot behaviour) before touching template XML.
+> **MILESTONE PERCENTAGE DISPLAY — SPEC'D, THEN OPTION A BUILT, later this
+> same session.** Rohan flagged the milestone timeline as misleading on
+> non-contiguous progress (e.g. `2_P009`: MS2=done, MS3=done, MS4/5=not
+> done, MS6=done — "done, done, gap, gap, done" reads as messy/wrong even
+> though it's accurate). Two options were written up in full in
+> `MILESTONE-PERCENTAGE-DESIGN.md`:
+> 1. Simpler — drop the "current position" marker, lean on the existing
+>    overall-progress badge instead. Not built; superseded by Rohan's pick
+>    below.
+> 2. Richer — **Rohan's choice**: add a per-circle percentage, sourced from
+>    a Research Manager's informed judgment. Explicitly does NOT change
+>    which circle is "current" — `MilestoneDevice.DrawMilestones`'s
+>    "newest achieved = current/big circle" logic is untouched. My own
+>    earlier proposal to cap "current" at the last CONTIGUOUS done slot is
+>    superseded/declined.
+>
+> Within option 2, the spec laid out two RENDERING approaches and
+> recommended, then built, the cheap one:
+> - **Option A (BUILT): fold the percentage into the existing `_LABEL`
+>   text** ("Fieldwork complete (75%)"). New `MS<n>_PCT` register column
+>   (free text, RM-entered, optional), folded into the label by
+>   `MilestoneDevice.DrawFromRow` — NOT by touching `DrawMilestones`, so
+>   its signature and 7 existing direct-call tests needed zero changes.
+>   `IsColumnForThisDevice` extended to recognise `_PCT`. New test:
+>   `Test_MilestoneDevice_PercentageFoldsIntoLabelText`. **No new shape, no
+>   template change, no 43-slide retrofit.** FIX-LIST item CQ.
+> - **Option B (still just designed): a new `_PCT` shape per slot.**
+>   Real template geometry measured and recorded in the spec (a genuine
+>   ~0.25-0.29in gap between circle and label on every slot, consistent
+>   across P/K/S) in case this is ever wanted — e.g. if Option A's
+>   in-sentence percentage turns out not to be scannable enough in
+>   practice. Not started.
+>
+> **Both CO and CQ share the same open item: NEITHER HAS RUN LIVE YET.**
+> Excel/PowerPoint were open under a live session for both fixes. Run
+> `run_vba_tests.ps1` next session before trusting either beyond the static
+> read. CQ additionally has never been exercised against real data — no
+> `MS<n>_PCT` value has ever been entered in the live register, so the
+> percentage has never actually rendered on a slide.
+>
+> **Also logged, not actioned: FIX-LIST CP**, a real milestone-colour
+> regression found while investigating `_DATE` geometry for the spec above
+> — P/K/S `_OFF` circles all render as one shared teal today; the
+> pre-retrofit backup shows S and K originally used distinct pale tints
+> (`C0A2F2` for S, `scheme:accent3` for K). P's own original colour is
+> unknown. Rohan hasn't said whether he wants the distinction restored.
 
 > ## 20 AUG — a full day of mechanism work, ZERO real content drafted, and
 > a cold PM audit that said so plainly. **READ THIS BLOCK FIRST — it is
