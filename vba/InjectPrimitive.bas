@@ -727,7 +727,18 @@ Public Function InjectRepeatingProgress(sld As Object, identityTag As String, _
         If currents <> "" Then currents = currents & VALUE_SEPARATOR
         currents = currents & one.CurrentValue
         If one.WouldChange Then anyChange = True
-        If Not (one.Written Or one.Verified) Then
+        ' FIX-LIST item, 2026-08-22 (mother-hound kennel survey). This read
+        ' `Not (one.Written Or one.Verified)` -- but Written's own contract
+        ' (InjectResult's type comment: "False if the current value already
+        ' matched") means it is set True the moment ANY real write is
+        ' attempted, one line before Verified is computed from the genuine
+        ' re-read (InjectProgressField ~L1562-1563). So the OR could never
+        ' trip False for an attempted write, and a per-bar re-read mismatch
+        ' -- "wrote X but re-read Y" -- was silently absorbed into
+        ' wroteAll = True. Verified alone is already the complete signal
+        ' (True for both a no-op and a confirmed write); every other
+        ' function's aggregation checks it alone, and this one now does too.
+        If Not one.Verified Then
             wroteAll = False
             If result.ErrorMessage <> "" Then result.ErrorMessage = result.ErrorMessage & "; "
             result.ErrorMessage = result.ErrorMessage & one.ErrorMessage
@@ -815,7 +826,13 @@ Public Function InjectSlotsField(sld As Object, identityTag As String, _
         If one.WouldChange Then anyChange = True
         If one.GeometryMoved Then anyMoved = True
         If one.GeometryMoved And Not one.GeometryRestored Then allRestored = False
-        If Not (one.Written Or one.Verified) Then
+        ' FIX-LIST item, 2026-08-22 (mother-hound kennel survey). Same fix
+        ' as InjectRepeatingProgress above, same root cause: Written is set
+        ' True the moment a real write is attempted (InjectPrimitive
+        ' ~L1106-1107, one line before the genuine re-read computes
+        ' Verified), so `Written Or Verified` could never trip False for a
+        ' real write. Verified alone is the complete signal.
+        If Not one.Verified Then
             wroteAll = False
             If result.ErrorMessage <> "" Then result.ErrorMessage = result.ErrorMessage & "; "
             result.ErrorMessage = result.ErrorMessage & one.ErrorMessage

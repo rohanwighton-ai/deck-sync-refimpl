@@ -1634,6 +1634,23 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       every `MS<n>_OFF`, across all 50 slides (47 + the 3 new test
       slides). Verified from saved bytes: 0 issues across all 49
       milestone-carrying slides.
+- [~] **CY — mother-hound finding #2, found AND fixed: the repeating/
+      slots aggregator could never see a real write's failure.**
+      `Written` means "an attempt was made," not "it succeeded" (its own
+      type comment), but `InjectRepeatingProgress`/`InjectSlotsField`
+      checked `Not (Written Or Verified)` — since `Written` is set
+      `True` the instant a real write is attempted, one line before
+      `Verified` is genuinely computed, the `OR` could never trip
+      `False` for a real write. Undermines CW's own refusal gate for
+      this field family. Fixed: both now check `Verified` alone,
+      matching every other function in the file. **Marked `[~]` not
+      `[x]`: seven live probes tonight tried and failed to force a real
+      PowerPoint write-then-verify mismatch to prove this fail-first —
+      PowerPoint's COM layer faithfully applied every write tried.**
+      Correct beyond doubt from direct code inspection (quoted at
+      file:line); verified by non-regression instead (35/35 Inject-
+      prefixed tests green), not by a red-then-green pair. Full account:
+      `FIX-LIST.md` CY.
 - [x] **CX — CV's sibling bug, found AND fixed: `DuplicateAndTag` discarded
       the router's own answer.** Found by mother-hound's kennel survey,
       ranked highest of five findings. Calls the correct `InjectField`

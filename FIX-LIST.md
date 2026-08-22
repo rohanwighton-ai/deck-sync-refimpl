@@ -5338,3 +5338,51 @@ unresolvable picture field). Restored the real fix; same test passes.
 Static check clean. Filtered suite (`-Filter SlideDuplication`): 4/4
 passed, 0 failed.
 
+## Found AND fixed 2026-08-22 — CY, mother-hound finding #2: the
+## repeating/slots aggregator could never see a real write's failure
+
+Found by the same kennel survey as CX, ranked second of five by blast
+radius -- and it undermines CW's own refusal gate for repeating/device/
+slots fields, since `TemplateSlide.MakeTemplateFrom` checks
+`injResult.Verified` and this bug meant `Verified` could read wrong for
+exactly that field family.
+
+**Root cause, quoted exactly.** `InjectResult`'s own type comment:
+"Written As Boolean ' False if the current value already matched
+(no-op)". It means "an attempt was made," not "the attempt succeeded" --
+`InjectPrimitive` (`~L1106-1107`) and `InjectProgressField`
+(`~L1562-1563`) both set `result.Written = True` UNCONDITIONALLY the
+moment a real write is attempted, one line BEFORE `result.Verified` is
+computed from the genuine re-read. `InjectRepeatingProgress` (`~L730`)
+and `InjectSlotsField` (`~L818`) both aggregated their per-item results
+with `If Not (one.Written Or one.Verified) Then wroteAll = False` -- and
+since `Written` is already `True` the instant an attempt is made, the
+`OR` could never trip `False` for a real write. A per-bar or per-slot
+re-read mismatch ("wrote X but re-read Y -- write did not take") was
+silently absorbed into `wroteAll = True`, and the item's own
+`ErrorMessage` was dropped (the append only ran inside the branch that
+could never execute).
+
+**FIXED.** Both aggregators now check `If Not one.Verified` alone --
+`Verified` is already the complete, correct signal in every function in
+this file (`True` for both a no-op and a confirmed real write,
+`False` only when something is actually wrong), and this brings the two
+aggregators in line with the single-item primitives they already wrap.
+
+**Verification is honest, not a full fail-first red/green pair, and
+that limitation is stated plainly rather than papered over.** Seven
+targeted live probes tonight tried to force a genuine `Written=True,
+Verified=False` from PowerPoint itself (tiny/zero shape width, a
+placeholder shape's geometry, AutoCorrect on programmatic text
+assignment, `HasText` after clearing to "") -- every one of them showed
+PowerPoint's COM layer faithfully applying the write with no silent
+resistance, so none reproduced the discriminating case live. The fix is
+correct beyond reasonable doubt from direct code inspection (the
+ordering is unambiguous and quoted above), and this is the identical
+logic shape already proven correct in `InjectPictureField`,
+`TemplateSlide.MakeTemplateFrom`, and CX above -- but it was NOT proven
+red-then-green the way those were. Verified instead by non-regression:
+static check clean, filtered suite (`-Filter Inject`, all 35
+Inject-prefixed tests including the untouched single-item primitives)
+35/35 passed, 0 failed.
+
