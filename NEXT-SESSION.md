@@ -12,198 +12,208 @@
 > number this doc names below; the file with the highest number isn't
 > necessarily the one actually registered live.
 
-> ## 22 AUG, LATE MORNING — milestone percentage went from Option A to the
-> real thing (own shape, contiguous colour, position-gated), retrofitted
-> across all 46 slides. **STATUS: CURRENT, supersedes the CQ material in
-> the block below.**
+> ## 22 AUG, ~14:00-14:10 — RESOLVES the two open items the block below
+> flags. **STATUS: CURRENT, read this before the merged block underneath.**
 >
-> **CQ (fold into label) shipped, was live-verified, then Rohan looked at
-> it rendered on the real slide and changed the design twice more in one
-> sitting** — "isn't that separator needed?" -> a real `MS<n>_PCT` shape
-> under the date badge; then "colour are always contiguous" (a slot before
-> current renders achieved regardless of its own flag); then "not worth
-> having on future ones" (percentage visibility gets the same position
-> gate). All three fail-first proven. Full account: `FIX-LIST.md` CT,
-> design: `MILESTONE-PERCENTAGE-DESIGN.md`.
+> **Rohan's verdict on the live percentage test, now on record: "remove
+> the % tags we added please they didn't really work."** All 322
+> `MS<n>_PCT` shapes (46 slides x 7 slots) removed from the real deck —
+> deletion only, verified 0 remain across all 46 slides from saved bytes.
+> `MilestoneDevice.bas`'s `COL_PCT`/`PART_PCT` code and the register's 7
+> `MS<n>_PCT` columns are left in place, inert without a shape to write
+> to. **The contiguous-colour and position-gated-visibility logic survive
+> unchanged** — Rohan's objection was specifically to the visual shape,
+> not that design. `MILESTONE-PERCENTAGE-DESIGN.md` and `FIX-LIST.md` CT
+> both updated to record this as the actual outcome, not a still-pending
+> question.
 >
-> **Retrofitted live, all 46 milestone-carrying slides** (43 real + P/K/S
-> templates 44/46/47). Two real bugs caught before touching the real file:
-> an empty textbox auto-fitting to ~0 width (caught by reading the saved
-> XML, not the tool's own "7 added" message), and regrouping wiping the
-> device group's own name/role tag (confirmed on a scratch copy first,
-> fixed by capturing and restoring both). A third issue — chaining more
-> than one slide's regroup in one PowerPoint session threw a reproducible
-> "Type mismatch" on the second slide — was worked around (one slide per
-> fresh launch) rather than root-caused. Verified from the saved file's
-> own bytes across all 46 slides (0 issues) and a full `VerifyRealDeck`
-> re-run (0 mismatches, unchanged from before the retrofit).
+> **Same pass fixed a real, separate finding this block below surfaced
+> nowhere: `MS_TRACK`'s outline was still the old shared teal**, even
+> after CR's fill fix landed. Every circle (`_ON`/`_NOW`/`_OFF`) already
+> uses each type's own saturated colour for its outline, consistently —
+> the track's outline had just never been brought into that convention.
+> Fixed by reading each slide's own `MS1_ON` outline colour live and
+> copying it onto `MS_TRACK`, rather than a hardcoded constant. Same
+> 46-slide sweep, verified from saved bytes: track outline now matches ON
+> outline everywhere. Final `VerifyRealDeck` re-run: 0 mismatches, 43/43
+> real slides fully OK, unchanged.
 >
-> **THE ONE THING THE NEXT SESSION MUST DO FIRST: rebuild and re-register
-> the add-in.** `addin159` (built and registered earlier the same session,
-> before any of this) does not contain today's `MilestoneDevice.bas` or
-> `RibbonUI.bas` changes at all — the code exists only as source in the
-> repo right now. Run `vba/tests/build_ppam.ps1`, Save As a fresh
-> `.ppam`, register it (unload whatever's currently `AutoLoad=True` first
-> — do not leave two add-ins loaded at once, confirmed empirically this
-> session that PowerPoint will happily do exactly that if you don't
-> explicitly remove the old one). Verify via a cold PowerPoint restart
-> before trusting it.
+> **`addin160`'s OneDrive-root registration (flagged below) is still
+> genuinely open** — not touched by this pass. Real risk, not yet acted
+> on.
 >
-> **Not yet exercised end-to-end**: no real `MS<n>_PCT` value has ever
-> been entered in the live register and pushed through an actual sync —
-> everything above is proven at the shape/code level, not against the
-> real drafting-to-slide workflow.
-
-> ## 21-22 AUG — the Milestone-Evidence tool built and used to fix a real
-> data-quality gap in the register; an open design decision on how the
-> milestone timeline should show partial progress, NOT YET BUILT.
-> **Written by the session that made this run — no other session's writes
-> reflected here; run `ListAgents` before trusting it's still current.**
+> ---
 >
-> **What's DONE and committed (HEAD `7733867`):**
-> - Built `1. Build addin158.ppam`, registered it, ran a real sync on the
->   live deck (`43 written, 0 dropped`), did a slide-by-slide gap analysis
->   against the pre-automation original deck (3 findings: milestone-closure
->   gap, content-depth drop for S007+, hidden donor text — none yet acted
->   on beyond being named).
-> - **New tool, `vba/tools/MilestoneEvidenceReport.bas`** (+ its PowerShell
->   driver `vba/tools/milestone_evidence_report.ps1`) — reads the real
->   `SRC_MILESTONES` sheet (the pasted CRC tracker extract, header row 10,
->   data from row 11) and the register side by side, groups tracker rows
->   into MS-slots by due-month offset, and reports where a register `DONE`
->   flag disagrees with the grouped tracker evidence. **Read-only; never
->   writes.** Found and fixed 3 real bugs in the tool itself while building
->   it (VBA `Or` doesn't short-circuit — was evaluating an unset array slot;
->   a perf bug from ~22k per-cell COM calls, fixed with one bulk
->   `Range.Value2` read; an accumulator that wasn't reset between
->   per-project loop iterations, caught only by actually reading the "0
->   errors" report's content and noticing one project's block literally
->   repeated another's). Verified live: 41 projects checked, 14 real
->   disagreements found.
-> - **All 14 disagreements resolved** in the real register (backed up
->   first to `backups/PRE-MILESTONE-EVIDENCE-FIXES-<timestamp>/`): 11
->   corrections written (7 `Y`→blank where the register overstated
->   progress, 2 blank→`Y` where it understated, on `3_P002`, `2_P003`,
->   `2_P004`, `1_P007`, `1_K1001`, `1_K1002`, `1_S012`, `1_K1008`,
->   `4_K017`), 5 left deliberately untouched after the comment text
->   confirmed the register was already right despite stale tracker %.
->   Logged in full in `FIX-LIST.md` (item CN, resolved) and `CHECKLIST.md`.
+> ## 22 AUG — THE WHOLE OVERNIGHT-INTO-AFTERNOON SESSION, MERGED INTO ONE
+> BLOCK. **STATUS: mostly current — see the block above for what changed
+> since this was written.** Written
+> ~14:00 by a compaction-prep subagent of the 22 Aug session, replacing
+> the several fragmentary blocks that were appended incrementally through
+> the night. Every machine-checkable claim here was RE-DERIVED at write
+> time — from `git log`, `FIX-LIST.md`, the Windows registry, and the
+> saved bytes of the real deck and register — not carried from the
+> session's own narrative. HEAD is `3838f5d`, tree clean, nothing
+> unpushed.
 >
-> **Confirmed working (Rohan pressed the buttons himself, not scripted):**
-> the single-press "Apply them now?" chain from `BuildAllQueuesCore` →
-> `ApplyApprovedCore` — one Yes/No, no second press needed, matching the
-> 18 Aug single-press design intent. My own earlier read of the dialog
-> text as demanding a second press was wrong; corrected directly by Rohan.
+> Gist: overnight we fixed a stack of small defects, built a tool that
+> caught 14 wrong milestone ticks in the real data, and gave every
+> milestone circle an optional percentage label that Rohan reshaped twice
+> while looking at it; by early afternoon the new add-in was live and a
+> real value entered in Excel came out rendered on the real slide.
 >
-> **Confirmed via full visual review, NOT fixed yet:**
-> 1. **Milestone circle colour regression.** Live `_OFF` circles are a
->    shared teal (`scheme:bg2`, `93DCDC`) across ALL of P/K/S. The
->    pre-retrofit backup
->    (`deck-sync-backups\3. Project Progress.pptx.r13-20260819-224334.bak.pptx`)
->    shows S-series `_OFF` was originally a distinct light purple
->    (`C0A2F2`) and K-series was `scheme:accent3` (pale cream `FDF0E6`) —
->    i.e. type-specific pale tints, not one shared colour. P's own
->    original `_OFF` colour is unknown; no pre-19-Aug P backup exists to
->    check against. Not logged as a FIX-LIST item yet — do that first if
->    picking this up.
-> 2. **Layout-spacing defect, slide 12 (`1_K1001`).** `KEY_EVENTS_BODY`
->    (TextBox 38) and `DELIVERABLE4_PHOTO` (Picture 2) are essentially
->    touching — `KEY_EVENTS_BODY` bottom edge at `347.4`, `DELIVERABLE4_
->    PHOTO` top at `347.5`. Confirmed by direct shape geometry, NOT a
->    text-overflow-within-its-own-box issue (that check correctly returned
->    clean — `BoundHeight=88.8` fits `Height=94.5`). This is a different
->    defect class the overflow scanner isn't built to catch; unknown
->    whether it recurs on other K-series slides — not yet checked.
-> 3. The full 47-slide "check fully" visual review Rohan asked for is only
->    PARTIALLY done — slides 1-5, 7, 12, 19, 23, 30, 34 spot-checked via
->    export, not every slide individually reviewed beyond the two defects
->    above.
+> ### LIVE STATE RIGHT NOW (derived, not remembered)
 >
-> **Deferred fix, not forgotten:** `RibbonUI.bas:1662-1669` — an
-> unconditional informational `MsgBox` ("nothing to copy") shown after
-> `PublishAllDraftedFields` even though its content is already logged to
-> Run Log unconditionally and the dialog offers no real decision
-> (OK-only). Proposed fix: drop the blocking MsgBox, just log and fall
-> through — same "one question, not three" philosophy already applied 20
-> lines below to the Apply step. **FIXED, later this same session — FIX-LIST
-> CO.** Dropped the blocking `MsgBox`; its content was already
-> unconditionally in the Run Log. Static check clean; **live verification
-> still pending** — Excel/PowerPoint were both open under a live session
-> when the fix landed, so `run_vba_tests.ps1` (aborts if either is already
-> running) couldn't be exercised. Run it next session before trusting this
-> beyond the static read.
+> - **`addin160.ppam` is the live registered build.** Registry
+>   (`HKCU\...\PowerPoint\AddIns`): addin160 is the ONLY entry with
+>   `AutoLoad=1`; `addin158`/`addin159` both `AutoLoad=0`. Built 13:37,
+>   two minutes after HEAD's commit, so it contains all of today's source
+>   (CO/CQ/CT included). Functional proof it genuinely runs: the 13:49
+>   sync below rendered behaviour only CT's code performs. **Caveat: it
+>   is registered at `C:\Users\rohan\OneDrive\addin160.ppam` — the
+>   OneDrive ROOT, not the trusted
+>   `C:\Users\rohan\AppData\Roaming\Microsoft\AddIns\` folder every build
+>   through 158 lives in** (CHECKLIST's own "Before rebuilding the
+>   addin" rule; a cloud-synced path is the exact class of OneDrive risk
+>   this project has paid for). `addin159` (11:41, superseded within two
+>   hours) sits beside it, also OneDrive root. Move-and-re-register on
+>   the next rebuild, or decide deliberately to accept it.
+> - **The live end-to-end percentage test reached the slide.** Register
+>   (working copy `C:\Users\rohan\AppData\Local\
+>   deck-sync-quarter-20260820-0900\register-wide.xlsx`) holds
+>   `MS4_PCT=60` on `2_P009`'s Q4F26 row; the deck saved at 13:49 shows,
+>   on slide 9 (`2_P009`), the `MS4_PCT` shape VISIBLE with text `60%`,
+>   all other `_PCT` shapes hidden — and `MS4_ON` visible even though
+>   `MS4_DONE` is blank (flags on that row: MS2/MS3/MS6 = Y). That is
+>   CT's contiguous colour AND its position-gated percentage both proven
+>   on real data, through the real button, verified from the saved
+>   files' own bytes by this pass. **Not on record: Rohan's own visual
+>   verdict on the rendered result.** The register was written again at
+>   13:56, after the deck save — a live session may still have been
+>   working as this was written; the ListAgents warning at the top of
+>   this file applies.
+> - **Full VBA suite: 296 passed, 0 failed** (commit `4da7aff`, run with
+>   Office closed — this cleared the "CO and CQ never ran live" debt the
+>   earlier fragmentary blocks carried).
+> - **Today's backups, two locations.** Register snapshots in this
+>   repo's `backups/` (`PRE-ADDIN158-RUN`, `PRE-1P010-MILESTONE-FIX`,
+>   `PRE-3K016-2P009-MILESTONE-FIX`, `PRE-BUTTON2-SYNC`,
+>   `PRE-MILESTONE-EVIDENCE-FIXES`, all 20260822-stamped). Deck/register
+>   pairs on the Windows side in
+>   `C:\Users\rohan\AppData\Local\deck-sync-backups\`
+>   (`PRE-OFF-TRACK-COLOUR-FIX` 11:05, `PRE-PCT-SHAPE-RETROFIT` 12:27,
+>   `PRE-PCT-FULL-RETROFIT` 13:04, `PRE-PCT-DEMO-VALUE` 13:40), plus the
+>   working copy's own `.r13-*.bak.pptx` at 13:49. One backup is GONE:
+>   CS's `PRE-PROJECT-PROGRESS-CELL-FIX` snapshot was deleted by
+>   mistake (the write it guarded was already independently verified —
+>   see CS).
 >
-> **MILESTONE PERCENTAGE DISPLAY — SPEC'D, THEN OPTION A BUILT, later this
-> same session.** Rohan flagged the milestone timeline as misleading on
-> non-contiguous progress (e.g. `2_P009`: MS2=done, MS3=done, MS4/5=not
-> done, MS6=done — "done, done, gap, gap, done" reads as messy/wrong even
-> though it's accurate). Two options were written up in full in
-> `MILESTONE-PERCENTAGE-DESIGN.md`:
-> 1. Simpler — drop the "current position" marker, lean on the existing
->    overall-progress badge instead. Not built; superseded by Rohan's pick
->    below.
-> 2. Richer — **Rohan's choice**: add a per-circle percentage, sourced from
->    a Research Manager's informed judgment. Explicitly does NOT change
->    which circle is "current" — `MilestoneDevice.DrawMilestones`'s
->    "newest achieved = current/big circle" logic is untouched. My own
->    earlier proposal to cap "current" at the last CONTIGUOUS done slot is
->    superseded/declined.
+> ### WHAT SHIPPED — FIX-LIST CF through CT, all committed. The item
+> ### text in `FIX-LIST.md` is the authority; this is the map, not the
+> ### territory.
 >
-> Within option 2, the spec laid out two RENDERING approaches and
-> recommended, then built, the cheap one:
-> - **Option A (BUILT): fold the percentage into the existing `_LABEL`
->   text** ("Fieldwork complete (75%)"). New `MS<n>_PCT` register column
->   (free text, RM-entered, optional), folded into the label by
->   `MilestoneDevice.DrawFromRow` — NOT by touching `DrawMilestones`, so
->   its signature and 7 existing direct-call tests needed zero changes.
->   `IsColumnForThisDevice` extended to recognise `_PCT`. New test:
->   `Test_MilestoneDevice_PercentageFoldsIntoLabelText`. **No new shape, no
->   template change, no 43-slide retrofit.** FIX-LIST item CQ.
-> - **Option B (still just designed): a new `_PCT` shape per slot.**
->   Real template geometry measured and recorded in the spec (a genuine
->   ~0.25-0.29in gap between circle and label on every slot, consistent
->   across P/K/S) in case this is ever wanted — e.g. if Option A's
->   in-sentence percentage turns out not to be scannable enough in
->   practice. Not started.
+> - **CF fixed** — `TIMELINE_ELAPSED` rendered raw register decimals;
+>   fixed, and the missing `.rest` companion bar added to 27 real slides
+>   + K/S templates.
+> - **CG fixed** — the real "Apply Approved" button silently dropped
+>   `STATUS_BADGE` and `KEY_EVENTS_HEADER` on every approval.
+> - **CH fixed** — `WorkbookBridge.LifespanOf` still matched the retired
+>   'Sync Review' sheet-name format.
+> - **CI fixed** — the "Apply them now?" approval dialog could silently
+>   truncate away its own question.
+> - **CJ fixed** — `VerifyRealDeck` reported 624 false positives for
+>   fields that never carry their own role tag by design.
+> - **addin158 built and registered 06:19; a real sync run (43 written,
+>   0 dropped); then a slide-by-slide gap analysis** against the
+>   pre-automation original deck, producing three findings **all STILL
+>   OPEN**: **CK** (milestone timeline doesn't reflect project closure —
+>   8 of 8 closed projects), **CL** (content depth drops sharply for
+>   S007 onward, 13 slides), **CM** (cosmetic — hidden leftover donor
+>   text on 32 of 43 slides).
+> - **CN resolved for the current data; open as a class.** New read-only
+>   tool `vba/tools/MilestoneEvidenceReport.bas` (+ PowerShell driver)
+>   compares register `MS*_DONE` flags against the pasted CRC-tracker
+>   evidence in `SRC_MILESTONES`, grouped by due-month offset. Four real
+>   bugs fixed in the tool itself while building it (headline: VBA's
+>   `Or` does not short-circuit; a loop-scoped `Dim` does not reset
+>   values between iterations). Clean run: 41 projects, 14 real
+>   disagreements, **all 14 resolved with Rohan** — 11 corrections
+>   written to the real register and verified from saved bytes, 5
+>   deliberately left where evidence said the register was already
+>   right. Still open: nothing prevents FUTURE drift — the proposed
+>   `RollForwardUI` hook was never actioned. (Nit: CN's FIX-LIST header
+>   still says "not yet run"; its own body records the run. The body is
+>   right.)
+> - **CO fixed, live-verified** — `RibbonUI.PutItOnTheSlides` showed a
+>   needless OK-only modal before its one real question; dropped, the
+>   content was already in the Run Log.
+> - **CP RETRACTED** — the milestone-colour "regression" was never real;
+>   every backup on disk shows teal was always P's colour, and the
+>   "regression" was Claude's own earlier template fix misread by a
+>   compacted summary. Lesson recorded in the item: a claim inherited
+>   from a compacted summary gets the same scrutiny as a stale handover.
+> - **CQ built, then SUPERSEDED same evening by CT** — Option A folded
+>   the percentage into the label text; Rohan saw it rendered and chose
+>   the real thing instead.
+> - **CR built, verified live** — `MS<n>_OFF` circles and `MS_TRACK` got
+>   type-specific pale FILLS, derived (not eyeballed) from each
+>   palette's own ~35% lightening step: P `599279`, K `FAB9A6`,
+>   S `E4D8FA`. Dry-run on scratch, backed up, applied, 0 mismatches
+>   from saved bytes across all 46 milestone-carrying slides. **But see
+>   the open items: the OUTLINE was missed.**
+> - **CS fixed, verified** — `VerifyRealDeck`'s 62 "mismatches" were a
+>   comparison bug (raw `||`-encoded register text vs rendered shape
+>   text); fixed with `RenderedForCompare`. The ONE genuine mismatch
+>   underneath: `3_P001`'s Q4F26 `PROJECT_PROGRESS` held raw `0.8`
+>   instead of `"80%"` (Excel coercion class, seen before) — fixed,
+>   `NumberFormat="@"` forced, verified from saved bytes. Final state:
+>   0 mismatches, 43/43 real slides fully OK.
+> - **CT built, live-verified, retrofitted — the milestone percentage,
+>   as Rohan actually wants it, three decisions deep.** (1) A real
+>   optional `MS<n>_PCT` shape under the date badge, not folded text —
+>   `MilestoneDevice.DrawMilestones` grew a required `pcts()` parameter.
+>   (2) Colour is CONTIGUOUS/positional: a slot renders achieved iff it
+>   sits at-or-before the current big circle, regardless of its own
+>   flag. (3) Percentage visibility gets the SAME position gate — a
+>   value on a future slot stays suppressed. Both behaviour changes
+>   fail-first proven. Retrofit tool `vba/tools/add_pct_shapes.vbs`
+>   added the shape to all 46 milestone-carrying slides (43 real +
+>   P/K/S exemplars), one slide per fresh PowerPoint launch; two real
+>   bugs caught before production (empty-textbox width collapse;
+>   regroup destroying the device group's name and tags) and one
+>   unrooted workaround (chained regroups in one PowerPoint session
+>   throw "Type mismatch" — sidestepped, never explained). Verified
+>   exhaustively from saved bytes, then `VerifyRealDeck` unchanged at
+>   0 mismatches.
+> - **Confirmed by Rohan pressing the real buttons:** the single-press
+>   "Apply them now?" chain behaves as designed — one Yes/No, no second
+>   press.
 >
-> **Both CO and CQ share the same open item: NEITHER HAS RUN LIVE YET.**
-> Excel/PowerPoint were open under a live session for both fixes. Run
-> `run_vba_tests.ps1` next session before trusting either beyond the static
-> read. CQ additionally has never been exercised against real data — no
-> `MS<n>_PCT` value has ever been entered in the live register, so the
-> percentage has never actually rendered on a slide.
+> ### OPEN, IN PRIORITY ORDER
 >
-> **FIX-LIST CP — logged as a colour regression, then RETRACTED same
-> session.** Investigating `_DATE` geometry for the spec above turned up
-> shared teal across all P/K/S `_OFF` circles; a pre-compaction summary
-> characterized this as a regression from distinct pale tints, citing a
-> "confirmed" backup. That citation did not survive checking — every
-> backup on disk (18 timestamped snapshots, 6 named backups, the 13 Aug
-> pre-onboard original) shows only P-type slides ever carrying the old
-> shape naming, and P has been teal since the earliest one available.
-> Rohan: **"today you took the real colours and fixed the hidden templates
-> in our ppt"** — teal is correct; Claude had already fixed the hidden
-> P/K/S templates to it earlier this same session, and what got logged as
-> CP was that same fix, misread as a bug. No colour change was ever
-> applied to the real deck — a dry run against a scratch copy was tested
-> and discarded once the citation fell apart. Full account: `FIX-LIST.md`
-> CP.
->
-> **FIX-LIST CR — the real gap CP was chasing, found properly and fixed
-> live.** `MS_BAR` and the `_ON`/`_NOW` circles already carry a correct
-> type-specific three-way distinction (item BP, 21 Aug — still standing).
-> `MS<n>_OFF` and `MS_TRACK` did not: confirmed uniformly teal on every
-> real slide and both templates. Rohan: "off needs changing too... and the
-> bar I think... adjust P too." Colours DERIVED (not picked by eye) — K
-> and S each already carry a NOW→ON lightening step in their own palette
-> (~33-36% toward white); averaged to one ratio (~35%) and applied one
-> step further for all three types, P included: **P `599279`, K `FAB9A6`,
-> S `E4D8FA`**. Dry-run verified against a scratch copy first (46
-> milestone-carrying slides, exact match, 0 mismatches), then applied
-> directly to the real deck (backed up first, Office confirmed closed) and
-> re-verified from the saved file's own bytes: 0 mismatches across all 46
-> slides, `MS_BAR`/`_ON`/`_NOW` confirmed untouched. Full account:
-> `FIX-LIST.md` CR.
+> 1. **`MS_TRACK`'s OUTLINE is still the old teal — found by this pass,
+>    in no FIX-LIST item yet. Log it before fixing it.** Slide 9's saved
+>    XML: `MS_TRACK` fill is CR's new `599279`, its line is still
+>    `schemeClr bg2`. CR restyled fills only, and `MilestoneDevice.bas`
+>    contains no `.Line` writes at all — outline colour is stored shape
+>    formatting on the slides, so the fix is another CR-shaped data-side
+>    pass (or a deliberate "leave it"), not a code edit.
+> 2. **Close the loop on the live test**: the rendered `60%` on `2_P009`
+>    is proven from bytes, but Rohan's visual verdict isn't recorded —
+>    get it, and record it.
+> 3. **The full 47-slide visual review is still only partial** (spot
+>    checks: slides 1-5, 7, 12, 19, 23, 30, 34). Known unlogged defect
+>    from it: slide 12 (`1_K1001`) `KEY_EVENTS_BODY` and
+>    `DELIVERABLE4_PHOTO` are touching (bottom 347.4 vs top 347.5) — a
+>    shape-collision class no current check catches; recurrence on other
+>    K slides unchecked.
+> 4. **CK / CL / CM** — closure display, S007+ content depth, hidden
+>    donor text. All logged, none started.
+> 5. **CN prevention** — hook the milestone-evidence comparison into
+>    `RollForwardUI` so drift gets caught by a button Rohan already
+>    presses every quarter.
+> 6. **addin160's OneDrive-root registration** (see live state above) —
+>    relocate into the AddIns folder on next rebuild, or accept it
+>    deliberately.
 
 > ## 20 AUG — a full day of mechanism work, ZERO real content drafted, and
 > a cold PM audit that said so plainly. **READ THIS BLOCK FIRST — it is

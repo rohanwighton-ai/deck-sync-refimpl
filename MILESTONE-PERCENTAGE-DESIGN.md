@@ -1,13 +1,18 @@
 # Milestone percentage display — design
 
-> **BUILT, LIVE-VERIFIED, AND RETROFITTED ACROSS THE REAL DECK — 2026-08-22.**
-> Option A shipped first, then was superseded the same evening by Option B
-> after Rohan looked at the real thing on screen. Final shape: a real
-> `MS<n>_PCT` shape under each date badge, shown only once the current
-> marker has reached that slot, and the milestone colour itself became
-> positional rather than per-flag. All three pieces below are built, and
-> the shape has been added to all 46 milestone-carrying slides (43 real +
-> P/K/S exemplar templates 44/46/47 — slide 45 has no milestone device).
+> **THE SHAPE WAS REMOVED, LATER THE SAME EVENING — 2026-08-22.** Option A
+> shipped, was superseded by Option B (a real `MS<n>_PCT` shape) after
+> Rohan looked at it on screen, was retrofitted across all 46 slides and
+> tested end-to-end live — then Rohan's verdict on seeing it rendered:
+> "remove the % tags we added please they didn't really work." All 322
+> shapes were removed. **The contiguous-colour and position-gating logic
+> below survive and are still live** — the objection was to the visual
+> shape specifically, not that underlying design. `COL_PCT`/`PART_PCT` and
+> the register columns are left in the code/register, inert without a
+> shape to write to. Full history: `FIX-LIST.md` items CQ (Option A) and
+> CT (Option B, retrofit, and the removal). Kept below as a design record
+> of what was tried and why it didn't survive contact with the real deck —
+> if percentage display is revisited, don't re-derive this from scratch.
 
 ## The problem
 

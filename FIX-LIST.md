@@ -5106,3 +5106,30 @@ entered in the live register and pushed through a real sync. The
 mechanism is proven; the real workflow (draft -> register -> sync ->
 slide) with real data hasn't run yet.
 
+**UPDATE, later the same session: the end-to-end test ran** (`2_P009`
+MS4_PCT=60, register columns added live since they'd never actually been
+created, real sync via Rohan pressing "2. Put it on the slides" himself)
+and confirmed the mechanism works -- but Rohan's verdict on seeing it
+rendered: **"remove the % tags we added please they didn't really work."**
+All 322 `MS<n>_PCT` shapes (46 slides x 7 slots) removed from the real
+deck -- deletion only, no regrouping needed, so no group-identity risk
+this time. Verified from saved bytes across all 46 slides: 0 remain.
+Register columns and `MilestoneDevice.bas` code left in place, harmless
+and inert without the shapes (`pctShp Is Nothing` degrades silently, by
+design) -- easy to fully strip later if wanted, but nothing left
+cluttering the deck either way. Contiguous colour (item 2 above) is
+UNCHANGED and stays -- Rohan's objection was specifically to the % shapes,
+not the colour logic.
+
+**Same pass also fixed a real, separate finding: `MS_TRACK`'s outline was
+still the old shared teal**, even after CR's fill fix -- every circle
+(`_ON`/`_NOW`/`_OFF`) already uses each type's own saturated colour for
+its outline, consistently, but the track's outline was never brought into
+that convention. Fixed by reading each slide's own `MS1_ON` outline
+colour live and copying it onto `MS_TRACK`, rather than a hardcoded
+constant. Same 46-slide sweep, one PowerPoint launch per slide (same
+"chaining slides in one session throws a COM error" constraint as the
+retrofit). Verified from saved bytes: all 46 slides, track outline now
+matches ON outline exactly. Final `VerifyRealDeck` re-run: 0 mismatches,
+0 unwired, 43/43 real slides fully OK -- unchanged.
+
