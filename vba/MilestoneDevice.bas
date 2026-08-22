@@ -60,9 +60,8 @@ Option Explicit
 '   MS1_OFF    the circle shown when it is NOT achieved          (optional)
 '   MS1_LABEL  its text
 '   MS1_DATE   its date
-' MS1_PCT is NOT a shape in the Selection Pane -- it is a register column
-' only. There is nothing to name in PowerPoint; DrawFromRow folds its value
-' straight into MS1_LABEL's own text before the write. See COL_PCT's header.
+'   MS1_PCT    a Research Manager's % opinion, small text under the date
+'              (optional -- see COL_PCT's header)
 ' and for the bar itself:
 '   MS_BAR     the part that grows, to the last ACHIEVED circle
 '   MS_TRACK   the extent, shortened to the last USED circle
@@ -85,6 +84,9 @@ Public Const PART_OFF As String = "_OFF"
 Public Const PART_NOW As String = "_NOW"
 Public Const PART_LABEL As String = "_LABEL"
 Public Const PART_DATE As String = "_DATE"
+' Optional, like _OFF: a template without it simply shows no percentage,
+' reported once rather than faked. See COL_PCT's header for the shape.
+Public Const PART_PCT As String = "_PCT"
 Public Const NAME_BAR As String = "MS_BAR"
 Public Const NAME_TRACK As String = "MS_TRACK"
 
@@ -124,15 +126,30 @@ Public Const COL_LABEL As String = "_LABEL"
 Public Const COL_DATE As String = "_DATE"
 Public Const COL_DONE As String = "_DONE"
 
-' A RESEARCH MANAGER'S JUDGMENT OF HOW FAR ALONG A NOT-YET-DONE MILESTONE IS.
+' A RESEARCH MANAGER'S JUDGMENT OF HOW FAR ALONG A MILESTONE IS.
 ' Rohan, 2026-08-22, after the on/off binary made a genuinely-progressing but
 ' not-yet-achieved milestone look identical to one nobody has touched:
 ' "perhaps we put a % done number in or next to each circle... this is where
-' Research Managers give an informed opinion." No new shape -- see
-' MILESTONE-PERCENTAGE-DESIGN.md's Option A/B tradeoff, decided in favour of
-' A: folded straight into the existing LABEL text by DrawFromRow, the same
-' way the whole rest of this device already treats a column as a column.
-' Blank means no opinion entered, same as every other part here.
+' Research Managers give an informed opinion."
+'
+' TWO DECISIONS, NOT ONE, LANDED THE SAME EVENING. First tried as Option A
+' (MILESTONE-PERCENTAGE-DESIGN.md): fold the number straight into MS1_LABEL's
+' text, no new shape. Superseded within the hour by Rohan looking at a real
+' rendered slide and asking a sharper question than the one this module had
+' been answering: "isn't that separator needed?" led to "as a smaller font
+' separate label under the date label" -- Option B, a real shape
+' (MS1_PCT, PART_PCT above), and a second, bigger change alongside it:
+'
+' COLOUR BECOMES POSITIONAL, NOT PER-FLAG. "we spoke about making the gaps
+' the same colour as done if they are before where the big circle currently
+' is... colour are always contiguous." A slot's own DONE flag no longer
+' decides ITS colour -- only whether it's <= the current slot, which is a
+' question about the whole list (see lastAchieved in DrawMilestones). The
+' flag still decides WHERE current sits; the percentage carries the honest
+' "how far along" nuance that "done vs not done" colour used to lose.
+'
+' Blank means no opinion entered, same as every other part here -- the
+' shape is simply left hidden.
 Public Const COL_PCT As String = "_PCT"
 
 ' The register column names this device reads, for slot `i`. Built here so the
@@ -419,17 +436,24 @@ Public Function DrawFromRow(grp As Object, rowValues As Object) As MilestoneDraw
         Exit Function
     End If
 
-    Dim labels() As String, dates() As String, done() As String
-    ReDim labels(1 To slots): ReDim dates(1 To slots): ReDim done(1 To slots)
+    Dim labels() As String, dates() As String, done() As String, pcts() As String
+    ReDim labels(1 To slots): ReDim dates(1 To slots): ReDim done(1 To slots): ReDim pcts(1 To slots)
 
     Dim used As Long
     Dim gap As String
     Dim i As Long
-    Dim pct As String
     For i = 1 To slots
         labels(i) = ValueOr(rowValues, ColumnFor(i, COL_LABEL))
         dates(i) = ValueOr(rowValues, ColumnFor(i, COL_DATE))
         done(i) = ValueOr(rowValues, ColumnFor(i, COL_DONE))
+
+        ' TRAILING "%" STRIPPED HERE, ONCE, so a Research Manager typing
+        ' either "75" or "75%" renders identically -- WriteText below adds
+        ' the "%" back on the way to the shape, never doubled.
+        Dim pct As String
+        pct = Trim(ValueOr(rowValues, ColumnFor(i, COL_PCT)))
+        If Right$(pct, 1) = "%" Then pct = Trim(Left$(pct, Len(pct) - 1))
+        pcts(i) = pct
 
         If Trim(labels(i)) <> "" Then
             ' A GAP IS REPORTED. Slots are drawn in order, so a filled MS3 with
@@ -441,13 +465,6 @@ Public Function DrawFromRow(grp As Object, rowValues As Object) As MilestoneDraw
                     ColumnFor(used + 1, COL_LABEL) & " is empty"
             End If
             used = i
-
-            ' RESEARCH-MANAGER PERCENTAGE, FOLDED INTO THE LABEL TEXT --
-            ' see COL_PCT's own header for why there is no new shape.
-            ' Blank column means no opinion entered; nothing is added.
-            pct = Trim(ValueOr(rowValues, ColumnFor(i, COL_PCT)))
-            If Right$(pct, 1) = "%" Then pct = Trim(Left$(pct, Len(pct) - 1))
-            If pct <> "" Then labels(i) = labels(i) & " (" & pct & "%)"
         End If
     Next i
 
@@ -459,7 +476,7 @@ Public Function DrawFromRow(grp As Object, rowValues As Object) As MilestoneDraw
         Exit Function
     End If
 
-    DrawFromRow = DrawMilestones(grp, labels, dates, done, used)
+    DrawFromRow = DrawMilestones(grp, labels, dates, done, pcts, used)
 End Function
 
 Private Function ValueOr(rowValues As Object, key As String) As String
@@ -470,12 +487,14 @@ Private Function ValueOr(rowValues As Object, key As String) As String
     On Error GoTo 0
 End Function
 
-' Draws the device. `useCount` says how many of the parallel entries are real;
-' DrawFromRow builds all three from one pass over the same columns, so they
-' cannot disagree. The length check below guards the tests that call this
-' directly.
+' Draws the device. `pcts` is required, same as labels/dates/done -- it is a
+' field like the others, not a bolt-on (see COL_PCT's header). `useCount`
+' says how many of the parallel entries are real; DrawFromRow builds all
+' four from one pass over the same columns, so they cannot disagree. The
+' length check below guards the tests that call this directly.
 Public Function DrawMilestones(grp As Object, labels() As String, dates() As String, _
-                               done() As String, Optional useCount As Long = -1) As MilestoneDrawResult
+                               done() As String, pcts() As String, _
+                               Optional useCount As Long = -1) As MilestoneDrawResult
     Dim result As MilestoneDrawResult
 
     If grp Is Nothing Then
@@ -484,23 +503,24 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
         Exit Function
     End If
 
-    Dim nL As Long, nD As Long, nX As Long
+    Dim nL As Long, nD As Long, nX As Long, nP As Long
     nL = UBound(labels) - LBound(labels) + 1
     nD = UBound(dates) - LBound(dates) + 1
     nX = UBound(done) - LBound(done) + 1
+    nP = UBound(pcts) - LBound(pcts) + 1
 
-    ' `useCount` says how many entries are REAL. DrawFromRow fills all three
+    ' `useCount` says how many entries are REAL. DrawFromRow fills all four
     ' arrays in one pass over the same slots, so they are the same length by
     ' construction and only the count differs -- overriding just nL made the
     ' guard compare 3 against 4 and refuse its own correctly-built data.
     ' The mismatch check below is for callers that build the arrays themselves.
     If useCount >= 0 Then
-        nL = useCount: nD = useCount: nX = useCount
+        nL = useCount: nD = useCount: nX = useCount: nP = useCount
     End If
 
-    If nL <> nD Or nL <> nX Then
+    If nL <> nD Or nL <> nX Or nL <> nP Then
         result.ErrorMessage = "the milestone lists are different lengths -- " & _
-            nL & " label(s), " & nD & " date(s), " & nX & " done-flag(s). " & _
+            nL & " label(s), " & nD & " date(s), " & nX & " done-flag(s), " & nP & " pct(s). " & _
             "They are paired by position, so nothing was drawn: pairing them " & _
             "wrongly would put the right dates on the wrong milestones and the " & _
             "slide would look finished."
@@ -548,16 +568,27 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
     Dim i As Long
     For i = 1 To result.SlotsFound
         Dim onShp As Object, offShp As Object, nowShp As Object
-        Dim labShp As Object, datShp As Object
+        Dim labShp As Object, datShp As Object, pctShp As Object
         Set onShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_ON)
         Set offShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_OFF)
         Set nowShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_NOW)
         Set labShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_LABEL)
         Set datShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_DATE)
+        Set pctShp = PartOrNothing(parts, SLOT_PREFIX & i & PART_PCT)
 
         If i <= nL Then
+            ' COLOUR IS POSITIONAL, NOT PER-FLAG -- Rohan, 2026-08-22: "colour
+            ' are always contiguous." A slot's own DONE flag no longer decides
+            ' ITS colour; only whether it sits at or before the current slot
+            ' does. lastAchieved is already the HIGHEST done-flagged slot, so
+            ' nothing after it could ever have been "done" anyway -- this only
+            ' changes the render for a slot BEFORE current whose own flag is
+            ' blank, which used to show as a visible gap and now doesn't. The
+            ' flag still decides WHERE current sits (the scan loop above); the
+            ' percentage (below) is what now carries the honest "not really
+            ' 100%" nuance the colour used to.
             Dim isDone As Boolean
-            isDone = IsDoneWord(done(LBound(done) + i - 1))
+            isDone = (i <= lastAchieved)
 
             ' ACHIEVED IS SHOWN BY WHICHEVER CIRCLES THE TEMPLATE CARRIES.
             ' Two circles means toggle between them. One circle means the
@@ -568,8 +599,8 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
             ' whole four-state model:
             '
             '   current (the last achieved)  -> _NOW   big
-            '   achieved, earlier            -> _ON    small
-            '   not achieved                 -> _OFF   small, other colour
+            '   at or before current         -> _ON    small
+            '   after current                -> _OFF   small, other colour
             '   slot unused                  -> none   (handled below)
             '
             ' Every absent part DEGRADES to the next best circle the template
@@ -620,6 +651,31 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
             slotOk = WriteText(labShp, labels(LBound(labels) + i - 1)) And slotOk
             slotOk = WriteText(datShp, dates(LBound(dates) + i - 1)) And slotOk
 
+            ' PCT IS OPTIONAL AT THE VALUE LEVEL, unlike LABEL/DATE -- a used
+            ' slot with no Research Manager opinion yet simply shows nothing,
+            ' same "blank means absent" rule as everywhere else in this device.
+            '
+            ' ALSO GATED BY POSITION, same rule as the colour above -- Rohan,
+            ' looking at the first real one on screen: "not worth having on
+            ' future ones, should just turn on when big lead circle reaches
+            ' that point." A slot AFTER current hasn't been reached yet, so
+            ' any percentage sitting in the register for it is premature and
+            ' stays suppressed until the current marker (lastAchieved) is
+            ' at or past that slot -- even if a value happens to be present.
+            Dim pctValue As String
+            pctValue = pcts(LBound(pcts) + i - 1)
+            If Trim(pctValue) <> "" And i <= lastAchieved Then
+                If pctShp Is Nothing Then
+                    NoteOnce result, SLOT_PREFIX & i & " has a percentage to show but no " & _
+                        PART_PCT & " shape on this template, so it isn't shown"
+                Else
+                    slotOk = SetVisible(pctShp, True) And slotOk
+                    slotOk = WriteText(pctShp, pctValue & "%") And slotOk
+                End If
+            Else
+                slotOk = SetVisible(pctShp, False) And slotOk
+            End If
+
             If Not slotOk Then NoteOnce result, SLOT_PREFIX & i & _
                 ": a write did not take -- the slide may not match this report"
 
@@ -634,6 +690,7 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
             hideOk = SetVisible(nowShp, False) And hideOk
             hideOk = SetVisible(labShp, False) And hideOk
             hideOk = SetVisible(datShp, False) And hideOk
+            hideOk = SetVisible(pctShp, False) And hideOk
 
             If Not hideOk Then NoteOnce result, SLOT_PREFIX & i & _
                 ": could not fully hide -- a visibility write did not take"

@@ -12,6 +12,48 @@
 > number this doc names below; the file with the highest number isn't
 > necessarily the one actually registered live.
 
+> ## 22 AUG, LATE MORNING — milestone percentage went from Option A to the
+> real thing (own shape, contiguous colour, position-gated), retrofitted
+> across all 46 slides. **STATUS: CURRENT, supersedes the CQ material in
+> the block below.**
+>
+> **CQ (fold into label) shipped, was live-verified, then Rohan looked at
+> it rendered on the real slide and changed the design twice more in one
+> sitting** — "isn't that separator needed?" -> a real `MS<n>_PCT` shape
+> under the date badge; then "colour are always contiguous" (a slot before
+> current renders achieved regardless of its own flag); then "not worth
+> having on future ones" (percentage visibility gets the same position
+> gate). All three fail-first proven. Full account: `FIX-LIST.md` CT,
+> design: `MILESTONE-PERCENTAGE-DESIGN.md`.
+>
+> **Retrofitted live, all 46 milestone-carrying slides** (43 real + P/K/S
+> templates 44/46/47). Two real bugs caught before touching the real file:
+> an empty textbox auto-fitting to ~0 width (caught by reading the saved
+> XML, not the tool's own "7 added" message), and regrouping wiping the
+> device group's own name/role tag (confirmed on a scratch copy first,
+> fixed by capturing and restoring both). A third issue — chaining more
+> than one slide's regroup in one PowerPoint session threw a reproducible
+> "Type mismatch" on the second slide — was worked around (one slide per
+> fresh launch) rather than root-caused. Verified from the saved file's
+> own bytes across all 46 slides (0 issues) and a full `VerifyRealDeck`
+> re-run (0 mismatches, unchanged from before the retrofit).
+>
+> **THE ONE THING THE NEXT SESSION MUST DO FIRST: rebuild and re-register
+> the add-in.** `addin159` (built and registered earlier the same session,
+> before any of this) does not contain today's `MilestoneDevice.bas` or
+> `RibbonUI.bas` changes at all — the code exists only as source in the
+> repo right now. Run `vba/tests/build_ppam.ps1`, Save As a fresh
+> `.ppam`, register it (unload whatever's currently `AutoLoad=True` first
+> — do not leave two add-ins loaded at once, confirmed empirically this
+> session that PowerPoint will happily do exactly that if you don't
+> explicitly remove the old one). Verify via a cold PowerPoint restart
+> before trusting it.
+>
+> **Not yet exercised end-to-end**: no real `MS<n>_PCT` value has ever
+> been entered in the live register and pushed through an actual sync —
+> everything above is proven at the shape/code level, not against the
+> real drafting-to-slide workflow.
+
 > ## 21-22 AUG — the Milestone-Evidence tool built and used to fix a real
 > data-quality gap in the register; an open design decision on how the
 > milestone timeline should show partial progress, NOT YET BUILT.

@@ -2010,12 +2010,18 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "MilestoneDevice_ReadsAColumnPerIntervalFromTheRow", r
-    If TestMatches("MilestoneDevice_PercentageFoldsIntoLabelText", filterPattern) Then
-        r = Test_MilestoneDevice_PercentageFoldsIntoLabelText()
+    If TestMatches("MilestoneDevice_PercentageIsItsOwnOptionalShape", filterPattern) Then
+        r = Test_MilestoneDevice_PercentageIsItsOwnOptionalShape()
     Else
         r = TEST_SKIPPED
     End If
-    AppendResult report, "MilestoneDevice_PercentageFoldsIntoLabelText", r
+    AppendResult report, "MilestoneDevice_PercentageIsItsOwnOptionalShape", r
+    If TestMatches("MilestoneDevice_ColourIsContiguousNotPerFlag", filterPattern) Then
+        r = Test_MilestoneDevice_ColourIsContiguousNotPerFlag()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "MilestoneDevice_ColourIsContiguousNotPerFlag", r
     If TestMatches("MilestoneDevice_ReportWrapperMatchesTheRealResult", filterPattern) Then
         r = Test_MilestoneDevice_ReportWrapperMatchesTheRealResult()
     Else
@@ -15443,6 +15449,20 @@ Private Function SplitList(v As String) As String()
     SplitList = Split(v, InjectPrimitive.VALUE_SEPARATOR)
 End Function
 
+' An all-blank pcts() array of length n, for tests that don't care about the
+' percentage at all -- DrawMilestones requires pcts as a real parameter now
+' (same as labels/dates/done), but a blank value degrades to "not shown",
+' same as everywhere else in the device.
+Private Function BlankList(n As Long) As String()
+    Dim arr() As String
+    ReDim arr(1 To n)
+    Dim i As Long
+    For i = 1 To n
+        arr(i) = ""
+    Next i
+    BlankList = arr
+End Function
+
 ' THE TIMELINE, DRAWN FROM DATA, CREATING NOTHING.
 '
 ' Rohan, 2026-08-10: "I'd like it all data drawn given I take a robotic approach
@@ -15471,7 +15491,7 @@ Private Function Test_MilestoneDevice_DrawsFromDataAndCreatesNothing() As String
     r = MilestoneDevice.DrawMilestones(grp, _
         SplitList("Kickoff||Design||Build"), _
         SplitList("Oct 2023||Mar 2024||Sep 2024"), _
-        SplitList("Y||Y||N"))
+        SplitList("Y||Y||N"), BlankList(3))
 
     ' CRITICAL-EFFECTS SHORTLIST, item 1 -- see Watch's header. Three slots
     ' ON, one OFF, slot 2 the bolded NOW: a human watching the (visible)
@@ -15567,7 +15587,7 @@ Private Function Test_MilestoneDevice_FullLifecycleNoStaleCircles() As String
         Next i
 
         Dim r As MilestoneDrawResult
-        r = MilestoneDevice.DrawMilestones(grp, labels, dates, done)
+        r = MilestoneDevice.DrawMilestones(grp, labels, dates, done, BlankList(5))
         result = result & Assert(r.ErrorMessage = "", _
             "qtrStep " & qtrStep & " draws clean, got [" & r.ErrorMessage & "]")
 
@@ -15636,7 +15656,7 @@ Private Function Test_MilestoneDevice_TwoLineLabelConvertsThePipeDelimiterToARea
     done(1) = "Y": done(2) = "N"
 
     Dim r As MilestoneDrawResult
-    r = MilestoneDevice.DrawMilestones(grp, labels, dates, done)
+    r = MilestoneDevice.DrawMilestones(grp, labels, dates, done, BlankList(2))
 
     result = result & Assert(r.ErrorMessage = "", "it draws [" & r.ErrorMessage & "]")
 
@@ -15687,7 +15707,7 @@ Private Function Test_MilestoneDevice_ReportWrapperMatchesTheRealResult() As Str
     done = SplitList("Y||Y||N")
 
     Dim direct As MilestoneDrawResult
-    direct = MilestoneDevice.DrawMilestones(grp, labels, dates, done)
+    direct = MilestoneDevice.DrawMilestones(grp, labels, dates, done, BlankList(3))
 
     ' Re-run against the SAME group via DrawFromRow/the wrapper -- same data,
     ' different entry point, so the wrapper's numbers must match what DIRECT
@@ -15746,7 +15766,7 @@ Private Function Test_MilestoneDevice_ReportsAWriteThatDidNotTake() As String
     r = MilestoneDevice.DrawMilestones(grp, _
         SplitList("Kickoff||Design||Build"), _
         SplitList("Oct 2023||Mar 2024||Sep 2024"), _
-        SplitList("Y||Y||N"))
+        SplitList("Y||Y||N"), BlankList(3))
 
     ' THE ONE THAT MATTERS. Before this fix, a declined write was invisible --
     ' Drawn would read 3 and nothing would say slot 2 is wrong.
@@ -15781,7 +15801,7 @@ Private Function Test_MilestoneDevice_RefusesListsThatCannotBeAligned() As Strin
 
     Dim r As MilestoneDrawResult
     r = MilestoneDevice.DrawMilestones(grp, _
-        SplitList("A||B||C"), SplitList("1||2"), SplitList("Y||N||N"))
+        SplitList("A||B||C"), SplitList("1||2"), SplitList("Y||N||N"), BlankList(3))
 
     result = result & Assert(r.ErrorMessage <> "", "mismatched lists are refused")
     result = result & Assert(InStr(r.ErrorMessage, "3 label") > 0 _
@@ -15794,7 +15814,7 @@ Private Function Test_MilestoneDevice_RefusesListsThatCannotBeAligned() As Strin
     ' drawing the first four would silently drop the fifth.
     Dim r2 As MilestoneDrawResult
     r2 = MilestoneDevice.DrawMilestones(grp, _
-        SplitList("A||B||C||D||E"), SplitList("1||2||3||4||5"), SplitList("Y||Y||Y||Y||Y"))
+        SplitList("A||B||C||D||E"), SplitList("1||2||3||4||5"), SplitList("Y||Y||Y||Y||Y"), BlankList(5))
     result = result & Assert(r2.ErrorMessage <> "" And r2.Drawn = 0, _
         "five milestones into four slots is refused, not truncated")
     result = result & Assert(InStr(r2.ErrorMessage, "5 milestone") > 0 _
@@ -15870,41 +15890,71 @@ Private Function Test_MilestoneDevice_ReadsAColumnPerIntervalFromTheRow() As Str
 End Function
 
 
-' A RESEARCH MANAGER'S % OPINION, FOLDED INTO THE LABEL -- NO NEW SHAPE.
-'
-' MILESTONE-PERCENTAGE-DESIGN.md's Option A: MS<n>_PCT is a register column
-' only, never a shape in the Selection Pane. DrawFromRow appends it to the
-' label text it already writes. Three cases: a value present, blank (nothing
-' added), and a value someone already typed with its own "%" (not doubled).
-Private Function Test_MilestoneDevice_PercentageFoldsIntoLabelText() As String
+' A RESEARCH MANAGER'S % OPINION, ITS OWN SHAPE -- OPTION B, superseding
+' Option A the same evening. Rohan, looking at a real slide: "isn't that
+' separator needed?" -> "as a smaller font separate label under the date
+' label." MS1_PCT is a real shape now (MilestoneDevice.PART_PCT), optional
+' like _OFF -- a template that doesn't carry it yet degrades and reports,
+' never invents one.
+Private Function Test_MilestoneDevice_PercentageIsItsOwnOptionalShape() As String
     Dim result As String
 
     Dim sld As Object
     Set sld = NewBlankSlide()
     Dim grp As Object
-    Set grp = NewMilestoneDevice(sld, 3)
+    Set grp = NewMilestoneDeviceWithNow(sld, 5)
+
+    ' Slots 1 and 5 get a real PCT shape -- slots 2-4 deliberately have
+    ' none, to prove the degrade-and-report path for a not-yet-retrofitted
+    ' template, same discipline _OFF/_NOW already get tested under.
+    Dim pctShp As Object, pctShp5 As Object
+    Set pctShp = sld.Shapes.AddTextbox(1, 130, 114, 40, 10)
+    pctShp.Name = "MS1_PCT"
+    Set grp = sld.Shapes.Range(Array(grp.Name, pctShp.Name)).Group
+    Set pctShp5 = sld.Shapes.AddTextbox(1, 130, 314, 40, 10)
+    pctShp5.Name = "MS5_PCT"
+    Set grp = sld.Shapes.Range(Array(grp.Name, pctShp5.Name)).Group
 
     Dim row As Object
     Set row = CreateObject("Scripting.Dictionary")
     row("MS1_LABEL") = "Fieldwork": row("MS1_DATE") = "6":  row("MS1_DONE") = ""
     row("MS1_PCT") = "75"
-    row("MS2_LABEL") = "Analysis":  row("MS2_DATE") = "12": row("MS2_DONE") = ""
+    row("MS2_LABEL") = "Analysis":  row("MS2_DATE") = "12": row("MS2_DONE") = "Y"
     row("MS2_PCT") = ""
-    row("MS3_LABEL") = "Report":    row("MS3_DATE") = "24": row("MS3_DONE") = "Y"
-    row("MS3_PCT") = "100%"
+    row("MS3_LABEL") = "Design":    row("MS3_DATE") = "18": row("MS3_DONE") = ""
+    row("MS3_PCT") = "40"
+    row("MS4_LABEL") = "Report":    row("MS4_DATE") = "24": row("MS4_DONE") = "Y"
+    row("MS4_PCT") = "100%"
+    ' MS5 is AFTER current (MS4 is the highest done slot) -- has both a
+    ' real shape AND a value, and must still not show. Rohan, looking at
+    ' the first real one on screen: "not worth having on future ones,
+    ' should just turn on when big lead circle reaches that point."
+    row("MS5_LABEL") = "Launch":     row("MS5_DATE") = "30": row("MS5_DONE") = ""
+    row("MS5_PCT") = "10"
 
     Dim r As MilestoneDrawResult
     r = MilestoneDevice.DrawFromRow(grp, row)
 
     result = result & Assert(r.ErrorMessage = "", "it draws [" & r.ErrorMessage & "]")
-    result = result & Assert(NamedIn(grp, "MS1_LABEL").TextFrame.TextRange.text = "Fieldwork (75%)", _
-        "a PCT value is appended to the label, got '" & _
+
+    result = result & Assert(NamedIn(grp, "MS1_PCT").Visible = msoTrue, "MS1_PCT shown when a value is given")
+    result = result & Assert(NamedIn(grp, "MS1_PCT").TextFrame.TextRange.text = "75%", _
+        "MS1_PCT written as '75%', got '" & NamedIn(grp, "MS1_PCT").TextFrame.TextRange.text & "'")
+    result = result & Assert(NamedIn(grp, "MS1_LABEL").TextFrame.TextRange.text = "Fieldwork", _
+        "the label itself is untouched -- no fold-into-text, that was Option A, got '" & _
         NamedIn(grp, "MS1_LABEL").TextFrame.TextRange.text & "'")
-    result = result & Assert(NamedIn(grp, "MS2_LABEL").TextFrame.TextRange.text = "Analysis", _
-        "a blank PCT adds nothing, got '" & NamedIn(grp, "MS2_LABEL").TextFrame.TextRange.text & "'")
-    result = result & Assert(NamedIn(grp, "MS3_LABEL").TextFrame.TextRange.text = "Report (100%)", _
-        "a value already carrying its own '%' is not doubled, got '" & _
-        NamedIn(grp, "MS3_LABEL").TextFrame.TextRange.text & "'")
+
+    ' MS3 has a value ("40") but NO MS3_PCT shape on this template --
+    ' degrades silently on the slide and names it in the report, never
+    ' invents a shape to show it in.
+    result = result & Assert(InStr(r.Detail, "MS3") > 0 And InStr(r.Detail, "percentage") > 0, _
+        "a value with no shape to show it in is reported, got '" & r.Detail & "'")
+
+    ' MS5: AFTER current (MS4), has a real shape AND a value -- must still
+    ' be hidden. Position gates visibility same as colour; a value alone
+    ' is not enough.
+    result = result & Assert(NamedIn(grp, "MS5_PCT").Visible = msoFalse, _
+        "MS5_PCT stays hidden -- it's after the current slot, not worth showing yet")
 
     ' MS<n>_PCT MUST NOT BE TREATED AS AN ORDINARY ORPHAN COLUMN -- it is
     ' addressed by the device, like LABEL/DATE/DONE, never role-tagged.
@@ -15912,7 +15962,75 @@ Private Function Test_MilestoneDevice_PercentageFoldsIntoLabelText() As String
         "MS1_PCT is recognised as a device column, not a stray one")
 
     sld.Delete
-    Test_MilestoneDevice_PercentageFoldsIntoLabelText = result
+    Test_MilestoneDevice_PercentageIsItsOwnOptionalShape = result
+End Function
+
+' COLOUR IS CONTIGUOUS, NOT PER-FLAG -- Rohan: "we spoke about making the
+' gaps the same colour as done if they are before where the big circle
+' currently is... colour are always contiguous." Same row() as the test
+' above (MS1/MS3 blank, MS2/MS4 done, MS4 highest -> current): under the
+' OLD per-flag rule MS1 and MS3 would render _OFF (a visible gap). This is
+' the regression proof -- reverting DrawMilestones's `isDone = (i <=
+' lastAchieved)` back to `IsDoneWord(done(i))` makes MS1_ON/MS3_ON below
+' fail, confirmed live before this test was trusted.
+Private Function Test_MilestoneDevice_ColourIsContiguousNotPerFlag() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDeviceWithNow(sld, 4)
+
+    Dim row As Object
+    Set row = CreateObject("Scripting.Dictionary")
+    row("MS1_LABEL") = "Fieldwork": row("MS1_DATE") = "6":  row("MS1_DONE") = ""
+    row("MS2_LABEL") = "Analysis":  row("MS2_DATE") = "12": row("MS2_DONE") = "Y"
+    row("MS3_LABEL") = "Design":    row("MS3_DATE") = "18": row("MS3_DONE") = ""
+    row("MS4_LABEL") = "Report":    row("MS4_DATE") = "24": row("MS4_DONE") = "Y"
+
+    Dim r As MilestoneDrawResult
+    r = MilestoneDevice.DrawFromRow(grp, row)
+    result = result & Assert(r.ErrorMessage = "", "it draws [" & r.ErrorMessage & "]")
+
+    ' MS1 and MS3: own flag is blank, but both sit AT OR BEFORE MS4 (the
+    ' highest done-flagged slot, so the current one) -- contiguous colour
+    ' means both show as achieved, not as a gap.
+    result = result & Assert(NamedIn(grp, "MS1_ON").Visible = msoTrue, _
+        "MS1 (own flag blank, before current) renders ON, not a gap")
+    result = result & Assert(NamedIn(grp, "MS1_OFF").Visible = msoFalse, _
+        "MS1_OFF must NOT be showing")
+    result = result & Assert(NamedIn(grp, "MS3_ON").Visible = msoTrue, _
+        "MS3 (own flag blank, before current) renders ON, not a gap")
+    result = result & Assert(NamedIn(grp, "MS3_OFF").Visible = msoFalse, _
+        "MS3_OFF must NOT be showing")
+
+    ' MS4 is current (the highest done-flagged slot) -> big circle.
+    result = result & Assert(NamedIn(grp, "MS4_NOW").Visible = msoTrue, _
+        "MS4 (highest done slot) is current")
+
+    ' WHERE current SITS is still decided by the flags -- only per-slot
+    ' colour changed. A project with nothing done at all still shows every
+    ' slot as a genuine gap; contiguous only ever pulls colour FORWARD to
+    ' meet current, never invents a current that isn't there.
+    Dim rowNoneDone As Object
+    Set rowNoneDone = CreateObject("Scripting.Dictionary")
+    rowNoneDone("MS1_LABEL") = "Fieldwork": rowNoneDone("MS1_DATE") = "6": rowNoneDone("MS1_DONE") = ""
+    rowNoneDone("MS2_LABEL") = "Analysis": rowNoneDone("MS2_DATE") = "12": rowNoneDone("MS2_DONE") = ""
+
+    Dim sld2 As Object
+    Set sld2 = NewBlankSlide()
+    Dim grp2 As Object
+    Set grp2 = NewMilestoneDeviceWithNow(sld2, 2)
+    Dim r2 As MilestoneDrawResult
+    r2 = MilestoneDevice.DrawFromRow(grp2, rowNoneDone)
+    result = result & Assert(NamedIn(grp2, "MS1_OFF").Visible = msoTrue, _
+        "with nothing done, MS1 is a genuine gap, not falsely pulled to ON")
+    result = result & Assert(NamedIn(grp2, "MS1_NOW").Visible = msoFalse, _
+        "and nothing is falsely current either")
+
+    sld2.Delete
+    sld.Delete
+    Test_MilestoneDevice_ColourIsContiguousNotPerFlag = result
 End Function
 
 

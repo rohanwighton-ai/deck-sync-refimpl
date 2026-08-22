@@ -4914,8 +4914,8 @@ No action needed. Lesson: a claim inherited from a compacted summary is
 exactly as unverified as one from a stale handover doc, and gets the same
 scrutiny before landing in a durable file.
 
-## Built and live-verified 2026-08-22 — CQ, milestone percentage display
-## (Option A)
+## SUPERSEDED same evening 2026-08-22 — CQ, milestone percentage display
+## (Option A) -- see CT for what actually shipped
 
 Full design in `MILESTONE-PERCENTAGE-DESIGN.md`. Rohan asked for a
 Research Manager's informed percentage next to a not-yet-achieved
@@ -5023,4 +5023,86 @@ directly (Office confirmed closed both times -- no live-handle risk).
 Final check re-extracted and re-parsed the SAVED file's own XML bytes
 across all 46 slides against the table above: 0 mismatches. `MS_BAR` and
 `_ON`/`_NOW` confirmed untouched throughout.
+
+## Built, live-verified and retrofitted 2026-08-22 — CT, milestone
+## percentage display supersedes CQ (Option A) with the real thing Rohan
+## actually wanted, three decisions deep
+
+Full design in `MILESTONE-PERCENTAGE-DESIGN.md`. CQ shipped Option A
+(percentage folded into the label text) and was live-verified clean. Same
+evening, looking at it rendered on a real slide, Rohan changed the design
+twice more:
+
+1. **"isn't that separator needed?"** -> **"as a smaller font separate
+   label under the date label."** Option A retired; `PART_PCT = "_PCT"`
+   is now a real, optional shape (same pattern as `_OFF`), not folded
+   text. `DrawMilestones`'s signature grew a required `pcts()` parameter
+   (all 7 existing direct-call tests in `TestRunner.bas` updated to pass
+   `BlankList(n)`, a new helper).
+2. **"we spoke about making the gaps the same colour as done if they are
+   before where the big circle currently is... colour are always
+   contiguous."** `isDone` changed from `IsDoneWord(done(i))` (per-slot
+   flag) to `(i <= lastAchieved)` (position relative to current). A slot
+   before current now renders achieved regardless of its own flag; the
+   flag still decides where current sits. Fail-first proven: reverted the
+   one-line change, confirmed `Test_MilestoneDevice_ColourIsContiguousNot
+   PerFlag` fails on exactly the right two assertions (MS1/MS3 rendering
+   OFF instead of ON), restored, confirmed clean.
+3. **"not worth having on future ones, should just turn on when big lead
+   circle reaches that point."** Percentage visibility gets the SAME
+   position gate: `Trim(pctValue) <> "" And i <= lastAchieved`. A value
+   sitting in the register for a not-yet-reached slot stays suppressed
+   even with a real shape present. Fail-first proven the same way
+   (`Test_MilestoneDevice_PercentageIsItsOwnOptionalShape`'s MS5 case,
+   which has both a shape AND a value and must still be hidden).
+
+**The retrofit -- new shape, 46 slides, real production write.** New tool
+`vba/tools/add_pct_shapes.vbs`: measures each slide's own `MS<n>_ON`
+circle and places `MS<n>_PCT` directly below it (never a hardcoded
+position), hidden by default. Two real bugs found and fixed before
+touching the real file:
+
+- **Width=0 bug.** An empty `AddTextbox` with `WordWrap=False` and no
+  `AutoSize` override auto-fits to ~0 width the instant it's created --
+  every shape shipped at `cx=65` EMU (invisible) on the first dry run,
+  caught only by reading the saved file's own XML rather than trusting
+  the "7 shapes added" success message. Fixed: disable `AutoSize` before
+  any text/font property, then re-assert geometry explicitly afterward.
+- **Regrouping destroys the device group's own name and role tag.**
+  Confirmed empirically against a scratch copy first (`MILESTONE_TIMELINE`
+  -> generic `"Group"`, 0 tags) before this ever touched the real file.
+  Fixed: capture name + every tag before each regroup, restore both
+  immediately after.
+- **Chaining more than one slide's regroup in a single PowerPoint session
+  produced a reproducible "Type mismatch"** on the second slide's device
+  lookup -- identical logic against that same slide in total isolation
+  worked cleanly. Never root-caused further; the retrofit runs one slide
+  per fresh PowerPoint launch instead (a bash loop), which sidesteps it
+  entirely and matches the fresh-instance pattern already used elsewhere
+  in this project. A brief PowerPoint shutdown delay between launches
+  (COM doesn't release instantly) needed an actual wait-and-recheck loop,
+  not a fixed sleep -- caught live when a 2-second sleep still weren't
+  enough.
+
+**Applied to all 46 milestone-carrying slides** (43 real + P/K/S exemplar
+templates 44/46/47; slide 45 has no milestone device) -- one exemplar
+(P, slide 44) first, with a demo value written and shown live so Rohan
+could confirm the actual placement before the rest were touched, then the
+demo cleared before the full run. Real deck backed up to
+`backups/PRE-PCT-SHAPE-RETROFIT-<timestamp>/` before the first write and
+`backups/PRE-PCT-FULL-RETROFIT-<timestamp>/` before the full run.
+
+**Verified from the saved file's own bytes, exhaustively, not from any
+tool's own success message**: all 46 target slides re-parsed after the
+retrofit -- 7 `MS<n>_PCT` shapes each, non-trivial width (catches the
+width=0 class recurring), exactly one `MS_BAR`/`MS_TRACK` each,
+`MILESTONE_TIMELINE` group name intact. 0 issues. `VerifyRealDeck` re-run
+afterward as a final whole-deck sanity check: 0 mismatches, 0 unwired
+fields, 43/43 real slides fully OK -- unchanged from before the retrofit,
+confirming nothing else was disturbed.
+
+**Not yet exercised end-to-end**: no real `MS<n>_PCT` value has been
+entered in the live register and pushed through a real sync. The
+mechanism is proven; the real workflow (draft -> register -> sync ->
+slide) with real data hasn't run yet.
 

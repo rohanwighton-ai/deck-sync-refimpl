@@ -1605,12 +1605,24 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       session; the "regression" was that fix, misread by the
       pre-compaction summary. Full account in `FIX-LIST.md` CP. No colour
       change was ever applied to the real deck.
-- [x] **CQ — milestone percentage display, Option A built.** `MS<n>_PCT`
-      register column, folded into the existing `MS<n>_LABEL` text by
-      `DrawFromRow` -- no new shape, no template retrofit. Full design in
-      `MILESTONE-PERCENTAGE-DESIGN.md`. Live-verified 2026-08-22: full
-      suite 296/296 passed, 0 failed. Still untested against real data --
-      no `MS<n>_PCT` value has ever been entered in the register.
+- [x] **CQ — SUPERSEDED same evening by CT.** Option A (fold into label
+      text) shipped and was live-verified, then replaced hours later once
+      Rohan saw it rendered. See CT.
+- [x] **CT — milestone percentage display, the real thing: its own shape,
+      contiguous colour, position-gated visibility, retrofitted across
+      all 46 slides.** `MS<n>_PCT` is a real optional shape under the date
+      badge now, not folded text. Milestone colour became positional
+      (`i <= lastAchieved`, not per-flag) and percentage visibility got
+      the same gate ("not worth having on future ones"). Full design in
+      `MILESTONE-PERCENTAGE-DESIGN.md`, full account in `FIX-LIST.md` CT.
+      Fail-first proven twice (colour, then visibility gate). Retrofit
+      tool `vba/tools/add_pct_shapes.vbs` -- two real bugs found and
+      fixed before touching the real file (width=0 auto-fit collapse,
+      regrouping wiping the device group's name/tag). Applied to all 46
+      milestone-carrying slides, verified from the saved file's own bytes
+      (0 issues) and a full `VerifyRealDeck` re-run (0 mismatches, 0
+      unwired, unchanged from before). Not yet exercised end-to-end with
+      a real register value through a real sync.
 - [x] **CS — CJ's 62 "mismatches" were mostly a checker bug, one real
       cell fixed underneath.** `VerifyRealDeck` compared raw `||`-encoded
       register text directly against already-rendered shape text; fixed

@@ -1,186 +1,130 @@
 # Milestone percentage display — design
 
-> **OPTION A BUILT AND LIVE-VERIFIED, 2026-08-22.** `MilestoneDevice.bas`
-> (`COL_PCT`, `IsColumnForThisDevice`, `DrawFromRow`'s label fold) and a new
-> unit test (`Test_MilestoneDevice_PercentageFoldsIntoLabelText`,
-> `TestRunner.bas`) are written and pass the full automated suite
-> (`vba/tests/run_vba_tests.ps1`, 296/296, 0 failed, Office closed). See
-> FIX-LIST item CQ. Still genuinely untested against real data — no
-> `MS<n>_PCT` value has ever been entered in the live register, so it has
-> never rendered on an actual slide. Option B (the new `_PCT` shape) is
-> unchanged below — still just a scoped design, not built.
->
-> Originally written 2026-08-22, from Rohan's decision the same session
-> ("option 2 as ultimately... this is where Research Managers give an
-> informed opinion of where the project is at so the newest achieved
-> milestone can be the default 'current achieved' big circle position").
-> Geometry facts below are read from the real deck's exemplar slides
-> (44/46/47); see the caveat under "DATE geometry" — one shape's numbers
-> didn't parse cleanly at first and are flagged, not guessed.
+> **BUILT, LIVE-VERIFIED, AND RETROFITTED ACROSS THE REAL DECK — 2026-08-22.**
+> Option A shipped first, then was superseded the same evening by Option B
+> after Rohan looked at the real thing on screen. Final shape: a real
+> `MS<n>_PCT` shape under each date badge, shown only once the current
+> marker has reached that slot, and the milestone colour itself became
+> positional rather than per-flag. All three pieces below are built, and
+> the shape has been added to all 46 milestone-carrying slides (43 real +
+> P/K/S exemplar templates 44/46/47 — slide 45 has no milestone device).
 
 ## The problem
 
-The milestone timeline (`MilestoneDevice.bas`) shows exactly one state per slot:
-achieved-and-current (big circle), achieved-earlier (small circle, one colour),
-not-achieved (small circle, another colour). A project that's finished MS2 and
-MS3, has done nothing visible on MS4/MS5, and finished MS6 renders as
-"done, done, gap, gap, done" — accurate, but reads as messy or wrong at a
-glance (`2_P009`, this session).
+The milestone timeline (`MilestoneDevice.bas`) used to show exactly one state
+per slot: achieved-and-current (big circle), achieved-earlier (small circle,
+one colour), not-achieved (small circle, another colour). A project that's
+finished MS2 and MS3, has done nothing visible on MS4/MS5, and finished MS6
+rendered as "done, done, gap, gap, done" — accurate, but reads as messy or
+wrong at a glance (`2_P009`, this session).
 
-Rohan's read: the binary is honest but throws away real information — a
-not-yet-done milestone might be 75% along, not 0%. His fix: **let the
-Research Manager say so**, next to the circle, without changing which circle
-is "current."
+## What actually shipped — three decisions, in the order they landed
 
-## What does NOT change
+**1. Colour is positional (contiguous), not per-flag.** Originally this doc
+said `lastAchieved`'s definition of "current" was the only thing that
+mattered and colour stayed per-flag. Rohan, looking at the real timeline:
+*"we spoke about making the gaps the same colour as done if they are before
+where the big circle currently is... colour are always contiguous."* Any
+slot at or before the current slot now renders as achieved (`_ON`/`_NOW`)
+regardless of its own `DONE` flag; anything after current still renders
+`_OFF` — which it always would anyway, since current is defined as the
+*highest* done-flagged slot, so nothing after it could ever have been "done".
+The flag still decides WHERE current sits; it stopped deciding each earlier
+slot's own colour. `MilestoneDevice.DrawMilestones`, one line:
+`isDone = (i <= lastAchieved)`, replacing `IsDoneWord(done(i))`.
 
-- `DrawMilestones`'s "current" logic — `lastAchieved` = the highest-numbered
-  slot with `DONE="Y"` — is untouched. This spec was preceded by a proposal to
-  cap "current" at the last *contiguous* done slot; Rohan declined it
-  explicitly in favour of percentages carrying the nuance instead.
-- The four-state model (`_NOW` / `_ON` / `_OFF` / unused) stays exactly as is.
-- The module's hard rule stands: **never creates, moves, resizes, or reorders
-  a shape.** Whatever this feature does, it does through visibility and text,
-  like everything else in this device.
+**2. The percentage is its own shape, not folded into the label (Option B,
+superseding Option A).** First built as Option A — a percentage appended to
+`MS<n>_LABEL`'s own text, e.g. *"Fieldwork complete (75%)"*, zero new shapes.
+Rohan, after seeing it live: *"isn't that separator needed?"* (a real,
+separate question) led to *"as a smaller font separate label under the date
+label."* `PART_PCT = "_PCT"` is now a real, optional shape (same pattern as
+`_OFF`: absent on a template, it's simply not shown, reported once, never
+faked) — `MS<n>_PCT`, positioned directly below that slot's own circle,
+small bold centred text, hidden until a value exists.
+
+**3. The percentage is ALSO gated by position, same rule as the colour.**
+Rohan, looking at the first real one on screen: *"not worth having on future
+ones, should just turn on when big lead circle reaches that point."* A
+percentage sitting in the register for a slot after current is suppressed
+even if a shape and a value both exist — `Trim(pctValue) <> "" And i <=
+lastAchieved`. Only once the current marker reaches or passes a slot does
+its percentage become eligible to show.
+
+**What never changed**: the module's hard rule — never creates, moves,
+resizes, or reorders a shape, except for the one deliberate exception this
+feature *is*: the shapes were created once, by a dedicated retrofit script,
+not by the runtime `DrawMilestones` code, which only ever toggles visibility
+and writes text, exactly as before.
 
 ## Data model
 
-New register column(s), one per slot: **`MS<n>_PCT`** (`MS1_PCT` .. `MS7_PCT`),
-same naming convention as `_LABEL`/`_DATE`/`_DONE` — deliberately, since
-`ColumnFor(i, part)` builds shape names and column names from the same string
-and this device's whole design rests on that never drifting.
+**`MS<n>_PCT`** (`MS1_PCT` .. `MS7_PCT`), a register column, same naming
+convention as `_LABEL`/`_DATE`/`_DONE`/`_OFF` — `ColumnFor(i, part)` builds
+shape names and column names from the same string, deliberately, so they
+cannot drift apart.
 
-- **Value**: blank, or a whole number 0-100. Blank means "no RM opinion
-  entered" — same absent-means-absent convention `COL_LABEL` already uses.
-  Not auto-computed from `SRC_MILESTONES`; a Research Manager enters it,
-  optionally reading `MilestoneEvidenceReport`'s grouped tracker evidence
-  first as reference material — same relationship that report already has to
-  the `DONE` flags (advisory, never authoritative, never auto-written).
-- **Where it lives**: **appended after the existing register columns, not
-  inserted into the `L..AF` MS block.** `ExcelOutput.ReadSheetForDeckPeriod`
-  hands `MilestoneDevice` a Dictionary keyed by field name — confirmed
-  directly from `MilestoneDevice.bas`'s own header ("`rowValues` is the
-  slide's row as ExcelOutput hands it over — field name to value") and from
-  `ValueOr`'s lookup (`rowValues.Exists(key)`) — so nothing reads these
-  columns by letter. Appending avoids the exact failure this project has
-  already paid for once: reordering six columns broke four sentences and one
-  wrong-column instruction elsewhere in hours. **Still confirm before
-  building**: grep the whole repo for any hardcoded `MS` column letter
-  (`L`, `O`, `R`...) the way `check_docs.py` already does for other roles —
-  the header-dictionary read is what `MilestoneDevice` uses, but a stray
-  direct-letter reference elsewhere would break silently if one exists.
-- **Not a Field Spec entry.** Like `MS1_LABEL`/`_DATE`/`_DONE`, this column is
-  addressed by shape name inside the tagged device group, never by role tag —
-  confirmed by grep: zero `MS*` references anywhere in `FieldSpec.bas`. It
-  needs no History treatment (`CARRY`/`FRESH`/`PART-FROZEN`/`DIFF`); it's a
-  plain register value the RM overwrites each quarter, same as `DONE`.
-- **No Field Spec means no drafting-sheet workflow either** — it's entered
-  directly in the register, the same way `MS1_DONE` already is.
+- **Value**: blank, or a number (a trailing `%` is stripped and re-added on
+  write, so `"75"` and `"75%"` render identically). Blank means "no RM
+  opinion entered." Not auto-computed from `SRC_MILESTONES`; a Research
+  Manager enters it, optionally reading `MilestoneEvidenceReport`'s grouped
+  tracker evidence first as reference material — advisory, never
+  authoritative, never auto-written, same relationship that report already
+  has to the `DONE` flags.
+- **Where it lives**: appended after the existing register columns, not
+  inserted into the `L..AF` MS block — confirmed safe because
+  `ExcelOutput.ReadSheetForDeckPeriod` hands `MilestoneDevice` a Dictionary
+  keyed by field name, never by column letter.
+- **Not a Field Spec entry.** Addressed by shape name inside the tagged
+  device group, never by role tag — needs no History treatment; a plain
+  register value the RM overwrites each quarter, same as `DONE`.
 
-## Two ways to render it — pick one
+## The shape
 
-### Option A (recommended, BUILT): fold the percentage into the existing `_LABEL` text
+Real, optional, created once by `vba/tools/add_pct_shapes.vbs` (kept in the
+repo for the next slide that needs it — see its own header). Geometry is
+**measured per-slide from that slide's own `MS<n>_ON` circle**, never a
+hardcoded absolute position, matching the "measured, not computed"
+convention `DrawMilestones` already uses for the bar/track:
 
-No new shape. No template change. No 43-slide retrofit. Built inside
-`DrawFromRow`, not `DrawMilestones` — it's the row-to-arrays translation
-layer, the same place `DrawFromRow`'s own gap-check already lives, so
-`DrawMilestones`'s signature and its 7 existing direct-call tests in
-`TestRunner.bas` needed no changes at all:
+- Width/left match the circle's own width/left.
+- Top = circle bottom + 0.015in gap.
+- Height 0.10in, font 5.5pt bold, centred, `AutoSize` explicitly disabled.
 
-```vba
-pct = Trim(ValueOr(rowValues, ColumnFor(i, COL_PCT)))
-If Right$(pct, 1) = "%" Then pct = Trim(Left$(pct, Len(pct) - 1))
-If pct <> "" Then labels(i) = labels(i) & " (" & pct & "%)"
-```
+**One real bug found and fixed during the build**: an empty textbox with
+`WordWrap=False` and no `AutoSize` override auto-fits to ~0 width the moment
+it's created — every shape shipped at `cx=65` EMU (invisible) on the first
+attempt, caught only by reading the saved file's own XML rather than
+trusting the "7 shapes added" success message. Fixed by disabling `AutoSize`
+before setting any text/font property, then re-asserting geometry
+explicitly afterward as a safety net.
 
-Renders as e.g. *"Fieldwork complete (75%)"*. Strips a trailing `%` a
-Research Manager might already type, so `"75"` and `"75%"` both render as
-`(75%)`, never `(75%%)`. Every real slide already has a working `_LABEL`
-shape, so there is nothing to retrofit and nothing that can be missing on
-an individual slide the way a new shape could be.
+**Regrouping to add the shape destroys the device group's own name and role
+tag** (confirmed empirically against a scratch copy before touching the real
+file) — both are captured before every regroup and explicitly restored
+after.
 
-**Cost: near zero, and it shipped that way** — `COL_PCT` constant,
-`IsColumnForThisDevice` recognising it, the fold above, one new test
-(`Test_MilestoneDevice_PercentageFoldsIntoLabelText`). Trade-off stands:
-the percentage is inside a sentence, not scannable at a glance across all
-7 circles.
+**Chaining more than one slide's regroup work in a single PowerPoint session
+produced a reproducible "Type mismatch"** on the second slide's device-group
+lookup, even though the identical logic against that slide in total
+isolation worked cleanly. Never root-caused further — the retrofit runs one
+slide per PowerPoint launch instead (driven by a bash loop), which sidesteps
+it entirely and matches the fresh-instance pattern already used elsewhere in
+this project.
 
-### Option B: a new `_PCT` shape per slot, same pattern as `_LABEL`/`_DATE`
+## Verification
 
-Adds `PART_PCT = "_PCT"`, extends `IsColumnForThisDevice` to recognise it as a
-fourth suffix, adds a `WriteText`/`SetVisible` pair in `DrawMilestones`
-exactly mirroring how `_DATE` is handled today — **optional**, like `_OFF`:
-absent on a template, it's simply not shown, reported once, never faked.
-
-**Geometry, read from the real deck's P/K/S exemplar slides (44/46/47 —
-identical across all three, confirming they share one master):**
-
-| shape | size | position (slot 1 example) |
-|---|---|---|
-| `MS1_ON`/`_OFF` | 0.354in × 0.354in | x≈10.96in, y≈3.11in |
-| `MS1_NOW` | 0.433in × 0.433in | x≈10.92in, y≈3.08in |
-| `MS1_LABEL` | 1.575in × 0.318in | x≈11.60in, y≈3.13in |
-
-The circle's right edge sits at ≈11.31-11.35in; the label's left edge starts
-at 11.60in — **roughly 0.25-0.29in of genuinely empty horizontal space
-between circle and label**, on every slot, on every template. That gap is
-where a `_PCT` caption would go if built.
-
-**`_DATE` is not a calendar date — corrected 2026-08-22, Rohan.** Checked all
-7 slots on the P exemplar: `MS1_DATE="▶"`, `MS2_DATE="6"`, `MS3_DATE="12"`,
-`MS4_DATE="24"`, `MS5_DATE="36"`, `MS6_DATE="48"`, `MS7_DATE="★"`. It holds
-the milestone's month-offset number (the same offset `SRC_MILESTONES` groups
-against — matches `MilestoneEvidenceReport`'s own live output this session,
-"MS1: no numeric date to group tracker items against"), with the first and
-last slots replaced by a start/end glyph instead of a number. Not cruft — a
-real, already-shipped design.
-
-**This changes Option B's risk, not its geometry.** The circle-adjacent
-footprint (~0.35in) already carries a small numeric badge doing real work.
-A `_PCT` badge placed there would be a *third* element competing for the
-same tight space (circle + date badge already occupy it), not empty ground —
-worth weighing against the 0.25-0.29in circle-to-label gap as the more likely
-home if B is built. Still confirm exact `_DATE` placement live via COM before finalizing either —
-a raw-XML regex read is workable for a quick check but doesn't resolve group
-nesting the way COM does, so treat these numbers as good enough to plan
-against, not good enough to build the final geometry from.
-
-**Cost: the big one.** New shape needs adding to 3 exemplar templates *and*
-all 43 real slides (same retrofit class as this session's earlier
-milestone-device work), plus the code changes above, plus tests. Sized
-comparable to the biggest single piece of work done this session.
-
-## Recommendation
-
-**Option A is built.** It delivers the actual thing Rohan asked for — a
-Research Manager's percentage opinion visible next to the milestone circle —
-with a code change measured in lines, zero template risk, and zero
-retrofit. If it turns out the label-text version isn't scannable enough in
-practice (a real slide has to be looked at to know, and no `MS<n>_PCT`
-value has been entered anywhere in the real register yet, so this hasn't
-been seen live), Option B is a well-scoped follow-up with its shape
-geometry already gathered above, not a redesign.
-
-## Decided by implementation (was "open questions")
-
-1. **Format**: `"(75%)"` appended after the label. Not a separate line —
-   simplest to build, and the existing `||` line-break convention was left
-   alone rather than adding a second way to grow a label.
-2. **Which slots get a number?** Whatever `MS<n>_PCT` holds, unconditionally
-   — including a `DONE=Y` slot, if a Research Manager writes one there. The
-   code doesn't discourage it; if a redundant "(100%)" next to an
-   already-dark circle turns out to bother anyone in practice, that's a
-   register-entry convention to settle with Rohan, not a code change.
-3. **Format tolerance**: a trailing `%` the RM already typed is stripped
-   before re-adding one, so `"75"` and `"75%"` both render identically.
-   Anything else (e.g. `"~75"`) passes through unmodified and renders as
-   `(~75%)` — no numeric validation, same free-text trust `_LABEL` already
-   gets.
-
-## Still open
-
-- **Live verification.** Static-check clean; the actual VBA test hasn't run
-  against a real PowerPoint/Excel session yet (see the banner at the top).
-- **No real `MS<n>_PCT` value exists in the live register yet** — this has
-  never been seen on an actual slide. Worth trying on one real project
-  before treating the label-text approach as settled over Option B.
+- **Code**: fail-first proven twice — the contiguous-colour condition and
+  the position-gate condition were each deliberately reverted, confirmed to
+  fail the right assertions for the right reason, then restored. Full
+  automated suite (`run_vba_tests.ps1`) green before the retrofit began.
+- **Retrofit**: dry-run against a scratch copy first; real deck backed up
+  before every write; every one of the 46 target slides re-verified from
+  the *saved file's own bytes* afterward — 7 PCT shapes each, correct
+  non-zero width, `MILESTONE_TIMELINE` group name and role tag intact,
+  `MS_BAR`/`MS_TRACK` counts unchanged. `VerifyRealDeck` re-run clean
+  afterward: 0 mismatches, 0 unwired fields, 43/43 real slides fully OK.
+- **Not yet verified**: nobody has entered a real `MS<n>_PCT` value in the
+  live register and run an actual sync — the mechanism is proven, the real
+  workflow end-to-end (draft → register → sync → slide) hasn't been
+  exercised with real data yet.
