@@ -1653,20 +1653,23 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       Filtered suites: `DeckAdoption` 9/9, `BatchOnboardFlow_CommitBatch`
       2/2. Full account: `FIX-LIST.md` DA/DB.
 - [ ] **DD — building: `MS<n>_CALDATE`, a real calendar date under each
-      circle, same optional-shape treatment CT's `%` used.** Rohan's
-      correction on why CT "didn't work": not a propagation bug (the
-      retrofit genuinely landed everywhere, verified), just no real %
-      data existed beyond one hand-tested project. This field is
-      different: `SRC_MILESTONES`'s `Resolved Due Date` already has real
-      values for 308/370 milestone rows across 38/43 projects, unused.
-      Code layer done: new field parallel to LABEL/DATE/DONE/PCT, NOT
-      gated by achieved-state (unlike PCT — a due date matters most
-      before it happens), colour matches its own circle's outline.
-      Proven fail-first (disabled the whole block, confirmed the test's
-      key assertions failed for the right reason, restored). Filtered
-      suite 12/12. **Still needed**: register column, real-date mapping
-      from SRC_MILESTONES, shapes on real slides, a real sync. Full
-      account: `FIX-LIST.md` DD.
+      circle, same optional-shape treatment CT's `%` used.** Code layer
+      done (proven fail-first, filtered suite 12/12). Auto-mapping real
+      dates from `SRC_MILESTONES` tried and honestly abandoned — Rohan:
+      "it's manual, the timeline has always been an abridgement", fuzzy
+      text matching only found 8/250 (3.2%) plausible matches, refused
+      to force the rest. Register plumbing done: 7 empty columns added,
+      verified from saved bytes. Field-scan completeness PROVEN not
+      assumed (Rohan: "make sure field scan completeness encompasses
+      all the work") — extended the existing device-column test with
+      MS1_CALDATE, fail-first proven. Deck retrofit in progress
+      (`add_caldate_shapes.vbs`, mirrors the proven `add_pct_shapes.vbs`
+      technique) — found and fixed a real bug along the way (a
+      OneDrive path-identity check aborted safely on every one of the
+      first 36 slides; fixed to check filename not full path). **Still
+      needed**: finish the 46-slide retrofit, real date values (a
+      genuine future drafting task, not tonight's work), a real sync.
+      Full account: `FIX-LIST.md` DD.
 - [~] **DC — found AND fixed: `MS<n>_DATE`'s font colour was hardcoded
       teal by position, never data-driven.** Found by Rohan looking at
       the promoted live deck: slots 1-3 were `scheme:bg2` on every one

@@ -5574,10 +5574,54 @@ assertions failed for the right reason (blank text, no report), not
 just that the test passed once. Restored; static check clean; filtered
 suite (`-Filter MilestoneDevice`) 12/12 passed, 0 failed.
 
-**Not yet done, this is the code layer only**: no register column
-exists for `MS<n>_CALDATE` on any real project; `SRC_MILESTONES`'
-`Resolved Due Date` (an Excel serial) has not been mapped to milestone
-slot number or converted to a display string ("Nov 2023"); no shape
-exists on any real slide's template or instances; no real sync has run.
-All of that is the next phase, in progress same session.
+**Data-mapping phase, tried and honestly abandoned.** Attempted to
+auto-populate the new columns from `SRC_MILESTONES`' real due dates via
+fuzzy text matching (each project's existing `MS<n>_LABEL` against that
+project's raw milestone names). Result: 8 of 250 real slots (3.2%)
+produced a plausible match. Rohan: "it's manual, the timeline has always
+been an abridgement" -- the 7-slot display selection has never been a
+mechanical function of the raw ~20-26 milestones a project can carry, so
+there is no reliable text anchor back to the source, and forcing a match
+on the other 97% would risk a wrong date sitting confidently under the
+wrong circle. Not built; refused rather than guessed, matching this
+project's own established posture on exactly this failure shape.
+
+**Plumbing phase, done and verified from saved bytes.**
+- **Register**: 7 empty `MS<n>_CALDATE` columns added to `Register`
+  (cols 56-62), backed up first
+  (`backups/register-wide.PRE-CALDATE-COLUMNS-<timestamp>.xlsx`).
+  Confirmed present in the saved file's own shared-string table.
+- **Field-scan completeness, proven not assumed** -- Rohan: "make sure
+  field scan completeness encompasses all the work." `FieldWiring.
+  ScanFieldWiring` already delegated to `MilestoneDevice.
+  IsColumnForThisDevice` (which this fix already extended for
+  `COL_CALDATE`), but that was reasoning from source, not evidence.
+  Extended the existing device-column test
+  (`Test_FieldWiring_DeviceOwnedColumnsAreNotUnmarkedFields`) to include
+  `MS1_CALDATE` and proven fail-first: temporarily removed the
+  `COL_CALDATE` branch, confirmed the extended test fails for the right
+  reason (`MS1_CALDATE` shows up in `Unmarked` alongside the genuinely
+  orphaned field). Restored; static check clean; filtered suite
+  (`-Filter FieldWiring`) 13/13 passed.
+- **Deck retrofit, in progress**: new tool `vba/tools/
+  add_caldate_shapes.vbs` (mirrors `add_pct_shapes.vbs`'s proven
+  technique exactly -- measured geometry, tag/name restore after
+  regroup, AutoSize fix) adds a hidden `MS<n>_CALDATE` textbox under
+  each slot's own `MS<n>_DATE` label. Dry-run verified clean against a
+  scratch copy first. Real deck backed up
+  (`backups/3. Project Progress.PRE-CALDATE-SHAPE-RETROFIT-<timestamp>.pptx`).
+  **A real bug found and fixed during this run**: the script's own
+  path-identity safety check compared `Presentation.FullName` against
+  the literal local path, which a fully OneDrive-synced file sometimes
+  reports as its `https://d.docs.live.net/...` cloud alias instead --
+  every one of the first 36 slides hit this and aborted safely (nothing
+  written, confirmed `Saved=True` before each close), not a wrong-file
+  risk since `Presentations.Open` was already called with the exact
+  path. Fixed to check `Presentation.Name` instead. Slides verified
+  from saved bytes in batches as the retrofit proceeds.
+
+**Still not done**: real calendar-date values -- this remains a genuine
+future drafting task (someone who knows which raw milestone each
+already-abridged slot represents enters the date), not something built
+tonight; the full 46-slide shape retrofit; no real sync has run.
 

@@ -14974,20 +14974,26 @@ Private Function Test_FieldWiring_DeviceOwnedColumnsAreNotUnmarkedFields() As St
     ' even without building an actual device group.
 
     Dim r As FieldWiringResult
+    ' MS1_CALDATE added 2026-08-22 (DD) -- Rohan: "make sure field scan
+    ' completeness encompasses all the work." Proves the scan actually
+    ' recognises the newest device column, not just that
+    ' IsColumnForThisDevice's source code was edited to claim it does.
     r = FieldWiring.ScanFieldWiring("device-wiring-probe", _
         FieldsCollection("ABOUT_BODY", "MS1_LABEL", "MS1_DATE", "MS1_DONE", _
-                          "MS2_LABEL", "PROGRESS_BODY"), Nothing)
+                          "MS2_LABEL", "MS1_CALDATE", "PROGRESS_BODY"), Nothing)
 
     result = result & Assert(r.Scanned, "the scan ran")
     result = result & Assert(r.Wired = 1, "ABOUT_BODY is wired, got " & r.Wired)
-    result = result & Assert(r.DeviceOwnedCount = 4, _
-        "4 device columns counted separately, got " & r.DeviceOwnedCount)
+    result = result & Assert(r.DeviceOwnedCount = 5, _
+        "5 device columns counted separately (incl. MS1_CALDATE), got " & r.DeviceOwnedCount)
     result = result & Assert(r.UnmarkedCount = 1, _
         "only the genuinely unwired ordinary field is unmarked, got " & r.UnmarkedCount)
     result = result & Assert(InStr(r.Unmarked, "PROGRESS_BODY") > 0, _
         "and it is named, got '" & r.Unmarked & "'")
     result = result & Assert(InStr(r.Unmarked, "MS1_LABEL") = 0, _
         "device columns must NOT appear in Unmarked, got '" & r.Unmarked & "'")
+    result = result & Assert(InStr(r.Unmarked, "MS1_CALDATE") = 0, _
+        "MS1_CALDATE must NOT appear in Unmarked either, got '" & r.Unmarked & "'")
 
     sld.Delete
     Test_FieldWiring_DeviceOwnedColumnsAreNotUnmarkedFields = result
