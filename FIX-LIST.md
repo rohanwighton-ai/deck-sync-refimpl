@@ -4938,3 +4938,44 @@ beyond the static read. Also genuinely untested against real data: no
 `MS<n>_PCT` value has ever been entered in the live register, so this has
 never rendered on an actual slide.
 
+## Built and verified live 2026-08-22 — CR, `MS<n>_OFF` circles and
+## `MS_TRACK` now carry a type-specific pale tint, completing the fade CP
+## went looking for and didn't find
+
+Follow-on from CP's retraction. `MS_BAR` and the `_ON`/`_NOW` circles
+already carry a correct three-way type distinction (item BP, 21 Aug: green
+NOW->green ON for P, orange NOW->orange ON for K, purple NOW->purple ON
+for S) -- but `MS<n>_OFF` and `MS_TRACK` (the unfilled part of the bar)
+were uniformly `scheme:bg2` teal across all three types, confirmed on
+every real slide and both templates. Rohan, once CP's original evidence
+fell through: "off needs changing too" -- "and the bar I think" -- "adjust
+P too".
+
+**Colours are DERIVED, not picked by eye.** K and S already carry a
+NOW->ON lightening step in their own palette (K: `F55A2D`->`F89476`, ~33%
+toward white; S: `C0A2F2`->`D6C3F7`, ~36% toward white). Averaged to one
+consistent ratio (~34.8%) and applied one step further (ON->OFF) for all
+three types, including P (whose own NOW->ON step is much smaller and was
+not a usable anchor -- Rohan confirmed extending the same ~35% ratio
+rather than P's own tiny one):
+
+| type | NOW | ON | OFF/TRACK (new) |
+|---|---|---|---|
+| P | `003C23` | `005832` | `599279` |
+| K | `F55A2D` | `F89476` | `FAB9A6` |
+| S | `C0A2F2` | `D6C3F7` | `E4D8FA` |
+
+Applied to `MS<n>_OFF` (all 7 slots) and `MS_TRACK` together, since both
+represent the same "not yet reached" state. Classified each slide by its
+own untouched `MS1_ON` colour (not a tag or slide index -- works
+identically on real slides and the never-onboarded exemplar templates).
+
+**Verified twice.** A dry run against a scratch copy was checked first
+(46 slides carrying a milestone device, exact expected values on every
+one, zero mismatches) before touching the real file. Real deck backed up
+to `backups/PRE-OFF-TRACK-COLOUR-FIX-<timestamp>/` first, then written
+directly (Office confirmed closed both times -- no live-handle risk).
+Final check re-extracted and re-parsed the SAVED file's own XML bytes
+across all 46 slides against the table above: 0 mismatches. `MS_BAR` and
+`_ON`/`_NOW` confirmed untouched throughout.
+

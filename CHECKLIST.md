@@ -1614,6 +1614,15 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       verification pending (Excel/PowerPoint open under a live session at
       build time) and no real `MS<n>_PCT` value has ever been entered in
       the register, so it hasn't rendered on an actual slide yet.
+- [x] **CR — `MS<n>_OFF`/`MS_TRACK` given a type-specific pale tint,
+      verified live.** Completes the fade CP went looking for: `MS_BAR`
+      and `_ON`/`_NOW` were already correctly type-specific (BP, 21 Aug);
+      OFF/TRACK were uniformly teal. Colours derived from each type's own
+      existing NOW->ON lightening ratio, applied one step further (P
+      `599279`, K `FAB9A6`, S `E4D8FA`) -- not picked by eye. Dry-run
+      verified against a scratch copy, then applied to the real deck
+      (backed up first) and re-verified from the saved file's own bytes
+      across all 46 milestone-carrying slides: 0 mismatches.
 
 ## Parked / explicitly decided — do not reopen without a new decision
 

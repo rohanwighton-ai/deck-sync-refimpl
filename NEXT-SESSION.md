@@ -146,6 +146,22 @@
 > applied to the real deck — a dry run against a scratch copy was tested
 > and discarded once the citation fell apart. Full account: `FIX-LIST.md`
 > CP.
+>
+> **FIX-LIST CR — the real gap CP was chasing, found properly and fixed
+> live.** `MS_BAR` and the `_ON`/`_NOW` circles already carry a correct
+> type-specific three-way distinction (item BP, 21 Aug — still standing).
+> `MS<n>_OFF` and `MS_TRACK` did not: confirmed uniformly teal on every
+> real slide and both templates. Rohan: "off needs changing too... and the
+> bar I think... adjust P too." Colours DERIVED (not picked by eye) — K
+> and S each already carry a NOW→ON lightening step in their own palette
+> (~33-36% toward white); averaged to one ratio (~35%) and applied one
+> step further for all three types, P included: **P `599279`, K `FAB9A6`,
+> S `E4D8FA`**. Dry-run verified against a scratch copy first (46
+> milestone-carrying slides, exact match, 0 mismatches), then applied
+> directly to the real deck (backed up first, Office confirmed closed) and
+> re-verified from the saved file's own bytes: 0 mismatches across all 46
+> slides, `MS_BAR`/`_ON`/`_NOW` confirmed untouched. Full account:
+> `FIX-LIST.md` CR.
 
 > ## 20 AUG — a full day of mechanism work, ZERO real content drafted, and
 > a cold PM audit that said so plainly. **READ THIS BLOCK FIRST — it is
