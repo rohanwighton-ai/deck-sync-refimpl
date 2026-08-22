@@ -31,7 +31,8 @@ End Type
 ' explicitly not this module's job, same non-goal every other module in
 ' this port draws for itself) and is used only for the instance-key
 ' collision guard.
-Public Function DuplicateAndTag(sourceSld As Object, slideType As String, newInstanceKey As String, values As Object, existingInstances() As Object) As DuplicateResult
+Public Function DuplicateAndTag(sourceSld As Object, slideType As String, newInstanceKey As String, values As Object, existingInstances() As Object, _
+                                Optional srcWs As Object = Nothing) As DuplicateResult
     Dim result As DuplicateResult
 
     ' --- Instance-key collision guard -----------------------------------
@@ -177,7 +178,19 @@ Public Function DuplicateAndTag(sourceSld As Object, slideType As String, newIns
             Dim role As String
             role = templateRoles(r)
             If values.Exists(role) Then
-                InjectPrimitive.InjectPrimitive newSld, role, CStr(values(role))
+                ' FIX-LIST item CV, 2026-08-22. This called InjectPrimitive
+                ' (the plain TEXT writer) directly for every field, including
+                ' picture fields -- which have no text frame, so the write
+                ' silently failed and the new slide kept whatever picture the
+                ' TEMPLATE happened to have. InjectField is the router every
+                ' other write path already uses (InjectorFor's own header:
+                ' "the tagged shape is a picture -> InjectPictureField");
+                ' this was simply never threaded through slide creation.
+                ' srcWs resolves a picture field's Source ID to a real file;
+                ' `values` doubles as rowValues for the (rare, pre-existing,
+                ' unaffected-by-this-change) device case, same Dictionary
+                ' shape SyncOperations already hands the device injector.
+                InjectPrimitive.InjectField newSld, role, CStr(values(role)), False, srcWs, values
             Else
                 missingCount = missingCount + 1
                 ReDim Preserve result.MissingFields(1 To missingCount)

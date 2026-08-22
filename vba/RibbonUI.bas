@@ -416,6 +416,17 @@ Private Sub SlideMembershipCore(ByVal retireMode As Boolean)
     Dim logWs As Object
     Set logWs = WorkbookBridge.GetOrAddWorksheet(wb, WorkbookBridge.SYNC_LOG_SHEET_NAME)
 
+    ' FIX-LIST item CV, 2026-08-22 -- same srcWs-not-threaded-through gap
+    ' already found and fixed once elsewhere in this project
+    ' (RunSync.PreviewRoutineSync, 2026-08-18: "six call sites and only one
+    ' had srcWs threaded through"). Without it, a picture field on a
+    ' newly-created slide can never resolve its Source ID to a real file.
+    Dim srcWs As Object
+    Set srcWs = Nothing
+    If WorkbookBridge.WorksheetExists(wb, Sources.SOURCES_SHEET_NAME) Then
+        Set srcWs = WorkbookBridge.GetOrAddWorksheet(wb, Sources.SOURCES_SHEET_NAME)
+    End If
+
     Dim i As Long
     For i = lo To hi
         Dim templateSld As Object
@@ -530,7 +541,7 @@ Private Sub SlideMembershipCore(ByVal retireMode As Boolean)
             Dim ci As Long
             For ci = 1 To createCount
                 outcome = outcome & RunSync.CreateMissingSlides( _
-                    createSheets(ci), createTypes(ci), createTemplates(ci), False) & vbCrLf
+                    createSheets(ci), createTypes(ci), createTemplates(ci), False, srcWs) & vbCrLf
             Next ci
         Else
             outcome = outcome & "Nothing was created." & vbCrLf

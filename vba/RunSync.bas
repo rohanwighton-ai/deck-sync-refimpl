@@ -222,7 +222,7 @@ End Function
 ' remaining operation that can add slides in bulk, and the caller must ask for
 ' the write explicitly rather than get it by omission.
 Public Function CreateMissingSlides(sheet As Sheet, slideType As String, templateSld As Object, _
-                                    Optional dryRun As Boolean = True) As String
+                                    Optional dryRun As Boolean = True, Optional srcWs As Object = Nothing) As String
     Dim report As String
     report = IIf(dryRun, "=== PREVIEW: Create Missing Slides ===", "=== Create Missing Slides ===") & vbCrLf
 
@@ -360,7 +360,7 @@ Public Function CreateMissingSlides(sheet As Sheet, slideType As String, templat
                 Else
                     Dim dr As DuplicateResult
                     dr = SlideDuplication.DuplicateAndTag(rowTemplateSld, slideType, _
-                            actions(i).RowInstanceKey, actions(i).Values, instances)
+                            actions(i).RowInstanceKey, actions(i).Values, instances, srcWs)
                     If dr.Ok Then
                         createdCount = createdCount + 1
                         report = report & "  created: " & actions(i).RowInstanceKey
