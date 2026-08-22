@@ -1,5 +1,124 @@
 # NEXT SESSION — start here
 
+> ## 22 AUG, ~15:45 — CONSOLIDATED TODO LIST (everything open, one spot)
+> Written directly by the main session at Rohan's request ("collate all still
+> todos and actions into one spot"), synthesising: this session's own CV/CW
+> work, and the just-completed mother-hound + ppt-hound + ui-hound reports
+> (`ListAgents` IDs `a5794d0f6f5dc64e6`/`aa6f759279c309d15`/`a1687f5b95f14e3a9`).
+> **Read this block first — it supersedes the priority ordering of everything
+> below it, though the older blocks still hold their own detail.**
+>
+> ### 0. RESOLVED 2026-08-22 ~15:43 — AppData working copy promoted to OneDrive
+> Rohan's call: "promote the AppData copy to OneDrive now." Done, both
+> halves of the pair (they share one `.xlsx` via a document property —
+> see `DeckRegistry.bas:24 WORKBOOK_PATH_PROPERTY_NAME`, so promoting only
+> one side would have re-created the same split one file narrower):
+>   1. Confirmed Office fully closed (`Get-Process POWERPNT,EXCEL`, real
+>      check, not assumed).
+>   2. Backed up the STALE OneDrive originals first, into the existing
+>      `OneDrive\Claude\backups\` convention:
+>      `3. Project Progress.PRE-PROMOTE-APPDATA-20260822-154302.pptx`
+>      (was 19/08 22:43, 49,775,275 bytes) and
+>      `register-wide.PRE-PROMOTE-APPDATA-20260822-154302.xlsx` (was 20/08
+>      07:15, 378,173 bytes) — recoverable if anything on the old OneDrive
+>      side turns out to matter.
+>   3. Copied the AppData working copy
+>      (`...\deck-sync-quarter-20260820-0900\`) over both canonical
+>      OneDrive paths.
+>   4. **Verified from the far side, not from the copy's exit code**: raw
+>      zip/XML parse of the promoted files (no Office, no COM) — 50 slides
+>      in the `.pptx`, 27 sheets in the `.xlsx`, zero corrupt zip members
+>      in either. Matches the working copy's own known slide/sheet counts.
+>   5. OneDrive sync client confirmed running (PID present) so the cloud
+>      copy should follow: not independently verified from the cloud side
+>      (out of reach from here) — worth Rohan glancing at the OneDrive
+>      tray icon for a green check next time he's at the machine.
+> **Not done as part of this promotion** (separate, still-open items,
+> unchanged by this action): the `addin160`-at-OneDrive-root registration
+> question (§1 below), and nothing in the ad hoc `deck-sync-quarter-*`
+> AppData mechanism itself was made official or documented in `vba/*.bas`
+> — this was a one-time reconciliation, not a fix to why the fork
+> happened. Worth deciding, separately, whether that AppData-copy pattern
+> should become a real, code-supported "quarter working copy" concept, or
+> whether future sessions should work directly against OneDrive to avoid
+> this happening again.
+>
+> ### 1. Code fixes made tonight, not yet fully closed
+> **CW — `TemplateSlide.bas` picture-field leak (just fixed this session).**
+> Same root cause and same fix pattern as CV: routes template-placeholder
+> writes through `InjectField`, and now refuses + deletes the copy if a
+> field (picture/bar/device/slots) can't actually be blanked, rather than
+> silently keeping donor content. Fail-first test written and PROVEN
+> (failed against the old code for the right reason: `Ok=True
+> FieldCount=3`; fix restored). Still open:
+>   - final clean green test-suite run (interrupted by an Office COM
+>     collision with ui-hound — ui-hound has since finished, so this is
+>     just not yet re-run)
+>   - not yet committed/pushed
+>   - not yet logged in FIX-LIST.md/CHECKLIST.md
+>   - **ppt-hound confirmed this bug is REAL and manifested**: all three
+>     master templates (P/K/S) currently embed the exact same donor photo
+>     as real slide `3_P001` (MD5 match). A manual "leak cleanup" pass
+>     (`PRE-TEMPLATE-LEAK-RESET`/`PRE-KS-DEEP-LEAK-CLEANUP`, 2026-08-21)
+>     papered over the symptom by copying one photo onto all three
+>     templates instead of fixing the root cause. **The code fix alone
+>     does not clean the existing templates — they need to be manually
+>     re-blanked or regenerated fresh from `MakeTemplateFrom` once the
+>     fix ships.**
+>
+> **CV — `SlideDuplication.bas` picture-field routing (fixed earlier
+> 2026-08-22).** Still open:
+>   - no dedicated fail-first test yet (was mid-write, interrupted)
+>   - no live re-test — `P900`/`K900`/`S900` test slides still show the
+>     old broken same-picture state, needs an add-in rebuild
+>   - test data still live: `P900`/`K900`/`S900` register rows + slides,
+>     `S17`-`S19` Sources rows, 3 test images — not cleaned up
+>   - `addin160` registered at the OneDrive root, not the conventional
+>     `AppData\Roaming\Microsoft\AddIns` folder — flagged, not fixed
+>
+> ### 2. New findings from tonight's hound run, not yet actioned
+> 1. Two more unconfirmed leads in the same root-cause family as CV/CW:
+>    `DeckAdoption.bas VerifyLink` / `BatchOnboardFlow.bas VerifyBatchLink`
+>    (call the plain text injector on possibly-picture shapes — likely
+>    false "verification failed" on any picture-bearing slide), and
+>    `DeckAdoption.bas PlanAdoption` ~line 207 (unguarded
+>    `.TextFrame.TextRange.Text` read, no `HasTextFrame` check — the
+>    sibling function two lines away in `InjectPrimitive.bas` guards this,
+>    this one doesn't — likely hard-crash on a picture field during bulk
+>    adoption). Not execution-confirmed; worth checking alongside CW.
+> 2. **K/S templates missing `DELIVERABLE1_PHOTO`…`DELIVERABLE4_PHOTO`
+>    entirely**, while 12/15 real K-type slides actually use
+>    `DELIVERABLE4_PHOTO`. A new K project onboarded today gets no shape
+>    at all for that field. (`PRE-KS-TEMPLATE-MISSING-FIELDS-20260821`
+>    backup name suggests this was already spotted once — still open.)
+> 3. `DELIVERABLE1_PHOTO`/`DELIVERABLE2_PHOTO` exist on exactly one real
+>    slide (`3_P001`) and nowhere else — matches the known BH note
+>    (register-wide.xlsx backing for these two was never actually built).
+> 4. `PROGRESS_HEADER` overflows 12.7pt on 46/49 slides — **new since the
+>    Aug-19 snapshot** (didn't exist then), not legacy debt.
+> 5. Pre-existing, lower urgency: template-wide overflow patterns present
+>    identically 3 days ago ("Time elapsed" +1.3pt, milestone date labels
+>    +3.1pt, "Project Highlights" header +3.5pt), plus real content-driven
+>    outliers worth a look someday (`TextBox 278` "Project closed 2026"
+>    +56pt; project-description text up to +47pt on several slides;
+>    institution-name group +23pt on 6 slides).
+> 6. Duplicate `MS2_ON` shape name on slides 1/44 of the **stale OneDrive
+>    file only** — may be moot once #0 is resolved; check it isn't also in
+>    the working copy.
+>
+> ### 3. Confirmed clean tonight (no action needed)
+> CR/CT colour+outline retrofit (0 mismatches, 49 slides × 7 slots, verified
+> 3 independent ways); `MS<n>_PCT` shape deletion (0 remain, both files);
+> no duplicate role tags across 43+ real slides; CU's outline fix present
+> and correct in the actual working copy.
+>
+> ### 4. Minor doc hygiene (low priority, from the earlier Fable pass)
+> CV's backup-location description points at the wrong path convention;
+> CN's header says "not yet run" while its body records the run; whether
+> pre-22-Aug items AA, AF-AJ are still genuinely live is unverified from
+> files alone.
+
+
 > **BEFORE TRUSTING ANYTHING BELOW: run `ListAgents`.** This project gets
 > worked from multiple parallel/sequential Claude Code sessions, and this
 > doc has genuinely lagged a peer session by 5 addin builds and ~3 hours

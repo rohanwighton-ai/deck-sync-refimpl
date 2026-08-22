@@ -1634,6 +1634,27 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       every `MS<n>_OFF`, across all 50 slides (47 + the 3 new test
       slides). Verified from saved bytes: 0 issues across all 49
       milestone-carrying slides.
+- [x] **CW — CV's sibling bug, found AND fixed: "Create Template Slide"
+      also leaked a real donor photo.** Found by mother-hound tracing
+      CV's exact failure shape into every other real call site;
+      `TemplateSlide.MakeTemplateFrom` called the plain text writer
+      directly for every field, so picture-typed fields silently kept
+      the source slide's real photo instead of being blanked --
+      contradicting the function's own "guarantees no field inherits
+      another project's data" claim. ppt-hound confirmed it's real: all
+      three master templates (P/K/S) in the live deck embed the exact
+      same photo as real slide `3_P001` (MD5 match), papered over once
+      already by a manual cleanup pass rather than fixed at the root.
+      Fixed: now routes through `InjectField`; since a template has no
+      source row to feed a picture/bar/device, an unblankable field now
+      makes the whole operation refuse and delete the half-safe copy,
+      naming the field, instead of shipping donor content. Proven
+      fail-first: a new test failed against the old code for the right
+      reason (`Ok=True FieldCount=3`), then passed clean after the fix.
+      Filtered suite 14/14. **Existing templates in the real deck still
+      carry the old leaked photo baked in — needs a manual re-blank or
+      fresh regeneration, the code fix doesn't retroactively clean them.**
+      Full account: `FIX-LIST.md` CW.
 - [~] **CV — real onboarding bug, found AND fixed: a new project's
       `PROJECT_PHOTO` never got set when "Add missing slides" created
       its slide.** Found via a real onboarding test (3 fake projects,

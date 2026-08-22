@@ -353,6 +353,15 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
     On Error GoTo 0
 
     r = "": On Error Resume Next: Err.Clear
+    If TestMatches("TemplateSlide_RefusesAPictureFieldItCannotBlank", filterPattern) Then
+        r = Test_TemplateSlide_RefusesAPictureFieldItCannotBlank()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "TemplateSlide_RefusesAPictureFieldItCannotBlank", r
+    On Error GoTo 0
+
+    r = "": On Error Resume Next: Err.Clear
     If TestMatches("TemplateSlide_RefusesATemplateWithCollidingShapeNames", filterPattern) Then
         r = Test_TemplateSlide_RefusesATemplateWithCollidingShapeNames()
     Else
@@ -3924,6 +3933,47 @@ Private Function Test_TemplateSlide_MakeTemplateProducesKeylessMarkedCopy() As S
     End If
 
     Test_TemplateSlide_MakeTemplateProducesKeylessMarkedCopy = result
+End Function
+
+' FIX-LIST item CW, 2026-08-22. Before the fix, MakeTemplateFrom wrote every
+' role through the plain text injector -- a picture shape has no text frame,
+' so the write silently failed and the returned template still carried the
+' SOURCE's real photo, while mr.Ok read True and mr.FieldCount counted the
+' picture as "placeholdered". This is that exact scenario: a source slide
+' whose PHOTO field is a real picture shape, not text.
+'
+' Proves the fix, not just that nothing else broke: without the fix this
+' test fails two ways at once -- mr.Ok is True when it must be False, and
+' the returned "template" (if asserted further) would still hold the
+' donor's actual image. With the fix, MakeTemplateFrom refuses outright
+' rather than hand back a template that silently leaks donor content.
+Private Function Test_TemplateSlide_RefusesAPictureFieldItCannotBlank() As String
+    Dim result As String
+
+    Dim sourceSld As Object
+    Set sourceSld = NewOnboardedSlide("tmpl-type-photo", "rec-real-photo")
+
+    Dim seedPath As String
+    seedPath = MakeTestBitmap(Environ("TEMP") & "\dstmplphoto.bmp", 40, 20)
+    Dim photoShp As Object
+    Set photoShp = sourceSld.Shapes.AddPicture(seedPath, msoFalse, msoTrue, 250, 50, 100, 100)
+    photoShp.Tags.Add "role", "PHOTO"
+
+    Dim slideCountBefore As Long
+    slideCountBefore = Application.ActivePresentation.Slides.count
+
+    Dim mr As MakeTemplateResult
+    mr = TemplateSlide.MakeTemplateFrom(sourceSld, "tmpl-type-photo")
+
+    result = result & Assert(Not mr.Ok, "refuses rather than ship a template with a leaked donor photo, got Ok=True FieldCount=" & mr.FieldCount)
+    result = result & Assert(InStr(mr.Reason, "PHOTO") > 0, "names the field it could not blank, got '" & mr.Reason & "'")
+    result = result & Assert(Application.ActivePresentation.Slides.count = slideCountBefore, _
+        "the half-safe copy is removed, not left in the deck -- slide count unchanged")
+
+    ' Source untouched, same guarantee every other TemplateSlide test checks.
+    result = result & Assert(sourceSld.Shapes.count >= 3, "source slide's shapes (incl. the picture) still present, got " & sourceSld.Shapes.count)
+
+    Test_TemplateSlide_RefusesAPictureFieldItCannotBlank = result
 End Function
 
 ' THE GUARD THIS PROJECT CAN ACTUALLY KEEP -- proven to fire, not just exist.

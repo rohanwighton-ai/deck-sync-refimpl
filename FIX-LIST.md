@@ -5226,3 +5226,66 @@ rows, three test images in
 `C:\Users\rohan\OneDrive\Claude\images\`. Backed up before this test at
 `backups/PRE-ONBOARDING-TEST-<timestamp>/`.
 
+## Found AND fixed 2026-08-22 — CW, CV's sibling bug: "Create template
+## slide" also leaked a real donor photo
+
+Found by `mother-hound`, tracing CV's exact failure shape into every
+other real call site of the same pattern, immediately after CV itself
+was fixed. Confirmed real and manifested on disk by `ppt-hound`, not
+just theoretical.
+
+**Root cause, traced through the code**: `TemplateSlide.MakeTemplateFrom`
+(the operation behind the `Create Template Slide` button, which turns a
+real project's slide into a type's master template by blanking every
+field to a placeholder) called `InjectPrimitive.InjectPrimitive` --
+the plain TEXT writer -- directly for every field, including
+picture-typed ones. `InjectPrimitive` checks `shp.HasTextFrame`; a
+picture shape has none, so the write silently no-ops (`Written=False`)
+and the return value was discarded, so nothing downstream ever knew.
+The result: any picture-typed field on a template (e.g. `PROJECT_PHOTO`)
+kept the SOURCE slide's real photo instead of being blanked -- directly
+contradicting the function's own header comment, "this operation
+guarantees new slides no longer inherit another project's FIELD
+values."
+
+**`ppt-hound` confirmed this is not theoretical.** All three master
+templates in the real deck (P/K/S) currently embed the exact same photo
+that lives on real slide `3_P001` (`PICSRC=S11`, `ppt/media/image1.jpg`,
+826,734 bytes, MD5 match). A manual "leak cleanup" pass on 2026-08-21
+(`PRE-TEMPLATE-LEAK-RESET`/`PRE-KS-DEEP-LEAK-CLEANUP`/
+`PRE-P-TEMPLATE-STRAY-LEAK` backups) had papered over the visible
+symptom by copying one photo onto all three templates, rather than
+fixing the root cause -- which was still live in the code until this
+fix.
+
+**FIXED, same session as CV, same pattern.** `MakeTemplateFrom`'s
+injection loop now calls `InjectPrimitive.InjectField` (the type-aware
+router) instead. Because a template has no source ROW -- only a generic
+placeholder string -- a picture (or bar/device/slots) field genuinely
+cannot be blanked the same way a text field can: there is no image to
+feed a picture shape, no real milestone data for a device, no number
+for a bar. Rather than silently ship a template that still carries
+donor content (the exact bug), the fix treats `InjectField`'s
+`Verified=False` as a real failure: it deletes the half-safe copy and
+refuses, naming the field(s) it could not blank -- the same idiom this
+function already uses for its name-collision refusal.
+
+**Proven fail-first, not just claimed.** A new test,
+`Test_TemplateSlide_RefusesAPictureFieldItCannotBlank`
+(`vba/tests/TestRunner.bas`), was run against the OLD code first and
+confirmed it fails for the right reason (`Ok=True FieldCount=3` -- the
+exact silent-success bug). The fix was then restored and the same test
+re-run clean. Static check clean; filtered suite (`-Filter
+TemplateSlide`) 14/14 passed, 0 failed, on the final confirmation run.
+
+**Not yet done**: the three existing master templates in the real deck
+still carry the leaked photo baked in from before this fix -- the code
+fix alone does not retroactively clean them. They need to be manually
+re-blanked or regenerated fresh from `Create Template Slide` once this
+build is live. Two more leads in the same root-cause family, found by
+mother-hound but not execution-confirmed: `DeckAdoption.bas VerifyLink`
+/ `BatchOnboardFlow.bas VerifyBatchLink` (call the plain text injector
+on possibly-picture shapes), and `DeckAdoption.bas PlanAdoption` ~line
+207 (unguarded `.TextFrame.TextRange.Text` read, no `HasTextFrame`
+check).
+

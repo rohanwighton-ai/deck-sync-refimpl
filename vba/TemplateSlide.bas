@@ -165,13 +165,54 @@ Public Function MakeTemplateFrom(sourceSld As Object, slideType As String) As Ma
     On Error GoTo 0
 
     Dim fieldCount As Long
+    Dim unblankedRoles As String
     fieldCount = 0
+    unblankedRoles = ""
     If hasRoles Then
         Dim r As Long
+        Dim injResult As InjectResult
         For r = rLo To rHi
-            InjectPrimitive.InjectPrimitive newSld, templateRoles(r), PlaceholderFor(templateRoles(r))
-            fieldCount = fieldCount + 1
+            ' FIX-LIST item CW, 2026-08-22. This called InjectPrimitive (the
+            ' plain TEXT writer) directly for every role, including
+            ' picture-typed fields -- which have no text frame, so the write
+            ' silently failed and the new TEMPLATE kept the donor slide's
+            ' real photo. Any future project cloned from this template,
+            ' before its own picture field is filled in, would inherit that
+            ' donor photo -- exactly the failure this whole module exists to
+            ' close off (see file header). InjectField is the type-aware
+            ' router every other write path already uses
+            ' (SlideDuplication.bas, fixed the same way, same session).
+            '
+            ' No srcWs passed on purpose: a template has no source ROW, only
+            ' a generic placeholder string, so a picture field genuinely
+            ' cannot be blanked the same way a text field can -- there is no
+            ' image to feed it. Rather than silently leave the donor's photo
+            ' in place (the exact bug being fixed), Verified=False is
+            ' treated as a real failure below and refuses the whole
+            ' template -- the same idiom this function already uses for the
+            ' name-collision case: a half-safe template is worse than none.
+            injResult = InjectPrimitive.InjectField(newSld, templateRoles(r), PlaceholderFor(templateRoles(r)), False, Nothing, Nothing)
+            If injResult.Verified Then
+                fieldCount = fieldCount + 1
+            Else
+                If unblankedRoles <> "" Then unblankedRoles = unblankedRoles & ", "
+                unblankedRoles = unblankedRoles & templateRoles(r)
+            End If
         Next r
+    End If
+
+    If unblankedRoles <> "" Then
+        newSld.Delete
+        result.Ok = False
+        result.Reason = "could not blank field(s) " & unblankedRoles & " on the copy -- a " & _
+            "picture, milestone-timeline, bar or slots field has no generic placeholder text " & _
+            "to write (there is nothing to feed a picture shape, and a bar/device/slots field " & _
+            "needs real structured data, not a string). Leaving it unblanked would ship a " & _
+            "template that still carries the donor slide's real content, exactly what this " & _
+            "operation exists to prevent. Clear " & unblankedRoles & " on the SOURCE slide " & _
+            "(e.g. delete the picture, leaving the shape empty) and try again. Copy removed."
+        MakeTemplateFrom = result
+        Exit Function
     End If
 
     ' --- Refuse a template that already carries a name collision -----------
