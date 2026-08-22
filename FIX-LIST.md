@@ -4882,11 +4882,11 @@ question, not three" call already made for the Apply step, applied here.
 
 Fixed: dropped the `MsgBox`, kept the `EndCollecting` call (still needed to
 reset `mCollecting`/`mReport` so a chain that died halfway can't leak into
-the next run). **Static check clean; live build+test verification pending
--- PowerPoint/Excel were both open under a live session at fix time, so the
-usual house-pattern test run (`vba/tests/run_vba_tests.ps1`, which aborts if
-either is already running) couldn't be exercised. Run it next session
-before trusting this beyond the static read.**
+the next run). **Live-verified 2026-08-22: full suite run
+(`vba/tests/run_vba_tests.ps1`) after Office was closed -- 296/296 passed,
+0 failed.** No dedicated behavioural test of the modal removal itself
+(it's a UI dialog, not independently unit-tested), but the full suite
+compiling and passing clean confirms the edit broke nothing else.
 
 ## RETRACTED 2026-08-22 — CP, milestone circle colours were never a
 ## regression -- this was Claude's own earlier fix, misread as a bug
@@ -4914,8 +4914,8 @@ No action needed. Lesson: a claim inherited from a compacted summary is
 exactly as unverified as one from a stale handover doc, and gets the same
 scrutiny before landing in a durable file.
 
-## Built 2026-08-22 — CQ, milestone percentage display (Option A), live
-## verification still pending
+## Built and live-verified 2026-08-22 — CQ, milestone percentage display
+## (Option A)
 
 Full design in `MILESTONE-PERCENTAGE-DESIGN.md`. Rohan asked for a
 Research Manager's informed percentage next to a not-yet-achieved
@@ -4930,13 +4930,12 @@ row-to-arrays translation layer. `IsColumnForThisDevice` extended to
 recognise `_PCT` so it doesn't get flagged as an orphan column. New test:
 `Test_MilestoneDevice_PercentageFoldsIntoLabelText`.
 
-**Static check clean; NOT YET run live.** PowerPoint/Excel were both open
-under a live session at build time, so `vba/tests/run_vba_tests.ps1`
-(aborts if either is already running) couldn't be exercised -- same
-constraint as CO above, same fix: run it next session before trusting this
-beyond the static read. Also genuinely untested against real data: no
-`MS<n>_PCT` value has ever been entered in the live register, so this has
-never rendered on an actual slide.
+**Live-verified 2026-08-22: full suite run (`vba/tests/run_vba_tests.ps1`)
+after Office was closed -- 296/296 passed, 0 failed, including the new
+`MilestoneDevice_PercentageFoldsIntoLabelText`.** Still genuinely untested
+against real data, which the test suite can't cover: no `MS<n>_PCT` value
+has ever been entered in the live register, so this has never rendered on
+an actual slide.
 
 ## Built and verified live 2026-08-22 — CR, `MS<n>_OFF` circles and
 ## `MS_TRACK` now carry a type-specific pale tint, completing the fade CP

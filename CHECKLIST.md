@@ -1593,12 +1593,10 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
 - [ ] **CM — hidden leftover milestone donor text, 32/43 slides, cosmetic.**
       All correctly hidden, nothing visible on screen. Low priority
       cleanup.
-- [~] **CO — `Put it on the slides` showed a needless OK-only dialog before
+- [x] **CO — `Put it on the slides` showed a needless OK-only dialog before
       its one real question.** Fixed: dropped the `MsgBox`, its content was
-      already unconditionally in the Run Log. Static check clean; live
-      build+test verification still pending -- Excel/PowerPoint were both
-      open under a live session at fix time. Run `run_vba_tests.ps1` next
-      session before trusting this beyond the static read.
+      already unconditionally in the Run Log. Live-verified 2026-08-22:
+      full suite 296/296 passed, 0 failed.
 - [x] **CP — RETRACTED, not a regression.** Originally logged as S/K
       `_OFF` circles regressing to shared teal. Every available backup was
       swept and none show a non-teal S/K colour ever existing. Rohan:
@@ -1607,13 +1605,12 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       session; the "regression" was that fix, misread by the
       pre-compaction summary. Full account in `FIX-LIST.md` CP. No colour
       change was ever applied to the real deck.
-- [~] **CQ — milestone percentage display, Option A built.** `MS<n>_PCT`
+- [x] **CQ — milestone percentage display, Option A built.** `MS<n>_PCT`
       register column, folded into the existing `MS<n>_LABEL` text by
       `DrawFromRow` -- no new shape, no template retrofit. Full design in
-      `MILESTONE-PERCENTAGE-DESIGN.md`. Static check clean; live
-      verification pending (Excel/PowerPoint open under a live session at
-      build time) and no real `MS<n>_PCT` value has ever been entered in
-      the register, so it hasn't rendered on an actual slide yet.
+      `MILESTONE-PERCENTAGE-DESIGN.md`. Live-verified 2026-08-22: full
+      suite 296/296 passed, 0 failed. Still untested against real data --
+      no `MS<n>_PCT` value has ever been entered in the register.
 - [x] **CR — `MS<n>_OFF`/`MS_TRACK` given a type-specific pale tint,
       verified live.** Completes the fade CP went looking for: `MS_BAR`
       and `_ON`/`_NOW` were already correctly type-specific (BP, 21 Aug);

@@ -1,14 +1,13 @@
 # Milestone percentage display — design
 
-> **OPTION A BUILT, 2026-08-22 — live verification still pending.**
-> `MilestoneDevice.bas` (`COL_PCT`, `IsColumnForThisDevice`, `DrawFromRow`'s
-> label fold) and a new unit test
-> (`Test_MilestoneDevice_PercentageFoldsIntoLabelText`, `TestRunner.bas`) are
-> written and static-check clean. **Not yet run live** — Excel/PowerPoint
-> were both open under a live session at build time, so
-> `vba/tests/run_vba_tests.ps1` (which aborts if either is already running)
-> couldn't be exercised. Run it next session before trusting this beyond the
-> static read; see FIX-LIST item CQ. Option B (the new `_PCT` shape) is
+> **OPTION A BUILT AND LIVE-VERIFIED, 2026-08-22.** `MilestoneDevice.bas`
+> (`COL_PCT`, `IsColumnForThisDevice`, `DrawFromRow`'s label fold) and a new
+> unit test (`Test_MilestoneDevice_PercentageFoldsIntoLabelText`,
+> `TestRunner.bas`) are written and pass the full automated suite
+> (`vba/tests/run_vba_tests.ps1`, 296/296, 0 failed, Office closed). See
+> FIX-LIST item CQ. Still genuinely untested against real data — no
+> `MS<n>_PCT` value has ever been entered in the live register, so it has
+> never rendered on an actual slide. Option B (the new `_PCT` shape) is
 > unchanged below — still just a scoped design, not built.
 >
 > Originally written 2026-08-22, from Rohan's decision the same session
