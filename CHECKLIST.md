@@ -1652,6 +1652,19 @@ order-preserving). Full detail in `FIX-LIST.md` CK/CL/CM.
       "" for a picture field's value — out of this fix's scope.
       Filtered suites: `DeckAdoption` 9/9, `BatchOnboardFlow_CommitBatch`
       2/2. Full account: `FIX-LIST.md` DA/DB.
+- [~] **DC — found AND fixed: `MS<n>_DATE`'s font colour was hardcoded
+      teal by position, never data-driven.** Found by Rohan looking at
+      the promoted live deck: slots 1-3 were `scheme:bg2` on every one
+      of the 43 real slides regardless of that project's own achieved
+      point — a static template value, never wired to real progress.
+      Fixed in code (not another file retrofit): the date text now
+      matches whichever circle (ON/OFF/NOW) is shown for its slot, by
+      OUTLINE colour specifically (fill would put pale OFF tints on
+      text — Rohan: "make sure text is harmonious and visible").
+      Proven fail-first, filtered suite 11/11. **Marked `[~]` not
+      `[x]`: not yet verified live** — the real deck still shows the
+      old hardcoded pattern; needs an add-in rebuild and a retrofit
+      pass to actually repaint it. Full account: `FIX-LIST.md` DC.
 - [x] **CZ — mother-hound finding #3, found AND fixed: `InjectDeviceVia`
       hardcoded `Verified = True`.** `DrawMilestones`'s own `SetVisible`/
       `WriteText` genuinely re-read each shape after writing and record

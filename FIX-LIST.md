@@ -5482,3 +5482,49 @@ Both: static check clean. Filtered suites: `DeckAdoption` 9/9 passed
 (0 failed) including both new tests; `BatchOnboardFlow_CommitBatch`
 2/2 passed (0 failed, non-regression).
 
+## Found AND fixed 2026-08-22 — DC, `MS<n>_DATE`'s font colour was
+## hardcoded teal by position, never data-driven
+
+Found by Rohan, looking directly at the promoted live deck ("please
+focus now on the correct font colour for the timeline objects... a lot
+of teal"). Checked every real milestone slide's `MS<n>_DATE` colour
+directly from the saved file: on ALL 43 real slides, slots 1-3 were
+`scheme:bg2` (the old uniform teal) and slots 4-7 were a type hex --
+**identical on every slide, regardless of that project's own achieved
+point**. Not a rendering bug: a static value baked into the master
+templates (which show the identical pattern) and propagated to every
+real slide by duplication, then never touched again. Confirmed by code
+read: no `Font.Color`/`ForeColor` call existed anywhere in
+`MilestoneDevice.bas` before this fix -- every colour retrofit tonight
+(CR/CT/CU) only ever toggled circle *visibility* between pre-styled
+ON/OFF/NOW shapes, never touched text colour.
+
+**FIXED, in code this time, not another one-off file retrofit.** New
+`SetDateColourToMatch` in `MilestoneDevice.bas`: after
+`DrawMilestones` decides which circle (`ON`/`OFF`/`NOW`) is shown for a
+slot, the date text's font colour is set to match that circle's own
+OUTLINE colour -- measured, not computed, same philosophy the bar's
+height already uses. **Outline, not fill, on Rohan's own follow-up**
+("make sure text is harmonious and visible"): an OFF circle's fill is a
+deliberately pale tint, fine for a small shape, close to illegible as
+text; CU (same session) already made every OFF circle's outline match
+that slide's own ON outline, so the outline is both legible and already
+uniform across achieved/not-achieved states. Folds into the existing
+`slotOk`/`WriteFailureCount` verification chain (CZ, same session) --
+a colour write that doesn't land is reported, not swallowed.
+
+Proven fail-first: new test sets distinct, deliberately non-default
+OUTLINE colours on ON/OFF/NOW, draws one achieved/one current/one
+not-yet-achieved slot, asserts each date's font colour matches its own
+shown circle. Reverted just the wiring call, confirmed all three
+assertions fail against the old code (dates keep whatever default
+`AddTextbox` gave them). Restored; same test passes. Static check
+clean. Filtered suite (`-Filter MilestoneDevice`): 11/11 passed.
+
+**Not yet done**: the live deck itself still shows the old hardcoded
+teal/type-hex pattern -- this fix is in source only. Needs an add-in
+rebuild and either a fresh sync or a one-off retrofit pass (same
+per-slide-COM-launch technique as CR/CT/CU) to actually repaint the 43
+real slides' `MS<n>_DATE` text. Not done tonight: verify live against
+the real deck before declaring this closed.
+

@@ -656,6 +656,7 @@ Public Function DrawMilestones(grp As Object, labels() As String, dates() As Str
             slotOk = SetVisible(datShp, True) And slotOk
             slotOk = WriteText(labShp, labels(LBound(labels) + i - 1)) And slotOk
             slotOk = WriteText(datShp, dates(LBound(dates) + i - 1)) And slotOk
+            slotOk = SetDateColourToMatch(datShp, shown) And slotOk
 
             ' PCT IS OPTIONAL AT THE VALUE LEVEL, unlike LABEL/DATE -- a used
             ' slot with no Research Manager opinion yet simply shows nothing,
@@ -830,6 +831,48 @@ Private Function SetVisible(shp As Object, show As Boolean) As Boolean
     landed = (shp.Visible = IIf(show, msoTrue, msoFalse))
     On Error GoTo 0
     SetVisible = landed
+End Function
+
+' THE DATE TEXT'S COLOUR MATCHES WHICHEVER CIRCLE IS SHOWN FOR ITS SLOT --
+' measured, not computed, same philosophy the bar's height already uses
+' ("read off the slide, never worked out from a fraction"). No type/palette
+' table lives here: `circleShp` is the ON/OFF/NOW shape DrawMilestones just
+' decided to show for this slot, already carrying whatever colour the
+' template (or an earlier colour retrofit) gave it, so the date can only
+' ever agree with what a person can actually see on screen.
+'
+' THE OUTLINE, NOT THE FILL. Rohan, 2026-08-22: "make sure text is
+' harmonious and visible" -- an OFF circle's FILL is a deliberately pale
+' tint (right for a small shape, wrong for text: pale-on-light-background
+' text is close to illegible). Its OUTLINE is the type's saturated colour
+' instead, and CU (same session) already made every OFF circle's outline
+' match that slide's own ON outline -- so the outline is both legible and
+' already uniform across achieved/not-achieved, unlike the fill.
+'
+' FOUND LIVE 2026-08-22 (Rohan, looking at the promoted deck): every
+' MS<n>_DATE across all 43 real slides was hardcoded scheme:bg2 (the old
+' uniform teal) for slots 1-3 and a type-hex for slots 4-7, on EVERY
+' slide regardless of that project's own achieved point -- not a rendering
+' bug, a static value baked into the template and propagated by
+' duplication, never touched by DrawMilestones (no Font.Color/ForeColor
+' call existed anywhere in this module before this fix).
+Private Function SetDateColourToMatch(datShp As Object, circleShp As Object) As Boolean
+    If datShp Is Nothing Or circleShp Is Nothing Then
+        SetDateColourToMatch = True ' nothing to fail -- there was no shape to write to
+        Exit Function
+    End If
+    If Not datShp.HasTextFrame Then
+        SetDateColourToMatch = False
+        Exit Function
+    End If
+    On Error Resume Next
+    Dim wantRGB As Long
+    wantRGB = circleShp.Line.ForeColor.RGB
+    datShp.TextFrame.TextRange.Font.Color.RGB = wantRGB
+    Dim landed As Boolean
+    landed = (datShp.TextFrame.TextRange.Font.Color.RGB = wantRGB)
+    On Error GoTo 0
+    SetDateColourToMatch = landed
 End Function
 
 Private Function WriteText(shp As Object, value As String) As Boolean

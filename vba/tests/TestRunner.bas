@@ -2058,6 +2058,12 @@ Public Function RunAllTests(fixturesDir As String, stagingDir As String, _
         r = TEST_SKIPPED
     End If
     AppendResult report, "MilestoneDevice_ColourIsContiguousNotPerFlag", r
+    If TestMatches("MilestoneDevice_DateTextColourMatchesItsShownCircle", filterPattern) Then
+        r = Test_MilestoneDevice_DateTextColourMatchesItsShownCircle()
+    Else
+        r = TEST_SKIPPED
+    End If
+    AppendResult report, "MilestoneDevice_DateTextColourMatchesItsShownCircle", r
     If TestMatches("MilestoneDevice_ReportWrapperMatchesTheRealResult", filterPattern) Then
         r = Test_MilestoneDevice_ReportWrapperMatchesTheRealResult()
     Else
@@ -16454,6 +16460,68 @@ Private Function Test_MilestoneDevice_ColourIsContiguousNotPerFlag() As String
     sld2.Delete
     sld.Delete
     Test_MilestoneDevice_ColourIsContiguousNotPerFlag = result
+End Function
+
+' Found live 2026-08-22 (Rohan, looking at the promoted deck): MS<n>_DATE's
+' font colour was hardcoded per POSITION (slots 1-3 always the old uniform
+' teal, 4-7 always a type hex) on every single real slide, regardless of
+' that project's own achieved point -- not data-driven at all, unlike the
+' circles' own already-correct contiguous colour. No code anywhere in this
+' module had ever set Font.Color/ForeColor on MS<n>_DATE before this fix.
+'
+' OUTLINE, not fill -- Rohan, 2026-08-22: "make sure text is harmonious
+' and visible". A pale OFF fill would be barely-legible as text; the
+' outline is the saturated, type-true colour every circle already carries.
+'
+' Distinct, deliberately non-default colours on ON/OFF/NOW's OUTLINES so a
+' match can only happen by the real mechanism (copying the shown circle's
+' own outline), never by coincidence with a shared default. Fills are left
+' at PowerPoint's default (and deliberately NOT asserted against) so a
+' fill-based match would fail this test just as loudly as no match at all.
+Private Function Test_MilestoneDevice_DateTextColourMatchesItsShownCircle() As String
+    Dim result As String
+
+    Dim sld As Object
+    Set sld = NewBlankSlide()
+    Dim grp As Object
+    Set grp = NewMilestoneDeviceWithNow(sld, 3)
+
+    Dim onColour As Long, offColour As Long, nowColour As Long
+    onColour = RGB(0, 100, 0)
+    offColour = RGB(200, 200, 200)
+    nowColour = RGB(255, 0, 0)
+
+    Dim i As Long
+    For i = 1 To 3
+        NamedIn(grp, "MS" & i & "_ON").Line.ForeColor.RGB = onColour
+        NamedIn(grp, "MS" & i & "_OFF").Line.ForeColor.RGB = offColour
+        NamedIn(grp, "MS" & i & "_NOW").Line.ForeColor.RGB = nowColour
+    Next i
+
+    Dim row As Object
+    Set row = CreateObject("Scripting.Dictionary")
+    ' MS1: achieved, not current -> ON. MS2: current -> NOW. MS3: not
+    ' achieved -> OFF.
+    row("MS1_LABEL") = "Fieldwork": row("MS1_DATE") = "6":  row("MS1_DONE") = "Y"
+    row("MS2_LABEL") = "Analysis":  row("MS2_DATE") = "12": row("MS2_DONE") = "Y"
+    row("MS3_LABEL") = "Report":    row("MS3_DATE") = "18": row("MS3_DONE") = ""
+
+    Dim r As MilestoneDrawResult
+    r = MilestoneDevice.DrawFromRow(grp, row)
+    result = result & Assert(r.ErrorMessage = "", "it draws [" & r.ErrorMessage & "]")
+
+    ' THE ONE THAT MATTERS: before the fix, MS<n>_DATE's Font.Color was
+    ' never touched at all -- these would all still read whatever default
+    ' colour AddTextbox gave them, matching none of the three.
+    result = result & Assert(NamedIn(grp, "MS1_DATE").TextFrame.TextRange.Font.Color.RGB = onColour, _
+        "MS1 (achieved, not current) date text matches the ON circle's colour")
+    result = result & Assert(NamedIn(grp, "MS2_DATE").TextFrame.TextRange.Font.Color.RGB = nowColour, _
+        "MS2 (current) date text matches the NOW circle's colour")
+    result = result & Assert(NamedIn(grp, "MS3_DATE").TextFrame.TextRange.Font.Color.RGB = offColour, _
+        "MS3 (not yet achieved) date text matches the OFF circle's colour")
+
+    sld.Delete
+    Test_MilestoneDevice_DateTextColourMatchesItsShownCircle = result
 End Function
 
 
